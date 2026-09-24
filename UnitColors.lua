@@ -1,6 +1,6 @@
 local _, FT = ...
 local Colors = { tracked={}, hooks={}, active={} }
-local groups = {{"player","Player"}, {"target","Target"}, {"party","Party"}, {"raid","Raid"}, {"focus","Focus"}}
+local groups = {{"player","Player"}, {"target","Target"}, {"focus","Focus"}}
 function Colors:Settings()
     if type(FT.db.unitColors) ~= "table" then FT.db.unitColors = {} end
     return FT.db.unitColors
@@ -68,6 +68,26 @@ function Colors:Paint(bar)
         local native=info.original
         bar:SetStatusBarColor(native[1]*finish,native[2]*finish,native[3]*finish,native[4] or 1)
     elseif info.colored and info.original then bar:SetStatusBarColor(unpack(info.original)) end
+    -- The neutral target fill loses the recessed inner rim baked into native
+    -- artwork. Restore a thin inset above the fill without moving its geometry.
+    if color and muted and not info.rim then
+        info.rim={}
+        for _,edge in ipairs({"TOP","BOTTOM","LEFT","RIGHT"}) do
+            local rim=bar:CreateTexture(nil,"ARTWORK",nil,1)
+            rim:SetColorTexture(0,0,0,edge=="BOTTOM" and .8 or .65)
+            if edge=="TOP" or edge=="BOTTOM" then
+                rim:SetHeight(edge=="BOTTOM" and 2 or 1)
+                rim:SetPoint(edge.."LEFT",bar,edge.."LEFT",0,0)
+                rim:SetPoint(edge.."RIGHT",bar,edge.."RIGHT",0,0)
+            else
+                rim:SetWidth(1)
+                rim:SetPoint("TOP"..edge,bar,"TOP"..edge,0,0)
+                rim:SetPoint("BOTTOM"..edge,bar,"BOTTOM"..edge,0,0)
+            end
+            info.rim[#info.rim+1]=rim
+        end
+    end
+    for _,rim in ipairs(info.rim or {}) do rim:SetShown(color~=nil and muted) end
     info.colored = color ~= nil or muted
     self.painting = false
 end
@@ -127,7 +147,7 @@ function Colors:Compact(frame)
     -- Never recolor nameplates, even though they use the compact-frame updater.
     if not name or not name:match("^Compact") then return end
     if name:find("Party",1,true) then group="party" end
-    if group == "raid" or group == "party" then self:Track(healthBar(frame), unit, group, frame) end
+    -- Compact party and raid frames use Blizzard's own class-color option.
 end
 function Colors:LayerPlayerLevel(decorations)
     local content=PlayerFrame and PlayerFrame.PlayerFrameContent
@@ -167,6 +187,9 @@ function Colors:Apply()
     if not FT.dbReady then return end
     if InCombatLockdown() then self.deferred=true; self:Refresh(); return end
     self.deferred=false
+    -- Party colors belong to Blizzard Edit Mode. Restore any bars this addon
+    -- colored on older profiles, then leave their colors to the client.
+    self.active.party=false; self.active.raid=false
     for _,entry in ipairs(groups) do self.active[entry[1]]=self:Settings()[entry[1]] == true end
     for _, entry in ipairs({{"PlayerFrame","player"}, {"TargetFrame","target"}, {"FocusFrame","focus"}}) do
         local frame = _G[entry[1]]
@@ -182,21 +205,9 @@ function Colors:Apply()
         self:Track(healthBar(frame) or _G[entry[1].."HealthBar"],entry[2],entry[3],frame)
     end
     for i=1,5 do
-        self:Track(healthBar(_G["PartyMemberFrame" .. i]) or _G["PartyMemberFrame" .. i .. "HealthBar"], "party" .. i, "party")
-        local modern = PartyFrame and PartyFrame["MemberFrame" .. i]
-        if modern then self:Track(healthBar(modern), "party" .. i, "party", modern) end
-        self:Compact(_G["CompactPartyFrameMember" .. i])
-        for g=1,8 do self:Compact(_G["CompactRaidGroup" .. g .. "Member" .. i]) end
+        -- Leave compact raid frames untouched.
     end
-    for i=1,40 do self:Compact(_G["CompactRaidFrame" .. i]) end
-    if not self.hooks.compact and type(CompactUnitFrame_UpdateHealthColor) == "function" and hooksecurefunc then
-        self.hooks.compact=true
-        hooksecurefunc("CompactUnitFrame_UpdateHealthColor", function(frame)
-            if InCombatLockdown() then
-                local bar=healthBar(frame); if self.tracked[bar] then self:Paint(bar) end
-            else self:Compact(frame) end
-        end)
-    end
+    -- Leave compact raid frames untouched.
     -- The player, target and focus bars are recolored by Blizzard after several
     -- unit events. Queue one pass after their native updater has finished.
     if not self.hooks.unitFrame and type(UnitFrameHealthBar_Update) == "function" and hooksecurefunc then
@@ -204,7 +215,8 @@ function Colors:Apply()
         hooksecurefunc("UnitFrameHealthBar_Update", function(frame, unit)
             local bar = healthBar(frame) or (frame and frame.SetStatusBarColor and frame)
             local resolved = unit or (frame and (frame.displayedUnit or frame.unit))
-            if bar and groupFor(resolved) then self:Track(bar, resolved, groupFor(resolved), frame) end
+            local group=groupFor(resolved)
+            if bar and group and group~="party" and group~="raid" then self:Track(bar, resolved, group, frame) end
             self:Queue()
         end)
     end
@@ -264,13 +276,25 @@ function Colors:Open()
             button:SetScript("OnClick",function() local s=self:Settings(); s[key]=not s[key]; self:Apply() end)
             self.buttons[key]=button
         end
+        local partyInfo=FT:QuietButton(self.frame,"Party colors: use Blizzard Edit Mode",542,34,"party")
+        partyInfo:SetPoint("TOPLEFT",24,-113-#groups*44)
+        FT:Tooltip(partyInfo,"Party class colors","Click the party frame in Blizzard Edit Mode, open Raid Frame Settings, then enable class colors. Raid frames use the same Blizzard setting.")
+        partyInfo:SetScript("OnClick",function()
+            if InCombatLockdown() then return end
+            local manager=_G.EditModeManagerFrame
+            if manager and manager.Show then
+                if FT.home then FT.home:Hide() end
+                for _,module in pairs(FT.modules) do if module.frame then module.frame:Hide() end end
+                manager:Show()
+            end
+        end)
         self.note=FT:Label(self.frame,"",13); self.note:SetPoint("BOTTOMLEFT",24,28); self.note:SetSize(542,60)
     end
     self:Apply(); self.frame:Show()
     if not self.warned then
         self.warned = true
         StaticPopupDialogs.FOREVERTOOLS_COLORS_WIP = {text="Unitframe colors is under development. Results may be unreliable on the beta client as its unit-frame APIs change. You can still adjust these settings.", button1="Continue", timeout=0, whileDead=true, hideOnEscape=true}
-        StaticPopup_Show("FOREVERTOOLS_COLORS_WIP")
+        FT:ShowPopup("FOREVERTOOLS_COLORS_WIP")
     end
 end
 FT:RegisterModule("UnitColors", Colors)

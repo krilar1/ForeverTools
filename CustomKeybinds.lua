@@ -19,7 +19,7 @@ function B:LearnedSpells()
         elseif IsPlayerSpell then if not IsPlayerSpell(id) then return end
         elseif IsSpellKnown and not IsSpellKnown(id,false) then return end
         seen[id]=true
-        list[#list+1]={value=id,name=name,label=name..(rank and rank~="" and (" ("..rank..")") or ""),icon=icon}
+        list[#list+1]={value=id,name=name,rank=rank,label=name..(rank and rank~="" and (" ("..rank..")") or ""),icon=icon}
     end
     if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines and C_SpellBook.GetSpellBookItemInfo then
         for line=1,C_SpellBook.GetNumSpellBookSkillLines() do
@@ -193,7 +193,7 @@ function B:Open()
         prev:SetScript("OnClick",function() self.spellPage=math.max(1,(self.spellPage or 1)-1); self:RenderSpellRows() end)
         next:SetScript("OnClick",function() self.spellPage=math.min(self.spellPages or 1,(self.spellPage or 1)+1); self:RenderSpellRows() end)
         self.pageLabel=FT:Label(self.frame,"",12); self.pageLabel:SetPoint("TOP",0,-570)
-        local info=FT:Info(self.frame,"Mouse-wheel casting","Uses secure mouseover bindings for world units and unitframes, including in combat. A brief client state-update delay can occur when moving onto or off a unit. Normal camera zoom is restored when there is no matching configured hover. This temporarily takes priority over other bindings on the same wheel direction. Changes apply outside combat; no spells are cast automatically.")
+        local info=FT:Info(self.frame,"Mouse-wheel casting","Choose a learned spell, then bind a wheel direction. Over a unit, the wheel uses that spell; elsewhere, it zooms the camera. Change bindings outside combat.")
         info:SetPoint("BOTTOMRIGHT",-24,20)
         FT:Tooltip(self.toggle,"Enable mouse-wheel casting","Select one learned spell for each direction below. Off restores the previous wheel bindings. Each scroll casts once.")
     end

@@ -168,7 +168,7 @@ function QoL:Open()
             settings.screenWidth, settings.screenHeight = UIParent:GetWidth(), UIParent:GetHeight()
             self:Apply()
         end)
-        local note = FT:Label(self.frame, "Moving turns the counter on. Position and size save automatically.", 13)
+        local note = FT:Label(self.frame, "Moving turns the counter on. Changes apply now; save a profile to reuse them.", 13)
         note:SetPoint("BOTTOMLEFT", 24, 32); note:SetWidth(450)
         self.frame:HookScript("OnHide", function() if self.moving then self:SetMoving(false) end end)
     end
@@ -213,7 +213,7 @@ events:SetScript("OnEvent", function(_, event, loadedAddon)
     if event == "ADDON_LOADED" and loadedAddon == addonName then initialize()
     elseif event == "PLAYER_LOGIN" then
         initialize()
-        if not welcomed and FT.db.welcome ~= false then print("|cffc9a0ffForeverTools loaded:|r |cffffffff/ft|r") end
+        if not welcomed and FT.db.welcome ~= false then print("|cffc9a0ffForeverTools v"..FT.version.." loaded:|r |cffffffff/ft|r") end
         welcomed = true
     elseif event == "PLAYER_LOGOUT" and QoL.moving then QoL:SavePosition() end
     if event == "PLAYER_ENTERING_WORLD" or event == "UI_SCALE_CHANGED" or event == "DISPLAY_SIZE_CHANGED" then

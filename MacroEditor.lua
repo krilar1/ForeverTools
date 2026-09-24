@@ -27,7 +27,7 @@ function Editor:FindInstalled()
     local record = self:Record()
     local tracked = record.installed[self:CharacterKey()]
     local account, character = GetNumMacros()
-    local scope = self.entry.class and "character" or self.scope
+    local scope = (self.entry.class or self.entry.characterOnly) and "character" or self.scope
     local first = scope == "character" and (MAX_ACCOUNT_MACROS or 120) + 1 or 1
     local count = scope == "character" and character or account
     local variants = {}
@@ -46,7 +46,7 @@ function Editor:FindInstalled()
             local candidate = {index = index, name = name, body = body}
             if tracked and normal(body) == normal(tracked.body) then trackedMatches[#trackedMatches + 1] = candidate end
             if normal(body) == normal(self.sourceBody) then exactMatches[#exactMatches + 1] = candidate end
-            if variants[normal(body)] or (not self.entry.class and name == Macros:MacroName(self.entry)) then alternatives[#alternatives + 1] = candidate end
+            if variants[normal(body)] or (not self.entry.class and not self.entry.characterOnly and name == Macros:MacroName(self.entry)) then alternatives[#alternatives + 1] = candidate end
         end
     end
     local matches = #trackedMatches > 0 and trackedMatches or (#exactMatches > 0 and exactMatches or alternatives)
@@ -62,10 +62,10 @@ function Editor:SaveToWoW()
     self.pendingSave = request
     if target then
         StaticPopupDialogs.FOREVERTOOLS_REPLACE.text = "Replace the existing " .. self.entry.name .. " macro with this edited version?\n\nThe current version will be recorded in your save log."
-        StaticPopup_Show("FOREVERTOOLS_REPLACE")
+        FT:ShowPopup("FOREVERTOOLS_REPLACE")
     elseif self.entry.class and self.entry.class ~= Macros:PlayerClass() then
         StaticPopupDialogs.FOREVERTOOLS_EDITOR_FOREIGN.text = "This is a " .. self.entry.class .. " macro, but you are a " .. Macros:PlayerClass() .. ". Add it to Character macros anyway?"
-        StaticPopup_Show("FOREVERTOOLS_EDITOR_FOREIGN")
+        FT:ShowPopup("FOREVERTOOLS_EDITOR_FOREIGN")
     else self:CommitSave() end
 end
 function Editor:CommitSave()
@@ -85,7 +85,7 @@ function Editor:CommitSave()
         local entry = copy(request.entry); entry.code = request.body
         local previousScope = Macros.scope; Macros.scope = request.scope
         local created = Macros:CreateEntry(entry, true); Macros.scope = previousScope
-        if not created then self:Message("Not added: the macro already exists or its destination is full.", true); return end
+        if not created then self:Message(Macros.status and Macros.status:GetText() or "WoW could not add this macro.", true); return end
     end
     self:Record().installed[self:CharacterKey()] = {body = request.body}
     self.sourceBody = request.body
@@ -338,8 +338,8 @@ function Editor:PrepareEntry(entry, body)
     FT:FlushMacroRevision(self.entry)
     self:CreateUI(); self.pendingSave = nil
     self.entry = copy(entry); self.sourceBody = body; self.templateBody = body
-    self.scope = entry.class and "character" or Macros.scope
-    self.entryLabel:SetText(entry.name .. " • saved automatically in your addon")
+    self.scope = (entry.class or entry.characterOnly) and "character" or Macros.scope
+    self.entryLabel:SetText(entry.name .. " • local draft; save a profile to keep this setup")
     self.rank = "max"; self.target = "standard"; self.modifier = ""; self.spellName = entry.name
     local installed, problem = self:FindInstalled()
     if installed then self.sourceBody = installed.body end

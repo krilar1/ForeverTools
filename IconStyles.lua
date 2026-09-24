@@ -11,11 +11,12 @@ local presets = {
     {value="custom", label="Custom"},
 }
 Skins.presets=presets
-local bars={"ActionButton","MultiBarBottomLeftButton","MultiBarBottomRightButton","MultiBarLeftButton","MultiBarRightButton","MultiBar5Button","MultiBar6Button","MultiBar7Button","PetActionButton","StanceButton","PossessButton"}
+local bars={"ActionButton","MultiBarBottomLeftButton","MultiBarBottomRightButton","MultiBarLeftButton","MultiBarRightButton","MultiBar5Button","MultiBar6Button","MultiBar7Button","PetActionButton"}
 function Skins:Settings()
     if type(FT.db.iconStyles)~="table" then FT.db.iconStyles={} end
     local s=FT.db.iconStyles
     if type(s.actions)~="boolean" then s.actions=true end
+    if type(s.stances)~="boolean" then s.stances=true end
     if type(s.buffs)~="boolean" then s.buffs=false end
     if type(s.shadow)~="boolean" then s.shadow=true end
     s.opacity=type(s.opacity)=="number" and math.max(0,math.min(.9,s.opacity)) or 0
@@ -35,10 +36,15 @@ function Skins:Area(key)
     local root=self:Settings(); root.areas=type(root.areas)=="table" and root.areas or {}
     local s=root.areas[key]
     if type(s)~="table" then
-        s={preset=root.preset,opacity=root.opacity,shadow=root.shadow,color={unpack(root.color)},borderColor={unpack(root.borderColor)},thickness=1,borderOpacity=1,rares=false,elites=false}
+        s={preset=root.preset,opacity=root.opacity,shadow=root.shadow,color={unpack(root.color)},borderColor={unpack(root.borderColor)},thickness=key=="buffs" and 2 or 1,borderOpacity=1,rares=false,elites=false,hideSecondary=key=="micro"}
         root.areas[key]=s
     end
     s.color=type(s.color)=="table" and s.color or {0,0,0}; s.borderColor=type(s.borderColor)=="table" and s.borderColor or {0,0,0}
+    if key=="micro" and s.hideSecondary==nil and s.preset=="dark" then s.hideSecondary=true end
+    if key=="buffs" and not s.buffBorderMigration then
+        if s.preset=="dark" and tonumber(s.thickness)==1 then s.thickness=2 end
+        s.buffBorderMigration=true
+    end
     s.opacity=tonumber(s.opacity) or 0; s.thickness=math.max(1,math.min(6,tonumber(s.thickness) or 1)); s.borderOpacity=math.max(0,math.min(1,tonumber(s.borderOpacity) or 1))
     if s.preset=="class" then local _,class=UnitClass("player"); local c=(RAID_CLASS_COLORS or {})[class]; if c then s.borderColor={c.r,c.g,c.b}; s.color={c.r,c.g,c.b} end end
     s[key]=root[key]==true; s.buffs=root.buffs==true
@@ -74,8 +80,9 @@ function Skins:Track(button,kind)
         rec.fill:SetTexture("Interface\\AddOns\\"..FT.name.."\\Media\\Rounded.tga")
         rec.shadow=button:CreateTexture(nil,"BACKGROUND",nil,-8)
         rec.shadow:SetTexture("Interface\\AddOns\\"..FT.name.."\\Media\\Rounded.tga")
-        rec.shadow:SetPoint("TOPLEFT",icon,"TOPLEFT",-1,1); rec.shadow:SetPoint("BOTTOMRIGHT",icon,"BOTTOMRIGHT",1,-1)
-        rec.border = kind == "actions" and (button:GetNormalTexture() or button.normalTexture or (button.GetName and _G[button:GetName() .. "NormalTexture"])) or nil
+        local shadowInset=kind=="buffs" and -2 or -1
+        rec.shadow:SetPoint("TOPLEFT",icon,"TOPLEFT",shadowInset,-shadowInset); rec.shadow:SetPoint("BOTTOMRIGHT",icon,"BOTTOMRIGHT",-shadowInset,shadowInset)
+        rec.border = (kind == "actions" or kind=="stances") and (button:GetNormalTexture() or button.normalTexture or (button.GetName and _G[button:GetName() .. "NormalTexture"])) or nil
         if kind == "buffs" then
             rec.nativeBorders={}
             local name=button.GetName and button:GetName()
@@ -99,10 +106,12 @@ function Skins:Track(button,kind)
                 edge:SetTexture("Interface\\Buttons\\WHITE8x8"); rec.auraEdges[i]=edge
             end
             local e=rec.auraEdges
-            e[1]:SetPoint("TOPLEFT",icon,"TOPLEFT"); e[1]:SetPoint("TOPRIGHT",icon,"TOPRIGHT"); e[1]:SetHeight(1)
-            e[2]:SetPoint("BOTTOMLEFT",icon,"BOTTOMLEFT"); e[2]:SetPoint("BOTTOMRIGHT",icon,"BOTTOMRIGHT"); e[2]:SetHeight(1)
-            e[3]:SetPoint("TOPLEFT",icon,"TOPLEFT"); e[3]:SetPoint("BOTTOMLEFT",icon,"BOTTOMLEFT"); e[3]:SetWidth(1)
-            e[4]:SetPoint("TOPRIGHT",icon,"TOPRIGHT"); e[4]:SetPoint("BOTTOMRIGHT",icon,"BOTTOMRIGHT"); e[4]:SetWidth(1)
+            -- Leave a two-pixel turn at each corner instead of joining
+            -- straight edge strips into a square over the rounded fill.
+            e[1]:SetPoint("TOPLEFT",icon,"TOPLEFT",2,0); e[1]:SetPoint("TOPRIGHT",icon,"TOPRIGHT",-2,0); e[1]:SetHeight(1)
+            e[2]:SetPoint("BOTTOMLEFT",icon,"BOTTOMLEFT",2,0); e[2]:SetPoint("BOTTOMRIGHT",icon,"BOTTOMRIGHT",-2,0); e[2]:SetHeight(1)
+            e[3]:SetPoint("TOPLEFT",icon,"TOPLEFT",0,-2); e[3]:SetPoint("BOTTOMLEFT",icon,"BOTTOMLEFT",0,2); e[3]:SetWidth(1)
+            e[4]:SetPoint("TOPRIGHT",icon,"TOPRIGHT",0,-2); e[4]:SetPoint("BOTTOMRIGHT",icon,"BOTTOMRIGHT",0,2); e[4]:SetWidth(1)
             button:HookScript("OnShow",function() self:Paint(rec) end)
         end
         self.records[button]=rec
@@ -136,7 +145,7 @@ function Skins:Paint(rec)
         edge:SetVertexColor(r,g,b,s.borderOpacity); edge:Show()
     end
     rec.fill:SetVertexColor(s.color[1],s.color[2],s.color[3],s.opacity); rec.fill:Show()
-    rec.shadow:SetVertexColor(0,0,0,s.shadow and math.min(.55,s.opacity+.12) or 0); rec.shadow:SetShown(s.shadow)
+    rec.shadow:SetVertexColor(0,0,0,s.shadow and (rec.kind=="buffs" and .55 or math.min(.55,s.opacity+.12)) or 0); rec.shadow:SetShown(s.shadow)
     -- Tint Blizzard's existing action-button border itself. No second outline is
     -- layered over the button, so the original corner art and spacing remain.
     if rec.border and rec.border.SetVertexColor then
@@ -164,11 +173,22 @@ function Skins:ScanBuffs(container,depth)
     if iconOf(container) then self:Track(container,"buffs") end
     if depth>0 and container.GetChildren then for _,child in ipairs({container:GetChildren()}) do self:ScanBuffs(child,depth-1) end end
 end
+function Skins:ScanBar(container,depth)
+    if not container then return end
+    if iconOf(container) then self:Track(container,"stances") end
+    if depth>0 and container.GetChildren then for _,child in ipairs({container:GetChildren()}) do self:ScanBar(child,depth-1) end end
+end
 function Skins:Apply()
     if not FT.dbReady then return end
     if InCombatLockdown() then self.deferred=true; self:Refresh(); return end
     self.deferred=false; local s=self:Settings()
     if s.actions then for _,prefix in ipairs(bars) do for i=1,12 do self:Track(_G[prefix..i],"actions") end end end
+    if s.stances then
+        for _,prefix in ipairs({"StanceButton","PossessButton","TotemFrameTotem"}) do
+            for i=1,12 do self:Track(_G[prefix..i],"stances") end
+        end
+        for _,name in ipairs({"StanceBar","StanceBarFrame","PossessBarFrame","TotemFrame","MultiCastActionBarFrame"}) do self:ScanBar(_G[name],2) end
+    end
     if s.buffs then
         for i=1,40 do self:Track(_G["BuffButton"..i],"buffs"); self:Track(_G["DebuffButton"..i],"buffs") end
         for i=1,3 do self:Track(_G["TempEnchant"..i],"buffs") end

@@ -93,7 +93,7 @@ function F:UpdateScene(path)
             slot:Show()
         end
     elseif id=="restedxp" then self.scene.text:SetText("Step 16\nTravel to the Crossroads")
-    elseif id=="swingMain" or id=="swingOff" then self.scene.text:SetText((id=="swingMain" and "Main hand" or "Off hand").."     2.4 s")
+    elseif id=="swingMain" or id=="swingOff" or id=="swingRanged" then self.scene.text:SetText((id=="swingMain" and "Main hand" or id=="swingOff" and "Off hand" or "Ranged").."     2.4 s")
     elseif id=="units" then self.scene.text:SetText("Player\n2,450 / 3,000")
     else
         local elapsed=self.scene.elapsed or 0

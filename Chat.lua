@@ -73,10 +73,19 @@ function Chat:Refresh()
         local icons={show="Spell_Holy_MagicalSentry",hide="Ability_Stealth",hover="Ability_Hunter_SniperShot"}
         self.buttons[entry[1]].label:SetText(entry[2]..": |TInterface\\Icons\\"..icons[mode]..":18:18|t "..({show="Shown",hide="Hidden",hover="Mouseover"})[mode])
     end
+    if self.fontChoice then
+        local fonts=FT.modules.FontManager;local pref=fonts:Settings("chat")
+        local label=pref.font
+        for _,choice in ipairs(fonts:Catalogue()) do if choice.value==pref.font then label=choice.label;break end end
+        self.fontChoice.label:SetText("Chat font: "..label)
+        self.fontSize.label:SetText("Size: "..(pref.size==0 and "Blizzard default" or pref.size.." px"))
+        local outlineNames={original="Blizzard default",[""]="None",THIN="Thin",OUTLINE="Outline",THICKOUTLINE="Thick outline"}
+        self.outline.label:SetText("Outline: "..(outlineNames[pref.outline] or pref.outline))
+    end
 end
 function Chat:Open()
     if not self.frame then
-        self.frame=FT:Window("ForeverToolsChat","ForeverTools | Chat",500,350); self.buttons={}
+        self.frame=FT:Window("ForeverToolsChat","ForeverTools | Chat",500,530); self.buttons={}
         for i,entry in ipairs(options) do
             local key=entry[1]; local b=FT:QuietButton(self.frame,"",452,46,"chat")
             b:SetPoint("TOPLEFT",24,-65-(i-1)*58)
@@ -87,6 +96,34 @@ function Chat:Open()
             FT:Tooltip(b,entry[2],"Click to cycle Shown, Hidden and Mouseover. Tabs reveal together over the chat area; social and side controls reveal only over their own region. Input styling never hides the text you type.")
             self.buttons[key]=b
         end
+        local heading=FT:Label(self.frame,"Chat text",15,true);heading:SetPoint("TOPLEFT",24,-305)
+        local fonts=FT.modules.FontManager
+        self.fontChoice=FT:Dropdown(self.frame,452,function() return fonts:Catalogue() end,function(value)
+            local pref=fonts:Settings("chat");local path=fonts:Resolve({font=value})
+            if not fonts:ValidFont(path) then FT:Toast("That font is unavailable.");return end
+            pref.font=value;pref.enabled=true;fonts:ApplyArea("chat");self:Refresh()
+        end,"fonts")
+        self.fontChoice:SetPoint("TOPLEFT",24,-332)
+        self.fontSize=FT:QuietButton(self.frame,"",208,32,"fonts");self.fontSize:SetPoint("TOPLEFT",24,-380)
+        self.fontSize:SetScript("OnClick",function()
+            local p=fonts:Settings("chat");if p.size==0 then return end
+            FT:Confirm("Restore the original chat font size?",function() p.size=0;fonts:ApplyArea("chat");self:Refresh() end)
+        end)
+        for i,delta in ipairs({-1,1}) do
+            local button=FT:QuietButton(self.frame,delta<0 and "−" or "+",48,32,delta<0 and "reset" or "add")
+            button:SetPoint("TOPLEFT",240+(i-1)*56,-380)
+            button:SetScript("OnClick",function()local p=fonts:Settings("chat");p.size=math.max(8,math.min(40,(p.size==0 and 14 or p.size)+delta));p.enabled=true;fonts:ApplyArea("chat");self:Refresh() end)
+        end
+        self.outline=FT:QuietButton(self.frame,"",452,32,"fonts");self.outline:SetPoint("TOPLEFT",24,-426)
+        local choices={"original","","THIN","OUTLINE","THICKOUTLINE"}
+        self.outline:SetScript("OnClick",function()
+            local p=fonts:Settings("chat")
+            for i,value in ipairs(choices) do if value==p.outline then p.outline=choices[i%#choices+1];break end end
+            p.enabled=true;fonts:ApplyArea("chat");self:Refresh()
+        end)
+        FT:Tooltip(self.fontChoice,"Chat font","Uses the same saved setting as Font manager. Chat's own font-size menu remains synchronized.")
+        FT:Tooltip(self.fontSize,"Chat font size","Click to return to Blizzard's size, or use + and − to adjust it here.")
+        FT:Tooltip(self.outline,"Chat outline","Cycle Blizzard default, none, thin, normal and thick outlines.")
     end
     self:Apply(); self.frame:Show()
 end

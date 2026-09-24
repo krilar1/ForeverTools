@@ -39,7 +39,7 @@ function Fonts:CooldownColorPicker()
     if not ColorPickerFrame or not ColorPickerFrame.SetupColorPickerAndShow then FT:Toast("Color picker unavailable on this client."); return end
     local s=self:Settings("cooldowns"); local old=s.numberColor; local wasEnabled=s.enabled
     local color=old or {1,1,1}
-    ColorPickerFrame:SetupColorPickerAndShow({r=color[1],g=color[2],b=color[3],hasOpacity=false,
+    FT:TrackColorPicker();ColorPickerFrame:SetupColorPickerAndShow({r=color[1],g=color[2],b=color[3],hasOpacity=false,
         swatchFunc=function() local r,g,b=ColorPickerFrame:GetColorRGB(); s.numberColor={r,g,b}; s.enabled=true; update(); self:Refresh() end,
         cancelFunc=function() s.numberColor=old; s.enabled=wasEnabled; update(); self:Refresh() end})
 end

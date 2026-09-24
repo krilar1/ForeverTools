@@ -20,8 +20,8 @@ function Fonts:Settings(id)
     if type(FT.db.fonts) ~= "table" then FT.db.fonts = {} end
     if type(FT.db.fonts[id]) ~= "table" then FT.db.fonts[id] = {} end
     local s = FT.db.fonts[id]
-    if s.enabled == nil then s.enabled = id~="chat" and id~="tooltip" and id~="units" end
-    if type(s.font) ~= "string" then s.font = (id=="chat" or id=="tooltip" or id=="units") and "friz" or "expressway" end
+    if s.enabled == nil then s.enabled = id~="tooltip" and id~="units" and id~="quests" and id~="objectives" and id~="world" end
+    if type(s.font) ~= "string" then s.font = id=="chat" and "arial" or (id=="tooltip" or id=="units") and "friz" or "inter" end
     if type(s.size) ~= "number" or s.size ~= s.size then s.size = 0 end
     s.size = s.size == 0 and 0 or math.floor(math.max(8, math.min(40, s.size)))
     if s.outline ~= "" and s.outline ~= "OUTLINE" and s.outline ~= "THICKOUTLINE" and s.outline ~= "THIN" then s.outline = "original" end
@@ -153,7 +153,7 @@ end
 Fonts:RegisterArea("restedxp","RestedXP","Guide steps, headings, arrow and active-item/target text. Applies to RestedXP when installed, including newly created guide rows.",function(list)
     for _,name in ipairs({"RXPFrame","RXPV2GuideWindow","RXPG_ARROW","RXPItemFrame","RXPTargetFrame"}) do collectTree(list,_G[name],7) end
 end)
-for _,entry in ipairs({{"swingMain","Main-hand swing","SwingTimerMainHandFrame"},{"swingOff","Off-hand swing","SwingTimerOffHandFrame"}}) do
+for _,entry in ipairs({{"swingMain","Main-hand swing","SwingTimerMainHandFrame"},{"swingOff","Off-hand swing","SwingTimerOffHandFrame"},{"swingRanged","Ranged swing","SwingTimerRangedFrame"}}) do
     local frameName=entry[3]
     Fonts:RegisterArea(entry[1],entry[2],"Weapon name and countdown on Forever's built-in swing timer. Enable the timer in WoW settings to see it in game.",function(list)
         local frame=_G[frameName]; local bar=frame and frame.StatusBar
@@ -219,7 +219,7 @@ function Fonts:ApplyArea(id)
             if applied and actual and actual:lower() == path:lower() then count = count + 1 else self.errors[id] = "The client rejected this font for one or more text areas." end
         end
     end
-    if id=="restedxp" or id=="swingMain" or id=="swingOff" or id=="objectives" then
+    if id=="restedxp" or id=="swingMain" or id=="swingOff" or id=="swingRanged" or id=="objectives" then
         self.integrationHooks=self.integrationHooks or {}
         for object in pairs(objects) do
             if not self.integrationHooks[object] and hooksecurefunc then
@@ -314,7 +314,7 @@ function Fonts:Refresh()
     self.allButton:SetShown(general); self.allHint:SetShown(general); self.customFont:SetShown(general); self.customFontAdd:SetShown(general)
     local status = not s.enabled and "Off — this area keeps its original font." or
         (area.engine and "Font saved. Log out and back in to test native numbers." or
-        ((self.counts[id] or 0) == 0 and "No matching text loaded yet. Applies when it becomes available." or "Changes save automatically."))
+        ((self.counts[id] or 0) == 0 and "No matching text loaded yet. Applies when it becomes available. Save your setup to a profile." or "Changes apply immediately. Save your setup to a profile."))
     self.status:Hide()
     self.status:SetText(self.notice or (self.deferred and "Saved. Applies after you leave combat.") or self.errors[id] or status)
 end
@@ -366,7 +366,7 @@ function Fonts:Open()
         local reset = FT:QuietButton(self.frame, "Reset this area", 238, 32, "reset"); reset:SetPoint("BOTTOMLEFT", 240, 30)
         self.resetButton=reset
         reset:SetScript("OnClick", function() local id=self.selected; FT:Confirm("Reset "..self.areas[id].label.." font settings?",function() FT.db.fonts[id]={}; self.notice=nil; self:Apply() end) end)
-        local apply = FT:QuietButton(self.frame, "Reapply fonts", 244, 32, "fonts"); apply:SetPoint("LEFT", reset, "RIGHT", 12, 0)
+        local apply = FT:QuietButton(self.frame, "Reapply fonts", 244, 32, "confirm"); apply:SetPoint("LEFT", reset, "RIGHT", 12, 0)
         self.reapplyButton=apply
         apply:SetScript("OnClick", function() self.notice=nil; self:Apply() end)
         local info = FT:Info(self.frame, "Font manager", function()

@@ -1,0 +1,7 @@
+# Local fonts need their own redistribution rights.
+Media/Fonts/expressway.ttf
+Media/Fonts/expressway.otf
+Media/Fonts/Expressway.ttf
+Media/Fonts/Expressway.otf
+# A separate nested Git checkout was detected here; it is not part of the addon.
+/ForeverTools/

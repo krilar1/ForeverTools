@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "0.9.8"
+FT.version = "0.12.21"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -26,8 +26,8 @@ function FT:InitializeDB()
     KrilarToolsDB = self.db
     self.db.schema = 3
     local probe = CreateFont("ForeverToolsInterfaceFontProbe")
-    for _, extension in ipairs({"ttf", "otf"}) do
-        local path = "Interface\\AddOns\\" .. addonName .. "\\Media\\Fonts\\expressway." .. extension
+    for _, filename in ipairs({"Inter-Regular.ttf", "expressway.ttf", "expressway.otf"}) do
+        local path = "Interface\\AddOns\\" .. addonName .. "\\Media\\Fonts\\" .. filename
         probe:SetFont("Fonts\\FRIZQT__.TTF", 14, "")
         local ok = pcall(probe.SetFont, probe, path, 14, "")
         local actual = probe:GetFont()
@@ -46,7 +46,27 @@ databaseEvents:SetScript("OnEvent", function(_, event, name)
 end)
 
 function FT:RegisterModule(name, module) self.modules[name] = module end
+function FT:CombatOpenRequest()
+    if not InCombatLockdown() then return false end
+    if not self.openAfterCombat then
+        print("ForeverTools will open after combat.")
+    end
+    self.openAfterCombat=true
+    return true
+end
+function FT:TrackColorPicker()
+    self.colorPickerOpen=true
+    if ColorPickerFrame and not self.colorPickerWatched then
+        self.colorPickerWatched=true
+        ColorPickerFrame:HookScript("OnHide",function() FT.colorPickerOpen=nil end)
+    end
+end
+function FT:ShowPopup(key,...)
+    if InCombatLockdown() then return end
+    return StaticPopup_Show(key,...)
+end
 function FT:OpenModule(name)
+    if self:CombatOpenRequest() then return end
     local module = self.modules[name]
     if not module then return end
     if self.home then self.home:Hide() end
@@ -120,13 +140,21 @@ FT.icons = {
     chat = "INV_Misc_Note_03",
     skins = "INV_Misc_ArmorKit_17", profiles = "INV_Misc_Book_09",
     general = "INV_Misc_Book_11", map = "INV_Misc_Map_01", fonts = "INV_Inscription_Tradeskill01",
+    confirm = "Spell_Holy_SealOfSacrifice", tooltip = "INV_Misc_Note_01", keybind = "INV_Misc_Key_03", errors = "Spell_Shadow_UnholyFrenzy", spellID = "INV_Misc_Book_07",
+    buffs = "Spell_Holy_WordFortitude",
+    party = "Spell_Holy_PrayerOfFortitude",
 }
 function FT:ButtonIcon(button, icon, size)
     if not button.icon then button.icon = button:CreateTexture(nil, "ARTWORK") end
     local pixels = size or math.min(20, button:GetHeight() - 8)
     button.icon:SetSize(pixels, pixels)
     button.icon:SetPoint("LEFT", 9, 0)
-    button.icon:SetTexture(icon == "home" and ("Interface\\AddOns\\" .. self.name .. "\\Media\\Home.tga") or ("Interface\\Icons\\" .. (self.icons[icon] or icon)))
+    if icon=="classes" or icon=="character" then
+        local _,class=UnitClass("player")
+        class=class and (class:sub(1,1)..class:sub(2):lower()) or "Warrior"
+        button.icon:SetTexture("Interface\\Icons\\ClassIcon_"..class)
+
+    else button.icon:SetTexture("Interface\\Icons\\" .. (self.icons[icon] or icon)) end
     button.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     if icon == "delete" then
         button.icon:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
@@ -142,6 +170,9 @@ function FT:Tooltip(button, title, body)
         GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
         GameTooltip:SetText(title, 0.79, 0.63, 1)
         GameTooltip:AddLine(type(body) == "function" and body() or body, 0.91, 0.88, 0.96, true)
+        GameTooltip.ftAddonHelp = true
+        local tooltipModule = FT.modules.Tooltip
+        if tooltipModule and tooltipModule.RestoreTooltipFont then tooltipModule:RestoreTooltipFont(GameTooltip) end
         GameTooltip:Show()
     end)
     button:HookScript("OnLeave", function() GameTooltip:Hide() end)
@@ -173,7 +204,7 @@ function FT:QuietButton(parent, label, width, height, icon)
     button.label:SetPoint("CENTER")
     button:SetScript("OnEnter", function(owner) owner.hover = true; FT:UpdateButton(owner) end)
     button:SetScript("OnLeave", function(owner) owner.hover = false; FT:UpdateButton(owner) end)
-    if icon then self:ButtonIcon(button, icon) end
+    if icon and label~="+" and label~="−" and label~="-" then self:ButtonIcon(button, icon) end
     self:UpdateButton(button)
     return button
 end
@@ -185,6 +216,9 @@ function FT:AccentButton(parent, label, width, height, icon)
 end
 function FT:Window(name, title, width, height)
     local frame = CreateFrame("Frame", name, UIParent)
+    self.controlWindows=self.controlWindows or {}
+    self.controlWindows[frame]=true
+    frame:HookScript("OnShow",function(owner) if InCombatLockdown() then owner:Hide() end end)
     frame:SetSize(width, height)
     frame:SetPoint("CENTER")
     frame:SetFrameStrata("DIALOG")
@@ -195,6 +229,9 @@ function FT:Window(name, title, width, height)
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
     self:Panel(frame)
+    if name~="ForeverToolsHome" and name~="ForeverToolsAppearance" then
+        title=title:gsub("^ForeverTools%s*|%s*", "")
+    end
     local titleText = self:Label(frame, title, 20, true)
     frame.titleText = titleText
     titleText:SetPoint("TOPLEFT", 22, -21)
@@ -217,6 +254,27 @@ function FT:Window(name, title, width, height)
         home:SetPoint("RIGHT", close, "LEFT", -8, 0)
         home:SetScript("OnClick", function() FT:OpenHome() end)
     end
+    if name ~= "ForeverToolsHome" and name ~= "ForeverToolsProfileTransfer" and name ~= "ForeverToolsMacroEditor" then
+        local badge = self:QuietButton(frame, "", 130, 25, "profiles")
+        frame.profileBadge = badge
+        if name == "ForeverToolsAppearance" then
+            badge:SetPoint("BOTTOMRIGHT", -16, 10)
+        else
+            badge:SetPoint("RIGHT", frame.homeButton, "LEFT", -8, 0)
+        end
+        badge:SetScript("OnClick", function()
+            local profiles=FT.modules.Profiles
+            if profiles then profiles:ShowSwitcher(badge) end
+        end)
+        self:Tooltip(badge, "Current profile", function()
+            local profiles=FT.modules.Profiles
+            return profiles and profiles:IndicatorHelp() or "Open the profile switcher."
+        end)
+        frame:HookScript("OnShow", function()
+            local profiles=FT.modules.Profiles
+            if profiles then profiles:RefreshIndicators() end
+        end)
+    end
     if UISpecialFrames then table.insert(UISpecialFrames, name) end
     frame:HookScript("OnHide",function()
         C_Timer.After(0,function() if FT.modules.Profiles then FT.modules.Profiles:OfferSave() end end)
@@ -225,9 +283,10 @@ function FT:Window(name, title, width, height)
     return frame
 end
 function FT:OpenHome()
+    if self:CombatOpenRequest() then return end
     for _, module in pairs(self.modules) do if module.frame then module.frame:Hide() end end
     if not self.home then
-        self.home = self:Window("ForeverToolsHome", "ForeverTools", 440, 470)
+        self.home = self:Window("ForeverToolsHome", "ForeverTools", 440, 364)
         self.home.titleText:SetText("ForeverTools")
         local version = self:Label(self.home, "v" .. self.version, 11)
         version:SetPoint("BOTTOMLEFT", 18, 13); version:SetTextColor(0.66, 0.57, 0.77)
@@ -235,27 +294,24 @@ function FT:OpenHome()
         credit:SetPoint("BOTTOMRIGHT", -18, 13); credit:SetTextColor(0.66, 0.57, 0.77)
         local intro = self:Label(self.home, "Choose a tool", 15)
         intro:SetPoint("TOPLEFT", 24, -58)
-        local macros = self:AccentButton(self.home, "Macros", 392, 46, "macros")
-        self:ButtonIcon(macros, "macros", 30)
-        macros:SetPoint("TOPLEFT", 24, -87)
-        macros:SetScript("OnClick", function() FT:OpenModule("MacroForge") end)
-        local fps = self:QuietButton(self.home, "FPS counter", 392, 46, "fps")
-        self:ButtonIcon(fps, "fps", 30)
-        fps:SetPoint("TOPLEFT", 24, -145)
-        fps:SetScript("OnClick", function() FT:OpenModule("QualityOfLife") end)
-        local fonts = self:QuietButton(self.home, "Fonts & colors", 392, 46, "fonts")
-        self:ButtonIcon(fonts, "fonts", 30)
-        fonts:SetPoint("TOPLEFT", 24, -203)
-        fonts:SetScript("OnClick", function() FT:OpenModule("Appearance") end)
-        local chat=self:QuietButton(self.home,"Chat",392,46,"chat")
-        chat:SetPoint("TOPLEFT",24,-261); self:ButtonIcon(chat,"chat",30)
-        chat:SetScript("OnClick",function() FT:OpenModule("Chat") end)
-        local binds=self:QuietButton(self.home,"Custom keybinds",392,46,"mouseover")
-        binds:SetPoint("TOPLEFT",24,-319); self:ButtonIcon(binds,"mouseover",30)
-        binds:SetScript("OnClick",function() FT:OpenModule("CustomKeybinds") end)
-        local system=self:QuietButton(self.home,"System",392,46,"generic")
-        system:SetPoint("TOPLEFT",24,-377); self:ButtonIcon(system,"generic",30)
-        system:SetScript("OnClick",function() FT:OpenModule("System") end)
+        self.home.profileStatus=self:Label(self.home, "", 12)
+        self.home.profileStatus:SetPoint("TOPRIGHT", -24, -61)
+        self.home.profileStatus:SetWidth(190)
+        self.home.profileStatus:SetJustifyH("RIGHT")
+        local tools={
+            {"Macros","MacroForge","macros"},{"Buff reminders","BuffReminder","buffs"},
+            {"FPS counter","QualityOfLife","fps"},{"Fonts & colors","Appearance","fonts"},
+            {"Chat","Chat","chat"},{"Tooltip","Tooltip","tooltip"},
+            {"Custom keybinds","CustomKeybinds","keybind"},{"System","System","generic"},
+        }
+        for i,entry in ipairs(tools) do
+            local row=math.floor((i-1)/2);local column=(i-1)%2
+            local button=self:QuietButton(self.home,entry[1],190,46,entry[3])
+            self:ButtonIcon(button,entry[3],26)
+            button:SetPoint("TOPLEFT",24+column*202,-86-row*58)
+            button:SetScript("OnClick",function() FT:OpenModule(entry[2]) end)
+            self:Tooltip(button,entry[1],"Open "..entry[1].." settings.")
+        end
     end
     if self.modules.Profiles then self.modules.Profiles:Attach(self.home) end
     self.home:Show()
@@ -263,14 +319,33 @@ end
 
 -- Addon controls should never remain over combat gameplay. Saved changes remain
 -- available; closing only hides the interface until the player opens it again.
+function FT:CloseCombatControls()
+    for frame in pairs(self.controlWindows or {}) do frame:Hide() end
+    if self.home then self.home:Hide() end
+    for _,module in pairs(self.modules) do
+        for _,key in ipairs({"frame","transfer","panel","saveDialog","advancedPanel","previewFrame","rolePrompt"}) do
+            local frame=module[key];if frame and frame.Hide then frame:Hide() end
+        end
+    end
+    for _,key in ipairs({"choiceMenu","minimapMenu","toast"}) do if self[key] then self[key]:Hide() end end
+    local profiles=self.modules.Profiles
+    if profiles and profiles.prompting then profiles:DismissSave(false,true) end
+    if StaticPopup_Hide then
+        for key in pairs(StaticPopupDialogs or {}) do
+            if type(key)=="string" and key:match("^FOREVERTOOLS_") then StaticPopup_Hide(key) end
+        end
+    end
+    if ColorPickerFrame and self.colorPickerOpen then ColorPickerFrame:Hide();self.colorPickerOpen=nil end
+    if GameTooltip and GameTooltip.ftAddonHelp then GameTooltip:Hide() end
+end
 local combatClose = CreateFrame("Frame")
 combatClose:RegisterEvent("PLAYER_REGEN_DISABLED")
-combatClose:SetScript("OnEvent", function()
-    if FT.home then FT.home:Hide() end
-    for _, module in pairs(FT.modules) do if module.frame then module.frame:Hide() end end
-    if FT.modules.Profiles and FT.modules.Profiles.transfer then FT.modules.Profiles.transfer:Hide() end
-    if FT.choiceMenu then FT.choiceMenu:Hide() end
-    if FT.toast then FT.toast:Hide() end
+combatClose:RegisterEvent("PLAYER_REGEN_ENABLED")
+combatClose:SetScript("OnEvent", function(_,event)
+    if event=="PLAYER_REGEN_DISABLED" then FT:CloseCombatControls()
+    elseif FT.openAfterCombat and not InCombatLockdown() then
+        FT.openAfterCombat=nil;FT:OpenHome()
+    end
 end)
 
 SLASH_FOREVERTOOLS1 = "/ft"
@@ -282,7 +357,9 @@ SlashCmdList.FOREVERTOOLS = function(message)
     elseif command == "colors" then FT:OpenModule("UnitColors")
     elseif command == "icons" or command == "skins" then FT:OpenModule("IconStyles")
     elseif command == "system" then FT:OpenModule("System")
+    elseif command == "tooltip" or command == "tips" then FT:OpenModule("Tooltip")
     elseif command == "keybinds" then FT:OpenModule("CustomKeybinds")
+    elseif command == "buffs" or command == "reminders" then FT:OpenModule("BuffReminder")
     elseif command == "chat" then FT:OpenModule("Chat")
     elseif command == "appearance" then FT:OpenModule("Appearance")
     else FT:OpenHome() end
@@ -306,6 +383,7 @@ function FT:Dropdown(parent, width, options, onSelect, icon)
     return button
 end
 function FT:ShowChoices(owner)
+    if self:CombatOpenRequest() then return end
     if not self.choiceMenu then
         local menu = CreateFrame("Frame", nil, UIParent)
         self.choiceMenu = menu
@@ -320,7 +398,7 @@ function FT:ShowChoices(owner)
     if menu:IsShown() and menu.owner == owner then menu:Hide(); return end
     menu.owner = owner
     local options = owner.options()
-    local width = math.max(owner:GetWidth(), 180)
+    local width = math.max(owner:GetWidth(), owner.menuWidth or 180)
     menu:SetSize(width, math.min(9, math.max(1, #options)) * 30 + 16)
     menu:SetFrameLevel(owner:GetFrameLevel() + 30)
     menu:ClearAllPoints(); menu:SetPoint("TOPLEFT", owner, "BOTTOMLEFT", 0, -3)
@@ -347,6 +425,7 @@ function FT:ShowChoices(owner)
 end
 
 function FT:Confirm(message,action)
+    if InCombatLockdown() then return end
     StaticPopupDialogs.FOREVERTOOLS_CONFIRM={text=message,button1="Confirm",button2="Cancel",timeout=0,whileDead=true,hideOnEscape=true,OnAccept=action}
-    StaticPopup_Show("FOREVERTOOLS_CONFIRM")
+    FT:ShowPopup("FOREVERTOOLS_CONFIRM")
 end

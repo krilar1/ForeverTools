@@ -49,7 +49,7 @@ function Macros:RequestDeleteClass()
     local className = entries[1] and entries[1].class or "class"
     self.deleteRequest = {stage = 1, candidates = candidates, className = className}
     StaticPopupDialogs.FOREVERTOOLS_DELETE_FIRST.text = "Delete character macros. Will not delete any general macros."
-    StaticPopup_Show("FOREVERTOOLS_DELETE_FIRST")
+    FT:ShowPopup("FOREVERTOOLS_DELETE_FIRST")
 end
 function Macros:ShowFinalDelete()
     local request = self.deleteRequest
@@ -63,7 +63,7 @@ function Macros:ShowFinalDelete()
         StaticPopupDialogs.FOREVERTOOLS_DELETE_FINAL.text = string.format(
             "FINAL CONFIRMATION\n\nPermanently delete %d %s class macros?\nTheir action-bar buttons may stop working.\n\nClick Delete macros to proceed, or Cancel to keep them.", #request.candidates, request.className)
         request.stage = 3
-        StaticPopup_Show("FOREVERTOOLS_DELETE_FINAL")
+        FT:ShowPopup("FOREVERTOOLS_DELETE_FINAL")
     end)
 end
 function Macros:DeleteConfirmedClass()

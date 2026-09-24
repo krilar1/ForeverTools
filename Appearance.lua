@@ -9,7 +9,7 @@ function Appearance:Open()
         self.frame = FT:Window("ForeverToolsAppearance", "ForeverTools | Fonts & colors", 440, 290)
         local entries = {
             {"Font manager", "Choose fonts, sizes and outlines for each text area.", "FontManager", "fonts"},
-            {"Unitframe colors", "Class-colored health bars for player, target, party, raid and focus.", "UnitColors", "classes"},
+            {"Unitframe colors", "Class-colored health bars for player, target and focus. Party and raid colors use Blizzard settings.", "UnitColors", "classes"},
             {"Skins", "Built-in action-bar and buff styles with color and transparency controls.", "IconStyles", "skins"},
         }
         for i, entry in ipairs(entries) do

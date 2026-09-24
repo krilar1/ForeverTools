@@ -9,12 +9,16 @@ function Loot:Settings()
     return s
 end
 function Loot:Place()
-    if self.placing or InCombatLockdown() or not self.anchor then return end
+    if self.placing or not self.anchor then return end
     local container=GroupLootContainer
     if not container then return end
     self.placing=true
-    container:ClearAllPoints()
-    container:SetPoint("BOTTOM",self.anchor,"CENTER",0,0)
+    -- Blizzard can lay out alerts again during combat. Re-anchor immediately
+    -- when permitted by the client, without changing roll buttons or timers.
+    pcall(function()
+        container:ClearAllPoints()
+        container:SetPoint("BOTTOM",self.anchor,"CENTER",0,0)
+    end)
     self.placing=false
 end
 function Loot:UpdateDrag()

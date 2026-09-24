@@ -28,6 +28,7 @@ function FT:SaveMinimapPosition()
     end
 end
 function FT:ShowMinimapMenu()
+    if self:CombatOpenRequest() then return end
     if not self.minimapMenu then
         local menu = CreateFrame("Frame", nil, UIParent)
         self.minimapMenu = menu
