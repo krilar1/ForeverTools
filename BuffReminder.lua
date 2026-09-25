@@ -33,10 +33,11 @@ local function safe(value) return (not issecretvalue or not issecretvalue(value)
 function Reminder:Settings()
     if type(FT.db.buffReminder)~="table" then FT.db.buffReminder={} end
     local s=FT.db.buffReminder
-    if s.enabled==nil then s.enabled=true end
-    if s.groupEnabled==nil then s.groupEnabled=true end
-    if s.lowRank==nil then s.lowRank=true end
+    if s.enabled==nil then s.enabled=false end
+    if s.groupEnabled==nil then s.groupEnabled=false end
+    if s.lowRank==nil then s.lowRank=false end
     if s.ignoreRankOne==nil then s.ignoreRankOne=false end
+    if s.rankMarker==nil then s.rankMarker=false end
     s.size=math.max(.7,math.min(1.5,tonumber(s.size) or 1))
     if type(s.textColor)~="table" then s.textColor={1,1,1} end
     for i=1,3 do s.textColor[i]=math.max(0,math.min(1,tonumber(s.textColor[i]) or 1)) end
@@ -401,6 +402,9 @@ function Reminder:Refresh(cachedSpells)
     if self.frame then self:RefreshMenu(learned) end
 end
 function Reminder:Apply()
+    if FT.modules.RankMarker and self.markerApplied~=self:Settings().rankMarker then
+        self.markerApplied=self:Settings().rankMarker; FT.modules.RankMarker:Apply()
+    elseif FT.modules.RankMarker and self:Settings().rankMarker then FT.modules.RankMarker:Queue() end
     if not self.badge then
         local badge=CreateFrame("Button","ForeverToolsBuffReminder",UIParent)
         self.badge=badge;badge:SetSize(285,34);badge:SetPoint("TOP",UIParent,"TOP",0,-115)
@@ -439,6 +443,9 @@ function Reminder:RefreshMenu(learned)
     self.groupToggle.label:SetText("Group reminders in dungeons / raids: "..(s.groupEnabled and "On" or "Off"));FT:SetSelected(self.groupToggle,s.groupEnabled)
     self.rankToggle.label:SetText("Low-rank alerts: "..(s.lowRank and "On" or "Off"));FT:SetSelected(self.rankToggle,s.lowRank)
     self.rankOneToggle.label:SetText("Ignore rank 1: "..(s.ignoreRankOne and "On" or "Off"));FT:SetSelected(self.rankOneToggle,s.ignoreRankOne)
+    self.markerToggle.label:SetText("Mark on action bars: "..(s.rankMarker and "On" or "Off"));FT:SetSelected(self.markerToggle,s.rankMarker)
+    local ignoredCount=0;for _ in pairs(type(s.ignoredRanks)=="table" and s.ignoredRanks or {}) do ignoredCount=ignoredCount+1 end
+    self.exceptions.label:SetText("Exceptions"..(ignoredCount>0 and (" ("..ignoredCount..")") or ""))
     self.moveButton.label:SetText(self.moving and "Moving reminders — click to lock" or "Move reminders")
     FT:SetSelected(self.moveButton,self.moving)
     FT:SetSelected(self.selfPreview,self.previewSelf)
@@ -477,6 +484,7 @@ function Reminder:RefreshMenu(learned)
     local function place(control,x,top) control:ClearAllPoints();control:SetPoint("TOPLEFT",self.frame,"TOPLEFT",x,-top) end
     if weapon then place(self.mainDropdown,24,y);place(self.offDropdown,24,y+38);y=y+80 end
     place(self.rankToggle,24,y);place(self.rankOneToggle,286,y);y=y+38
+    place(self.markerToggle,24,y);place(self.exceptions,286,y);y=y+38
     place(self.selfColorButton,24,y);y=y+46
     place(self.groupToggle,24,y);y=y+40
     place(self.selfPreview,24,y);place(self.groupPreview,286,y);y=y+40
@@ -559,7 +567,13 @@ function Reminder:Open()
         FT:Tooltip(self.rankToggle,"Low-rank alerts","Warn when your own buff uses a lower rank than you have learned. Trainer upgrades are checked after visiting a trainer. Unknown ranks stay quiet. Turn off for intentional downranking.")
         self.rankOneToggle=FT:QuietButton(frame,"",250,32,"buffs");self.rankOneToggle:SetPoint("LEFT",self.rankToggle,"RIGHT",12,0)
         self.rankOneToggle:SetScript("OnClick",function() local s=self:Settings();s.ignoreRankOne=not s.ignoreRankOne;self:Apply() end)
-        FT:Tooltip(self.rankOneToggle,"Ignore rank 1","Keep low-rank checks, but allow rank 1 buffs for dispel bait without a warning.")
+        FT:Tooltip(self.rankOneToggle,"Ignore rank 1","Keep low-rank checks, but allow rank 1 spells (for example dispel bait or cheap heals) without a warning or marker.")
+        self.markerToggle=FT:QuietButton(frame,"",250,32,"buffs")
+        self.markerToggle:SetScript("OnClick",function() local s=self:Settings();s.rankMarker=not s.rankMarker;self:Apply() end)
+        FT:Tooltip(self.markerToggle,"Low-rank marker on action bars","Adds a small amber corner to your own action buttons that use a lower rank than one you have learned. Hover the button to see which rank you know. No popups, sounds or messages. Spells placed directly on bars only; macros are not checked.")
+        self.exceptions=FT:Dropdown(frame,250,function() return FT.modules.RankMarker:ExceptionChoices() end,function(value) FT.modules.RankMarker:ToggleIgnore(value) end,"buffs")
+        self.exceptions.menuWidth=340
+        FT:Tooltip(self.exceptions,"Low-rank exceptions","Ignore specific spells you downrank on purpose. Ignored spells get no marker and no low-rank alert. Choose an ignored spell again to stop ignoring it.")
         local resetPosition=FT:QuietButton(frame,"Reset reminder position",512,30,"reset");resetPosition:SetPoint("TOPLEFT",24,-695);self.resetPosition=resetPosition
         resetPosition:SetScript("OnClick",function()
             local s=self:Settings();s.x=nil;s.y=nil;s.screenWidth=nil;s.screenHeight=nil;self:Apply()

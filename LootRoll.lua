@@ -3,16 +3,24 @@ local Loot={}
 function Loot:Settings()
     if type(FT.db.lootRoll)~="table" then FT.db.lootRoll={} end
     local s=FT.db.lootRoll
+    -- Blizzard's position until the player moves it. Earlier builds always
+    -- re-anchored, so an existing saved position counts as a chosen one.
+    if s.custom==nil then s.custom=type(s.x)=="number" end
     if type(s.x)~="number" then s.x=.68 end
     if type(s.y)~="number" then s.y=.5 end
     s.x=math.max(0,math.min(1,s.x)); s.y=math.max(0,math.min(1,s.y))
     return s
 end
 function Loot:Place()
-    if self.placing or not self.anchor then return end
+    if self.placing or not self.anchor or not self:Settings().custom then return end
     local container=GroupLootContainer
     if not container then return end
     self.placing=true
+    -- Remember Blizzard's own anchor once, so "Use Blizzard's position" can restore it.
+    if not self.native then
+        self.native={}
+        for i=1,container:GetNumPoints() do self.native[i]={container:GetPoint(i)} end
+    end
     -- Blizzard can lay out alerts again during combat. Re-anchor immediately
     -- when permitted by the client, without changing roll buttons or timers.
     pcall(function()
@@ -28,6 +36,7 @@ function Loot:UpdateDrag()
     local s=self:Settings()
     s.x=math.max(140,math.min(w-140,x/scale+self.offsetX))/w
     s.y=math.max(40,math.min(h-100,y/scale+self.offsetY))/h
+    s.custom=true
     self:Position()
 end
 function Loot:Position()
@@ -79,6 +88,21 @@ function Loot:Apply()
         GroupLootContainer:HookScript("OnShow",function() self:Place() end)
     end
     self:Position(); self.anchor:SetShown(self.moving==true)
+end
+function Loot:UseDefault()
+    if InCombatLockdown() then FT:Toast("Leave combat to change loot rolls."); return end
+    if self.moving then self:FinishMove() end
+    local s=self:Settings(); s.custom=false; s.x=nil; s.y=nil; self:Settings()
+    local container=GroupLootContainer
+    if container and self.native and #self.native>0 then
+        self.placing=true
+        pcall(function()
+            container:ClearAllPoints()
+            for _,point in ipairs(self.native) do container:SetPoint(unpack(point)) end
+        end)
+        self.placing=false
+    end
+    FT:Toast("Loot rolls use Blizzard's position.")
 end
 function Loot:FinishMove()
     self:UpdateDrag()

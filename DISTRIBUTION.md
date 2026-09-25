@@ -14,8 +14,9 @@ The current FT medallion was generated for this project; see ARTWORK.md for prov
 game, not bundled copies. Spell names and short macro templates are functional
 addon data; no website article text is bundled. Classic flight-time data is adapted from InFlight under MIT; see THIRD_PARTY_NOTICES.md for the pinned source and required license.
 
-Choose a project/source license deliberately on CurseForge. No open-source
-license for ForeverTools code has been granted in this repository. Keep the
+ForeverTools' own code is released under the MIT License (see LICENSE); the
+CurseForge project license should match. Third-party components keep their own
+licenses and are not relicensed by it. Keep the
 Inter OFL notice with every distributed copy and confirm any future bundled
 font or image comes with redistribution rights for addon users.
 

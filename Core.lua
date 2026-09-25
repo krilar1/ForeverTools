@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "0.12.21"
+FT.version = "0.13.6"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -9,6 +9,9 @@ FT.bodyFont = "Fonts\\ARIALN.TTF"
 FT.db = {}
 function FT:InitializeDB()
     if self.dbReady then return end
+    -- A fresh install has no saved table (or an empty one) under either name.
+    local function empty(t) return type(t) ~= "table" or next(t) == nil end
+    self.freshInstall = empty(ForeverToolsDB) and empty(KrilarToolsDB)
     self.db = type(ForeverToolsDB) == "table" and ForeverToolsDB
         or (type(KrilarToolsDB) == "table" and KrilarToolsDB or {})
     -- Recover missing named profiles from the legacy table before aliasing it.
@@ -109,6 +112,12 @@ function FT:Panel(frame)
     frame.fillTextures = layer(frame, 1, -7)
     self:Paint(frame, {0.045, 0.04, 0.07, 1}, {0.30, 0.23, 0.46, 1})
 end
+-- A single rounded fill without the purple addon border, for dark overlays.
+function FT:RoundedFill(frame, r, g, b, a)
+    local textures = layer(frame, 0, -8)
+    for _, texture in ipairs(textures) do texture:SetVertexColor(r, g, b, a or 1) end
+    return textures
+end
 function FT:Label(parent, text, size, heading)
     local label = parent:CreateFontString(nil, "OVERLAY")
     label:SetFont(heading and self.headingFont or self.bodyFont, size or 14, "")
@@ -185,7 +194,7 @@ function FT:Info(parent, title, text)
     self:Tooltip(button, title, text)
     return button
 end
-function FT:Toast(message)
+function FT:Toast(message, seconds)
     if not self.toast then
         local frame = CreateFrame("Frame", "ForeverToolsToast", UIParent)
         frame:SetSize(270, 42); frame:SetPoint("TOP", UIParent, "TOP", 0, -135); frame:SetFrameStrata("DIALOG")
@@ -193,8 +202,11 @@ function FT:Toast(message)
         frame.text = self:Label(frame, "", 14, true); frame.text:SetPoint("CENTER"); frame.text:SetWidth(242); frame.text:SetJustifyH("CENTER")
         self.toast = frame
     end
-    local toast = self.toast; toast.text:SetText(message); toast:Show()
-    C_Timer.After(2.2, function() if toast then toast:Hide() end end)
+    local toast = self.toast; toast.text:SetText(message)
+    toast:SetHeight(math.max(42, (toast.text:GetStringHeight() or 16) + 24)); toast:Show()
+    toast.token = (toast.token or 0) + 1
+    local token = toast.token
+    C_Timer.After(seconds or 2.2, function() if toast and toast.token == token then toast:Hide() end end)
 end
 function FT:QuietButton(parent, label, width, height, icon)
     local button = CreateFrame("Button", nil, parent)
@@ -229,7 +241,7 @@ function FT:Window(name, title, width, height)
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
     self:Panel(frame)
-    if name~="ForeverToolsHome" and name~="ForeverToolsAppearance" then
+    if name~="ForeverToolsHome" then
         title=title:gsub("^ForeverTools%s*|%s*", "")
     end
     local titleText = self:Label(frame, title, 20, true)
@@ -254,29 +266,11 @@ function FT:Window(name, title, width, height)
         home:SetPoint("RIGHT", close, "LEFT", -8, 0)
         home:SetScript("OnClick", function() FT:OpenHome() end)
     end
-    if name ~= "ForeverToolsHome" and name ~= "ForeverToolsProfileTransfer" and name ~= "ForeverToolsMacroEditor" then
-        local badge = self:QuietButton(frame, "", 130, 25, "profiles")
-        frame.profileBadge = badge
-        if name == "ForeverToolsAppearance" then
-            badge:SetPoint("BOTTOMRIGHT", -16, 10)
-        else
-            badge:SetPoint("RIGHT", frame.homeButton, "LEFT", -8, 0)
-        end
-        badge:SetScript("OnClick", function()
-            local profiles=FT.modules.Profiles
-            if profiles then profiles:ShowSwitcher(badge) end
-        end)
-        self:Tooltip(badge, "Current profile", function()
-            local profiles=FT.modules.Profiles
-            return profiles and profiles:IndicatorHelp() or "Open the profile switcher."
-        end)
-        frame:HookScript("OnShow", function()
-            local profiles=FT.modules.Profiles
-            if profiles then profiles:RefreshIndicators() end
-        end)
-    end
+    -- The profile switcher lives only on the home window (Profiles button).
     if UISpecialFrames then table.insert(UISpecialFrames, name) end
     frame:HookScript("OnHide",function()
+        -- Only settings pages can hold unsaved changes; info windows never ask.
+        if frame.noSavePrompt then return end
         C_Timer.After(0,function() if FT.modules.Profiles then FT.modules.Profiles:OfferSave() end end)
     end)
     frame:Hide()
@@ -292,8 +286,7 @@ function FT:OpenHome()
         version:SetPoint("BOTTOMLEFT", 18, 13); version:SetTextColor(0.66, 0.57, 0.77)
         local credit = self:Label(self.home, "Made by Krilar", 11)
         credit:SetPoint("BOTTOMRIGHT", -18, 13); credit:SetTextColor(0.66, 0.57, 0.77)
-        local intro = self:Label(self.home, "Choose a tool", 15)
-        intro:SetPoint("TOPLEFT", 24, -58)
+        if self.modules.Search then self.modules.Search:Attach(self.home) end
         self.home.profileStatus=self:Label(self.home, "", 12)
         self.home.profileStatus:SetPoint("TOPRIGHT", -24, -61)
         self.home.profileStatus:SetWidth(190)
@@ -359,6 +352,7 @@ SlashCmdList.FOREVERTOOLS = function(message)
     elseif command == "system" then FT:OpenModule("System")
     elseif command == "tooltip" or command == "tips" then FT:OpenModule("Tooltip")
     elseif command == "keybinds" then FT:OpenModule("CustomKeybinds")
+    elseif command == "wheeldebug" then FT.modules.CustomKeybinds:Debug()
     elseif command == "buffs" or command == "reminders" then FT:OpenModule("BuffReminder")
     elseif command == "chat" then FT:OpenModule("Chat")
     elseif command == "appearance" then FT:OpenModule("Appearance")
@@ -366,7 +360,7 @@ SlashCmdList.FOREVERTOOLS = function(message)
 end
 SLASH_FOREVERTOOLSRELOAD1 = "/rl"
 SlashCmdList.FOREVERTOOLSRELOAD = function()
-    if InCombatLockdown() then print("|cffc9a0ffForeverTools:|r Leave combat before reloading."); return end
+    -- Same as Blizzard's /reload, which works in combat; ReloadUI is not protected.
     ReloadUI()
 end
 
@@ -400,22 +394,28 @@ function FT:ShowChoices(owner)
     local options = owner.options()
     local width = math.max(owner:GetWidth(), owner.menuWidth or 180)
     menu:SetSize(width, math.min(9, math.max(1, #options)) * 30 + 16)
+    -- Only show the scroll bar when the list is longer than the menu.
+    local scrolls = #options > 9
+    local bar = menu.scroll.ScrollBar or (menu.scroll.GetName and menu.scroll:GetName() and _G[menu.scroll:GetName() .. "ScrollBar"])
+    if bar then bar:SetShown(scrolls) end
+    menu.scroll:ClearAllPoints(); menu.scroll:SetPoint("TOPLEFT", 8, -8); menu.scroll:SetPoint("BOTTOMRIGHT", scrolls and -26 or -8, 8)
+    local inner = scrolls and 34 or 16
     menu:SetFrameLevel(owner:GetFrameLevel() + 30)
     menu:ClearAllPoints(); menu:SetPoint("TOPLEFT", owner, "BOTTOMLEFT", 0, -3)
-    menu.list:SetWidth(width - 34); menu.list:SetHeight(math.max(1, #options * 30))
+    menu.list:SetWidth(width - inner); menu.list:SetHeight(math.max(1, #options * 30))
     menu.scroll:SetVerticalScroll(0)
     for _, row in ipairs(menu.rows) do row:Hide() end
     for index, item in ipairs(options) do
         local row = menu.rows[index]
         if not row then
-            row = self:QuietButton(menu.list, "", width - 34, 28, "macros")
+            row = self:QuietButton(menu.list, "", width - inner, 28, "macros")
             row:SetScript("OnClick", function(clicked)
                 local current = menu.owner; local selected = clicked.item
                 menu:Hide(); current.onSelect(selected.value)
             end)
             menu.rows[index] = row
         end
-        row.item = item; row:SetWidth(width - 34); row:ClearAllPoints(); row:SetPoint("TOPLEFT", 0, -(index - 1) * 30)
+        row.item = item; row:SetWidth(width - inner); row:ClearAllPoints(); row:SetPoint("TOPLEFT", 0, -(index - 1) * 30)
         row.label:SetText(item.label)
         row.icon:SetTexture(item.icon or "Interface\\Icons\\INV_Misc_Note_01")
         self:SetSelected(row, owner.value == item.value)
@@ -424,6 +424,76 @@ function FT:ShowChoices(owner)
     menu:Show()
 end
 
+-- Point a subpage's Home button back to its hub, like Fonts & colors.
+function FT:BackTo(frame, moduleName)
+    frame.homeButton.label:SetText("Back")
+    frame.homeButton:SetScript("OnClick", function() FT:OpenModule(moduleName) end)
+end
+-- Secondary windows (setup, what's new, copy boxes, profile transfer) open in
+-- the middle. If a ForeverTools window is already open, they sit beside it on
+-- the side with the most room instead of covering it.
+function FT:PlaceBeside(frame)
+    local anchor
+    local function consider(other)
+        if other and other ~= frame and other.IsShown and other:IsShown() and other:GetLeft() then anchor = anchor or other end
+    end
+    consider(self.home)
+    for _, module in pairs(self.modules) do consider(module.frame) end
+    frame:ClearAllPoints()
+    if not anchor then frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0); return end
+    local scale = anchor:GetEffectiveScale() / UIParent:GetEffectiveScale()
+    local left, right = anchor:GetLeft() * scale, anchor:GetRight() * scale
+    local top, bottom = anchor:GetTop() * scale, anchor:GetBottom() * scale
+    local width, height = UIParent:GetWidth(), UIParent:GetHeight()
+    local w, h = frame:GetWidth(), frame:GetHeight()
+    local room = { RIGHT = width - right, LEFT = left, TOP = height - top, BOTTOM = bottom }
+    local fits = { RIGHT = room.RIGHT >= w + 16, LEFT = room.LEFT >= w + 16, TOP = room.TOP >= h + 16, BOTTOM = room.BOTTOM >= h + 16 }
+    local best
+    for _, side in ipairs({ "RIGHT", "LEFT", "TOP", "BOTTOM" }) do
+        if fits[side] and (not best or room[side] > room[best]) then best = side end
+    end
+    if best == "RIGHT" then frame:SetPoint("LEFT", anchor, "RIGHT", 12, 0)
+    elseif best == "LEFT" then frame:SetPoint("RIGHT", anchor, "LEFT", -12, 0)
+    elseif best == "TOP" then frame:SetPoint("BOTTOM", anchor, "TOP", 0, 12)
+    elseif best == "BOTTOM" then frame:SetPoint("TOP", anchor, "BOTTOM", 0, -12)
+    else frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0) end
+end
+-- A read-only text box the player can select and copy with Ctrl+C.
+-- Nothing is sent anywhere; the text only leaves the game if the player pastes it.
+function FT:CopyBox(title, text, hint, tall)
+    if self:CombatOpenRequest() then return end
+    local frame = self.copyBox
+    if not frame then
+        frame = self:Window("ForeverToolsCopyBox", title, 560, 200)
+        frame.noSavePrompt = true
+        frame:SetFrameStrata("FULLSCREEN_DIALOG")
+        frame.homeButton:Hide()
+        frame.hint = self:Label(frame, "", 12); frame.hint:SetPoint("TOPLEFT", 24, -58); frame.hint:SetWidth(512)
+        frame.hint:SetTextColor(0.78, 0.74, 0.86)
+        frame.scroll = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
+        local box = CreateFrame("EditBox", nil, frame.scroll)
+        box:SetMultiLine(true); box:SetAutoFocus(false); box:SetFont(self.bodyFont, 13, "")
+        box:SetWidth(488); box:SetTextInsets(4, 4, 4, 4)
+        box:SetScript("OnEscapePressed", function() frame:Hide() end)
+        -- Read-only: typing restores the original text.
+        box:SetScript("OnTextChanged", function(owner, user) if user then owner:SetText(frame.original or ""); owner:HighlightText() end end)
+        box:SetScript("OnEditFocusGained", function(owner) owner:HighlightText() end)
+        frame.scroll:SetScrollChild(box); frame.box = box
+        self.copyBox = frame
+    end
+    frame.titleText:SetText(title)
+    frame.hint:SetText(hint or "Press Ctrl+C to copy, then Escape to close.")
+    -- Place the text below the hint, however many lines the hint wraps to.
+    local hintHeight = math.max(14, frame.hint:GetStringHeight() or 14)
+    frame:SetHeight((tall and 440 or 180) + hintHeight)
+    frame.scroll:ClearAllPoints()
+    frame.scroll:SetPoint("TOPLEFT", 24, -(58 + hintHeight + 14)); frame.scroll:SetPoint("BOTTOMRIGHT", -42, 22)
+    self:PlaceBeside(frame)
+    frame.original = text or ""
+    frame.box:SetText(frame.original)
+    frame:Show()
+    frame.box:SetFocus(); frame.box:HighlightText()
+end
 function FT:Confirm(message,action)
     if InCombatLockdown() then return end
     StaticPopupDialogs.FOREVERTOOLS_CONFIRM={text=message,button1="Confirm",button2="Cancel",timeout=0,whileDead=true,hideOnEscape=true,OnAccept=action}

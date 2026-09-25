@@ -38,7 +38,7 @@ function FT:ShowMinimapMenu()
         hide:SetPoint("TOPLEFT", 10, -10)
         hide:SetScript("OnClick", function()
             FT.db.minimapEnabled = false; FT:UpdateMinimap(); menu:Hide()
-            if FT.minimapToggle then FT.minimapToggle.label:SetText("Minimap icon: Off"); FT:SetSelected(FT.minimapToggle, false) end
+            if FT.minimapToggle then FT.minimapToggle.label:SetText("ForeverTools minimap button: Off"); FT:SetSelected(FT.minimapToggle, false) end
         end)
         self.minimapHideButton = hide
         local cancel = self:QuietButton(menu, "Close", 226, 26, "home")

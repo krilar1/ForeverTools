@@ -15,8 +15,12 @@ local bars={"ActionButton","MultiBarBottomLeftButton","MultiBarBottomRightButton
 function Skins:Settings()
     if type(FT.db.iconStyles)~="table" then FT.db.iconStyles={} end
     local s=FT.db.iconStyles
-    if type(s.actions)~="boolean" then s.actions=true end
-    if type(s.stances)~="boolean" then s.stances=true end
+    -- Every skin area starts off; players opt in per area (or via first-run setup).
+    if type(s.actions)~="boolean" then s.actions=false end
+    for _,key in ipairs({"minimap","bags","bagWindows","micro","xp","player","target","tot","focus","focustarget"}) do
+        if type(s[key])~="boolean" then s[key]=false end
+    end
+    if type(s.stances)~="boolean" then s.stances=false end
     if type(s.buffs)~="boolean" then s.buffs=false end
     if type(s.shadow)~="boolean" then s.shadow=true end
     s.opacity=type(s.opacity)=="number" and math.max(0,math.min(.9,s.opacity)) or 0
@@ -36,15 +40,23 @@ function Skins:Area(key)
     local root=self:Settings(); root.areas=type(root.areas)=="table" and root.areas or {}
     local s=root.areas[key]
     if type(s)~="table" then
-        s={preset=root.preset,opacity=root.opacity,shadow=root.shadow,color={unpack(root.color)},borderColor={unpack(root.borderColor)},thickness=key=="buffs" and 2 or 1,borderOpacity=1,rares=false,elites=false,hideSecondary=key=="micro"}
+        s={preset=root.preset,opacity=root.opacity,shadow=root.shadow,color={unpack(root.color)},borderColor={unpack(root.borderColor)},thickness=key=="buffs" and 3 or 1,borderOpacity=1,rares=false,elites=false,hideSecondary=key=="micro"}
+        if key=="bags" or key=="bagWindows" then s.opacity=1 end
+        if key=="gryphons" then s.preset="soft";s.color={.04,.04,.05};s.borderColor={.26,.21,.17};s.opacity=.34 end
         root.areas[key]=s
     end
+    if (key=="bags" or key=="bagWindows") and not s.solidBagDefaults then
+        if s.preset=="dark" and s.opacity==0 then s.opacity=1 end
+        s.solidBagDefaults=true
+    end
+    if key=="bags" then s.hideArt=false elseif s.hideArt==nil then s.hideArt=false end
     s.color=type(s.color)=="table" and s.color or {0,0,0}; s.borderColor=type(s.borderColor)=="table" and s.borderColor or {0,0,0}
     if key=="micro" and s.hideSecondary==nil and s.preset=="dark" then s.hideSecondary=true end
-    if key=="buffs" and not s.buffBorderMigration then
-        if s.preset=="dark" and tonumber(s.thickness)==1 then s.thickness=2 end
-        s.buffBorderMigration=true
+    if key=="buffs" and not s.buffBorderThreeMigration then
+        if s.preset=="dark" and (tonumber(s.thickness) or 1)<=2 then s.thickness=3 end
+        s.buffBorderThreeMigration=true
     end
+    s.slotOpacity=math.max(0,math.min(1,tonumber(s.slotOpacity) or .35))
     s.opacity=tonumber(s.opacity) or 0; s.thickness=math.max(1,math.min(6,tonumber(s.thickness) or 1)); s.borderOpacity=math.max(0,math.min(1,tonumber(s.borderOpacity) or 1))
     if s.preset=="class" then local _,class=UnitClass("player"); local c=(RAID_CLASS_COLORS or {})[class]; if c then s.borderColor={c.r,c.g,c.b}; s.color={c.r,c.g,c.b} end end
     s[key]=root[key]==true; s.buffs=root.buffs==true
@@ -82,7 +94,9 @@ function Skins:Track(button,kind)
         rec.shadow:SetTexture("Interface\\AddOns\\"..FT.name.."\\Media\\Rounded.tga")
         local shadowInset=kind=="buffs" and -2 or -1
         rec.shadow:SetPoint("TOPLEFT",icon,"TOPLEFT",shadowInset,-shadowInset); rec.shadow:SetPoint("BOTTOMRIGHT",icon,"BOTTOMRIGHT",-shadowInset,shadowInset)
-        rec.border = (kind == "actions" or kind=="stances") and (button:GetNormalTexture() or button.normalTexture or (button.GetName and _G[button:GetName() .. "NormalTexture"])) or nil
+        -- Some bar buttons (e.g. Forever's totem buttons) are unnamed frames.
+        local buttonName = button.GetName and button:GetName()
+        rec.border = (kind == "actions" or kind=="stances") and ((button.GetNormalTexture and button:GetNormalTexture()) or button.normalTexture or (buttonName and _G[buttonName .. "NormalTexture"])) or nil
         if kind == "buffs" then
             rec.nativeBorders={}
             local name=button.GetName and button:GetName()
@@ -97,9 +111,11 @@ function Skins:Track(button,kind)
                     end)
                 end
             end
-            border(button.DebuffBorder); border(button.Border); border(button.border); border(button.TempEnchantBorder,{.6,0,1})
+            -- Weapon enchants take the area's border color (black in dark mode);
+            -- only debuff-type borders keep their semantic color.
+            border(button.DebuffBorder); border(button.Border); border(button.border); border(button.TempEnchantBorder)
             border(name and _G[name.."Border"])
-            if button.Icon and button.Icon~=icon then border(button.Icon.Border); border(button.Icon.DebuffBorder); border(button.Icon.TempEnchantBorder,{.6,0,1}) end
+            if button.Icon and button.Icon~=icon then border(button.Icon.Border); border(button.Icon.DebuffBorder); border(button.Icon.TempEnchantBorder) end
             rec.auraEdges={}
             for i=1,4 do
                 local edge=button:CreateTexture(nil,"OVERLAY",nil,1)
@@ -112,7 +128,35 @@ function Skins:Track(button,kind)
             e[2]:SetPoint("BOTTOMLEFT",icon,"BOTTOMLEFT",2,0); e[2]:SetPoint("BOTTOMRIGHT",icon,"BOTTOMRIGHT",-2,0); e[2]:SetHeight(1)
             e[3]:SetPoint("TOPLEFT",icon,"TOPLEFT",0,-2); e[3]:SetPoint("BOTTOMLEFT",icon,"BOTTOMLEFT",0,2); e[3]:SetWidth(1)
             e[4]:SetPoint("TOPRIGHT",icon,"TOPRIGHT",0,-2); e[4]:SetPoint("BOTTOMRIGHT",icon,"BOTTOMRIGHT",0,2); e[4]:SetWidth(1)
+            -- The shortened edge strips leave uncovered square icon pixels.
+            -- Cover those turns too, then clip the artwork and border together.
+            rec.auraCorners={}
+            for _,point in ipairs({"TOPLEFT","TOPRIGHT","BOTTOMLEFT","BOTTOMRIGHT"}) do
+                local corner=button:CreateTexture(nil,"OVERLAY",nil,1)
+                corner:SetTexture("Interface\\Buttons\\WHITE8x8")
+                corner:SetSize(2,2);corner:SetPoint(point,icon,point)
+                rec.auraCorners[#rec.auraCorners+1]=corner
+            end
+            if button.CreateMaskTexture and icon.AddMaskTexture and icon.RemoveMaskTexture then
+                rec.auraMask=button:CreateMaskTexture()
+                rec.auraMask:SetTexture("Interface\\AddOns\\"..FT.name.."\\Media\\Rounded.tga","CLAMPTOBLACKADDITIVE","CLAMPTOBLACKADDITIVE")
+                rec.auraMask:SetAllPoints(icon)
+                for _,edge in ipairs(rec.auraEdges) do edge:AddMaskTexture(rec.auraMask) end
+                for _,corner in ipairs(rec.auraCorners) do corner:AddMaskTexture(rec.auraMask) end
+            end
             button:HookScript("OnShow",function() self:Paint(rec) end)
+            -- Aura buttons are pooled: Blizzard reassigns a button between buffs,
+            -- debuffs and weapon enchants and toggles the borders with Show/Hide.
+            -- Repaint on every reassignment so a former enchant keeps no purple rim.
+            if type(button.Update)=="function" and hooksecurefunc then
+                hooksecurefunc(button,"Update",function() self:Paint(rec) end)
+            end
+            for texture in pairs(rec.nativeBorders) do
+                if hooksecurefunc then
+                    hooksecurefunc(texture,"Show",function() if not self.paintingAura then self:Paint(rec) end end)
+                    hooksecurefunc(texture,"Hide",function() if not self.paintingAura then self:Paint(rec) end end)
+                end
+            end
         end
         self.records[button]=rec
     end
@@ -120,19 +164,30 @@ function Skins:Track(button,kind)
 end
 function Skins:Paint(rec)
     local s=self:Area(rec.kind)
-    local active = rec.kind ~= "buffs" or (rec.button:IsShown() and rec.icon:IsShown() and rec.icon:GetTexture())
+    -- Aura icon textures can be secret values in combat; never read them here.
+    -- hasValidInfo is Blizzard's own non-secret flag for a filled aura button.
+    local active = rec.kind ~= "buffs" or (rec.button:IsShown() and rec.icon:IsShown() and rec.button.hasValidInfo ~= false) and true or false
     local r,g,b=unpack(s.borderColor)
     self.paintingAura=true
     for texture,original in pairs(rec.nativeBorders or {}) do
         if texture:IsShown() and original.alpha>0 then
             local cr,cg,cb=texture:GetVertexColor()
             if original.semantic then cr,cg,cb=unpack(original.semantic) end
+            local readable=not issecretvalue or not (issecretvalue(cr) or issecretvalue(cg) or issecretvalue(cb))
             -- Preserve semantic colored borders (magic, poison, enchants etc.).
-            if math.max(cr,cg,cb)-math.min(cr,cg,cb)>.08 then r,g,b=cr,cg,cb end
+            if readable and type(cr)=="number" and math.max(cr,cg,cb)-math.min(cr,cg,cb)>.08 then r,g,b=cr,cg,cb end
         end
         texture:SetAlpha(s.buffs and active and 0 or original.alpha)
     end
     self.paintingAura=false
+    if rec.auraMask then
+        local enabled=s[rec.kind] and active
+        if enabled and not rec.maskAttached then rec.icon:AddMaskTexture(rec.auraMask);rec.maskAttached=true
+        elseif not enabled and rec.maskAttached then rec.icon:RemoveMaskTexture(rec.auraMask);rec.maskAttached=false end
+    end
+    for _,corner in ipairs(rec.auraCorners or {}) do
+        corner:SetVertexColor(r,g,b,s.borderOpacity);corner:SetShown(s[rec.kind] and active)
+    end
     if not s[rec.kind] or not active then
         rec.fill:Hide(); rec.shadow:Hide()
         for _,edge in ipairs(rec.auraEdges or {}) do edge:Hide() end
@@ -203,5 +258,5 @@ function Skins:Queue()
 end
 FT:RegisterModule("IconStyles",Skins)
 local events=CreateFrame("Frame")
-for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","ADDON_LOADED","PLAYER_REGEN_ENABLED","ACTIONBAR_SLOT_CHANGED","UPDATE_SHAPESHIFT_FORMS","UNIT_AURA"}) do events:RegisterEvent(event) end
+for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","ADDON_LOADED","PLAYER_REGEN_ENABLED","ACTIONBAR_SLOT_CHANGED","UPDATE_SHAPESHIFT_FORMS","UNIT_AURA","PLAYER_TOTEM_UPDATE"}) do events:RegisterEvent(event) end
 events:SetScript("OnEvent",function(_,event,unit) if event~="UNIT_AURA" or unit=="player" then if FT.dbReady then Skins:Queue() end end end)

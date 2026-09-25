@@ -1,50 +1,50 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 0.12.21.**
+**Quality-of-life tools for WoW: Forever — version 0.13.6.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
-one place. Customize the areas you want while keeping the Blizzard interface
-where you prefer it.
+one place. Everything starts **off**, so the game looks like Blizzard's until you
+choose otherwise. A short first-time setup offers Minimal, Dark mode and Full
+presets, and new characters reuse your profile automatically.
 
-Open the menu with **`/ft`** or the minimap icon. Use **`/rl`** to reload the UI.
+Open the menu with **`/ft`** or the minimap button, and search any setting from
+the home window. Use **`/rl`** to reload the UI.
 
 ## Features
 
-- **Skins and dark mode:** Style supported action bars, unit frames, bags, buffs,
-  micro menu, minimap, XP/reputation bars, and stance/totem bars. Apply a template
-  to all supported areas or adjust each area separately.
-- **Fonts and cooldowns:** Adjust supported fonts, sizes, outlines, and colors,
-  including cooldown numbers. Quest text, quest objectives, and world
-  damage/healing numbers are unmanaged by default.
-- **Tooltips:** Customize text sizes, layout, position, and health-bar visibility.
-  Show faction-colored guild names, optional faction icons, unit targets, buff
-  sources when available, and optional spell IDs.
-- **Macros:** Browse class, racial, and general templates; select ranks; add
-  mouseover support; and create custom macros with spell and equipment actions.
-  Newly learned active spells are added from your character's spellbook.
-- **Personal buff reminders:** Track selected buffs, weapon enhancements, auras,
-  and stances with talent-based defaults and saved choices for each talent tree.
-  Customize the notice size, text color, and position.
-- **Group buff reminders:** Optional notices for missing group buffs while grouped
-  in supported instances. Notices dismiss after 30 seconds or with a left-click;
-  right-click opens settings. Separate self and group previews help with placement.
-- **Flight countdown:** Show the destination and estimated time until landing.
-  Bundled Classic estimates cover known routes; completed flights teach new
-  routes and replace bundled estimates with your own measurements.
-- **Profiles:** Save named snapshots, switch profiles from page indicators, and
-  export/import settings as text strings. Custom macro entries are included.
-- **Unit-frame colors:** Class coloring for supported player, target,
-  target-of-target, focus, and focus-target frames. Party colors link to Blizzard
-  Edit Mode settings.
-- **Movable displays:** Position loot rolls, the FPS counter, tooltip anchor,
-  buff reminders, and flight timer using their movement controls or previews.
-- **Group-role helper:** Optionally set your role once when joining a group,
-  based on your strongest talent tree. Manual changes remain respected; tied
-  trees leave the role unchanged, and Feral offers a Tank/Damage choice.
-- **Other controls:** Chat styling, supported custom mouse-wheel spell bindings,
-  minimap controls, and a toggle for the game's Lua error display.
-- **Combat-aware menus:** Settings and previews close during combat. Requesting
-  the menu in combat queues it to open afterward.
+- **Skins and dark mode:** Style action bars, buffs and debuffs, bags, micro
+  menu, minimap, XP/reputation bars, stance and totem bars, gryphons and unit
+  frames. Choose a preset for all areas or adjust each area separately, with
+  border, fill and transparency controls and separate rare/elite switches.
+- **Fonts and cooldowns:** Adjust supported fonts, sizes, outlines and colors,
+  including cooldown numbers.
+- **Unit-frame colors:** Class-colored health bars for player, target,
+  target-of-target, focus and focus-target frames. Party colors link to
+  Blizzard's Edit Mode settings.
+- **Tooltips:** Text sizes, layout, position and health-bar visibility; guild
+  names with optional faction icons, unit targets, buff sources and tooltip IDs.
+- **Chat:** Show, hide or mouseover-reveal chat controls, change the chat font,
+  and optional clickable links that open a copy box.
+- **Macros:** Browse class, racial and general templates; select ranks; add
+  mouseover support; and build custom macros with spell and equipment actions.
+- **Buff reminders:** Self and group buff notices with talent-based choices,
+  weapon enchants, low-rank alerts and an optional low-rank marker on action
+  bars, with per-spell exceptions.
+- **Leveling stats:** XP per hour, time to level, kills to level, XP progress and
+  rested XP. Pick which to show and their order, one per line or on a single
+  line; movable, and also added to the XP bar tooltip.
+- **Flight countdown:** Destination and estimated time until landing. Completed
+  flights teach new routes and replace bundled estimates.
+- **Merchant helpers:** Optional auto-sell of grey items and auto-repair, with
+  guild funds if allowed, and a one-line summary.
+- **Minimap:** ForeverTools button, coordinates, and an optional launcher that
+  groups other addons' minimap buttons into one menu.
+- **Profiles:** Save named snapshots, switch from any page, export/import as text,
+  and pick which profile new characters use.
+- **More:** FPS counter, movable loot rolls, group-role helper, custom
+  mouse-wheel casting on mouseover, a Lua-error toggle and a copyable bug report.
+- **Combat-aware menus:** Settings close during combat; requesting the menu in
+  combat opens it afterward.
 
 ## Install and update
 
@@ -58,12 +58,29 @@ Open the menu with **`/ft`** or the minimap icon. Use **`/rl`** to reload the UI
 ## Settings and profiles
 
 - Changes apply immediately. Save a named profile to keep a reusable snapshot.
+  **Create** starts a new profile from default settings and switches to it.
+  **Default settings** resets the selected profile and returns everything
+  ForeverTools changes to Blizzard's defaults, as if the addon was just installed.
+- New characters automatically load the profile chosen under **Profiles → New
+  characters** (by default, the last profile you used), without any setup.
+- **System → General → Reset all settings** returns everything to the defaults
+  (all off) and reloads. Saved profiles, custom macros and flight times are kept.
 - Working settings and profiles are stored through WoW's SavedVariables system,
   which normally writes to disk on logout or reload.
 - Export important profiles and keep the text somewhere outside WoW. Select the
   export text and press **Ctrl+C**; import it by pasting with **Ctrl+V**.
-- A secondary copy inside the saved settings cannot recover profiles if the beta
-  wipes the entire SavedVariables file. An external export provides that backup.
+- A secondary copy inside the saved settings cannot recover profiles if the
+  SavedVariables file itself is lost. An external export provides that backup.
+
+## Mouse-wheel casting
+
+- Open **/ft → Custom keybinds**, then hover a spell in the list and scroll up
+  or down to bind it (binding a spell turns casting on).
+- Scroll while hovering a unit (unit frames or characters in the world) to cast
+  on that unit. Away from a unit, the wheel keeps zooming the camera.
+- Bindings change outside combat. If casting does not work, type
+  **`/ft wheeldebug`**, scroll over a unit, and include the chat lines in a
+  bug report.
 
 ## Macro tips
 
@@ -86,6 +103,9 @@ Open the menu with **`/ft`** or the minimap icon. Use **`/rl`** to reload the UI
 - Optional low-rank alerts use learned ranks and trainer-confirmed upgrades.
   Visit a trainer to record available upgrades; unknown ranks are not flagged.
   Disable **Low-rank alerts** or enable **Ignore rank 1** for intentional use.
+- The optional low-rank marker adds a small amber corner to your own action
+  buttons that use a lower rank than you know. Use **Exceptions** for spells you
+  downrank on purpose; macros are not checked.
 - Off-hand weapon-buff choices remain saved when using a two-hander, shield, or
   empty off-hand slot, without producing an unnecessary off-hand reminder.
 - An unknown flight route displays **Learning route** on its first trip.
@@ -107,13 +127,19 @@ Open the menu with **`/ft`** or the minimap icon. Use **`/rl`** to reload the UI
 - Native WoW icons are referenced from the installed game; their image files
   are not bundled. Third-party components retain their respective licenses.
 
+## License
+
+ForeverTools' own code is released under the [MIT License](LICENSE).
+Bundled third-party components (the Inter font and InFlight flight data) keep
+their own licenses, listed above.
+
 ## Beta limitations
 
 - Restricted or unavailable unit data may prevent tooltip enhancements, buff
   source names, or reminder checks. Native tooltip content is preserved where
   required by the client.
-- Custom wheel casting is unavailable on clients missing the secure compiler
-  required for those bindings.
+- Custom wheel casting needs Blizzard's secure state drivers; on a client
+  without them the option shows as unavailable.
 - Some fonts, frame skins, and protected-frame positioning depend on the client
   build and require in-game verification. Hiding Lua errors does not fix errors
   or suppress Blizzard's blocked-action warnings.

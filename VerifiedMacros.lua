@@ -75,7 +75,6 @@ FT.verifiedMacros={
         {"Sense Undead",1,"self","INV_Misc_Book_09"},
     },
     Priest={
-        {"Lesser Heal",1,"friendly","INV_Misc_Book_09"},
         {"Power Word: Fortitude",1,"friendly","INV_Misc_Book_09"},
         {"Fear Ward",1,"friendly","INV_Misc_Book_09"},
         {"Smite",1,nil,"INV_Misc_Book_09"},

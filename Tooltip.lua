@@ -6,10 +6,12 @@ function Tip:Settings()
     if type(FT.db.tooltip)~="table" then FT.db.tooltip={} end
     local s=FT.db.tooltip
     if s.target==nil then
-        s.target=not FT.db.system or FT.db.system.tooltipTarget~=false
+        -- Legacy builds stored this switch under System.
+        s.target=FT.db.system~=nil and FT.db.system.tooltipTarget==true
     end
-    if s.guild==nil then s.guild=true end
+    if s.guild==nil then s.guild=false end
     if s.guildFactionIcon==nil then s.guildFactionIcon=false end
+    if s.guildFactionColor==nil then s.guildFactionColor=false end
     if s.guildIconPosition~="after" then s.guildIconPosition="before" end
     if s.healthBar==nil then s.healthBar=true end
     if not s.position then s.position="Default" end
@@ -153,11 +155,14 @@ function Tip:Refresh()
     FT:SetSelected(self.moveButton,self.moving)
     local names={N="Name",L="Level",T="Target"}
     self.order.label:SetText("Row order: "..names[s.order:sub(1,1)].." → "..names[s.order:sub(2,2)].." → "..names[s.order:sub(3,3)])
-    for _,button in ipairs({self.target,self.guild,self.guildIcon,self.health}) do FT:SetSelected(button,s[button.setting]) end
+    self.guildColor.label:SetText("Faction-colored guild name: "..(s.guildFactionColor and "On" or "Off"))
+    for _,button in ipairs({self.target,self.guild,self.guildIcon,self.guildColor,self.health}) do FT:SetSelected(button,s[button.setting]) end
+    local ids=FT.modules.System:Settings().spellID==true
+    self.ids.label:SetText("Show tooltip IDs: "..(ids and "On" or "Off")); FT:SetSelected(self.ids,ids)
 end
 function Tip:Open()
     if not self.frame then
-        local frame=FT:Window("ForeverToolsTooltip","ForeverTools | Tooltip",640,566)
+        local frame=FT:Window("ForeverToolsTooltip","ForeverTools | Tooltip",640,650)
         self.frame=frame
         local header=FT:Label(frame,"Unit tooltip",16,true); header:SetPoint("TOPLEFT",24,-62)
         for i,entry in ipairs({{"target","Show target"},{"guild","Show guild beside name"},{"healthBar","Tooltip health bar"}}) do
@@ -173,6 +178,13 @@ function Tip:Open()
         self.guildIconPosition=FT:QuietButton(frame,"",592,32,"generic");self.guildIconPosition:SetPoint("TOPLEFT",24,-503)
         self.guildIconPosition:SetScript("OnClick",function() local s=self:Settings();s.guildIconPosition=s.guildIconPosition=="after" and "before" or "after";self:Refresh() end)
         FT:Tooltip(self.guildIconPosition,"Faction icon position","Place the faction icon before or after the guild name.")
+        self.guildColor=FT:QuietButton(frame,"",592,32,"generic");self.guildColor:SetPoint("TOPLEFT",24,-579);self.guildColor.setting="guildFactionColor"
+        self.guildColor:SetScript("OnClick",function() local s=self:Settings();s.guildFactionColor=not s.guildFactionColor;self:Refresh() end)
+        FT:Tooltip(self.guildColor,"Faction-colored guild name","Color the guild name red for Horde and blue for Alliance. Off keeps it plain white.")
+        -- Stored under System for profile compatibility; it belongs with tooltips.
+        self.ids=FT:QuietButton(frame,"",592,32,"spellID");self.ids:SetPoint("TOPLEFT",24,-541)
+        self.ids:SetScript("OnClick",function() local s=FT.modules.System:Settings();s.spellID=not s.spellID;self:Refresh() end)
+        FT:Tooltip(self.ids,"Show tooltip IDs","Show spell, item, quest and achievement IDs at the bottom of supported tooltips.")
         local sizes=FT:Label(frame,"Font sizes (0 keeps Blizzard's size)",14,true); sizes:SetPoint("TOPLEFT",24,-222)
         self.sizes={}
         for i,entry in ipairs({{"name","Name"},{"details","Level, race and class"},{"targetSize","Target"}}) do

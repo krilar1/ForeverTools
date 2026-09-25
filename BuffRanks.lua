@@ -107,6 +107,26 @@ function R:WeaponState(slot)
     if not self:WeaponEligible(slot) then return nil end
     local inventory=slot=="main" and 16 or 17
     local item=call(GetInventoryItemID,"player",inventory)
+    -- Same source Blizzard's buff frame uses for weapon-enchant icons on this
+    -- client, so the reminder agrees with what the player sees on screen.
+    local weaponSlot=Enum and Enum.WeaponSlot and (slot=="main" and Enum.WeaponSlot.MainHand or Enum.WeaponSlot.OffHand)
+    if weaponSlot and C_Item and C_Item.GetWeaponEnchantInfo then
+        local ok,enchants=pcall(C_Item.GetWeaponEnchantInfo,weaponSlot)
+        if ok and readable(enchants) and type(enchants)=="table" then
+            local unknown=false
+            for _,enchant in pairs(enchants) do
+                if type(enchant)=="table" then
+                    if not readable(enchant.hasEnchant) then unknown=true
+                    elseif enchant.hasEnchant then
+                        local id=readable(enchant.enchantID) and enchant.enchantID or nil
+                        local remaining=readable(enchant.timeLeft) and enchant.timeLeft or nil
+                        return {present=true,id=id,remaining=remaining,item=item}
+                    end
+                end
+            end
+            if not unknown then return {present=false,item=item} end
+        end
+    end
     if C_PaperDollInfo and C_PaperDollInfo.GetTemporaryEnchantmentInfo then
         local ok,info=pcall(C_PaperDollInfo.GetTemporaryEnchantmentInfo,inventory)
         if ok and readable(info) then return info and {present=true,id=info.enchantID,remaining=info.remainingTimeMs,item=item} or {present=false,item=item} end
@@ -185,6 +205,7 @@ function R:Warnings(spells,settings)
     local function warn(name,rank,slot)
         local best=name and catalogue[name]
         if not best or not rank or rank>=best.rank or (rank==1 and settings.ignoreRankOne) then return end
+        if type(settings.ignoredRanks)=="table" and settings.ignoredRanks[name] then return end
         local key=name..(slot or "")
         if seen[key] then return end;seen[key]=true
         result[#result+1]={name=name,spell={icon=best.icon or 134400},message=(slot and "Weapon buff" or name).." — low rank",detail=name..(slot and (" ("..slot.." hand)") or "")..": rank "..rank.."; rank "..best.rank..(best.trainer and " available at trainer." or " learned.")}

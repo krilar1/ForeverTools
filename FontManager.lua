@@ -20,7 +20,7 @@ function Fonts:Settings(id)
     if type(FT.db.fonts) ~= "table" then FT.db.fonts = {} end
     if type(FT.db.fonts[id]) ~= "table" then FT.db.fonts[id] = {} end
     local s = FT.db.fonts[id]
-    if s.enabled == nil then s.enabled = id~="tooltip" and id~="units" and id~="quests" and id~="objectives" and id~="world" end
+    if s.enabled == nil then s.enabled = false end -- Blizzard fonts until the player enables an area
     if type(s.font) ~= "string" then s.font = id=="chat" and "arial" or (id=="tooltip" or id=="units") and "friz" or "inter" end
     if type(s.size) ~= "number" or s.size ~= s.size then s.size = 0 end
     s.size = s.size == 0 and 0 or math.floor(math.max(8, math.min(40, s.size)))

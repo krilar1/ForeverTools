@@ -7,7 +7,7 @@ function QoL:Settings()
     -- Earlier builds exposed a separate Always on switch. The counter now has
     -- one clear on/off control and starts on for both new and migrated settings.
     if settings.alwaysOn == true and settings.enabled == false then settings.enabled = true end
-    if type(settings.enabled) ~= "boolean" then settings.enabled = true end
+    if type(settings.enabled) ~= "boolean" then settings.enabled = false end
     settings.alwaysOn = nil
     settings.fontSize = finite(settings.fontSize) and math.max(10, math.min(48, settings.fontSize)) or 16
     if not finite(settings.x) or not finite(settings.y) then
@@ -213,7 +213,7 @@ events:SetScript("OnEvent", function(_, event, loadedAddon)
     if event == "ADDON_LOADED" and loadedAddon == addonName then initialize()
     elseif event == "PLAYER_LOGIN" then
         initialize()
-        if not welcomed and FT.db.welcome ~= false then print("|cffc9a0ffForeverTools v"..FT.version.." loaded:|r |cffffffff/ft|r") end
+        if not welcomed and FT.db.welcome == true then print("|cffc9a0ffForeverTools v"..FT.version.." loaded:|r |cffffffff/ft|r") end
         welcomed = true
     elseif event == "PLAYER_LOGOUT" and QoL.moving then QoL:SavePosition() end
     if event == "PLAYER_ENTERING_WORLD" or event == "UI_SCALE_CHANGED" or event == "DISPLAY_SIZE_CHANGED" then

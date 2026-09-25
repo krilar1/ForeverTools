@@ -3,6 +3,9 @@ local Colors = { tracked={}, hooks={}, active={} }
 local groups = {{"player","Player"}, {"target","Target"}, {"focus","Focus"}}
 function Colors:Settings()
     if type(FT.db.unitColors) ~= "table" then FT.db.unitColors = {} end
+    for _,entry in ipairs(groups) do
+        if type(FT.db.unitColors[entry[1]])~="boolean" then FT.db.unitColors[entry[1]]=false end
+    end
     return FT.db.unitColors
 end
 local function groupFor(unit)
@@ -291,11 +294,6 @@ function Colors:Open()
         self.note=FT:Label(self.frame,"",13); self.note:SetPoint("BOTTOMLEFT",24,28); self.note:SetSize(542,60)
     end
     self:Apply(); self.frame:Show()
-    if not self.warned then
-        self.warned = true
-        StaticPopupDialogs.FOREVERTOOLS_COLORS_WIP = {text="Unitframe colors is under development. Results may be unreliable on the beta client as its unit-frame APIs change. You can still adjust these settings.", button1="Continue", timeout=0, whileDead=true, hideOnEscape=true}
-        FT:ShowPopup("FOREVERTOOLS_COLORS_WIP")
-    end
 end
 FT:RegisterModule("UnitColors", Colors)
 local events=CreateFrame("Frame")

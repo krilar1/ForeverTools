@@ -7,12 +7,18 @@ end
 function Flight:Settings()
     if type(FT.db.flightTimer)~="table" then FT.db.flightTimer={} end
     local s=FT.db.flightTimer
-    if s.enabled==nil then s.enabled=true end
-    s.size=number(s.size,20,10,48)
+    if not s.compactDefaults then
+        if s.font=="friz" and s.size==20 and s.outline=="OUTLINE" and type(s.color)=="table" and s.color[1]==1 and s.color[2]==1 and s.color[3]==1 then
+            s.font="arial";s.size=18;s.color={211/255,1,126/255}
+        end
+        s.compactDefaults=true
+    end
+    if s.enabled==nil then s.enabled=false end
+    s.size=number(s.size,18,10,48)
     s.x=number(s.x,.5,0,1);s.y=number(s.y,.5,0,1)
-    if type(s.font)~="string" then s.font="friz" end
+    if type(s.font)~="string" then s.font="arial" end
     if s.outline~="" and s.outline~="OUTLINE" and s.outline~="THICKOUTLINE" then s.outline="OUTLINE" end
-    if type(s.color)~="table" then s.color={1,1,1} end
+    if type(s.color)~="table" then s.color={211/255,1,126/255} end
     for i=1,3 do s.color[i]=number(s.color[i],1,0,1) end
     return s
 end
@@ -34,7 +40,7 @@ function Flight:CreateDisplay()
     if self.display then return end
     local display=CreateFrame("Frame","ForeverToolsFlightTimer",UIParent);self.display=display
     display:SetFrameStrata("HIGH");display:SetClampedToScreen(true)
-    display.text=FT:Label(display,"",20);display.text:SetPoint("CENTER")
+    display.text=FT:Label(display,"",20);display.text:SetPoint("TOP",display,"TOP",0,-8);display.text:SetJustifyH("CENTER");display.text:SetWordWrap(true)
     display.hint=FT:Label(display,"Preview - drag to move",11);display.hint:SetPoint("TOP",display,"BOTTOM",0,-3)
     display:RegisterForDrag("LeftButton")
     display:SetScript("OnDragStart",function()
@@ -151,15 +157,16 @@ function Flight:Tick()
     if remaining then
         local destination=self.preview and "The Crossroads" or self.destination
         local landing=type(destination)=="string" and ("Landing at "..destination) or "Landing"
-        text=remaining>0 and string.format("%s in %dmin%02dsec",landing,math.floor(remaining/60),remaining%60) or landing.." soon"
+        text=remaining>0 and string.format("%s\nin %dmin %02dsec",landing,math.floor(remaining/60),remaining%60) or landing.."\nsoon"
     elseif self.cancelled then text="Flight: arrival time unknown"
     else text=self.route and "Flight: learning route" or "Flight: arrival time unknown" end
     self.display.text:SetText(text)
-    if self.display.text.GetStringWidth then
-        local width=self.display.text:GetStringWidth()+24
-        self.display:SetWidth(math.min(UIParent:GetWidth()-20,math.max(240,width)))
-        self:Position()
-    end
+    local size=self:Settings().size
+    local width=math.min(UIParent:GetWidth()-20,math.max(240,math.min(360,size*15)))
+    self.display:SetWidth(width);self.display.text:SetWidth(width-20)
+    local height=self.display.text.GetStringHeight and self.display.text:GetStringHeight() or size*3
+    self.display:SetHeight(math.max(size*2.5,height)+16)
+    self:Position()
     self.display:SetShown(self.preview or (flying and self:Settings().enabled))
 end
 function Flight:InstallHooks()
@@ -178,7 +185,7 @@ function Flight:Apply()
     local path,label=fonts:Resolve(s)
     if not path or not fonts:ValidFont(path) then path="Fonts\\FRIZQT__.TTF";label="Friz Quadrata (fallback)" end
     self.display.text:SetFont(path,s.size,s.outline);self.display.text:SetTextColor(unpack(s.color))
-    self.display:SetSize(math.max(240,s.size*15),s.size+16)
+    self.display:SetSize(math.min(360,math.max(240,s.size*15)),s.size*3+16)
     self.display:EnableMouse(self.preview==true);self.display.hint:SetShown(self.preview==true)
     self:Position();self:Tick()
     if self.frame then
@@ -194,8 +201,8 @@ end
 function Flight:Open()
     if not self.frame then
         local frame=FT:Window("ForeverToolsFlightSettings","Flight timer",440,402);self.frame=frame
-        -- Keep the initially centered preview clear of its settings window.
-        frame:ClearAllPoints();frame:SetPoint("LEFT",UIParent,"LEFT",30,0)
+        -- Opens centered like every other page; Back returns to System → Gameplay.
+        FT:BackTo(frame,"SystemGameplay")
         self.toggle=FT:QuietButton(frame,"",392,34,"fps");self.toggle:SetPoint("TOPLEFT",24,-66)
         self.toggle:SetScript("OnClick",function() local s=self:Settings();s.enabled=not s.enabled;self:Apply() end)
         self.previewButton=FT:QuietButton(frame,"",392,34,"move");self.previewButton:SetPoint("TOPLEFT",24,-106)

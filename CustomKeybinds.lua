@@ -64,7 +64,15 @@ function B:SelectSpell(key,id)
     local s=self:Settings(); s[key]=s[key] or {}
     if id==0 then s[key]={}; self:Apply(); return end
     for _,spell in ipairs(self:LearnedSpells()) do
-        if spell.value==id then s[key]={spellID=id}; self:Apply(); return end
+        if spell.value==id then
+            s[key]={spellID=id}
+            -- Binding a spell is a clear sign the player wants wheel casting.
+            if not s.enabled and not self.unavailable then
+                s.enabled=true
+                FT:Toast("Mouse-wheel casting turned on.",3)
+            end
+            self:Apply(); return
+        end
     end
     FT:Toast("That spell is no longer learned."); self:Refresh()
 end
@@ -78,11 +86,10 @@ function B:Apply()
     if not FT.dbReady then return end
     if InCombatLockdown() then self.pending=true; self:Refresh(); return end
     self.pending=false
-    -- This beta can expose secure handlers while their compiler is missing.
-    -- Do not create handlers or register drivers on that client: even a no-op
-    -- Execute/attribute transition would fail inside RestrictedExecution.
-    self.unavailable = type(loadstring_untainted)~="function"
-        or type(RegisterStateDriver)~="function" or type(UnregisterStateDriver)~="function"
+    -- Blizzard's secure snippet compiler is captured privately by the restricted
+    -- environment and its global name is then cleared (EnvironmentCleanup), so a
+    -- global check always failed. Only the public driver API is required here.
+    self.unavailable = type(RegisterStateDriver)~="function" or type(UnregisterStateDriver)~="function"
         or type(ClearOverrideBindings)~="function"
     local s=self:Settings()
     if self.unavailable or not s.enabled then
@@ -101,6 +108,9 @@ function B:Apply()
             button=CreateFrame("Button","ForeverToolsWheel"..key,UIParent,"SecureActionButtonTemplate,SecureHandlerStateTemplate")
             button:RegisterForClicks("AnyDown","AnyUp")
             button:SetAttribute("unit","mouseover")
+            -- A wheel "press" is instant: act on the down event whatever the
+            -- player's cast-on-key-down setting is, so each wheel tick casts once.
+            button:SetAttribute("useOnKeyDown",true)
             button:SetAttribute("wheel",d[3])
             self.buttons[key]=button
         end
@@ -124,8 +134,13 @@ function B:Apply()
         local spell=self:SelectedSpell(key)
         local helpful=(C_Spell and C_Spell.IsSpellHelpful) or IsHelpfulSpell
         local harmful=(C_Spell and C_Spell.IsSpellHarmful) or IsHarmfulSpell
-        local help=spell and helpful and helpful(spell.value)
-        local harm=spell and harmful and harmful(spell.value)
+        local function relation(fn)
+            if not spell or not fn then return end
+            local ok,value=pcall(fn,spell.value)
+            if ok and (not issecretvalue or not issecretvalue(value)) then return value end
+        end
+        local help=relation(helpful)
+        local harm=relation(harmful)
         -- A dual-purpose spell works on either relation; WoW validates targets.
         button:SetAttribute("friendly",spell and (help or not harm) and spell.value or nil)
         button:SetAttribute("hostile",spell and (harm or not help) and spell.value or nil)
@@ -136,7 +151,7 @@ end
 function B:Refresh()
     if not self.frame then return end
     local s=self:Settings()
-    self.toggle.label:SetText(self.unavailable and "Mouse-wheel casting: Unavailable in this beta" or ("Mouse-wheel casting: "..(s.enabled and "On" or "Off")))
+    self.toggle.label:SetText(self.unavailable and "Mouse-wheel casting: Unavailable" or ("Mouse-wheel casting: "..(s.enabled and "On" or "Off")))
     self.toggle:SetEnabled(not self.unavailable); FT:SetSelected(self.toggle,s.enabled and not self.unavailable)
     local list=self:LearnedSpells()
     for key,picker in pairs(self.pickers) do
@@ -146,7 +161,7 @@ function B:Refresh()
         picker.icon:SetTexture(spell and spell.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
     end
     if self.spellRows then self:RenderSpellRows() end
-    self.status:SetText(self.unavailable and "This beta is missing its secure-script compiler. Wheel casting is inactive; normal wheel bindings are unchanged. Your spell settings are retained." or self.pending and "Saved. Bindings update after combat." or "Hover a unit to cast. Away from units, your normal wheel bindings remain active.")
+    self.status:SetText(self.unavailable and "This client does not provide the secure bindings needed for wheel casting. Normal wheel bindings are unchanged. Your spell settings are retained." or self.pending and "Saved. Bindings update after combat." or "Hover a unit frame or a character in the world to cast. Away from a valid mouseover unit, the wheel keeps its normal camera action.")
 end
 function B:Open()
     if not self.frame then
@@ -207,6 +222,34 @@ function B:RenderSpellRows()
         if spell then row.label:SetText(spell.label); row.icon:SetTexture(spell.icon) end
     end
     self.pageLabel:SetText(#spells==0 and "No matching learned spells" or (self.spellPage.." / "..self.spellPages))
+end
+-- Troubleshooting only (/ft wheeldebug): prints what the wheel-casting pieces see.
+-- Hooks are added only while debugging, and nothing here casts or changes bindings.
+function B:Debug()
+    self.debug=not self.debug
+    local function say(text) print("|cffc9a0ffForeverTools wheel:|r "..text) end
+    if not self.debug then say("debug off"); return end
+    local s=self:Settings()
+    local get=(C_CVar and C_CVar.GetCVar) or GetCVar
+    local _,class=UnitClass("player")
+    say("debug on ("..tostring(class)..", saved enabled="..tostring(s.enabled).."). Casting "..(s.enabled and "ON" or "OFF")..(self.unavailable and " (unavailable on this client)" or "")..
+        ", ActionButtonUseKeyDown="..tostring(get and get("ActionButtonUseKeyDown")))
+    for _,d in ipairs(directions) do
+        local spell=self:SelectedSpell(d[1]); local button=self.buttons[d[1]]
+        say(d[2]..": "..(spell and spell.label or "no spell")..(button and "" or " (no button yet: turn casting on)"))
+        if button and not button.ftDebugHooked then
+            button.ftDebugHooked=true
+            button:HookScript("OnAttributeChanged",function(owner,name,value)
+                if B.debug and name=="state-hover" then
+                    say(d[2].." state = "..tostring(value).." · "..d[3].." bound to: "..tostring(GetBindingAction and GetBindingAction(d[3],true)))
+                end
+            end)
+            button:HookScript("PreClick",function(owner,mouse,down)
+                if B.debug then say(d[2].." click received (down="..tostring(down)..", spell="..tostring(owner:GetAttribute("spell"))..", type="..tostring(owner:GetAttribute("type"))..")") end
+            end)
+        end
+    end
+    say("Now hover your player frame and a character in the world, and scroll.")
 end
 FT:RegisterModule("CustomKeybinds",B)
 local events=CreateFrame("Frame")

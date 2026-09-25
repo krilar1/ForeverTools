@@ -30,7 +30,10 @@ end
 function System:Settings()
     if type(FT.db.system)~="table" then FT.db.system={} end
     local s=FT.db.system
-    if s.tooltipTarget==nil then s.tooltipTarget=true end -- legacy profile migration
+    if s.spellID==nil then s.spellID=false end
+    if s.minimapIcons==nil then s.minimapIcons=false end
+    -- Forever shows coordinates under the minimap by default; match that.
+    if s.coordinates==nil then s.coordinates=true end
     return s
 end
 function System:Apply()
@@ -41,20 +44,71 @@ function System:Apply()
     elseif s.coordinates~=nil and GetCVar and SetCVar and GetCVar("minimapShowPlayerCoords")~=nil then
         SetCVar("minimapShowPlayerCoords",s.coordinates and "1" or "0")
     end
-    FT:UpdateMinimap(); self:Refresh()
+    FT:UpdateMinimap(); if FT.modules.MinimapIcons then FT.modules.MinimapIcons:Apply() end; self:Refresh()
 end
-function System:Refresh()
-    if not self.buttons then return end
+-- System is a small hub with four subpages, so no single page lists
+-- every switch. Each subpage is its own module for FT:OpenModule and search.
+local pages={
+    {key="SystemGeneral",title="General",icon="general",description="Welcome message, what's new, first-time setup and resetting settings.",items={
+        {"welcome","Welcome message","welcome","Print a short \"ForeverTools loaded\" line in chat when you log in."},
+        {"whatsNew","What's new after updates","welcome","After an update, show a short summary of changes once. Turn off to never show it."},
+        {"setup","Run first-time setup again","generic","Open the welcome setup to pick a starting preset. Your current settings stay until you apply one."},
+        {"reset","Reset all settings","reset","Return every ForeverTools setting to its default (all off) and reload. Saved profiles, custom macros and learned flight times are kept."},
+    }},
+    {key="SystemMinimap",title="Minimap",icon="map",description="The ForeverTools button, coordinates and grouping other addons' buttons.",items={
+        {"minimap","ForeverTools minimap button","map","Show or hide the ForeverTools button on the minimap. You can always open settings with /ft."},
+        {"coordinates","Minimap coordinates","map","Show or hide Forever's built-in coordinates below the minimap."},
+        {"minimapIcons","Group minimap buttons","map","Gather enabled addon icons in one dark minimap menu. Click its icon to open or close. Changes apply immediately; no reload needed. Protected or unusual icons may stay on the minimap. Use only one icon collector at a time."},
+    }},
+    {key="SystemGameplay",title="Gameplay",icon="classes",description="Group role, loot rolls, flight timer, leveling stats and merchant helpers.",items={
+        {"autoRole","Set role when joining a group","classes","Set your role once when joining a group, using your strongest talent tree. Manual changes stay. Equal talent points leave your role unchanged. Feral asks Tank or Damage on your first dungeon entry. Takes effect next time you join."},
+        {"lootMove","Move loot rolls","move","Show a draggable loot-roll placeholder, even without active loot. Turn this off to lock its position. Movement locks in combat. Until you move it, loot rolls stay in Blizzard's position."},
+        {"lootDefault","Use Blizzard's loot-roll position","reset","Forget your moved position and let the game place loot rolls again."},
+        {"flightTimer","Flight timer settings","fps","Turn the flight countdown on or off, preview and move it, and change its font, size, outline and color."},
+        {"leveling","Leveling stats settings","fps","XP per hour, time to level, kills to level and more, on a small movable line and in the XP bar tooltip."},
+        {"autoSell","Auto-sell grey items","generic","When you open a merchant, sell all grey (junk) items automatically, the same as the merchant's Sell All Junk button. Never runs in combat."},
+        {"autoRepair","Auto-repair","generic","When you open a merchant who can repair, repair all your gear automatically. Never runs in combat."},
+        {"guildRepair","Use guild funds for repairs first","party","When auto-repair runs, use guild bank repair money if your guild allows it, otherwise your own gold."},
+    }},
+    {key="SystemTroubleshooting",title="Troubleshooting",icon="errors",description="Lua error display and a copyable bug report.",items={
+        {"scriptErrors","Show Lua errors","errors","Controls WoW's scriptErrors setting, the same as /console scriptErrors 1 or 0. Hiding errors does not fix them or suppress Blizzard's blocked-action warning."},
+        {"bugReport","Copy bug report","errors","Show your addon version, game build, enabled features and recent ForeverTools errors in a box you can copy. Nothing is sent automatically."},
+    }},
+}
+System.pages=pages
+local toggles={welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,scriptErrors=true}
+function System:Values()
     local s=self:Settings()
     local getter=(C_CVar and C_CVar.GetCVar) or GetCVar
     local coords=s.coordinates
     if coords==nil then coords=not getter or getter("minimapShowPlayerCoords")=="1" end
-    local values={welcome=FT.db.welcome~=false,minimap=FT.db.minimapEnabled~=false,coordinates=coords,lootMove=FT.modules.LootRoll.moving,scriptErrors=getter and getter("scriptErrors")=="1",spellID=s.spellID==true,autoRole=s.autoRole==true}
+    return {welcome=FT.db.welcome==true,whatsNew=s.hideWhatsNew~=true,minimap=FT.db.minimapEnabled~=false,coordinates=coords,
+        minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=getter and getter("scriptErrors")=="1",
+        autoRole=s.autoRole==true,autoSell=s.autoSell==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true}
+end
+function System:Refresh()
+    if not self.buttons then return end
+    local values=self:Values()
+    local getter=(C_CVar and C_CVar.GetCVar) or GetCVar
     for key,button in pairs(self.buttons) do
-        button.label:SetText(button.title..": "..(key=="scriptErrors" and not getter and "Unavailable" or (values[key] and "On" or "Off")))
-        if key=="flightTimer" then button.label:SetText("Flight timer settings") end
+        if toggles[key] then
+            button.label:SetText(button.title..": "..(key=="scriptErrors" and not getter and "Unavailable" or (values[key] and "On" or "Off")))
+            FT:SetSelected(button,values[key])
+        end
         if key=="scriptErrors" then button:SetEnabled(getter~=nil) end
-        FT:SetSelected(button,values[key])
+        if key=="guildRepair" then button:SetEnabled(values.autoRepair); button:SetAlpha(values.autoRepair and 1 or .45) end
+        if key=="lootDefault" then
+            local custom=FT.modules.LootRoll:Settings().custom==true
+            button:SetEnabled(custom); button:SetAlpha(custom and 1 or .45)
+        end
+        if key=="leveling" then
+            local leveling=FT.modules.Leveling
+            button.label:SetText("Leveling stats: "..(leveling and leveling:Settings().enabled and "On" or "Off").." — settings")
+        end
+        if key=="flightTimer" then
+            local flight=FT.modules.FlightTimer
+            button.label:SetText("Flight timer: "..(flight and flight:Settings().enabled and "On" or "Off").." — settings")
+        end
         if key=="autoRole" then
             local reminder=FT.modules.BuffReminder
             if reminder then
@@ -66,54 +120,92 @@ function System:Refresh()
         end
     end
 end
-function System:Open()
-    if not self.frame then
-        self.frame=FT:Window("ForeverToolsSystem","ForeverTools | System",500,584); self.buttons={}
-        self.frame:HookScript("OnHide",function() FT.modules.LootRoll:FinishMove() end)
-        for i,entry in ipairs({{"welcome","Welcome message","welcome"},{"minimap","Minimap icon","map"},{"coordinates","Minimap coordinates","map"},{"lootMove","Move loot rolls","move"},{"scriptErrors","Show Lua errors","errors"},{"spellID","Show spell ID","spellID"},{"autoRole","Set role when joining a group","classes"},{"flightTimer","Flight timer","fps"}}) do
-            local key=entry[1]; local b=FT:QuietButton(self.frame,"",452,46,entry[3]); b.title=entry[2]
-            b:SetPoint("TOPLEFT",24,-66-(i-1)*58); self.buttons[key]=b
-            b:SetScript("OnClick",function()
-                if key=="flightTimer" then FT:OpenModule("FlightTimer");return end
-                if key=="lootMove" then FT.modules.LootRoll:ToggleMove(); return end
-                if key=="scriptErrors" then
-                    local get=(C_CVar and C_CVar.GetCVar) or GetCVar
-                    local set=(C_CVar and C_CVar.SetCVar) or SetCVar
-                    if get and set then set("scriptErrors",get("scriptErrors")=="1" and "0" or "1") end
-                    self:Refresh();return
-                end
-                if key=="welcome" then FT.db.welcome=FT.db.welcome==false
-                elseif key=="minimap" then FT.db.minimapEnabled=FT.db.minimapEnabled==false
-                else local s=self:Settings(); if key=="coordinates" and s[key]==nil then local get=(C_CVar and C_CVar.GetCVar) or GetCVar; s[key]=not get or get("minimapShowPlayerCoords")=="1" end; s[key]=not s[key] end
-                self:Apply()
-            end)
-            FT:Tooltip(b,entry[2],key=="flightTimer" and "Preview and move the flight timer. Change its font, size, outline and color." or key=="autoRole" and "Set your role once when joining a group, using your strongest talent tree. Manual changes stay. Equal talent points leave your role unchanged. Feral asks Tank or Damage on your first dungeon entry. Takes effect next time you join." or key=="lootMove" and "Show a draggable loot-roll placeholder, even without active loot. Turn this off to lock its position. Starts just right of screen center; the position saves with your profile. Movement locks in combat." or key=="coordinates" and "Show or hide Forever's built-in coordinates below the minimap." or key=="scriptErrors" and "Controls WoW's scriptErrors setting, the same as /console scriptErrors 1 or 0. Hiding errors does not fix them or suppress Blizzard's blocked-action warning." or "Show or hide this feature. Your choice is saved in your profile.")
-        end
-        FT.welcomeToggle=self.buttons.welcome; FT.minimapToggle=self.buttons.minimap
+function System:Click(key)
+    if key=="minimapIcons" then FT.modules.MinimapIcons:Toggle();return end
+    if key=="flightTimer" then FT:OpenModule("FlightTimer");return end
+    if key=="leveling" then FT:OpenModule("Leveling");return end
+    if key=="bugReport" then FT.modules.BugReport:Open();return end
+    if key=="setup" then FT.modules.Onboarding:ShowSetup(true);return end
+    if key=="reset" then FT.modules.Profiles:ResetSettings();return end
+    if key=="lootMove" then FT.modules.LootRoll:ToggleMove(); return end
+    if key=="lootDefault" then FT.modules.LootRoll:UseDefault(); self:Refresh(); return end
+    if key=="scriptErrors" then
+        local get=(C_CVar and C_CVar.GetCVar) or GetCVar
+        local set=(C_CVar and C_CVar.SetCVar) or SetCVar
+        if get and set then set("scriptErrors",get("scriptErrors")=="1" and "0" or "1") end
+        self:Refresh();return
     end
-    self:Refresh(); self.frame:Show()
+    local s=self:Settings()
+    if key=="welcome" then FT.db.welcome=FT.db.welcome~=true
+    elseif key=="minimap" then FT.db.minimapEnabled=FT.db.minimapEnabled==false
+    elseif key=="whatsNew" then s.hideWhatsNew=not (s.hideWhatsNew==true)
+    elseif key=="coordinates" then
+        if s.coordinates==nil then local get=(C_CVar and C_CVar.GetCVar) or GetCVar; s.coordinates=not get or get("minimapShowPlayerCoords")=="1" end
+        s.coordinates=not s.coordinates
+    else s[key]=not (s[key]==true) end
+    self:Apply()
 end
+local function buildPage(page)
+    local module={}
+    function module:Open()
+        if not self.frame then
+            local height=86+#page.items*52+24
+            self.frame=FT:Window("ForeverTools"..page.key,"ForeverTools | System | "..page.title,500,height)
+            FT:BackTo(self.frame,"System")
+            if page.key=="SystemGameplay" then self.frame:HookScript("OnHide",function() FT.modules.LootRoll:FinishMove() end) end
+            for i,entry in ipairs(page.items) do
+                local key=entry[1]
+                local b=FT:QuietButton(self.frame,entry[2],452,42,entry[3]); b.title=entry[2]
+                b:SetPoint("TOPLEFT",24,-66-(i-1)*52); System.buttons[key]=b
+                b:SetScript("OnClick",function() System:Click(key) end)
+                FT:Tooltip(b,entry[2],entry[4])
+            end
+            if page.key=="SystemMinimap" then FT.minimapToggle=System.buttons.minimap end
+            if page.key=="SystemGeneral" then FT.welcomeToggle=System.buttons.welcome end
+        end
+        System:Refresh(); self.frame:Show()
+    end
+    FT:RegisterModule(page.key,module)
+end
+function System:Open()
+    self.buttons=self.buttons or {}
+    if not self.frame then
+        self.frame=FT:Window("ForeverToolsSystem","ForeverTools | System",500,86+#pages*58+20)
+        for i,page in ipairs(pages) do
+            local button=FT:QuietButton(self.frame,page.title,452,46,page.icon)
+            FT:ButtonIcon(button,page.icon,30)
+            button:SetPoint("TOPLEFT",24,-68-(i-1)*58)
+            button:SetScript("OnClick",function() FT:OpenModule(page.key) end)
+            FT:Tooltip(button,page.title,page.description)
+        end
+    end
+    self.frame:Show()
+end
+System.buttons={}
+for _,page in ipairs(pages) do buildPage(page) end
 function System:WatchSpellTooltip(tip)
     if not tip.ftSpellIDHooked and tip.HookScript then
         tip.ftSpellIDHooked=true
-        tip:HookScript("OnTooltipCleared",function(owner) owner.ftSpellID=nil;owner.ftSpellGeneration=(owner.ftSpellGeneration or 0)+1 end)
+        tip:HookScript("OnTooltipCleared",function(owner) owner.ftSpellID=nil;owner.ftOtherIDs=nil;owner.ftSpellGeneration=(owner.ftSpellGeneration or 0)+1 end)
     end
 end
-function System:QueueSpellID(tip,id)
+function System:QueueSpellID(tip,id,kind)
     if not self:Settings().spellID or not tip or not usable(id) or type(id)~="number" then return end
     self:WatchSpellTooltip(tip)
     local generation=tip.ftSpellGeneration or 0
     C_Timer.After(0,function()
-        if (tip.ftSpellGeneration or 0)==generation and tip:IsShown() then self:SpellID(tip,id) end
+        if (tip.ftSpellGeneration or 0)==generation and tip:IsShown() then self:SpellID(tip,id,kind) end
     end)
 end
-function System:SpellID(tip,id)
+function System:SpellID(tip,id,kind,building)
     if not self:Settings().spellID or not tip or tip.ftAddonHelp or not usable(id) or type(id)~="number" or id<=0 then return end
-    if tip.ftSpellID==id then return end
+    kind=kind or "Spell"
+    if kind=="Spell" and tip.ftSpellID==id then return end
+    if kind~="Spell" and tip.ftOtherIDs and tip.ftOtherIDs[kind]==id then return end
     self:WatchSpellTooltip(tip)
-    tip:AddLine("Spell ID: "..id,.65,.65,.65)
-    tip.ftSpellID=id
-    if tip.Show then tip:Show() end
+    tip:AddLine(kind.." ID: "..id,.65,.65,.65)
+    if kind=="Spell" then tip.ftSpellID=id else tip.ftOtherIDs=tip.ftOtherIDs or {};tip.ftOtherIDs[kind]=id end
+    if not building and tip.Show then tip:Show() end
 end
 function System:TooltipClass(tip)
     if not tip.GetUnit or not UnitRace or not UnitIsPlayer then return end
@@ -209,7 +301,9 @@ function System:TooltipLayout(tip)
             local icon="|TInterface\\TargetingFrame\\UI-PVP-"..faction..":"..size..":"..size..":0:0:64:64:0:40:0:40|t"
             tag=tipSettings.guildIconPosition=="after" and (tag.." "..icon) or (icon.." "..tag)
         end
-        if color and color.WrapTextInColorCode then tag=color:WrapTextInColorCode(tag)
+        -- Faction coloring is optional (off by default); otherwise the guild uses plain white like Blizzard's guild line.
+        if not tipSettings.guildFactionColor then tag="|cffffffff"..tag.."|r"
+        elseif color and color.WrapTextInColorCode then tag=color:WrapTextInColorCode(tag)
         elseif color and color.r then tag=string.format("|cff%02x%02x%02x%s|r",math.floor(color.r*255+.5),math.floor(color.g*255+.5),math.floor(color.b*255+.5),tag) end
         heading=heading.." "..tag
         tip.ftGuildOnName=true
@@ -342,8 +436,17 @@ events:SetScript("OnEvent",function()
         if GameTooltip.SetUnitBuffByAuraInstanceID then hooksecurefunc(GameTooltip,"SetUnitBuffByAuraInstanceID",buffSourceByID) end
     end
     if TooltipDataProcessor and Enum and Enum.TooltipDataType then
+        -- Add IDs during the native build, before its final sizing/anchor pass.
+        -- Deferring a frame makes refreshed tooltips alternate between heights.
+        for _,kind in ipairs({"Item","Quest","Achievement"}) do
+            local dataType=Enum.TooltipDataType[kind]
+            local label=kind
+            if dataType then TooltipDataProcessor.AddTooltipPostCall(dataType,function(tip,data)
+                if data then System:SpellID(tip,data.id,label,true) end
+            end) end
+        end
         if Enum.TooltipDataType.Spell then
-            TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Spell,function(tip,data) if data then System:QueueSpellID(tip,data.id) end end)
+            TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Spell,function(tip,data) if data then System:SpellID(tip,data.id,"Spell",true) end end)
         end
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit,function(tip) if tip==GameTooltip then System:TooltipTarget(tip) end end)
     elseif not GameTooltip.HasScript or GameTooltip:HasScript("OnTooltipSetUnit") then
@@ -351,6 +454,14 @@ events:SetScript("OnEvent",function()
     end
     if (not TooltipDataProcessor) and GameTooltip.GetSpell and (not GameTooltip.HasScript or GameTooltip:HasScript("OnTooltipSetSpell")) then
         GameTooltip:HookScript("OnTooltipSetSpell",function(tip) local ok,_,id=pcall(tip.GetSpell,tip);if ok then System:QueueSpellID(tip,id) end end)
+    end
+    if not TooltipDataProcessor and GameTooltip.GetItem and (not GameTooltip.HasScript or GameTooltip:HasScript("OnTooltipSetItem")) then
+        GameTooltip:HookScript("OnTooltipSetItem",function(tip)
+            local ok,_,link=pcall(tip.GetItem,tip)
+            if ok and usable(link) and type(link)=="string" then
+                System:QueueSpellID(tip,tonumber(link:match("item:(%d+)")),"Item")
+            end
+        end)
     end
     local elapsed=0
     GameTooltip:HookScript("OnUpdate",function(tip,dt)
