@@ -1,16 +1,20 @@
-# ForeverTools 0.14.2
+# ForeverTools 0.14.3
 
 ## New
-- **Dispel glow:** a colored outline on player, target, focus, party or raid-style frames while they have a debuff you can remove. Only dispels you have learned count; no icons. Choose frames, strength and an optional pulse in Fonts & colors → Unitframe colors. Off by default.
-- **Keybinds in profiles:** exports can include all your keybinds, and importing applies them (outside combat).
-- **New characters** ask once whether to use a saved profile or start a new one.
-- **Buff reminder places:** choose where self and group notices appear: open world, cities, dungeons, raids and PvP.
-- **Leveling stats background:** optional rounded background with color and transparency. Off by default.
+- **Quick keybind mode:** type `/kb` (or use System → Gameplay), hover any slot and press a key to bind it. Escape on a bound slot unbinds it. Uses Blizzard's own quick keybind mode.
+- **Keybind snapshots:** a snapshot is taken before you start. Take more while you edit, revert to any of them, then save or discard.
+- **Tooltip layout builder:** turn the name, guild, level, race, class, faction and target parts on or off, order them, and put them on the same or a new line. A live preview shows the result.
+- **Faction icon** in tooltips can go before or after the name or guild, and now shows for players without a guild too.
+- **Faster looting** in System → Gameplay: with auto loot on, everything is looted the moment you open a corpse. Off by default.
+- **Restore keybinds** in System → Gameplay: pick one of your last 10 keybind sessions. Hovering a session lists what it changed (for example "Action Button 1: 1 → Q").
 
 ## Changed
-- Mouse-wheel binding is deliberate: click a spell in Custom keybinds, then scroll to bind it. Scrolling the list only pages it.
-- Every popup uses the same close button, placed so it never overlaps other controls.
+- New FT logo; the minimap button uses the same round border as other addons' minimap buttons.
+- The Tooltip page has a two-column layout: build the tooltip on the left, other options on the right.
+- Clearer, shorter tooltips and help texts across the addon. The export window (?) explains what carries over after updates.
+- Profiles panel: more room between controls, clearer icons, and long profile names wrap onto two lines.
+- Buff reminders page: clearer two-column layout with sections. Start with your own buffs on the left; group, low-rank and look options are on the right.
 
 ## Fixed
-- Dark-mode target and focus frames no longer show a gap between an empty health bar and the portrait.
-- Leveling stats: XP per hour and time to level start with your first experience instead of after a minute.
+- Macros: Add all now adds spells you know first, then by the level you learn them, so when the Character tab is full (WoW allows 30) only later spells are left out. The prompt names them, and the status line lists skipped macros on hover.
+- Font manager and Skins: the list scrollbar no longer touches the settings next to it.

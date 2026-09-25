@@ -302,7 +302,7 @@ function Editor:CreateUI()
         button.remove:SetPoint("TOPRIGHT", -3, -3)
         button.remove.label:SetTextColor(1, 0.35, 0.42)
         button.remove:SetScript("OnClick", function(owner) self:DeleteVersion(owner:GetParent().historyIndex) end)
-        FT:Tooltip(button.remove, "Remove revision", "Deletes this saved revision from the addon log. This does not change your WoW macro.")
+        FT:Tooltip(button.remove, "Remove revision", "Delete this saved version from the history. Your macro in WoW does not change.")
         self.historyButtons[index] = button
     end
     local prev = FT:QuietButton(frame, "<", 32, 28); prev:SetPoint("TOPLEFT", 606, -500)

@@ -79,7 +79,7 @@ end
 local function named(list, names)
     for name in names:gmatch("%S+") do add(list, _G[name]) end
 end
-Fonts:RegisterArea("general","General","Choose a font to apply across all areas. Each area retains its own size and outline. To add a font, place a licensed .ttf or .otf file in ForeverTools/Media/Fonts, fully restart WoW, then enter its filename below. WoW cannot discover arbitrary files by itself. SharedMedia fonts are also listed when their provider is installed.",function() end)
+Fonts:RegisterArea("general","General","Pick one font for all areas; each area keeps its own size and outline. To add your own font, put a .ttf or .otf file in ForeverTools/Media/Fonts, restart WoW, then type its file name below. Fonts from SharedMedia addons are listed too.",function() end)
 local bars = {"ActionButton", "MultiBarBottomLeftButton", "MultiBarBottomRightButton", "MultiBarRightButton",
     "MultiBarLeftButton", "MultiBar5Button", "MultiBar6Button", "MultiBar7Button", "PetActionButton", "StanceButton", "PossessButton"}
 Fonts:RegisterArea("actions", "Action bars", "Key bindings, stack counts and macro labels on Blizzard action bars.", function(list)
@@ -90,14 +90,14 @@ Fonts:RegisterArea("actions", "Action bars", "Key bindings, stack counts and mac
         end
     end end
 end)
-Fonts:RegisterArea("cooldowns", "Cooldown numbers", "Blizzard action-button cooldown numbers, when enabled in the game settings. Other cooldown addons manage their own fonts.", function(list)
+Fonts:RegisterArea("cooldowns", "Cooldown numbers", "Cooldown numbers on action buttons (turn them on in the game's settings). Other cooldown addons use their own fonts.", function(list)
     for _, prefix in ipairs(bars) do for i=1,12 do
         local button = _G[prefix .. i]
         local cooldown = button and (button.cooldown or button.Cooldown) or _G[prefix .. i .. "Cooldown"]
         if cooldown and cooldown.GetRegions then for _, region in ipairs({cooldown:GetRegions()}) do add(list, region) end end
     end end
 end)
-Fonts:RegisterArea("units", "Unitframe text", "Names and health/power values on Blizzard player, target, focus, pet and party frames. Custom unit-frame addons manage their own text.", function(list)
+Fonts:RegisterArea("units", "Unitframe text", "Names and health and mana numbers on the player, target, focus, pet and party frames.", function(list)
     for _, prefix in ipairs({"PlayerFrame", "TargetFrame", "FocusFrame", "PetFrame", "TargetFrameToT", "FocusFrameToT",
         "PartyMemberFrame1", "PartyMemberFrame2", "PartyMemberFrame3", "PartyMemberFrame4"}) do
         for _, suffix in ipairs({"Name", "HealthBarText", "HealthBarTextLeft", "HealthBarTextRight", "ManaBarText", "ManaBarTextLeft", "ManaBarTextRight"}) do add(list, _G[prefix .. suffix]) end
@@ -119,17 +119,17 @@ Fonts:RegisterArea("units", "Unitframe text", "Names and health/power values on 
         end
     end
 end)
-Fonts:RegisterArea("hits", "Unitframe hits", "Damage and healing flashes on player/pet portraits, where supported by this client. Separate from health/power values.", function(list)
+Fonts:RegisterArea("hits", "Unitframe hits", "The damage and healing numbers that flash on your player and pet portraits.", function(list)
     named(list, "PlayerHitIndicator PetHitIndicator TargetHitIndicator")
     for _, frame in ipairs({PlayerFrame or false, PetFrame or false, TargetFrame or false}) do
         if frame then add(list, frame.hitIndicator); add(list, frame.HitIndicator) end
     end
 end)
-Fonts:RegisterArea("incoming", "Scrolling combat text", "Blizzard scrolling text around your character. Damage and healing share a font. Enable the text itself in the game settings. Some clients control its size themselves.", function(list)
+Fonts:RegisterArea("incoming", "Scrolling combat text", "Scrolling combat text around your character (turn it on in the game's settings). Damage and healing use the same font.", function(list)
     named(list, "CombatTextFont")
     for i=1,30 do add(list, _G["CombatText" .. i]) end
 end)
-Fonts:RegisterArea("world", "World damage/healing", "Native numbers above characters. Changes the client's shared damage font; damage and healing cannot be styled separately here. Log out and back in after changing it. Some client builds ignore this setting.", nil, "DAMAGE_TEXT_FONT")
+Fonts:RegisterArea("world", "World damage/healing", "Damage and healing numbers above characters. They share one font. Log out and back in after changing it.", nil, "DAMAGE_TEXT_FONT")
 Fonts:RegisterArea("chat", "Chat", "Text inside Blizzard chat windows. Keeps their existing colors and spacing.", function(list)
     for i=1,(NUM_CHAT_WINDOWS or 10) do add(list, _G["ChatFrame" .. i]) end
 end)
@@ -139,7 +139,7 @@ Fonts:RegisterArea("tooltip", "Tooltips", "Blizzard tooltip headings and body te
         for i=1,30 do add(list, _G[prefix .. "TextLeft" .. i]); add(list, _G[prefix .. "TextRight" .. i]) end
     end
 end)
-Fonts:RegisterArea("quests", "Quest text", "Blizzard quest headings and reading text. Original size preserves the difference between headings and paragraphs.", function(list)
+Fonts:RegisterArea("quests", "Quest text", "Quest titles and quest text. Original size keeps titles bigger than the text.", function(list)
     named(list, "QuestFont QuestFontNormal QuestFontHighlight QuestFont_Shadow_Small QuestFont_Large QuestFont_Huge QuestTitleFont QuestTitleFontBlack QuestFontNormalSmall QuestFontHighlightSmall")
 end)
 
@@ -150,18 +150,18 @@ local function collectTree(list,frame,depth)
     if frame.GetRegions then for _,region in ipairs({frame:GetRegions()}) do add(list,region) end end
     if depth>0 and frame.GetChildren then for _,child in ipairs({frame:GetChildren()}) do collectTree(list,child,depth-1) end end
 end
-Fonts:RegisterArea("restedxp","RestedXP","Guide steps, headings, arrow and active-item/target text. Applies to RestedXP when installed, including newly created guide rows.",function(list)
+Fonts:RegisterArea("restedxp","RestedXP","Text in the RestedXP guide addon, when it is installed.",function(list)
     for _,name in ipairs({"RXPFrame","RXPV2GuideWindow","RXPG_ARROW","RXPItemFrame","RXPTargetFrame"}) do collectTree(list,_G[name],7) end
 end)
 for _,entry in ipairs({{"swingMain","Main-hand swing","SwingTimerMainHandFrame"},{"swingOff","Off-hand swing","SwingTimerOffHandFrame"},{"swingRanged","Ranged swing","SwingTimerRangedFrame"}}) do
     local frameName=entry[3]
-    Fonts:RegisterArea(entry[1],entry[2],"Weapon name and countdown on Forever's built-in swing timer. Enable the timer in WoW settings to see it in game.",function(list)
+    Fonts:RegisterArea(entry[1],entry[2],"The weapon name and countdown on Forever's swing timer (turn it on in the game's settings).",function(list)
         local frame=_G[frameName]; local bar=frame and frame.StatusBar
         if bar then add(list,bar.TypeLabel); add(list,bar.TimeLabel) end
     end)
 end
 
-Fonts:RegisterArea("objectives","Quest objectives","Quest tracker headings and objective text. Size and outline apply to loaded and newly created tracker rows.",function(list)
+Fonts:RegisterArea("objectives","Quest objectives","Quest tracker titles and objectives.",function(list)
     collectTree(list,ObjectiveTrackerFrame,8)
     collectTree(list,QuestObjectiveTracker,8)
     collectTree(list,QuestWatchFrame,5)
@@ -313,8 +313,8 @@ function Fonts:Refresh()
     for _,control in ipairs({self.toggle,self.sizeChoice,self.outlineChoice,self.resetButton,self.reapplyButton}) do control:SetShown(not general) end
     self.allButton:SetShown(general); self.allHint:SetShown(general); self.customFont:SetShown(general); self.customFontAdd:SetShown(general)
     local status = not s.enabled and "Off — this area keeps its original font." or
-        (area.engine and "Font saved. Log out and back in to test native numbers." or
-        ((self.counts[id] or 0) == 0 and "No matching text loaded yet. Applies when it becomes available. Save your setup to a profile." or "Changes apply immediately. Save your setup to a profile."))
+        (area.engine and "Font saved. Log out and back in to see it on damage numbers." or
+        ((self.counts[id] or 0) == 0 and "Nothing from this area is on screen yet. Your font applies when it appears." or "Changes apply right away."))
     self.status:Hide()
     self.status:SetText(self.notice or (self.deferred and "Saved. Applies after you leave combat.") or self.errors[id] or status)
 end
@@ -325,7 +325,9 @@ function Fonts:Open()
         FT:AppearanceBack(self.frame)
         self.areaButtons = {}
         local areaScroll=CreateFrame("ScrollFrame",nil,self.frame,"UIPanelScrollFrameTemplate")
-        areaScroll:SetPoint("TOPLEFT",20,-64); areaScroll:SetSize(198,402)
+        -- Scroll area as wide as its buttons: the scrollbar then sits in the gap
+        -- before the settings instead of touching them.
+        areaScroll:SetPoint("TOPLEFT",20,-64); areaScroll:SetSize(182,402)
         local areaList=CreateFrame("Frame",nil,areaScroll); areaList:SetSize(178,#self.order*40); areaScroll:SetScrollChild(areaList)
         for index, id in ipairs(self.order) do
             local key = id
@@ -354,14 +356,14 @@ function Fonts:Open()
         all:SetPoint("TOPLEFT",240,-406)
         self.allButton=all
         all:SetScript("OnClick",function() local font=self:Settings(self.selected).font; FT:Confirm("Apply the selected font to every area? This enables font management for all areas; sizes and outlines stay unchanged.",function() self:ApplyAllFonts(font) end) end)
-        FT:Tooltip(all,"Apply font to all areas","Applies the selected font to every area. Adjust size and outline individually in each menu. Native world numbers may require logging out and back in.")
+        FT:Tooltip(all,"Apply font to all areas","Use this font everywhere. Each area keeps its own size and outline. World damage numbers need a relog to change.")
         local allHint=FT:Label(self.frame,"Adjust sizes and outlines separately in each area.",12)
         self.allHint=allHint
         allHint:SetPoint("TOPLEFT",240,-446)
         self.customFont=CreateFrame("EditBox",nil,self.frame,"InputBoxTemplate"); self.customFont:SetSize(350,28); self.customFont:SetPoint("TOPLEFT",246,-212); self.customFont:SetFont(FT.bodyFont,14,""); self.customFont:SetAutoFocus(false)
         self.customFontAdd=FT:QuietButton(self.frame,"Add font",128,28,"add"); self.customFontAdd:SetPoint("LEFT",self.customFont,"RIGHT",12,0)
         self.customFontAdd:SetScript("OnClick",function() local file=self.customFont:GetText(); local path=self:Resolve({font="file:"..file}); if not self:ValidFont(path) then FT:Toast("Font unavailable. Check filename and restart WoW."); return end; FT.db.customFonts=FT.db.customFonts or {}; local found=false; for _,v in ipairs(FT.db.customFonts) do if v==file then found=true end end; if not found then table.insert(FT.db.customFonts,file) end; self:ChooseFont("file:"..file) end)
-        FT:Tooltip(self.customFont,"Font filename","For example MyFont.ttf or MyFont.otf. Place it in ForeverTools/Media/Fonts while WoW is closed, then restart. You must have permission to use the font.")
+        FT:Tooltip(self.customFont,"Font filename","Type the file name, for example MyFont.ttf. Put the file in ForeverTools/Media/Fonts while WoW is closed, then start WoW. Only use fonts you are allowed to use.")
         self.status = FT:Label(self.frame, "", 13); self.status:SetPoint("TOPLEFT", 240, -392); self.status:SetSize(494, 62); self.status:SetJustifyV("TOP")
         local reset = FT:QuietButton(self.frame, "Reset this area", 238, 32, "reset"); reset:SetPoint("BOTTOMLEFT", 240, 30)
         self.resetButton=reset
@@ -373,12 +375,12 @@ function Fonts:Open()
             return self.areas[self.selected].description .. "\n\n" .. self.status:GetText()
         end)
         info:SetPoint("TOPRIGHT", -24, -66)
-        FT:Tooltip(self.toggle, "Enable font changes", "Switch this area on to apply your chosen font. Each area is independent.")
-        FT:Tooltip(self.fontChoice, "Current font", "Shows the font currently used by loaded text in this area. Choosing a font enables management for this area. Mixed fonts means the area uses several fonts.")
+        FT:Tooltip(self.toggle, "Enable font changes", "Turn on to use your chosen font in this area.")
+        FT:Tooltip(self.fontChoice, "Current font", "The font this area uses now. Pick a font to change it; this also turns the area on. \"Mixed fonts\" means the area uses more than one.")
         local function controlHelp()
             return self.areas[self.selected].engine
-                and "World damage/healing size and outline are controlled by WoW's renderer. This addon can change its font file only; size and outline controls are unavailable for this area."
-                or "Adjust this area's size and outline. Thin outline uses a subtle half-pixel black shadow; WoW does not expose a thinner native outline. Original preserves native settings."
+                and "The game controls the size and outline of world damage numbers. Only the font can be changed here."
+                or "Change the text size and outline for this area. Original keeps Blizzard's setting."
         end
         for _,control in ipairs({self.sizeChoice,self.outlineChoice}) do
             FT:Tooltip(control,"Font appearance",controlHelp)
@@ -389,7 +391,7 @@ function Fonts:Open()
             end
         end
         FT:Tooltip(reset, "Reset area", "Restore the original font settings for this area.")
-        FT:Tooltip(apply, "Reapply fonts", "Apply the saved settings to currently loaded text. Hover the info button for status.")
+        FT:Tooltip(apply, "Reapply fonts", "Apply your font settings again to everything on screen, in case something did not update.")
     end
     self:Apply(); self.frame:Show()
 end

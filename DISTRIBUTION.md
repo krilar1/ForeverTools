@@ -9,8 +9,8 @@ repository because no license granting redistribution with a game addon was
 supplied. The font selector still supports an individually installed licensed
 copy. The user's original copies were preserved privately in Downloads.
 
-The former generated Home icon and unused older minimap badge were removed.
-The current FT medallion was generated for this project; see ARTWORK.md for provenance. WoW icon and interface paths refer to assets in the installed
+Earlier generated logos were removed. The current FT logo was drawn for this
+project from simple shapes; see ARTWORK.md for provenance. WoW icon and interface paths refer to assets in the installed
 game, not bundled copies. Spell names and short macro templates are functional
 addon data; no website article text is bundled. Classic flight-time data is adapted from InFlight under MIT; see THIRD_PARTY_NOTICES.md for the pinned source and required license.
 

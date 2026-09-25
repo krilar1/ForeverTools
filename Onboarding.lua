@@ -94,7 +94,7 @@ function Onboarding:ShowSetup(again)
             FT:Tooltip(b,extra.label,extra.text)
             self.extraButtons[extra.key]=b
         end
-        local note=FT:Label(frame,"Everything can be changed later in /ft. New characters reuse your profile without this setup.",12)
+        local note=FT:Label(frame,"You can change everything later in /ft.",12)
         note:SetPoint("TOPLEFT",24,-374); note:SetWidth(512); note:SetTextColor(.66,.57,.77)
         local import=FT:QuietButton(frame,"Import profile",160,34,"profiles"); import:SetPoint("BOTTOMLEFT",24,22)
         import:SetScript("OnClick",function()

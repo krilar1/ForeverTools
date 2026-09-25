@@ -1,6 +1,6 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 0.14.2.**
+**Quality-of-life tools for WoW: Forever — version 0.14.3.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
 one place. Everything starts **off**, so the game looks like Blizzard's until you
@@ -24,8 +24,10 @@ the home window. Use **`/rl`** to reload the UI.
 - **Dispel glow:** A colored outline around player, target, focus, party or
   raid-style frames while they have a debuff you can remove. Only dispels you
   have learned count; no icons are added.
-- **Tooltips:** Text sizes, layout, position and health-bar visibility; guild
-  names with optional faction icons, unit targets, buff sources and tooltip IDs.
+- **Tooltips:** Build your own player tooltip: turn name, guild, level, race,
+  class, faction and target on or off, order them and choose which share a
+  line, with a live preview. Also text sizes, position, faction icon, health
+  bar, buff sources and tooltip IDs.
 - **Chat:** Show, hide or mouseover-reveal chat controls, change the chat font,
   and optional clickable links that open a copy box.
 - **Macros:** Browse class, racial and general templates; select ranks; add
@@ -39,6 +41,8 @@ the home window. Use **`/rl`** to reload the UI.
   XP bar tooltip.
 - **Flight countdown:** Destination and estimated time until landing. Completed
   flights teach new routes and replace bundled estimates.
+- **Faster looting:** With auto loot on, take everything the moment a corpse
+  opens. Off by default.
 - **Merchant helpers:** Optional auto-sell of grey items and auto-repair, with
   guild funds if allowed, and a one-line summary.
 - **Minimap:** ForeverTools button, coordinates, and an optional launcher that
@@ -46,6 +50,8 @@ the home window. Use **`/rl`** to reload the UI.
 - **Profiles:** Save named snapshots, export/import as text (optionally with
   all your keybinds), and choose a profile or a fresh start on each new
   character.
+- **Quick keybinds:** `/kb` binds keys by hovering a slot, with snapshots to
+  revert, save or discard, and a restore list of earlier sessions.
 - **More:** FPS counter, movable loot rolls, group-role helper, custom
   mouse-wheel casting on mouseover, a Lua-error toggle and a copyable bug report.
 - **Combat-aware menus:** Settings close during combat; requesting the menu in
@@ -78,8 +84,26 @@ the home window. Use **`/rl`** to reload the UI.
   which normally writes to disk on logout or reload.
 - Export important profiles and keep the text somewhere outside WoW. Select the
   export text and press **Ctrl+C**; import it by pasting with **Ctrl+V**.
+- Export strings keep working after ForeverTools and game updates. Settings added
+  later start at their defaults, keybinds for actions that no longer exist are
+  skipped, mouse-wheel spells need to be learned, and custom fonts need the same
+  font file on the other computer.
 - A secondary copy inside the saved settings cannot recover profiles if the
   SavedVariables file itself is lost. An external export provides that backup.
+
+## Quick keybinds
+
+- Type **`/kb`** or use **System → Gameplay → Quick keybind mode**. Hover any
+  action button and press a key to bind it; press Escape on a bound slot to
+  unbind it. This opens Blizzard's own quick keybind mode.
+- A snapshot of your keybinds is taken when you start. **Take snapshot** saves
+  more points while you edit, and **Revert to snapshot** returns to any of them.
+  Finish with **Save** or **Discard**.
+- **Restore keybinds** (System → Gameplay) lists your last 10 saved sessions.
+  Hover one to see what it changed, such as "Action Button 1: 1 → Q"; choose it
+  to put back the keybinds from before it. Only changed keys are stored, on
+  this computer, and never in profile exports. Keybinds change only outside
+  combat.
 
 ## Mouse-wheel casting
 
@@ -133,7 +157,7 @@ the home window. Use **`/rl`** to reload the UI.
 - Classic flight-duration data comes from **InFlight** under the MIT license.
   The source revision and full notice are in
   [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-- The FT medallion was generated for this project. See
+- The FT logo was drawn for this project from simple shapes. See
   [ARTWORK.md](ARTWORK.md) for its provenance and
   [DISTRIBUTION.md](DISTRIBUTION.md) for distribution notes.
 - Native WoW icons are referenced from the installed game; their image files

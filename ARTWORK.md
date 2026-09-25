@@ -1,11 +1,12 @@
 # Artwork provenance
 
-`Media/Logo.png` and `Media/Logo.tga` are the same FT medallion generated
-for this project with OpenAI's built-in image-generation tool on 2026-09-23.
-The prompt requested an original classic fantasy design, without copied game
-logos or franchise symbols. No third-party reference image was supplied.
-The generated transparent image was resized to 256x256 and converted to
-32-bit TGA for the game. This provenance is not a legal clearance guarantee.
+`Media/Logo.png` and `Media/MinimapIcon.tga` are the FT logo
+drawn for this project on 2026-09-25 with Python/Pillow from simple shapes: a
+dark iron circle, a thin bronze rim (logo only), serif "FT" letters built from
+rectangles with a gold gradient, and a faint purple glow. No fonts or
+third-party images were used. The minimap button places the icon inside
+Blizzard's own minimap border, which is referenced from the game and not
+bundled. These replace the earlier generated FT medallion.
 
 `Rounded.tga` and `RoundedGradient.tga` are simple panel shapes used for the
 addon UI. WoW icon paths in Lua refer to textures supplied by the installed

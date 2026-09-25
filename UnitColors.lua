@@ -256,7 +256,7 @@ function Colors:Refresh()
     end
     self.all.label:SetText(all and "All unit frames: On" or "Enable all unit frames")
     FT:SetSelected(self.all, all)
-    self.note:SetText(self.deferred and "Saved. Changes apply when you leave combat." or "Colors health bars by class. NPC, dead and offline colors stay native.\nBlizzard frames only; power-bar colors stay unchanged.")
+    self.note:SetText(self.deferred and "Saved. Changes apply when you leave combat." or "Colors players' health bars by class. NPCs, dead and offline units keep Blizzard's colors.")
     self:RefreshDispel()
 end
 -- Dispel glow lives here with the other unit-frame visuals (DispelGlow.lua).
@@ -274,7 +274,7 @@ function Colors:BuildDispel()
         local b=FT:QuietButton(frame,glow.labels[key],102,32)
         b:SetPoint("TOPLEFT",24+(i-1)*110,-412)
         b:SetScript("OnClick",function() local s=glow:Settings(); s[key]=not s[key]; glow:Apply(); self:RefreshDispel() end)
-        FT:Tooltip(b,glow.labels[key].." frames",key=="raid" and "Compact party and raid frames. Blizzard also offers its own dispel highlight for these in Edit Mode; use one or the other." or "Show the glow on the "..glow.labels[key]:lower().." frame"..(key=="party" and "s" or "")..".")
+        FT:Tooltip(b,glow.labels[key].." frames",key=="raid" and "Raid-style party and raid frames. Blizzard has its own dispel highlight for these in Edit Mode; use one or the other." or "Show the glow on the "..glow.labels[key]:lower().." frame"..(key=="party" and "s" or "")..".")
         self.dispelFrames[key]=b
     end
     local names={soft="Soft",medium="Medium",strong="Strong"}
@@ -305,8 +305,6 @@ function Colors:Open()
     if not self.frame then
         self.frame=FT:Window("ForeverToolsUnitColors", "Unitframe colors", 590, 540)
         FT:AppearanceBack(self.frame)
-        local badge = FT:Label(self.frame, "WORK IN PROGRESS", 12, true)
-        badge:SetPoint("BOTTOMLEFT",24,18); badge:SetTextColor(1,.72,.25)
         self.all=FT:AccentButton(self.frame, "", 542, 34, "classes"); self.all:SetPoint("TOPLEFT",24,-65)
         self.all:SetScript("OnClick",function()
             local s=self:Settings(); local all=true
@@ -324,7 +322,7 @@ function Colors:Open()
         end
         local partyInfo=FT:QuietButton(self.frame,"Party colors: use Blizzard Edit Mode",542,34,"party")
         partyInfo:SetPoint("TOPLEFT",24,-113-#groups*44)
-        FT:Tooltip(partyInfo,"Party class colors","Click the party frame in Blizzard Edit Mode, open Raid Frame Settings, then enable class colors. Raid frames use the same Blizzard setting.")
+        FT:Tooltip(partyInfo,"Party class colors","Party and raid class colors are a Blizzard setting. Click to open Edit Mode, select the party frame and turn on class colors.")
         partyInfo:SetScript("OnClick",function()
             if InCombatLockdown() then return end
             local manager=_G.EditModeManagerFrame

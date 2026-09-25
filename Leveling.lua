@@ -317,7 +317,7 @@ function Leveling:Open()
         y=y-44
         self.moveButton=FT:QuietButton(frame,"",240,34,"move"); self.moveButton:SetPoint("TOPLEFT",24,y)
         self.moveButton:SetScript("OnClick",function() self:SetMoving(not self.moving) end)
-        FT:Tooltip(self.moveButton,"Move stats","Unlock, drag the stats anywhere, then lock them. Moving turns the stats on.")
+        FT:Tooltip(self.moveButton,"Move stats","Click to unlock, drag the stats where you want them, then click again to lock them. Moving turns the stats on.")
         local reset=FT:QuietButton(frame,"Reset position",240,34,"reset"); reset:SetPoint("TOPLEFT",276,y)
         reset:SetScript("OnClick",function() local s=self:Settings(); s.x,s.y,s.screenWidth,s.screenHeight=nil,nil,nil,nil; self:Apply() end)
         FT:Tooltip(reset,"Reset position","Return the stats to the top left of the screen.")

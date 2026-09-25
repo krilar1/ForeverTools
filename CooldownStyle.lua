@@ -36,7 +36,7 @@ local function update()
     end end
 end
 function Fonts:CooldownColorPicker()
-    if not ColorPickerFrame or not ColorPickerFrame.SetupColorPickerAndShow then FT:Toast("Color picker unavailable on this client."); return end
+    if not ColorPickerFrame or not ColorPickerFrame.SetupColorPickerAndShow then FT:Toast("The color picker is not available in this game version."); return end
     local s=self:Settings("cooldowns"); local old=s.numberColor; local wasEnabled=s.enabled
     local color=old or {1,1,1}
     FT:TrackColorPicker();ColorPickerFrame:SetupColorPickerAndShow({r=color[1],g=color[2],b=color[3],hasOpacity=false,
@@ -54,8 +54,8 @@ function Fonts:Refresh()
         self.cooldownGrey=FT:QuietButton(self.frame,"",244,32,"skins")
         self.cooldownGrey:SetPoint("LEFT",self.cooldownColor,"RIGHT",12,0)
         self.cooldownGrey:SetScript("OnClick",function() local s=self:Settings("cooldowns"); s.greyCooldowns=not s.greyCooldowns; update(); self:Refresh() end)
-        FT:Tooltip(self.cooldownColor,"Cooldown number color","Choose a color for Blizzard action-bar countdown text. Reset this area restores native colors. Changes save with your profile.")
-        FT:Tooltip(self.cooldownGrey,"Grey out spells on cooldown","Desaturate Blizzard action icons during cooldowns longer than the global cooldown. Off restores their previous saturation. Restricted beta cooldown data may prevent this effect.")
+        FT:Tooltip(self.cooldownColor,"Cooldown number color","Choose the color of cooldown numbers on your action bars. Reset area brings back Blizzard's color.")
+        FT:Tooltip(self.cooldownGrey,"Grey out spells on cooldown","Turn action button icons grey while the spell is on a longer cooldown.")
     end
     local selected=self.selected=="cooldowns"; local s=self:Settings("cooldowns")
     self.cooldownColor:SetShown(selected); self.cooldownGrey:SetShown(selected)

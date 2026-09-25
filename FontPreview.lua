@@ -52,7 +52,7 @@ function F:UpdateScene(path)
         self.scene.icon=self.scene:CreateTexture(nil,"ARTWORK"); self.scene.icon:SetSize(64,64); self.scene.icon:SetPoint("LEFT",16,0)
         self.scene.icon:SetTexture("Interface\\Icons\\Spell_Frost_FrostBolt02")
         self.scene.text=FT:Label(self.scene,"",24); self.scene.text:SetPoint("LEFT",98,0); self.scene.text:SetWidth(380)
-        FT:Tooltip(self.scene,"Simulated preview","Sample text uses the chosen font. Native combat-number placement and size are controlled by the client and can differ from this simulation.")
+        FT:Tooltip(self.scene,"Simulated preview","Sample text in your chosen font. Real combat numbers may look a little different in the game.")
         self.frame:HookScript("OnHide",function() self.scene:SetScript("OnUpdate",nil) end)
     end
     local sameArea=self.scene.area==self.selected

@@ -171,6 +171,7 @@ function Profiles:Refresh()
     self.choice:SetEnabled(hasProfiles)
     self.choice:SetAlpha(hasProfiles and 1 or .7)
     self.emptyHint:SetShown(not hasProfiles)
+    if self.panel then self.panel:SetHeight(hasProfiles and 326 or 348); if self.panel:IsShown() then self:FitHome() end end
     local exists=self.selected and self:Store()[self.selected]~=nil
     for _,button in ipairs({self.load,self.save,self.delete}) do button:SetEnabled(not not exists); button:SetAlpha(exists and 1 or .4) end
     if self.newCharacter then
@@ -182,34 +183,48 @@ function Profiles:Refresh()
         self.newCharacter:SetEnabled(hasProfiles); self.newCharacter:SetAlpha(hasProfiles and 1 or .4)
     end
 end
+-- Pin the window's top edge first so it grows and shrinks downward only.
+local function pinTop(home)
+    local left,top=home:GetLeft(),home:GetTop()
+    if left and top then home:ClearAllPoints(); home:SetPoint("TOPLEFT",UIParent,"BOTTOMLEFT",left,top) end
+end
+function Profiles:FitHome()
+    local home=FT.home; if not home or not self.panel then return end
+    pinTop(home)
+    home:SetHeight(math.max(home.baseHeight or 364,self.panel:GetHeight()+50+16))
+end
 function Profiles:Attach(home)
     if not self.choice then
-        local panel=CreateFrame("Frame",nil,home); panel:SetSize(392,288); panel:EnableMouse(true); panel:SetPoint("TOPRIGHT",home,"TOPRIGHT",-16,-50); FT:Panel(panel)
+        local panel=CreateFrame("Frame",nil,home); panel:SetSize(392,326); panel:EnableMouse(true); panel:SetPoint("TOPRIGHT",home,"TOPRIGHT",-16,-50); FT:Panel(panel)
         self.panel=panel; panel:SetFrameLevel(home:GetFrameLevel()+20); panel:Hide()
         local toggle=FT:QuietButton(home,"Profiles",105,28,"profiles")
         toggle:SetPoint("RIGHT",home.closeButton,"LEFT",-6,0)
         toggle:SetScript("OnClick",function() panel:SetShown(not panel:IsShown()) end)
         FT:Tooltip(toggle,"Profiles","Create, load, save or delete your local profiles.")
         home:HookScript("OnHide",function() panel:Hide() end)
+        -- The panel is taller than the home buttons; grow the window while it is open.
+        home.baseHeight=home.baseHeight or home:GetHeight()
+        panel:SetScript("OnShow",function() self:FitHome() end)
+        panel:SetScript("OnHide",function() pinTop(home); home:SetHeight(home.baseHeight) end)
         local label=FT:Label(panel,"Profiles",14,true); label:SetPoint("TOPLEFT",10,-16)
         local close=FT:AddClose(panel,nil,8)
-        local info=FT:Info(panel,"Profiles","Profiles save your setup for reuse on other characters. Choose one to load it, or type a name and select Create. Use Export to keep a backup copy.")
+        local info=FT:Info(panel,"Profiles","A profile is a saved copy of your ForeverTools settings. Load it on any character, or export it as text to keep a backup or move it to another computer.")
         info:SetPoint("RIGHT",close,"LEFT",-4,0)
         self.choice=FT:Dropdown(panel,372,function()
             local list={}; for name,value in pairs(self:Store()) do if type(name)=="string" and type(value)=="table" then list[#list+1]={value=name,label=name,icon="Interface\\Icons\\INV_Misc_Book_09"} end end
             table.sort(list,function(a,b) return a.label<b.label end); return list
         end,function(name) self:Load(name) end,"profiles")
-        self.choice:SetPoint("TOPLEFT",10,-46)
-        self.name=CreateFrame("EditBox",nil,panel); self.name:SetSize(245,28); self.name:SetPoint("TOPLEFT",10,-80)
+        self.choice:SetPoint("TOPLEFT",10,-46); self.choice:SetHeight(32)
+        self.name=CreateFrame("EditBox",nil,panel); self.name:SetSize(245,30); self.name:SetPoint("TOPLEFT",10,-90)
         self.name:SetFont(FT.bodyFont,14,""); self.name:SetAutoFocus(false); self.name:SetTextInsets(8,8,0,0); FT:Panel(self.name)
-        FT:Tooltip(self.name,"New profile name","Type a name, then click Create to save the current settings.")
-        local create=FT:QuietButton(panel,"Create",122,28,"add"); create:SetPoint("LEFT",self.name,"RIGHT",10,0)
+        FT:Tooltip(self.name,"New profile name","Type a name for a new profile, then click Create.")
+        local create=FT:QuietButton(panel,"Create",117,30,"INV_Misc_Note_02"); create:SetPoint("LEFT",self.name,"RIGHT",10,0)
         create:SetScript("OnClick",function() if self:Create(self.name:GetText()) then self.name:SetText(""); self.name:ClearFocus() end end)
-        FT:Tooltip(create,"Create profile","Start a new profile with default settings (everything off) and switch to it. Your custom macros and fonts stay available. To store your current look instead, use Save on an existing profile.")
-        self.load=FT:QuietButton(panel,"Load",116,28,"profiles"); self.load:SetPoint("TOPLEFT",10,-114)
+        FT:Tooltip(create,"Create profile","Make a new profile with default settings (everything off) and switch to it. Your custom macros and fonts stay. To keep your current look, use Save instead.")
+        self.load=FT:QuietButton(panel,"Load",116,30,"INV_Misc_Book_11"); self.load:SetPoint("TOPLEFT",10,-130)
         self.load:SetScript("OnClick",function() self:Load(self.selected) end)
-        self.save=FT:QuietButton(panel,"Save",116,28,"profiles"); self.save:SetPoint("LEFT",self.load,"RIGHT",12,0)
-        self.delete=FT:QuietButton(panel,"Delete",116,28,"delete"); self.delete:SetPoint("LEFT",self.save,"RIGHT",12,0)
+        self.save=FT:QuietButton(panel,"Save",116,30,"confirm"); self.save:SetPoint("LEFT",self.load,"RIGHT",12,0)
+        self.delete=FT:QuietButton(panel,"Delete",116,30,"delete"); self.delete:SetPoint("LEFT",self.save,"RIGHT",12,0)
         StaticPopupDialogs.FOREVERTOOLS_PROFILE_SAVE={text="Replace this saved profile with your current settings?",button1="Save",button2="Cancel",timeout=0,whileDead=true,hideOnEscape=true,OnAccept=function() if self.pendingSave then self:Save(self.pendingSave,true); self.pendingSave=nil end end}
         StaticPopupDialogs.FOREVERTOOLS_PROFILE_DELETE={text="Delete this saved profile? Current settings will remain in use.",button1="Delete",button2="Cancel",timeout=0,whileDead=true,hideOnEscape=true,OnAccept=function() if self.pendingDelete then self:Delete(self.pendingDelete); self.pendingDelete=nil end end}
         self.save:SetScript("OnClick",function()
@@ -218,9 +233,9 @@ function Profiles:Attach(home)
             FT:ShowPopup("FOREVERTOOLS_PROFILE_SAVE")
         end)
         self.delete:SetScript("OnClick",function() self.pendingDelete=self.selected; FT:ShowPopup("FOREVERTOOLS_PROFILE_DELETE") end)
-        local export=FT:QuietButton(panel,"Export",180,28,"profiles"); export:SetPoint("TOPLEFT",10,-152)
+        local export=FT:QuietButton(panel,"Export",180,30,"INV_Misc_Note_01"); export:SetPoint("TOPLEFT",10,-182)
         export:SetScript("OnClick",function() self:Transfer(false) end)
-        local import=FT:QuietButton(panel,"Import",180,28,"profiles"); import:SetPoint("LEFT",export,"RIGHT",12,0)
+        local import=FT:QuietButton(panel,"Import",180,30,"INV_Misc_Note_03"); import:SetPoint("LEFT",export,"RIGHT",12,0)
         import:SetScript("OnClick",function() self:Transfer(true) end)
         self.newCharacter=FT:Dropdown(panel,372,function()
             local list={{value="\001last",label="New characters: last used profile",icon="Interface\\Icons\\INV_Misc_Book_09"}}
@@ -229,16 +244,23 @@ function Profiles:Attach(home)
             for _,name in ipairs(names) do list[#list+1]={value=name,label="New characters: "..name,icon="Interface\\Icons\\INV_Misc_Book_09"} end
             return list
         end,function(value) FT.db.newCharacterProfile=value~="\001last" and value or nil; self:Refresh() end,"character")
-        self.newCharacter:SetPoint("TOPLEFT",10,-188)
-        FT:Tooltip(self.newCharacter,"Profile for new characters","A new character asks once whether to use a saved profile or start a new one. This profile is preselected in that question. \"Last used\" follows whichever profile you loaded or saved most recently.")
-        self.defaults=FT:QuietButton(panel,"Default settings",372,28,"reset"); self.defaults:SetPoint("TOPLEFT",10,-222)
+        self.newCharacter:SetPoint("TOPLEFT",10,-234); self.newCharacter:SetHeight(40)
+        -- Long profile names wrap onto a second line instead of being cut off.
+        self.newCharacter.label:SetWordWrap(true); if self.newCharacter.label.SetMaxLines then self.newCharacter.label:SetMaxLines(2) end
+        FT:Tooltip(self.newCharacter,"Profile for new characters","New characters ask once which profile to use. This one is picked by default. \"Last used\" is the profile you loaded or saved most recently.")
+        self.defaults=FT:QuietButton(panel,"Default settings",372,30,"reset"); self.defaults:SetPoint("TOPLEFT",10,-284)
         self.defaults:SetScript("OnClick",function() self:DefaultSettings() end)
         FT:Tooltip(self.defaults,"Default settings","Put everything ForeverTools changes back to Blizzard's defaults, as if the addon was just installed: skins, colors, fonts, chat, tooltips, counters, reminders and game options such as the Lua error display. The selected profile is reset too. Custom macros, other profiles and learned flight times are kept. Asks first, then reloads your interface.")
         self.emptyHint=FT:Label(panel,"Make your changes, then save a profile here.",12)
-        self.emptyHint:SetPoint("TOPLEFT",10,-260)
-        FT:Tooltip(self.load,"Load profile","Restore the selected saved settings.")
-        FT:Tooltip(self.save,"Save profile","Update the selected profile with your current settings.")
-        FT:Tooltip(self.delete,"Delete profile","Remove the selected snapshot. Your current settings stay active.")
+        self.emptyHint:SetPoint("TOPLEFT",10,-324)
+        -- Thin dividers between the groups: pick/create, manage, transfer, new characters.
+        for _,y in ipairs({-171,-223}) do
+            local line=panel:CreateTexture(nil,"ARTWORK"); line:SetColorTexture(.30,.23,.46,.6)
+            line:SetHeight(1); line:SetPoint("TOPLEFT",14,y); line:SetPoint("TOPRIGHT",-14,y)
+        end
+        FT:Tooltip(self.load,"Load profile","Switch to the selected profile.")
+        FT:Tooltip(self.save,"Save profile","Save your current settings into the selected profile.")
+        FT:Tooltip(self.delete,"Delete profile","Delete the selected profile. Your current settings do not change.")
     end
     self:Refresh()
 end
@@ -484,9 +506,9 @@ function Profiles:ValidBindings(map)
     end
     return count>0 and map or nil
 end
-function Profiles:ApplyBindings(map)
+function Profiles:ApplyBindings(map,noSave,quiet)
     if InCombatLockdown() then FT:Toast("Keybinds can only change outside combat."); return false end
-    if type(SetBinding)~="function" or type(SaveBindings)~="function" then FT:Toast("This client cannot change keybinds."); return false end
+    if type(SetBinding)~="function" or type(SaveBindings)~="function" then FT:Toast("Keybinds cannot be changed in this game version."); return false end
     -- Clear the current keys first so the result matches the exported layout
     -- exactly, then bind every imported key. Unknown actions are skipped.
     local current=self:CaptureBindings() or {}
@@ -499,12 +521,14 @@ function Profiles:ApplyBindings(map)
     if applied==0 then
         -- Nothing matched this client: put the previous bindings back untouched.
         for key,action in pairs(current) do SetBinding(key,action) end
-        FT:Toast("No keybinds from this profile match this client. Your keybinds are unchanged.",4)
+        if not quiet then FT:Toast("None of these keybinds work in this game version. Your keybinds are unchanged.",4) end
         return false
     end
-    local set=GetCurrentBindingSet and GetCurrentBindingSet() or 1
-    SaveBindings(set)
-    FT:Toast(applied.." keybinds applied"..(skipped>0 and (" ("..skipped.." not available here)") or "")..".",4)
+    if not noSave then
+        local set=GetCurrentBindingSet and GetCurrentBindingSet() or 1
+        SaveBindings(set)
+    end
+    if not quiet then FT:Toast(applied.." keybinds applied"..(skipped>0 and (" ("..skipped.." not available here)") or "")..".",4) end
     return true
 end
 function Profiles:Transfer(importing,onImported)
@@ -513,6 +537,9 @@ function Profiles:Transfer(importing,onImported)
         frame.noSavePrompt=true
         frame:SetFrameStrata("FULLSCREEN_DIALOG")
         if frame.homeButton then frame.homeButton:Hide() end
+        -- Plain answers to "will my string still work later?"
+        local about=FT:Info(frame,"Will my string keep working?","Yes. Export strings keep working after ForeverTools and game updates.\n\n• Settings added after you exported start at their defaults.\n• Keybinds carry over. A key for an action that no longer exists is skipped.\n• Mouse-wheel spells need that spell learned on the character.\n• Custom fonts need the same font file on the other computer.\n\nTip: export again after big changes, so your backup matches your setup.")
+        about:SetPoint("RIGHT",frame.closeButton,"LEFT",-6,0)
         local info=FT:Label(frame,"",13); info:SetPoint("TOPLEFT",24,-66); info:SetSize(550,45); frame.info=info
         local scroll=CreateFrame("ScrollFrame",nil,frame,"UIPanelScrollFrameTemplate"); scroll:SetPoint("TOPLEFT",24,-150); scroll:SetSize(528,160); FT:Panel(scroll)
         local box=CreateFrame("EditBox",nil,scroll); box:SetMultiLine(true); box:SetFont(FT.bodyFont,12,""); box:SetSize(520,160); box:SetAutoFocus(false); scroll:SetScrollChild(box); frame.box=box
@@ -529,7 +556,7 @@ function Profiles:Transfer(importing,onImported)
         local name=CreateFrame("EditBox",nil,frame,"InputBoxTemplate"); name:SetSize(540,28); name:SetPoint("TOPLEFT",30,-114); name:SetFont(FT.bodyFont,14,""); name:SetAutoFocus(false); frame.name=name
         local nameHint=FT:Label(name,"Add profile name here",13);nameHint:SetPoint("LEFT",8,0);frame.nameHint=nameHint
         name:SetScript("OnTextChanged",function() nameHint:SetShown(name:GetText()=="") end)
-        FT:Tooltip(name,"Imported profile name","A new name is required. Existing profiles will never be overwritten by import.")
+        FT:Tooltip(name,"Imported profile name","Give the imported profile a new name. Importing never replaces an existing profile.")
         local button=FT:QuietButton(frame,"Import profile",220,32,"profiles"); button:SetPoint("BOTTOMLEFT",24,25); frame.import=button
         button:SetScript("OnClick",function()
             local data,err=FT:DecodeProfile(box:GetText())
@@ -555,8 +582,8 @@ function Profiles:Transfer(importing,onImported)
             self:RefreshTransfer()
         end)
         FT:Tooltip(keys,"Keybinds",function()
-            return frame.importing and "Also apply the keybinds saved in this string: action bars, movement, interface and every other key binding. Your current keybinds are replaced. Mouse-wheel casting spells are part of the profile itself."
-                or "Add all your current keybinds to the export string, so they can be applied when the profile is imported on another computer or account."
+            return frame.importing and "Also use the keybinds saved in this string. This replaces all your current keybinds."
+                or "Put all your current keybinds in the export string, so you can use them on another computer or account."
         end)
     end
     local frame=self.transfer
@@ -564,7 +591,7 @@ function Profiles:Transfer(importing,onImported)
     frame.importing=importing; frame.hasBindings=false; frame.applyBindings=false
     frame.titleText:SetText(importing and "Import profile" or "Export profile")
     frame.import:SetShown(importing); frame.name:SetShown(importing);frame.nameHint:SetShown(importing)
-    frame.info:SetText(importing and "Paste a ForeverTools export string, enter a new profile name, then import. Import does not change your current setup unless you apply its keybinds." or "Export string selected. Press Ctrl+C to copy it, then paste it somewhere safe.")
+    frame.info:SetText(importing and "Paste an export string, give it a name, then click Import profile. Your settings only change when you load the profile (or apply its keybinds)." or "Press Ctrl+C to copy the string, then paste it somewhere safe. It keeps working after addon and game updates.")
     if importing then frame.box:SetText("") else self:FillExport() end
     frame.name:SetText(""); self:RefreshTransfer(); FT:PlaceBeside(frame); frame:Show()
     if frame.box.SetFocus then frame.box:SetFocus() end
@@ -625,7 +652,11 @@ function Profiles:ValidateImport(data)
     if result.dispelGlow and result.dispelGlow.strength and not FT.modules.DispelGlow.strengths[result.dispelGlow.strength] then return nil,"Invalid glow strength." end
     for _,v in pairs(result.chat or {}) do if v~="show" and v~="hide" and v~="hover" then return nil,"Invalid chat mode." end end
     for _,key in ipairs({"unitColors","system"}) do for _,v in pairs(result[key] or {}) do if type(v)~="boolean" then return nil,"Invalid toggle." end end end
-    if not check(result.tooltip,{guildFactionColor="boolean",guildFactionIcon="boolean",target="boolean",guild="boolean",healthBar="boolean",position="string",order="string",offsetX="number",offsetY="number",x="number",y="number",screenWidth="number",screenHeight="number",name="number",details="number",targetSize="number"}) then return nil,"Invalid tooltip settings." end
+    if not check(result.tooltip,{guildFactionColor="boolean",guildFactionIcon="boolean",target="boolean",guild="boolean",healthBar="boolean",position="string",order="string",offsetX="number",offsetY="number",x="number",y="number",screenWidth="number",screenHeight="number",name="number",details="number",targetSize="number",layout="table",factionIcon="string",guildIconPosition="string"}) then return nil,"Invalid tooltip settings." end
+    if result.tooltip and result.tooltip.factionIcon and not FT.modules.Tooltip.iconPlaces[result.tooltip.factionIcon] then return nil,"Invalid faction icon place." end
+    for _,entry in ipairs(result.tooltip and result.tooltip.layout or {}) do
+        if type(entry)~="table" or type(entry.key)~="string" or not FT.modules.Tooltip.partLabels[entry.key] or (entry.show~=nil and type(entry.show)~="boolean") or (entry.join~=nil and type(entry.join)~="boolean") then return nil,"Invalid tooltip layout." end
+    end
     if not check(result.buffReminder,{enabled="boolean",selected="table",mainEnchant="string",offEnchant="string",rankMarker="boolean",ignoredRanks="table",selfWhere="table",groupWhere="table"}) then return nil,"Invalid buff reminders." end
     for _,field in ipairs({"selfWhere","groupWhere"}) do
         for key,on in pairs(result.buffReminder and result.buffReminder[field] or {}) do

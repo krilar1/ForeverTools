@@ -161,7 +161,7 @@ function B:Refresh()
         picker.icon:SetTexture(spell and spell.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
     end
     if self.spellRows then self:RenderSpellRows() end
-    self.status:SetText(self.unavailable and "This client does not provide the secure bindings needed for wheel casting. Normal wheel bindings are unchanged. Your spell settings are retained." or self.pending and "Saved. Bindings update after combat." or "Hover a unit frame or a character in the world to cast. Away from a valid mouseover unit, the wheel keeps its normal camera action.")
+    self.status:SetText(self.unavailable and "Wheel casting isn't available on this game version. Your wheel works as usual, and your spell choices are kept." or self.pending and "Saved. Bindings update after combat." or "Scroll over a unit frame or a character in the world to cast. Anywhere else, the wheel zooms the camera.")
 end
 function B:Open()
     if not self.frame then
@@ -186,7 +186,7 @@ function B:Open()
             local picker=FT:Dropdown(self.frame,592,function() return self:SpellOptions() end,function(id) self:SelectSpell(key,id) end,"mouseover")
             picker:SetPoint("TOPLEFT",24,-152-(i-1)*72); picker:SetHeight(36)
             self.pickers[key]=picker
-            FT:Tooltip(picker,d[2],"Select a learned active spell. The same spell is used on your hovered unit, friendly or enemy as the spell allows. Passive, unlearned and other-specialization spells are excluded. Search above filters both lists. None restores normal scrolling.")
+            FT:Tooltip(picker,d[2],"Pick a spell you have learned. It is cast on the unit under your mouse, friend or enemy as the spell allows. Choose None to scroll normally again.")
         end
         self.status=FT:Label(self.frame,"",13); self.status:SetPoint("TOPLEFT",24,-594); self.status:SetSize(592,42)
         local hint=FT:Label(self.frame,"Click a spell below, then scroll up or down to bind it.",13)
@@ -207,9 +207,9 @@ function B:Open()
         prev:SetScript("OnClick",function() self:TurnPage(-1) end)
         next:SetScript("OnClick",function() self:TurnPage(1) end)
         self.pageLabel=FT:Label(self.frame,"",12); self.pageLabel:SetPoint("TOP",0,-570)
-        local info=FT:Info(self.frame,"Mouse-wheel casting","Choose a learned spell, then bind a wheel direction. Over a unit, the wheel uses that spell; elsewhere, it zooms the camera. Change bindings outside combat.")
+        local info=FT:Info(self.frame,"Mouse-wheel casting","Bind a spell to scrolling up or down. Scroll over a unit frame or a character in the world to cast it on them. Anywhere else, the wheel zooms the camera as usual.")
         info:SetPoint("BOTTOMRIGHT",-24,20)
-        FT:Tooltip(self.toggle,"Enable mouse-wheel casting","Select one learned spell for each direction below. Off restores the previous wheel bindings. Each scroll casts once.")
+        FT:Tooltip(self.toggle,"Enable mouse-wheel casting","Turn mouse-wheel casting on or off. Off gives the wheel back to the camera. Each scroll casts once.")
     end
     self:Refresh(); self.frame:Show()
 end

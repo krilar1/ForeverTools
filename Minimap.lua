@@ -58,12 +58,19 @@ function FT:UpdateMinimap()
         -- Custom dragging saves an angle; this frame never uses StartMoving/SetUserPlaced.
         button:SetSize(31, 31); button:SetFrameLevel(Minimap:GetFrameLevel() + 10)
         button:RegisterForClicks("LeftButtonUp", "RightButtonUp"); button:RegisterForDrag("LeftButton")
-        -- The logo includes its own frame. An additional tracking ring has an
-        -- asymmetric transparent canvas and makes the badge look off-centre.
+        -- Built like other addons' minimap buttons, with Blizzard's own round
+        -- tracking border and dark backing (referenced from the game, not
+        -- bundled), so the ring matches the icons around it.
+        button.background = button:CreateTexture(nil, "BACKGROUND")
+        button.background:SetSize(24, 24); button.background:SetPoint("CENTER", button, "CENTER", 0, 0)
+        button.background:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
         button.icon = button:CreateTexture(nil, "ARTWORK")
-        button.icon:SetSize(31.625, 31.625)
-        button.icon:SetPoint("CENTER", button, "CENTER", 0, 0)
-        button.icon:SetTexture("Interface\\AddOns\\" .. addonName .. "\\Media\\Logo.tga")
+        button.icon:SetSize(20, 20); button.icon:SetPoint("CENTER", button, "CENTER", 0, 0)
+        button.icon:SetTexture("Interface\\AddOns\\" .. addonName .. "\\Media\\MinimapIcon.tga")
+        button.border = button:CreateTexture(nil, "OVERLAY")
+        button.border:SetSize(50, 50); button.border:SetPoint("TOPLEFT", button, "TOPLEFT", 0, 0)
+        button.border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+        button:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
         button:SetScript("OnClick", function(owner, mouseButton)
             if owner.skipClick then owner.skipClick = false; return end
             if mouseButton == "RightButton" then FT:ShowMinimapMenu() else

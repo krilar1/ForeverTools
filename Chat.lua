@@ -96,7 +96,7 @@ function Chat:Open()
                 self:Settings()[key]=({show="hide",hide="hover",hover="show"})[self:Settings()[key] or "show"]
                 self:Apply()
             end)
-            FT:Tooltip(b,entry[2],"Click to cycle Shown, Hidden and Mouseover. Tabs reveal together over the chat area; social and side controls reveal only over their own region. Input styling never hides the text you type.")
+            FT:Tooltip(b,entry[2],"Click to switch between Shown, Hidden and Mouseover (shows up when you hover it).")
             self.buttons[key]=b
         end
         local heading=FT:Label(self.frame,"Chat text",15,true);heading:SetPoint("TOPLEFT",24,-305)
@@ -124,12 +124,12 @@ function Chat:Open()
             for i,value in ipairs(choices) do if value==p.outline then p.outline=choices[i%#choices+1];break end end
             p.enabled=true;fonts:ApplyArea("chat");self:Refresh()
         end)
-        FT:Tooltip(self.fontChoice,"Chat font","Uses the same saved setting as Font manager. Chat's own font-size menu remains synchronized.")
-        FT:Tooltip(self.fontSize,"Chat font size","Click to return to Blizzard's size, or use + and − to adjust it here.")
-        FT:Tooltip(self.outline,"Chat outline","Cycle Blizzard default, none, thin, normal and thick outlines.")
+        FT:Tooltip(self.fontChoice,"Chat font","The font for chat text. This is the same setting as Chat in Font manager.")
+        FT:Tooltip(self.fontSize,"Chat font size","Use + and − to change the size. Click the number to go back to Blizzard's size.")
+        FT:Tooltip(self.outline,"Chat outline","Click to switch the text outline: default, none, thin, normal or thick.")
         self.links=FT:QuietButton(self.frame,"",452,32,"chat");self.links:SetPoint("TOPLEFT",24,-472)
         self.links:SetScript("OnClick",function() local s=FT.modules.System:Settings();s.chatLinks=not s.chatLinks;self:Refresh() end)
-        FT:Tooltip(self.links,"Clickable links","Web addresses in chat become clickable. Clicking one opens a box where you can copy it. Nothing opens or is sent automatically. Applies to new messages.")
+        FT:Tooltip(self.links,"Clickable links","Web addresses in chat become clickable. Click one to get a box you can copy it from. Works on new messages.")
     end
     self:Apply(); self.frame:Show()
 end

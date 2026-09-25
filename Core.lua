@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "0.14.2"
+FT.version = "0.14.3"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -260,12 +260,6 @@ function FT:Window(name, title, width, height)
     local titleText = self:Label(frame, title, 20, true)
     frame.titleText = titleText
     titleText:SetPoint("TOPLEFT", 22, -21)
-    if name == "ForeverToolsHome" then
-        local logo = frame:CreateTexture(nil, "ARTWORK")
-        logo:SetSize(40, 40); logo:SetPoint("TOPLEFT", 16, -10)
-        logo:SetTexture("Interface\\AddOns\\" .. self.name .. "\\Media\\Logo.tga")
-        titleText:ClearAllPoints(); titleText:SetPoint("LEFT", logo, "RIGHT", 8, 0)
-    end
     titleText:SetTextColor(0.82, 0.68, 1)
     local close = self:AddClose(frame)
     if name ~= "ForeverToolsHome" then
@@ -290,7 +284,8 @@ function FT:OpenHome()
     if not self.home then
         self.home = self:Window("ForeverToolsHome", "ForeverTools", 440, 364)
         self.home.titleText:SetText("ForeverTools")
-        local version = self:Label(self.home, "v" .. self.version, 11)
+        -- The addon is still in active development: a quiet amber note after the version.
+        local version = self:Label(self.home, "v" .. self.version .. "  |cffffb840- work in progress|r", 11)
         version:SetPoint("BOTTOMLEFT", 18, 13); version:SetTextColor(0.66, 0.57, 0.77)
         local credit = self:Label(self.home, "Made by Krilar", 11)
         credit:SetPoint("BOTTOMRIGHT", -18, 13); credit:SetTextColor(0.66, 0.57, 0.77)
@@ -417,6 +412,16 @@ function FT:ShowChoices(owner)
         local row = menu.rows[index]
         if not row then
             row = self:QuietButton(menu.list, "", width - inner, 28, "macros")
+            -- Items may carry their own tooltip (for example a list of changes).
+            row:HookScript("OnEnter", function(owner)
+                local item = owner.item
+                if not item or not item.tooltip then return end
+                GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+                GameTooltip:SetText(item.tooltipTitle or item.label, 0.79, 0.63, 1)
+                GameTooltip:AddLine(type(item.tooltip) == "function" and item.tooltip() or item.tooltip, 0.91, 0.88, 0.96, true)
+                GameTooltip:Show()
+            end)
+            row:HookScript("OnLeave", function() GameTooltip:Hide() end)
             row:SetScript("OnClick", function(clicked)
                 local current = menu.owner; local selected = clicked.item
                 menu:Hide(); current.onSelect(selected.value)
@@ -427,6 +432,9 @@ function FT:ShowChoices(owner)
         row.label:SetText(item.label)
         row.icon:SetTexture(item.icon or "Interface\\Icons\\INV_Misc_Note_01")
         self:SetSelected(row, owner.value == item.value)
+        -- Unavailable choices stay visible (greyed) and explain themselves on hover.
+        if row.SetMotionScriptsWhileDisabled then row:SetMotionScriptsWhileDisabled(true) end
+        row:SetEnabled(not item.disabled); row:SetAlpha(item.disabled and .45 or 1)
         row:Show()
     end
     menu:Show()

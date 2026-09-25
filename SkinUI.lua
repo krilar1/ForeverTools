@@ -69,7 +69,7 @@ function S:Open()
     self.selected=self.selected or "everything"
     if not self.frame then
         self.frame=FT:Window("ForeverToolsIconStyles","ForeverTools | Skins",730,550); FT:AppearanceBack(self.frame); self.areaButtons={}
-        local scroll=CreateFrame("ScrollFrame",nil,self.frame,"UIPanelScrollFrameTemplate"); scroll:SetPoint("TOPLEFT",20,-66); scroll:SetSize(174,420)
+        local scroll=CreateFrame("ScrollFrame",nil,self.frame,"UIPanelScrollFrameTemplate"); scroll:SetPoint("TOPLEFT",20,-66); scroll:SetSize(160,420) -- scrollbar sits in the gap, clear of the settings
         local list=CreateFrame("Frame",nil,scroll); list:SetSize(156,#options*38); scroll:SetScrollChild(list)
         for i,entry in ipairs(options) do
             local key=entry[1]; local button=FT:QuietButton(list,entry[2],156,32,"skins"); button.label:SetFont(FT.bodyFont,12,""); button:SetPoint("TOPLEFT",0,-(i-1)*38)
@@ -98,7 +98,7 @@ function S:Open()
             end
             self:Apply()
         end) end)
-        FT:Tooltip(all,"Apply to all areas","Turns on every supported skin area and applies the selected template. Rare and elite artwork keeps its separate switches. You can adjust each area afterward.")
+        FT:Tooltip(all,"Apply to all areas","Turn on every area and give them all the chosen template. You can still change each area afterwards.")
         self.heading=FT:Label(self.frame,"",20,true); self.heading:SetPoint("TOPLEFT",222,-105)
         self.toggle=FT:QuietButton(self.frame,"",480,36,"skins"); self.toggle:SetPoint("TOPLEFT",222,-140)
         self.toggle:SetScript("OnClick",function() local root=self:Settings(); root[self.selected]=not root[self.selected]; self:Apply() end)
@@ -117,7 +117,7 @@ function S:Open()
         self.borderLabel,self.borderSlider=slider(-281,function(v) self:Area(self.selected).borderOpacity=v; self:Apply() end)
         self.opacityLabel,self.opacitySlider=slider(-321,function(v) self:SetOpacity(1-v) end)
         self.slotLabel,self.slotSlider=slider(-361,function(v) self:Area("bagWindows").slotOpacity=1-v;self:Apply() end)
-        FT:Tooltip(self.slotSlider,"Bag slot backgrounds","Adjust the silver background behind each item slot. Item icons keep their normal opacity.")
+        FT:Tooltip(self.slotSlider,"Bag slot backgrounds","How see-through the background behind each bag slot is.")
         self.thickness=FT.modules.FontManager:Stepper(self.frame,234,function() local choices={}; for i=1,6 do choices[i]={value=i} end; return choices end,function(v) self:Area(self.selected).thickness=v; self:Apply() end)
         self.thickness:SetPoint("TOPLEFT",222,-361)
         self.shadow=FT:QuietButton(self.frame,"",234,32,"skins"); self.shadow:SetPoint("TOPLEFT",468,-361)
@@ -125,19 +125,19 @@ function S:Open()
         for i,key in ipairs({"rares","elites"}) do
             local option=key; local b=FT:QuietButton(self.frame,"",234,32,"skins"); b:SetPoint("TOPLEFT",222+(i-1)*246,-321)
             b:SetScript("OnClick",function() local s=self:Area(self.selected); s[option]=not s[option]; self:Apply() end); self[key]=b
-            FT:Tooltip(b,"Rare / elite artwork","Off preserves original rare/elite frame artwork. Rare elites require both switches on. Level numbers keep their original color.")
+            FT:Tooltip(b,"Rare / elite artwork","Also color the rare or elite dragon on unit frames. Rare elites need both switches on.")
         end
         self.microOutline=FT:QuietButton(self.frame,"",480,32,"skins");self.microOutline:SetPoint("TOPLEFT",222,-321)
         self.microOutline:SetScript("OnClick",function() local s=self:Area("micro");s.hideSecondary=not s.hideSecondary;self:Apply() end)
-        FT:Tooltip(self.microOutline,"Extra micro menu outline","Hide the outer menu border while keeping each icon's border. Available only for the micro menu.")
+        FT:Tooltip(self.microOutline,"Extra micro menu outline","Hide the outer border around the micro menu. Each button keeps its own border.")
         self.hideArt=FT:QuietButton(self.frame,"",480,32,"skins");self.hideArt:SetPoint("TOPLEFT",222,-401)
         self.hideArt:SetScript("OnClick",function() local s=self:Area(self.selected);s.hideArt=not s.hideArt;self:Apply() end)
-        FT:Tooltip(self.hideArt,"Blizzard art","Bag menu: hide textured backgrounds and empty-slot art. Your background color and transparency stay the same. Gryphon frame: hide both end caps. Item icons and controls stay visible.")
+        FT:Tooltip(self.hideArt,"Blizzard art","Bags: hide Blizzard's textured backgrounds and empty-slot art. Gryphons: hide the gryphons at both ends of the action bar.")
         local reset=FT:QuietButton(self.frame,"Reset this area",234,32,"reset"); reset:SetPoint("BOTTOMLEFT",222,30); self.reset=reset
         reset:SetScript("OnClick",function() local key=self.selected; FT:Confirm("Reset this skin area to its defaults?",function() local root=self:Settings(); root.areas[key]=nil; self:Area(key); self:Apply() end) end)
-        local info=FT:Info(self.frame,"Skin settings","Changes apply immediately. Save your setup to a profile if you want to reuse it later."); info:SetPoint("BOTTOMRIGHT",-28,30)
-        FT:Tooltip(self.thickness,"Border thickness","Changes only this area's border. Action buttons use a rounded replacement when a thicker border is chosen; aura borders stay inside the icon.")
-        FT:Tooltip(self.presetChoice,"Preset for this area","Changing a preset affects this area only. Dark mode uses black borders. Bags default to a solid background; action icons use transparent fill.")
+        local info=FT:Info(self.frame,"Skin settings","Changes apply right away. Save a profile to keep this look for other characters."); info:SetPoint("BOTTOMRIGHT",-28,30)
+        FT:Tooltip(self.thickness,"Border thickness","How thick the border is in this area.")
+        FT:Tooltip(self.presetChoice,"Preset for this area","Pick a look for this area only. Dark mode gives black borders.")
         FT:Tooltip(self.allPresetChoice,"Template for all areas","Choose a template, then use the button below to apply it everywhere.")
     end
     self:Apply(); self.frame:Show()

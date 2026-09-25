@@ -437,7 +437,7 @@ function Reminder:Apply()
         badge:SetScript("OnClick",function(_,button) self:ClickNotice("self",button) end)
         FT:Tooltip(badge,"Missing self buffs",function()
             local lines={};for _,entry in ipairs(self.missing) do lines[#lines+1]=entry.detail or entry.message or entry.name.." missing" end
-            return table.concat(lines,"\n").."\nHides after 30 sec. Left-click dismisses; right-click opens settings."
+            return table.concat(lines,"\n").."\nHides after 30 seconds. Left-click to dismiss, right-click for settings."
         end)
         badge:RegisterForDrag("LeftButton")
         badge:SetScript("OnDragStart",function(owner) self:DragStart(owner) end)
@@ -455,7 +455,7 @@ function Reminder:Apply()
         group:SetScript("OnClick",function(_,button) self:ClickNotice("group",button) end)
         group:RegisterForDrag("LeftButton");group:SetScript("OnDragStart",function(owner) self:DragStart(owner) end)
         group:SetScript("OnDragStop",function() self:DragUpdate();self.dragging=false end)
-        FT:Tooltip(group,"Group buffs","Hides after 30 sec. Left-click dismisses; right-click opens settings.")
+        FT:Tooltip(group,"Group buffs","Hides after 30 seconds. Left-click to dismiss, right-click for settings.")
     end
     self:Refresh()
 end
@@ -507,24 +507,40 @@ function Reminder:RefreshMenu(learned)
         end
     end
     self.empty:SetShown(#available==0 and not weapon)
-    local y=184+math.max(1,math.ceil(#available/2))*38
+    -- Two columns: the left is the place to start (your own buffs); the right
+    -- holds the optional extras. Each section has a heading and a short hint.
     local function place(control,x,top) control:ClearAllPoints();control:SetPoint("TOPLEFT",self.frame,"TOPLEFT",x,-top) end
-    if weapon then place(self.mainDropdown,24,y);place(self.offDropdown,24,y+38);y=y+80 end
-    place(self.rankToggle,24,y);place(self.rankOneToggle,286,y);y=y+38
-    place(self.markerToggle,24,y);place(self.exceptions,286,y);y=y+38
-    place(self.selfColorButton,24,y);y=y+40
-    place(self.whereRows.selfWhere.label,24,y+9);self:PlaceWhere("selfWhere",y);y=y+46
-    place(self.groupToggle,24,y);y=y+40
-    place(self.whereRows.groupWhere.label,24,y+9);self:PlaceWhere("groupWhere",y);y=y+40
-    place(self.selfPreview,24,y);place(self.groupPreview,286,y);y=y+40
-    place(self.groupColorButton,24,y);y=y+46
-    place(self.moveButton,24,y);y=y+44
-    place(self.sizeValue,24,y);place(self.sizeSlider,186,y);y=y+35
-    place(self.resetPosition,24,y)
-    self.frame:SetHeight(y+54)
+    local L,R=24,580
+    local function section(key,x,top) local h=self.sections[key]; place(h.title,x,top); place(h.hint,x,top+22); if h.line then place(h.line,x,top-12) end; return top+50 end
+    local y=section("self",L,98)
+    place(self.toggle,L,y);y=y+46
+    place(self.specChoice,L,y);y=y+40
+    for i,button in ipairs(self.rows) do place(button,L+((i-1)%2)*262,y+math.floor((i-1)/2)*38) end
+    place(self.empty,L,y+8)
+    y=y+math.max(1,math.ceil(#available/2))*38+4
+    if weapon then place(self.mainDropdown,L,y);place(self.offDropdown,L,y+38);y=y+80 end
+    place(self.whereRows.selfWhere.label,L,y+9);self:PlaceWhere("selfWhere",L,y);y=y+40
+    place(self.selfColorButton,L,y);y=y+36
+    local left=y
+    y=section("group",R,98)
+    place(self.groupToggle,R,y);y=y+42
+    place(self.whereRows.groupWhere.label,R,y+9);self:PlaceWhere("groupWhere",R,y);y=y+40
+    place(self.groupColorButton,R,y);y=y+56
+    y=section("rank",R,y)
+    place(self.rankToggle,R,y);place(self.rankOneToggle,R+262,y);y=y+38
+    place(self.markerToggle,R,y);place(self.exceptions,R+262,y);y=y+54
+    y=section("look",R,y)
+    place(self.selfPreview,R,y);place(self.groupPreview,R+262,y);y=y+40
+    place(self.moveButton,R,y);y=y+42
+    place(self.sizeValue,R,y);place(self.sizeSlider,R+162,y);y=y+34
+    place(self.resetPosition,R,y);y=y+30
+    local bottom=math.max(left,y)
+    self.columnLine:ClearAllPoints()
+    self.columnLine:SetPoint("TOPLEFT",self.frame,"TOPLEFT",552,-96); self.columnLine:SetPoint("BOTTOMLEFT",self.frame,"TOPLEFT",552,-bottom)
+    self.frame:SetHeight(bottom+30)
 end
-function Reminder:PlaceWhere(field,top)
-    local x=92
+function Reminder:PlaceWhere(field,x0,top)
+    local x=x0+68
     for _,place in ipairs(self.places) do
         local b=self.whereRows[field].buttons[place[1]]
         b:ClearAllPoints(); b:SetPoint("TOPLEFT",self.frame,"TOPLEFT",x,-top); x=x+89
@@ -532,15 +548,30 @@ function Reminder:PlaceWhere(field,top)
 end
 function Reminder:Open()
     if not self.frame then
-        local frame=FT:Window("ForeverToolsBuffReminders","Self-buff reminders",560,640);self.frame=frame
-        local intro=FT:Label(frame,"A small notice appears when a chosen buff is missing.",14);intro:SetPoint("TOPLEFT",24,-64)
-        self.toggle=FT:QuietButton(frame,"",512,36,"welcome");self.toggle:SetPoint("TOPLEFT",24,-96)
+        local frame=FT:Window("ForeverToolsBuffReminders","Buff reminders",1116,640);self.frame=frame
+        local intro=FT:Label(frame,"Start on the left: turn reminders on and pick the buffs to watch. Everything on the right is optional.",14);intro:SetPoint("TOPLEFT",24,-62)
+        intro:SetTextColor(.78,.74,.86)
+        self.sections={}
+        for key,text in pairs({self={"Your buffs","Turn on, then choose the buffs to watch for each talent tree."},
+            group={"Group buffs","A notice when group members are missing your group buffs."},
+            rank={"Low ranks","Catch spells cast at a lower rank than you know."},
+            look={"Look and position","Preview, move and resize the notices."}}) do
+            local h={}
+            h.title=FT:Label(frame,text[1],16,true); h.title:SetTextColor(.82,.68,1)
+            h.hint=FT:Label(frame,text[2],12); h.hint:SetTextColor(.66,.57,.77); h.hint:SetWidth(512)
+            if key=="rank" or key=="look" then
+                h.line=frame:CreateTexture(nil,"ARTWORK"); h.line:SetColorTexture(.30,.23,.46,.6); h.line:SetSize(512,1)
+            end
+            self.sections[key]=h
+        end
+        self.columnLine=frame:CreateTexture(nil,"ARTWORK"); self.columnLine:SetColorTexture(.30,.23,.46,.6); self.columnLine:SetWidth(1)
+        self.toggle=FT:QuietButton(frame,"",512,36,"buffs");self.toggle:SetPoint("TOPLEFT",24,-96)
         self.toggle:SetScript("OnClick",function() local s=self:Settings();s.enabled=not s.enabled;self:Apply() end)
-        FT:Tooltip(self.toggle,"Self-buff reminders","Shows a quiet notice near the top of the screen. Hidden in combat, on flights, while dead or in vehicles. Never casts for you.")
+        FT:Tooltip(self.toggle,"Self-buff reminders","Shows a small notice at the top of the screen when one of your buffs is missing. Hidden in combat, on flights and while dead. It never casts anything for you.")
         self.specChoice=FT:Dropdown(frame,512,function() return self:SpecChoices() end,function(value) self.editSpec=value;self:RefreshMenu() end,"classes")
         self.specChoice.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
         self.specChoice:SetPoint("TOPLEFT",24,-145)
-        FT:Tooltip(self.specChoice,"Buffs for each talent tree","Choose a talent tree to assign its reminders. The addon follows your current talent tree automatically; these choices save with your profile.")
+        FT:Tooltip(self.specChoice,"Buffs for each talent tree","Pick which buffs to watch for each talent tree. The addon switches with your talents automatically.")
         self.rows={}
         for i=1,8 do
             local b=FT:QuietButton(frame,"",250,32,"welcome");b:SetPoint("TOPLEFT",24+((i-1)%2)*262,-185-math.floor((i-1)/2)*38)
@@ -555,7 +586,7 @@ function Reminder:Open()
                 end
                 self:Apply()
             end)
-            FT:Tooltip(b,"Choose a self buff","Only learned spells appear here. Any active aura or stance clears its missing reminder. Choosing a buff in a shared family turns off the others.")
+            FT:Tooltip(b,"Choose a self buff","Click to watch this buff. Only spells you have learned are listed. Buffs that can't be active together, like two auras, turn each other off.")
             self.rows[i]=b
         end
         self.empty=FT:Label(frame,"No supported self buffs learned yet.",13);self.empty:SetPoint("TOPLEFT",24,-195)
@@ -566,7 +597,7 @@ function Reminder:Open()
                 return list
             end,function(value) self:Settings()[slot.."Enchant"]=value;self:Apply() end,"welcome")
             dropdown:SetPoint("TOPLEFT",24,-405-(i-1)*42);self[slot.."Dropdown"]=dropdown
-            FT:Tooltip(dropdown,"Weapon enchant reminder","Choose an enchant for this weapon slot. Any active temporary weapon buff clears the missing notice. Empty slots and shields stay quiet; your choice is kept for later weapon swaps.")
+            FT:Tooltip(dropdown,"Weapon enchant reminder","Pick the weapon buff to watch for this hand. Any weapon buff counts. Empty hands and shields are ignored.")
         end
         -- "Show in" rows: pick every place a notice may appear (multiple choice).
         self.whereRows={}
@@ -584,10 +615,10 @@ function Reminder:Open()
         end
         self.groupToggle=FT:QuietButton(frame,"",512,34,"party");self.groupToggle:SetPoint("TOPLEFT",24,-488)
         self.groupToggle:SetScript("OnClick",function() local s=self:Settings();s.groupEnabled=not s.groupEnabled;self:Apply() end)
-        FT:Tooltip(self.groupToggle,"Group reminders","Shows a small notice while you are in a group and a chosen group buff is missing from a member. Choose where below; by default dungeons, raids and PvP. Hidden in combat and when solo.")
+        FT:Tooltip(self.groupToggle,"Group reminders","Shows a notice when someone in your group is missing one of your group buffs. Choose where it shows below. Hidden in combat.")
         self.moveButton=FT:QuietButton(frame,"",512,34,"move");self.moveButton:SetPoint("TOPLEFT",24,-528)
         self.moveButton:SetScript("OnClick",function() self:SetMoving(not self.moving) end)
-        FT:Tooltip(self.moveButton,"Move reminders","Unlock, drag the reminder on screen, then lock it. Its position saves with your profile.")
+        FT:Tooltip(self.moveButton,"Move reminders","Click to unlock, drag the notice where you want it, then click again to lock it.")
         self.sizeValue=FT:Label(frame,"",14);self.sizeValue:SetPoint("TOPLEFT",24,-574);self.sizeValue:SetWidth(120)
         self.sizeSlider=CreateFrame("Slider",nil,frame,"OptionsSliderTemplate");self.sizeSlider:SetSize(345,18);self.sizeSlider:SetPoint("TOPLEFT",186,-571)
         self.sizeSlider:SetMinMaxValues(.7,1.5);self.sizeSlider:SetValueStep(.05);self.sizeSlider:SetObeyStepOnDrag(true)
@@ -595,7 +626,7 @@ function Reminder:Open()
             if self.settingSize then return end
             self:Settings().size=math.floor(value*20+.5)/20;self:Apply()
         end)
-        FT:Tooltip(self.sizeSlider,"Reminder size","Adjust self and group notices from 70% to 150%. The position stays on screen as the size changes.")
+        FT:Tooltip(self.sizeSlider,"Reminder size","Make the notices smaller or bigger (70% to 150%).")
         for i,entry in ipairs({{"textColor","Self text color"},{"groupTextColor","Group text color"}}) do
             local field,label=entry[1],entry[2]
             local color=FT:QuietButton(frame,label,250,34,"fonts");color:SetPoint("TOPLEFT",24+(i-1)*262,-611)
@@ -612,35 +643,35 @@ function Reminder:Open()
             end)
             FT:Tooltip(color,label,"Choose the text color for this reminder notice.")
         end
-        self.rankToggle=FT:QuietButton(frame,"",250,32,"buffs");self.rankToggle:SetPoint("TOPLEFT",24,-653)
+        self.rankToggle=FT:QuietButton(frame,"",250,32,"INV_Misc_Book_07");self.rankToggle:SetPoint("TOPLEFT",24,-653)
         self.rankToggle:SetScript("OnClick",function() local s=self:Settings();s.lowRank=not s.lowRank;self:Apply() end)
-        FT:Tooltip(self.rankToggle,"Low-rank alerts","Warn when your own buff uses a lower rank than you have learned. Trainer upgrades are checked after visiting a trainer. Unknown ranks stay quiet. Turn off for intentional downranking.")
-        self.rankOneToggle=FT:QuietButton(frame,"",250,32,"buffs");self.rankOneToggle:SetPoint("LEFT",self.rankToggle,"RIGHT",12,0)
+        FT:Tooltip(self.rankToggle,"Low-rank alerts","Warns when you cast a buff at a lower rank than you know. Visit a trainer once so the addon knows which ranks you can learn.")
+        self.rankOneToggle=FT:QuietButton(frame,"",250,32,"INV_Misc_Book_11");self.rankOneToggle:SetPoint("LEFT",self.rankToggle,"RIGHT",12,0)
         self.rankOneToggle:SetScript("OnClick",function() local s=self:Settings();s.ignoreRankOne=not s.ignoreRankOne;self:Apply() end)
-        FT:Tooltip(self.rankOneToggle,"Ignore rank 1","Keep low-rank checks, but allow rank 1 spells (for example dispel bait or cheap heals) without a warning or marker.")
-        self.markerToggle=FT:QuietButton(frame,"",250,32,"buffs")
+        FT:Tooltip(self.rankOneToggle,"Ignore rank 1","Never warn about rank 1 spells, for example cheap heals you use on purpose.")
+        self.markerToggle=FT:QuietButton(frame,"",250,32,"INV_Misc_Note_02")
         self.markerToggle:SetScript("OnClick",function() local s=self:Settings();s.rankMarker=not s.rankMarker;self:Apply() end)
-        FT:Tooltip(self.markerToggle,"Low-rank marker on action bars","Adds a small amber corner to your own action buttons that use a lower rank than one you have learned. Hover the button to see which rank you know. No popups, sounds or messages. Spells placed directly on bars only; macros are not checked.")
-        self.exceptions=FT:Dropdown(frame,250,function() return FT.modules.RankMarker:ExceptionChoices() end,function(value) FT.modules.RankMarker:ToggleIgnore(value) end,"buffs")
+        FT:Tooltip(self.markerToggle,"Low-rank marker on action bars","Adds a small amber corner to action buttons that use a lower rank than you know. Hover the button to see your best rank. Macros are not checked.")
+        self.exceptions=FT:Dropdown(frame,250,function() return FT.modules.RankMarker:ExceptionChoices() end,function(value) FT.modules.RankMarker:ToggleIgnore(value) end,"INV_Misc_Note_03")
         self.exceptions.menuWidth=340
-        FT:Tooltip(self.exceptions,"Low-rank exceptions","Ignore specific spells you downrank on purpose. Ignored spells get no marker and no low-rank alert. Choose an ignored spell again to stop ignoring it.")
+        FT:Tooltip(self.exceptions,"Low-rank exceptions","Pick spells you downrank on purpose. They get no marker and no alert. Pick one again to take it off the list.")
         local resetPosition=FT:QuietButton(frame,"Reset reminder position",512,30,"reset");resetPosition:SetPoint("TOPLEFT",24,-695);self.resetPosition=resetPosition
         resetPosition:SetScript("OnClick",function()
             local s=self:Settings();s.x=nil;s.y=nil;s.screenWidth=nil;s.screenHeight=nil;self:Apply()
         end)
-        FT:Tooltip(resetPosition,"Reset position","Return the reminders to their original place near the top center of the screen.")
+        FT:Tooltip(resetPosition,"Reset position","Move the notices back to the top center of the screen.")
         for i,entry in ipairs({{"previewSelf","Preview self reminder","selfPreview"},{"previewGroup","Preview group reminder","groupPreview"}}) do
             local key=entry[1]
-            local button=FT:QuietButton(frame,entry[2],250,32,"buffs");self[entry[3]]=button
+            local button=FT:QuietButton(frame,entry[2],250,32,key=="previewGroup" and "party" or "buffs");self[entry[3]]=button
             button:SetScript("OnClick",function() self[key]=not self[key];FT:SetSelected(button,self[key]);self:Apply() end)
-            FT:Tooltip(button,entry[2],"Show or hide a sample notice. Both previews stack without overlapping.")
+            FT:Tooltip(button,entry[2],"Show a sample notice so you can see how it looks.")
         end
         frame:HookScript("OnHide",function()
             self.previewSelf=nil;self.previewGroup=nil
             FT:SetSelected(self.selfPreview,false);FT:SetSelected(self.groupPreview,false)
             self:SetMoving(false)
         end)
-        local info=FT:Info(frame,"How reminders work","Choose buffs from your learned spells. Notices hide in combat, on flights, while dead or in vehicles. Righteous Fury appears only when you have learned it and Protection is your main talent tree. Left-click dismisses; right-click opens settings.")
+        local info=FT:Info(frame,"How reminders work","Turn reminders on and pick your buffs. A small notice appears when one is missing. Notices hide in combat, on flights and while dead. Left-click a notice to dismiss it, right-click it for settings.")
         info:SetPoint("TOPRIGHT",-22,-62)
     end
     self.editSpec=self:CurrentSpec()

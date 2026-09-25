@@ -168,7 +168,7 @@ function QoL:Open()
             settings.screenWidth, settings.screenHeight = UIParent:GetWidth(), UIParent:GetHeight()
             self:Apply()
         end)
-        local note = FT:Label(self.frame, "Moving turns the counter on. Changes apply now; save a profile to reuse them.", 13)
+        local note = FT:Label(self.frame, "Moving turns the counter on. Changes apply right away.", 13)
         note:SetPoint("BOTTOMLEFT", 24, 32); note:SetWidth(450)
         self.frame:HookScript("OnHide", function() if self.moving then self:SetMoving(false) end end)
     end

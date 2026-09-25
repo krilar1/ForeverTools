@@ -1,6 +1,20 @@
 local _,FT=...
 -- Short player-facing notes for the "What's new" window. Newest first.
 FT.changelog={
+    {version="0.14.3",notes={
+        "New: quick keybind mode. Type /kb (or System → Gameplay), hover a slot and press a key to bind it; Escape on a bound slot unbinds it.",
+        "A snapshot of your keybinds is taken first. Take more while you edit, revert to any of them, then save or discard.",
+        "New: tooltip layout builder. Turn the name, guild, level, race, class, faction and target parts on or off, order them, and put them on the same or a new line, with a live preview (Tooltip).",
+        "Tooltip faction icon can now go before or after the name or guild, and shows even for players without a guild.",
+        "New: Faster looting (System → Gameplay). With auto loot on, everything is looted the moment you open a corpse. Off by default.",
+        "New: Restore keybinds (System → Gameplay) lists your last 10 keybind sessions. Hover one to see exactly what it changed; choose it to go back to the keybinds from before it.",
+        "Profiles panel: more room between controls, clearer icons, and long profile names wrap onto two lines.",
+        "New FT logo, and the minimap button now uses the same round border as other addons' buttons.",
+        "Clearer, shorter tooltips and help texts across the addon. The export window explains what carries over after updates.",
+        "Macros: Add all adds spells you know first, then by the level you learn them, so a full macro tab only leaves out later spells. You see which ones are left out, and can hover the status line afterwards.",
+        "Font manager and Skins: the list scrollbar no longer touches the settings next to it.",
+        "Buff reminders page: a clearer two-column layout with sections — start with your own buffs on the left; group, low-rank and look options are on the right.",
+    }},
     {version="0.14.2",notes={
         "New: dispel glow. A colored outline on player, target, focus, party or raid-style frames while they have a debuff you can remove (Fonts & colors → Unitframe colors). Off by default.",
         "New: profile exports can include all your keybinds, and importing applies them (Profiles → Export / Import).",

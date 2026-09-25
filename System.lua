@@ -58,25 +58,28 @@ local pages={
     {key="SystemMinimap",title="Minimap",icon="map",description="The ForeverTools button, coordinates and grouping other addons' buttons.",items={
         {"minimap","ForeverTools minimap button","map","Show or hide the ForeverTools button on the minimap. You can always open settings with /ft."},
         {"coordinates","Minimap coordinates","map","Show or hide Forever's built-in coordinates below the minimap."},
-        {"minimapIcons","Group minimap buttons","map","Gather enabled addon icons in one dark minimap menu. Click its icon to open or close. Changes apply immediately; no reload needed. Protected or unusual icons may stay on the minimap. Use only one icon collector at a time."},
+        {"minimapIcons","Group minimap buttons","map","Put other addons' minimap buttons into one small menu. Click its icon to open it. A few buttons may stay on the minimap. Do not use it together with another button-collector addon."},
     }},
-    {key="SystemGameplay",title="Gameplay",icon="classes",description="Group role, loot rolls, flight timer, leveling stats and merchant helpers.",items={
-        {"autoRole","Set role when joining a group","classes","Set your role once when joining a group, using your strongest talent tree. Manual changes stay. Equal talent points leave your role unchanged. Feral asks Tank or Damage on your first dungeon entry. Takes effect next time you join."},
-        {"lootMove","Move loot rolls","move","Show a draggable loot-roll placeholder, even without active loot. Turn this off to lock its position. Movement locks in combat. Until you move it, loot rolls stay in Blizzard's position."},
+    {key="SystemGameplay",title="Gameplay",icon="classes",description="Quick keybinds, group role, loot, flight timer, leveling stats and merchant helpers.",items={
+        {"quickKeybind","Quick keybind mode (/kb)","keybind","Hover any action button and press a key to bind it; Escape on a bound slot unbinds it. A snapshot of your keybinds is taken first, so you can save, revert to a snapshot or discard. You can also type /kb in chat."},
+        {"undoKeybinds","Restore keybinds","reset","Pick an earlier keybind session to go back to. Hover a session to see what it changed; choosing it puts back the keybinds you had before it. The last 10 sessions are kept on this computer."},
+        {"autoRole","Set role when joining a group","classes","When you join a group, set your role (tank, healer or damage) from your talents. Changing it yourself always wins. Feral druids are asked once."},
+        {"lootMove","Move loot rolls","move","Show a sample loot-roll window you can drag. Click again to lock it. Until you move it, loot rolls appear where Blizzard puts them."},
         {"lootDefault","Use Blizzard's loot-roll position","reset","Forget your moved position and let the game place loot rolls again."},
         {"flightTimer","Flight timer settings","fps","Turn the flight countdown on or off, preview and move it, and change its font, size, outline and color."},
         {"leveling","Leveling stats settings","fps","XP per hour, time to level, kills to level and more, on a small movable line and in the XP bar tooltip."},
-        {"autoSell","Auto-sell grey items","generic","When you open a merchant, sell all grey (junk) items automatically, the same as the merchant's Sell All Junk button. Never runs in combat."},
-        {"autoRepair","Auto-repair","generic","When you open a merchant who can repair, repair all your gear automatically. Never runs in combat."},
+        {"fastLoot","Faster looting","generic","Loot everything the moment a corpse is opened, instead of waiting for each slot. Works when auto loot is on (the Auto Loot game option, or holding the auto-loot key). Items that ask before binding still ask."},
+        {"autoSell","Auto-sell grey items","generic","Sell all grey (junk) items when you open a merchant, like the Sell All Junk button."},
+        {"autoRepair","Auto-repair","generic","Repair all your gear when you visit a merchant who can repair."},
         {"guildRepair","Use guild funds for repairs first","party","When auto-repair runs, use guild bank repair money if your guild allows it, otherwise your own gold."},
     }},
     {key="SystemTroubleshooting",title="Troubleshooting",icon="errors",description="Lua error display and a copyable bug report.",items={
-        {"scriptErrors","Show Lua errors","errors","Controls WoW's scriptErrors setting, the same as /console scriptErrors 1 or 0. Hiding errors does not fix them or suppress Blizzard's blocked-action warning."},
+        {"scriptErrors","Show Lua errors","errors","Show or hide Lua error popups. Hiding them does not fix the errors."},
         {"bugReport","Copy bug report","errors","Show your addon version, game build, enabled features and recent ForeverTools errors in a box you can copy. Nothing is sent automatically."},
     }},
 }
 System.pages=pages
-local toggles={welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,scriptErrors=true}
+local toggles={fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,scriptErrors=true}
 function System:Values()
     local s=self:Settings()
     local getter=(C_CVar and C_CVar.GetCVar) or GetCVar
@@ -84,7 +87,7 @@ function System:Values()
     if coords==nil then coords=not getter or getter("minimapShowPlayerCoords")=="1" end
     return {welcome=FT.db.welcome==true,whatsNew=s.hideWhatsNew~=true,minimap=FT.db.minimapEnabled~=false,coordinates=coords,
         minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=getter and getter("scriptErrors")=="1",
-        autoRole=s.autoRole==true,autoSell=s.autoSell==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true}
+        autoRole=s.autoRole==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true}
 end
 function System:Refresh()
     if not self.buttons then return end
@@ -97,6 +100,12 @@ function System:Refresh()
         end
         if key=="scriptErrors" then button:SetEnabled(getter~=nil) end
         if key=="guildRepair" then button:SetEnabled(values.autoRepair); button:SetAlpha(values.autoRepair and 1 or .45) end
+        if key=="undoKeybinds" then
+            local quick=FT.modules.QuickBind; local has=quick and quick:HasUndo()
+            button:SetEnabled(has); button:SetAlpha(has and 1 or .45)
+            local n=has and #quick:History() or 0
+            button.label:SetText(has and ("Restore keybinds ("..n.." session"..(n==1 and "" or "s")..")") or "Restore keybinds (no sessions yet)")
+        end
         if key=="lootDefault" then
             local custom=FT.modules.LootRoll:Settings().custom==true
             button:SetEnabled(custom); button:SetAlpha(custom and 1 or .45)
@@ -125,6 +134,8 @@ function System:Click(key)
     if key=="flightTimer" then FT:OpenModule("FlightTimer");return end
     if key=="leveling" then FT:OpenModule("Leveling");return end
     if key=="bugReport" then FT.modules.BugReport:Open();return end
+    if key=="quickKeybind" then FT.modules.QuickBind:Open();return end
+    if key=="undoKeybinds" then FT.modules.QuickBind:ShowRestore(self.buttons.undoKeybinds);return end
     if key=="setup" then FT.modules.Onboarding:ShowSetup(true);return end
     if key=="reset" then FT.modules.Profiles:ResetSettings();return end
     if key=="lootMove" then FT.modules.LootRoll:ToggleMove(); return end
@@ -208,6 +219,10 @@ function System:SpellID(tip,id,kind,building)
     if not building and tip.Show then tip:Show() end
 end
 function System:TooltipClass(tip)
+    -- Once our layout has rebuilt the tooltip, the class is already its own
+    -- part. Blizzard refreshes tooltips while they are shown; adding the class
+    -- again after the race would show it twice.
+    if tip.ftPlayerLayout then return end
     if not tip.GetUnit or not UnitRace or not UnitIsPlayer then return end
     local unit=tooltipUnit(tip); if not unit or not safeCall(UnitIsPlayer,unit) then return end
     local race=safeCall(UnitRace,unit); local label,class=safeCall(UnitClass,unit)
@@ -270,7 +285,10 @@ function System:TooltipLayout(tip)
         end
     end
     if not rows[1] or not details then return end
+    local tipModule=FT.modules.Tooltip
+    local tipSettings=tipModule:Settings()
     local heading=rows[1].text
+    local nameColor=rows[1].color
     local friendly=unit=="player"
     if UnitIsFriend then
         local ok,value=pcall(UnitIsFriend,"player",unit)
@@ -282,41 +300,73 @@ function System:TooltipLayout(tip)
     end
     if friendly then
         heading=heading:gsub("|c%x%x%x%x%x%x%x%x",""):gsub("|r","")
-        rows[1].color={1,1,1}
+        nameColor={1,1,1}
     end
-    tip.ftGuildOnName=false
-    if FT.modules.Tooltip:Settings().guild and guild and guild~="" then
-        local faction=safeCall(UnitFactionGroup,unit)
+    local faction,factionName=safeCall(UnitFactionGroup,unit)
+    -- The faction row ("Horde") becomes its own part; drop it from the extra rows.
+    local factionText
+    for i=#rows,2,-1 do
+        local clean=plain(rows[i].text)
+        if (factionName and clean==factionName) or (faction and clean==faction) then
+            factionText=rows[i].text; table.remove(rows,i)
+        end
+    end
+    -- Split Blizzard's "Level 3 <race> <class> (Player)" line into parts.
+    local parts={name=tipModule.hex(nameColor[1],nameColor[2],nameColor[3])..heading.."|r",faction=factionText and ("|cffffffff"..plain(factionText).."|r")}
+    local detailText=plain(details)
+    local level=safeCall(UnitLevel,unit)
+    local levelToken=(type(level)=="number" and level>0) and tostring(level) or "??"
+    local _,levelEnd=detailText:find(levelToken,1,true)
+    local label,classToken=safeCall(UnitClass,unit)
+    local rest=levelEnd and detailText:sub(levelEnd+1) or nil
+    local classStart,classEnd
+    if rest and label then classStart,classEnd=rest:find(label,1,true) end
+    if levelEnd and classStart then
+        parts.level="|cffffffff"..detailText:sub(1,levelEnd).."|r"
+        local raceText=rest:sub(1,classStart-1):match("^%s*(.-)%s*$")
+        if raceText=="" then raceText=race or "" end
+        parts.race=raceText~="" and ("|cffffffff"..raceText.."|r") or nil
+        local c=(CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS or {})[classToken]
+        local suffix=rest:sub(classEnd+1):match("^%s*(.-)%s*$")
+        parts.class=(c and tipModule.hex(c.r,c.g,c.b) or "|cffffffff")..label.."|r"
+        -- Extra words such as "(Player)" stay at the end of the level line.
+        parts.suffix=suffix~="" and ("|cffffffff"..suffix.."|r") or nil
+    else
+        -- Unknown wording: keep Blizzard's whole line as the Level part.
+        parts.level="|cffffffff"..detailText.."|r"
+    end
+    if guild and guild~="" then
         local color=faction=="Horde" and PLAYER_FACTION_COLOR_HORDE or faction=="Alliance" and PLAYER_FACTION_COLOR_ALLIANCE
         local index=(PLAYER_FACTION_GROUP and PLAYER_FACTION_GROUP[faction]) or (faction=="Horde" and 0 or faction=="Alliance" and 1)
         color=color or (PLAYER_FACTION_COLORS and index and PLAYER_FACTION_COLORS[index])
         local tag="<"..guild..">"
-        local tipSettings=FT.modules.Tooltip:Settings()
-        if tipSettings.guildFactionIcon and (faction=="Horde" or faction=="Alliance") then
-            -- The native PvP badge occupies the upper-left portion of a
-            -- 64px canvas. Crop its padding rather than shrinking the emblem.
-            local headingLine=_G[prefix.."TextLeft1"]
-            local _,nativeSize=headingLine:GetFont()
-            local size=math.max(22,math.floor((tipSettings.name>0 and tipSettings.name or nativeSize or 14)*1.4+.5))
-            local icon="|TInterface\\TargetingFrame\\UI-PVP-"..faction..":"..size..":"..size..":0:0:64:64:0:40:0:40|t"
-            tag=tipSettings.guildIconPosition=="after" and (tag.." "..icon) or (icon.." "..tag)
-        end
-        -- Faction coloring is optional (off by default); otherwise the guild uses plain white like Blizzard's guild line.
+        -- Faction coloring is optional (off by default); otherwise plain white like Blizzard's guild line.
         if not tipSettings.guildFactionColor then tag="|cffffffff"..tag.."|r"
         elseif color and color.WrapTextInColorCode then tag=color:WrapTextInColorCode(tag)
-        elseif color and color.r then tag=string.format("|cff%02x%02x%02x%s|r",math.floor(color.r*255+.5),math.floor(color.g*255+.5),math.floor(color.b*255+.5),tag) end
-        heading=heading.." "..tag
-        tip.ftGuildOnName=true
+        elseif color and color.r then tag=tipModule.hex(color.r,color.g,color.b)..tag.."|r"
+        else tag="|cffffffff"..tag.."|r" end
+        parts.guild=tag
     end
+    parts.target="|cffc9a0ffTarget: None|r"
+    -- The native PvP badge occupies the upper-left of a 64px canvas; crop its padding.
+    local headingLine=_G[prefix.."TextLeft1"]
+    local _,nativeSize=headingLine:GetFont()
+    local size=math.max(22,math.floor((tipSettings.name>0 and tipSettings.name or nativeSize or 14)*1.4+.5))
+    local icon=tipModule:FactionIcon(faction,size)
+    local lines=tipModule:Compose(parts,icon)
+    if #lines==0 then return end
     tip:ClearLines()
     tip.ftNameLine,tip.ftDetailsLine,tip.ftTargetLine=nil,nil,nil
-    for kind in FT.modules.Tooltip:Settings().order:gmatch(".") do
-        if kind=="N" then tip:AddLine(heading,unpack(rows[1].color));tip.ftNameLine=tip:NumLines()
-        elseif kind=="L" then tip:AddLine(details,1,1,1);tip.ftDetailsLine=tip:NumLines()
-        elseif kind=="T" and FT.modules.Tooltip:Settings().target then
-            tip:AddLine("Target: None",.79,.63,1);tip.ftTargetLine=tip:NumLines()
-        end
+    tip.ftGuildOnName=false
+    for _,line in ipairs(lines) do
+        tip:AddLine(line.text,1,1,1)
+        local index=tip:NumLines()
+        if line.name and not tip.ftNameLine then tip.ftNameLine=index end
+        if line.details and not line.name and not tip.ftDetailsLine then tip.ftDetailsLine=index end
+        if line.target then tip.ftTargetLine=index end
+        if line.guildOnName then tip.ftGuildOnName=true end
     end
+    tip.ftDetailsLine=tip.ftDetailsLine or -1
     for i=2,#rows do
         local row=rows[i]
         if row.right and row.right~="" and tip.AddDoubleLine then
