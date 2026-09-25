@@ -523,12 +523,13 @@ function System:CheckFeralPrompt()
     if not self.rolePrompt then
         local frame=CreateFrame("Frame","ForeverToolsRoleChoice",UIParent)
         self.rolePrompt=frame
-        frame:SetSize(330,126);frame:SetPoint("CENTER",UIParent,"CENTER",0,170)
+        frame:SetSize(330,132);frame:SetPoint("CENTER",UIParent,"CENTER",0,170)
         frame:SetFrameStrata("DIALOG");FT:Panel(frame)
         local title=FT:Label(frame,"Your role for this group?",15)
-        title:SetPoint("TOP",0,-16)
+        title:SetPoint("TOP",0,-18)
+        FT:AddClose(frame)
         local note=FT:Label(frame,"Feral can tank or deal damage.",12)
-        note:SetPoint("TOP",0,-40)
+        note:SetPoint("TOP",0,-44)
         for i,entry in ipairs({{"Tank","TANK"},{"Damage","DAMAGER"},{"Skip"}}) do
             local role=entry[2]
             local button=FT:QuietButton(frame,entry[1],94,32)

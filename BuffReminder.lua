@@ -43,6 +43,12 @@ function Reminder:Settings()
     for i=1,3 do s.textColor[i]=math.max(0,math.min(1,tonumber(s.textColor[i]) or 1)) end
     if type(s.groupTextColor)~="table" then s.groupTextColor={.82,.68,1} end
     for i=1,3 do s.groupTextColor[i]=math.max(0,math.min(1,tonumber(s.groupTextColor[i]) or 1)) end
+    -- Where each kind of notice may appear. Self notices default to everywhere;
+    -- group notices keep their original dungeon / raid / PvP behavior.
+    for field,defaults in pairs({selfWhere={world=true,city=true,dungeon=true,raid=true,pvp=true},groupWhere={world=false,city=false,dungeon=true,raid=true,pvp=true}}) do
+        if type(s[field])~="table" then s[field]={} end
+        for key,on in pairs(defaults) do if type(s[field][key])~="boolean" then s[field][key]=on end end
+    end
     if type(s.selected)~="table" then s.selected={} end
     if type(s.specSelected)~="table" then s.specSelected={} end
     return s
@@ -235,14 +241,29 @@ function Reminder:FamilyPresent(group,unit)
     if unknown then return nil end
     return false
 end
+-- The player's surroundings, as the "Show in" choices name them.
+Reminder.places={{"world","Open world","Outside dungeons, raids and battlegrounds, away from cities and inns."},{"city","Cities","In cities and inns (while resting)."},{"dungeon","Dungeons","Inside five-player dungeons."},{"raid","Raids","Inside raids."},{"pvp","PvP","In battlegrounds and arenas."}}
+function Reminder:Place()
+    local kind
+    if type(GetInstanceInfo)=="function" then local ok,_,value=pcall(GetInstanceInfo); if ok and safe(value) then kind=value end end
+    if kind=="party" or kind=="scenario" then return "dungeon" end
+    if kind=="raid" then return "raid" end
+    if kind=="pvp" or kind=="arena" then return "pvp" end
+    if IsResting then local ok,resting=pcall(IsResting); if ok and safe(resting) and resting then return "city" end end
+    return "world"
+end
+function Reminder:ShowsHere(field)
+    local where=self:Settings()[field]
+    return where[self:Place()]==true
+end
 function Reminder:GroupUnits()
-    if type(GetInstanceInfo)~="function" or type(GetNumGroupMembers)~="function" then return {} end
-    local ok,_,kind=pcall(GetInstanceInfo)
-    if not ok or not safe(kind) or (kind~="party" and kind~="raid" and kind~="pvp" and kind~="arena") then return {} end
+    if type(GetNumGroupMembers)~="function" then return {} end
     local okCount,count=pcall(GetNumGroupMembers)
     if not okCount or not safe(count) or type(count)~="number" or count<2 then return {} end
     local units={}
-    local prefix=(kind=="raid" or (kind=="pvp" and count>5)) and "raid" or "party"
+    local raid=false
+    if IsInRaid then local ok,value=pcall(IsInRaid); raid=ok and safe(value) and value or false end
+    local prefix=raid and "raid" or "party"
     for i=1,math.min(count,prefix=="raid" and 40 or 4) do
         local unit=prefix..i
         local okExists,exists=true,true
@@ -336,8 +357,9 @@ function Reminder:Refresh(cachedSpells)
     local currentSpec=self:CurrentSpec()
     self.missing={}
     self.groupMissing={}
+    local selfHere=self:ShowsHere("selfWhere")
     if s.enabled and not InCombatLockdown() then
-        for _,entry in ipairs(self:Available(learned)) do
+        for _,entry in ipairs(selfHere and self:Available(learned) or {}) do
             local missing
             if entry.group=="stance" then missing=self:StanceStatus()==false
             else missing=self:HasAura(entry.name)==false and self:FamilyPresent(entry.group)==false end
@@ -345,7 +367,7 @@ function Reminder:Refresh(cachedSpells)
                 self.missing[#self.missing+1]=entry
             end
         end
-        if s.groupEnabled then
+        if s.groupEnabled and self:ShowsHere("groupWhere") then
             local units=self:GroupUnits()
             if #units>0 then
                 for _,entry in ipairs(self:Available(learned)) do
@@ -363,7 +385,7 @@ function Reminder:Refresh(cachedSpells)
                 end
             end
         end
-        if self:Class()=="Shaman" then
+        if self:Class()=="Shaman" and selfHere then
             for _,slot in ipairs({"main","off"}) do
                 local name=s[slot.."Enchant"]
                 if slot=="main" and name==nil then
@@ -375,7 +397,7 @@ function Reminder:Refresh(cachedSpells)
                 end
             end
         end
-        for _,warning in ipairs(FT.BuffRanks:Warnings(learned,s)) do self.missing[#self.missing+1]=warning end
+        if selfHere then for _,warning in ipairs(FT.BuffRanks:Warnings(learned,s)) do self.missing[#self.missing+1]=warning end end
         FT.BuffRanks:ObserveWeapons()
     end
     if self.badge then
@@ -440,7 +462,12 @@ end
 function Reminder:RefreshMenu(learned)
     local s=self:Settings();learned=learned or self:Learned()
     self.toggle.label:SetText("Self-buff reminders: "..(s.enabled and "On" or "Off"));FT:SetSelected(self.toggle,s.enabled)
-    self.groupToggle.label:SetText("Group reminders in dungeons / raids: "..(s.groupEnabled and "On" or "Off"));FT:SetSelected(self.groupToggle,s.groupEnabled)
+    self.groupToggle.label:SetText("Group reminders: "..(s.groupEnabled and "On" or "Off"));FT:SetSelected(self.groupToggle,s.groupEnabled)
+    for field,row in pairs(self.whereRows) do
+        local active=field=="selfWhere" and s.enabled or field=="groupWhere" and s.groupEnabled
+        for key,button in pairs(row.buttons) do FT:SetSelected(button,s[field][key]); button:SetAlpha(active and 1 or .5) end
+        row.label:SetAlpha(active and 1 or .5)
+    end
     self.rankToggle.label:SetText("Low-rank alerts: "..(s.lowRank and "On" or "Off"));FT:SetSelected(self.rankToggle,s.lowRank)
     self.rankOneToggle.label:SetText("Ignore rank 1: "..(s.ignoreRankOne and "On" or "Off"));FT:SetSelected(self.rankOneToggle,s.ignoreRankOne)
     self.markerToggle.label:SetText("Mark on action bars: "..(s.rankMarker and "On" or "Off"));FT:SetSelected(self.markerToggle,s.rankMarker)
@@ -485,14 +512,23 @@ function Reminder:RefreshMenu(learned)
     if weapon then place(self.mainDropdown,24,y);place(self.offDropdown,24,y+38);y=y+80 end
     place(self.rankToggle,24,y);place(self.rankOneToggle,286,y);y=y+38
     place(self.markerToggle,24,y);place(self.exceptions,286,y);y=y+38
-    place(self.selfColorButton,24,y);y=y+46
+    place(self.selfColorButton,24,y);y=y+40
+    place(self.whereRows.selfWhere.label,24,y+9);self:PlaceWhere("selfWhere",y);y=y+46
     place(self.groupToggle,24,y);y=y+40
+    place(self.whereRows.groupWhere.label,24,y+9);self:PlaceWhere("groupWhere",y);y=y+40
     place(self.selfPreview,24,y);place(self.groupPreview,286,y);y=y+40
     place(self.groupColorButton,24,y);y=y+46
     place(self.moveButton,24,y);y=y+44
     place(self.sizeValue,24,y);place(self.sizeSlider,186,y);y=y+35
     place(self.resetPosition,24,y)
     self.frame:SetHeight(y+54)
+end
+function Reminder:PlaceWhere(field,top)
+    local x=92
+    for _,place in ipairs(self.places) do
+        local b=self.whereRows[field].buttons[place[1]]
+        b:ClearAllPoints(); b:SetPoint("TOPLEFT",self.frame,"TOPLEFT",x,-top); x=x+89
+    end
 end
 function Reminder:Open()
     if not self.frame then
@@ -532,9 +568,23 @@ function Reminder:Open()
             dropdown:SetPoint("TOPLEFT",24,-405-(i-1)*42);self[slot.."Dropdown"]=dropdown
             FT:Tooltip(dropdown,"Weapon enchant reminder","Choose an enchant for this weapon slot. Any active temporary weapon buff clears the missing notice. Empty slots and shields stay quiet; your choice is kept for later weapon swaps.")
         end
+        -- "Show in" rows: pick every place a notice may appear (multiple choice).
+        self.whereRows={}
+        for _,field in ipairs({"selfWhere","groupWhere"}) do
+            local row={buttons={}}
+            row.label=FT:Label(frame,"Show in:",13); row.label:SetTextColor(.78,.74,.86)
+            for _,place in ipairs(self.places) do
+                local key=place[1]
+                local b=FT:QuietButton(frame,place[2],86,30)
+                b:SetScript("OnClick",function() local s=self:Settings(); s[field][key]=not s[field][key]; self:Apply() end)
+                FT:Tooltip(b,place[2],(field=="selfWhere" and "Show self-buff notices here. " or "Show group-buff notices here (only while in a group). ")..place[3].." Pick as many places as you like.")
+                row.buttons[key]=b
+            end
+            self.whereRows[field]=row
+        end
         self.groupToggle=FT:QuietButton(frame,"",512,34,"party");self.groupToggle:SetPoint("TOPLEFT",24,-488)
         self.groupToggle:SetScript("OnClick",function() local s=self:Settings();s.groupEnabled=not s.groupEnabled;self:Apply() end)
-        FT:Tooltip(self.groupToggle,"Group reminders","Shows a small notice when grouped inside a dungeon, raid or battleground and a chosen group buff is missing. Solo and open-world groups stay quiet. It hides in combat.")
+        FT:Tooltip(self.groupToggle,"Group reminders","Shows a small notice while you are in a group and a chosen group buff is missing from a member. Choose where below; by default dungeons, raids and PvP. Hidden in combat and when solo.")
         self.moveButton=FT:QuietButton(frame,"",512,34,"move");self.moveButton:SetPoint("TOPLEFT",24,-528)
         self.moveButton:SetScript("OnClick",function() self:SetMoving(not self.moving) end)
         FT:Tooltip(self.moveButton,"Move reminders","Unlock, drag the reminder on screen, then lock it. Its position saves with your profile.")
@@ -598,7 +648,7 @@ function Reminder:Open()
 end
 FT:RegisterModule("BuffReminder",Reminder)
 local events=CreateFrame("Frame")
-for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","PLAYER_DEAD","PLAYER_ALIVE","PLAYER_UNGHOST","PLAYER_CONTROL_LOST","PLAYER_CONTROL_GAINED","UNIT_ENTERED_VEHICLE","UNIT_EXITED_VEHICLE","ZONE_CHANGED_NEW_AREA","GROUP_ROSTER_UPDATE","UNIT_AURA","SPELLS_CHANGED","PLAYER_TALENT_UPDATE","UPDATE_SHAPESHIFT_FORM","UPDATE_SHAPESHIFT_FORMS","PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","WEAPON_ENCHANT_CHANGED","WEAPON_SLOT_CHANGED","UNIT_SPELLCAST_START","UNIT_SPELLCAST_SUCCEEDED","PLAYER_LEVEL_UP","TRAINER_SHOW","TRAINER_UPDATE"}) do pcall(events.RegisterEvent,events,event) end
+for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","PLAYER_DEAD","PLAYER_ALIVE","PLAYER_UNGHOST","PLAYER_CONTROL_LOST","PLAYER_CONTROL_GAINED","UNIT_ENTERED_VEHICLE","UNIT_EXITED_VEHICLE","ZONE_CHANGED_NEW_AREA","GROUP_ROSTER_UPDATE","UNIT_AURA","SPELLS_CHANGED","PLAYER_TALENT_UPDATE","UPDATE_SHAPESHIFT_FORM","UPDATE_SHAPESHIFT_FORMS","PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","WEAPON_ENCHANT_CHANGED","WEAPON_SLOT_CHANGED","UNIT_SPELLCAST_START","UNIT_SPELLCAST_SUCCEEDED","PLAYER_LEVEL_UP","TRAINER_SHOW","TRAINER_UPDATE","PLAYER_UPDATE_RESTING"}) do pcall(events.RegisterEvent,events,event) end
 events:SetScript("OnEvent",function(_,event,unit,castGUID,spellID)
     if not FT.dbReady then return end
     if event=="TRAINER_SHOW" or event=="TRAINER_UPDATE" then FT.BuffRanks:CaptureTrainer() end

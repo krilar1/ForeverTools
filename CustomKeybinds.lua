@@ -189,30 +189,77 @@ function B:Open()
             FT:Tooltip(picker,d[2],"Select a learned active spell. The same spell is used on your hovered unit, friendly or enemy as the spell allows. Passive, unlearned and other-specialization spells are excluded. Search above filters both lists. None restores normal scrolling.")
         end
         self.status=FT:Label(self.frame,"",13); self.status:SetPoint("TOPLEFT",24,-594); self.status:SetSize(592,42)
-        local hint=FT:Label(self.frame,"Hover a spell below, then scroll up or down to bind it.",13)
+        local hint=FT:Label(self.frame,"Click a spell below, then scroll up or down to bind it.",13)
         hint:SetPoint("TOPLEFT",24,-336)
         self.spellRows={}
         for i=1,5 do
             local row=FT:QuietButton(self.frame,"",592,36,"mouseover"); row:SetPoint("TOPLEFT",24,-360-(i-1)*40)
+            -- Scrolling over the list only pages it; binding needs an explicit click first.
             row:EnableMouseWheel(true)
-            row:SetScript("OnMouseWheel",function(owner,delta)
-                if not owner.spell then return end
-                self:SelectSpell(delta>0 and "up" or "down",owner.spell.value)
-                FT:Toast(owner.spell.name.." bound to scroll "..(delta>0 and "up" or "down"))
-            end)
-            FT:Tooltip(row,"Bind this spell","Hover here and scroll up or down. Your selection saves immediately, even when casting is unavailable on this beta. Use the search or page buttons to browse.")
+            row:SetScript("OnMouseWheel",function(_,delta) self:TurnPage(delta>0 and -1 or 1) end)
+            row:SetScript("OnClick",function(owner) if owner.spell then self:StartBinding(owner.spell) end end)
+            FT:Tooltip(row,"Bind this spell","Click, then scroll up or down to choose the wheel direction. Click again or press Esc to cancel. Your choice saves immediately.")
             self.spellRows[i]=row
         end
+        self:CreateBindOverlay()
         local prev=FT:QuietButton(self.frame,"Previous",110,26,"reset"); prev:SetPoint("TOPLEFT",24,-564)
         local next=FT:QuietButton(self.frame,"Next",110,26,"add"); next:SetPoint("TOPLEFT",506,-564)
-        prev:SetScript("OnClick",function() self.spellPage=math.max(1,(self.spellPage or 1)-1); self:RenderSpellRows() end)
-        next:SetScript("OnClick",function() self.spellPage=math.min(self.spellPages or 1,(self.spellPage or 1)+1); self:RenderSpellRows() end)
+        prev:SetScript("OnClick",function() self:TurnPage(-1) end)
+        next:SetScript("OnClick",function() self:TurnPage(1) end)
         self.pageLabel=FT:Label(self.frame,"",12); self.pageLabel:SetPoint("TOP",0,-570)
         local info=FT:Info(self.frame,"Mouse-wheel casting","Choose a learned spell, then bind a wheel direction. Over a unit, the wheel uses that spell; elsewhere, it zooms the camera. Change bindings outside combat.")
         info:SetPoint("BOTTOMRIGHT",-24,20)
         FT:Tooltip(self.toggle,"Enable mouse-wheel casting","Select one learned spell for each direction below. Off restores the previous wheel bindings. Each scroll casts once.")
     end
     self:Refresh(); self.frame:Show()
+end
+function B:TurnPage(step)
+    self.spellPage=math.max(1,math.min(self.spellPages or 1,(self.spellPage or 1)+step))
+    self:RenderSpellRows()
+end
+-- Bind mode: a click on a spell arms the wheel once. The overlay covers the
+-- window so the next wheel tick is caught anywhere on it, never by accident.
+function B:CreateBindOverlay()
+    local frame=self.frame
+    local overlay=CreateFrame("Button",nil,frame); self.overlay=overlay
+    overlay:SetPoint("TOPLEFT",8,-58); overlay:SetPoint("BOTTOMRIGHT",-8,8)
+    overlay:SetFrameLevel(frame:GetFrameLevel()+30)
+    overlay:EnableMouse(true); overlay:EnableMouseWheel(true); overlay:RegisterForClicks("AnyUp")
+    FT:RoundedFill(overlay,.02,.015,.04,.9)
+    local box=CreateFrame("Frame",nil,overlay); box:SetSize(420,150); box:SetPoint("CENTER"); FT:Panel(box)
+    box.icon=box:CreateTexture(nil,"ARTWORK"); box.icon:SetSize(40,40); box.icon:SetPoint("TOP",0,-20)
+    box.icon:SetTexCoord(.07,.93,.07,.93)
+    box.title=FT:Label(box,"",16,true); box.title:SetPoint("TOP",box.icon,"BOTTOM",0,-10); box.title:SetWidth(390); box.title:SetJustifyH("CENTER")
+    box.hint=FT:Label(box,"Scroll up or down to bind. Click or press Esc to cancel.",13); box.hint:SetPoint("TOP",box.title,"BOTTOM",0,-8)
+    box.hint:SetWidth(390); box.hint:SetJustifyH("CENTER"); box.hint:SetTextColor(.78,.74,.86)
+    overlay.box=box
+    overlay:SetScript("OnMouseWheel",function(_,delta)
+        local spell=self.binding; self:StopBinding(); if not spell then return end
+        local key=delta>0 and "up" or "down"
+        self:SelectSpell(key,spell.value)
+        FT:Toast(spell.name.." bound to scroll "..key,3)
+    end)
+    overlay:SetScript("OnClick",function() self:StopBinding() end)
+    overlay:SetScript("OnKeyDown",function(owner,key)
+        if key=="ESCAPE" then
+            if owner.SetPropagateKeyboardInput and not InCombatLockdown() then owner:SetPropagateKeyboardInput(false) end
+            self:StopBinding()
+        elseif owner.SetPropagateKeyboardInput and not InCombatLockdown() then owner:SetPropagateKeyboardInput(true) end
+    end)
+    overlay:Hide()
+    frame:HookScript("OnHide",function() self:StopBinding() end)
+end
+function B:StartBinding(spell)
+    if InCombatLockdown() then return end
+    self.binding=spell
+    local box=self.overlay.box
+    box.icon:SetTexture(spell.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+    box.title:SetText("Bind "..spell.label)
+    self.overlay:EnableKeyboard(true); self.overlay:Show()
+end
+function B:StopBinding()
+    self.binding=nil
+    if self.overlay then self.overlay:EnableKeyboard(false); self.overlay:Hide() end
 end
 function B:RenderSpellRows()
     local spells=self:SpellOptions(); table.remove(spells,1)

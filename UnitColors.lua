@@ -257,10 +257,53 @@ function Colors:Refresh()
     self.all.label:SetText(all and "All unit frames: On" or "Enable all unit frames")
     FT:SetSelected(self.all, all)
     self.note:SetText(self.deferred and "Saved. Changes apply when you leave combat." or "Colors health bars by class. NPC, dead and offline colors stay native.\nBlizzard frames only; power-bar colors stay unchanged.")
+    self:RefreshDispel()
+end
+-- Dispel glow lives here with the other unit-frame visuals (DispelGlow.lua).
+function Colors:BuildDispel()
+    local glow=FT.modules.DispelGlow; if not glow then return end
+    local frame=self.frame
+    local head=FT:Label(frame,"Dispel glow",16,true); head:SetPoint("TOPLEFT",24,-340)
+    local info=FT:Info(frame,"Dispel glow","A soft outline in the debuff's color (magic, curse, disease or poison) appears around a frame's bars while that unit has a debuff you can remove. Only dispels you have learned count, so nothing lights up before you train them. No icons are added.")
+    info:SetPoint("TOPRIGHT",-24,-334)
+    self.dispelToggle=FT:AccentButton(frame,"",542,34,"buffs"); self.dispelToggle:SetPoint("TOPLEFT",24,-368)
+    self.dispelToggle:SetScript("OnClick",function() local s=glow:Settings(); s.enabled=not s.enabled; glow:Apply(); self:RefreshDispel() end)
+    FT:Tooltip(self.dispelToggle,"Dispel glow","Show a colored outline on unit frames when a debuff you can dispel is present. Choose the frames below.")
+    self.dispelFrames={}
+    for i,key in ipairs(glow.frameKeys) do
+        local b=FT:QuietButton(frame,glow.labels[key],102,32)
+        b:SetPoint("TOPLEFT",24+(i-1)*110,-412)
+        b:SetScript("OnClick",function() local s=glow:Settings(); s[key]=not s[key]; glow:Apply(); self:RefreshDispel() end)
+        FT:Tooltip(b,glow.labels[key].." frames",key=="raid" and "Compact party and raid frames. Blizzard also offers its own dispel highlight for these in Edit Mode; use one or the other." or "Show the glow on the "..glow.labels[key]:lower().." frame"..(key=="party" and "s" or "")..".")
+        self.dispelFrames[key]=b
+    end
+    local names={soft="Soft",medium="Medium",strong="Strong"}
+    self.dispelStrength=FT:Dropdown(frame,266,function()
+        local icon="Interface\\Icons\\"..FT.icons.skins
+        return {{value="soft",label="Glow: Soft",icon=icon},{value="medium",label="Glow: Medium",icon=icon},{value="strong",label="Glow: Strong",icon=icon}}
+    end,function(value) glow:Settings().strength=value; glow:Apply(); self:RefreshDispel() end,"skins")
+    self.dispelStrength:SetPoint("TOPLEFT",24,-454); self.dispelStrength:SetHeight(32)
+    self.dispelStrength.names=names
+    FT:Tooltip(self.dispelStrength,"Glow strength","How bright the outline is.")
+    self.dispelPulse=FT:QuietButton(frame,"",266,32,"reset"); self.dispelPulse:SetPoint("TOPLEFT",300,-454)
+    self.dispelPulse:SetScript("OnClick",function() local s=glow:Settings(); s.pulse=not s.pulse; glow:Apply(); self:RefreshDispel() end)
+    FT:Tooltip(self.dispelPulse,"Gentle pulse","Let the outline slowly fade in and out so it catches the eye.")
+end
+function Colors:RefreshDispel()
+    local glow=FT.modules.DispelGlow
+    if not glow or not self.dispelToggle then return end
+    local s=glow:Settings()
+    self.dispelToggle.label:SetText("Dispel glow: "..(s.enabled and "On" or "Off")); FT:SetSelected(self.dispelToggle,s.enabled)
+    for key,b in pairs(self.dispelFrames) do
+        FT:SetSelected(b,s[key]); b:SetAlpha(s.enabled and 1 or .5)
+    end
+    self.dispelStrength.value=s.strength
+    self.dispelStrength.label:SetText("Glow: "..(self.dispelStrength.names[s.strength] or "Medium"))
+    self.dispelPulse.label:SetText("Gentle pulse: "..(s.pulse and "On" or "Off")); FT:SetSelected(self.dispelPulse,s.pulse)
 end
 function Colors:Open()
     if not self.frame then
-        self.frame=FT:Window("ForeverToolsUnitColors", "Unitframe colors", 590, 450)
+        self.frame=FT:Window("ForeverToolsUnitColors", "Unitframe colors", 590, 540)
         FT:AppearanceBack(self.frame)
         local badge = FT:Label(self.frame, "WORK IN PROGRESS", 12, true)
         badge:SetPoint("BOTTOMLEFT",24,18); badge:SetTextColor(1,.72,.25)
@@ -291,7 +334,9 @@ function Colors:Open()
                 manager:Show()
             end
         end)
-        self.note=FT:Label(self.frame,"",13); self.note:SetPoint("BOTTOMLEFT",24,28); self.note:SetSize(542,60)
+        self.note=FT:Label(self.frame,"",13); self.note:SetPoint("TOPLEFT",24,-290); self.note:SetSize(542,36)
+        self.note:SetJustifyV("TOP")
+        self:BuildDispel()
     end
     self:Apply(); self.frame:Show()
 end

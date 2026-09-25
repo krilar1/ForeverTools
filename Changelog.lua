@@ -1,6 +1,16 @@
 local _,FT=...
 -- Short player-facing notes for the "What's new" window. Newest first.
 FT.changelog={
+    {version="0.14.2",notes={
+        "New: dispel glow. A colored outline on player, target, focus, party or raid-style frames while they have a debuff you can remove (Fonts & colors → Unitframe colors). Off by default.",
+        "New: profile exports can include all your keybinds, and importing applies them (Profiles → Export / Import).",
+        "Mouse-wheel binding is now deliberate: click a spell in Custom keybinds, then scroll to bind it. Scrolling the list only pages it.",
+        "New characters now ask whether to use a saved profile or start a new one.",
+        "New: optional rounded background for leveling stats, with color and transparency.",
+        "Buff reminders: choose where self and group notices appear — open world, cities, dungeons, raids and PvP.",
+        "Every popup now has the same close button.",
+        "Fixes: no more gap in the dark-mode target health bar next to the portrait, and XP per hour starts with your first kill.",
+    }},
     {version="0.13.6",notes={
         "Everything now starts off on new installs, so the game looks like Blizzard's until you choose otherwise. Existing setups are unchanged.",
         "New: a short first-time setup with Minimal, Dark mode and Full presets. Run it again from System → General.",

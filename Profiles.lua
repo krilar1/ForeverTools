@@ -58,7 +58,7 @@ function Profiles:ShowSwitcher(owner)
 end
 -- Only preferences are copied. Macro history and installed WoW macros belong to
 -- the character and are never rewritten by loading an appearance profile.
-local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling"}
+local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow"}
 local function copy(value)
     if type(value) ~= "table" then return value end
     local result={}; for k,v in pairs(value) do result[k]=copy(v) end; return result
@@ -129,7 +129,7 @@ function Profiles:Load(name,stayPage,silent)
     FT.minimapDragAngle=nil
     self.selected=name
     self:Remember(name)
-    for _,module in ipairs({"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling"}) do
+    for _,module in ipairs({"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow"}) do
         local object=FT.modules[module]; if object then object:Apply() end
     end
     FT:UpdateMinimap()
@@ -184,28 +184,29 @@ function Profiles:Refresh()
 end
 function Profiles:Attach(home)
     if not self.choice then
-        local panel=CreateFrame("Frame",nil,home); panel:SetSize(392,280); panel:EnableMouse(true); panel:SetPoint("TOPRIGHT",home,"TOPRIGHT",-16,-50); FT:Panel(panel)
+        local panel=CreateFrame("Frame",nil,home); panel:SetSize(392,288); panel:EnableMouse(true); panel:SetPoint("TOPRIGHT",home,"TOPRIGHT",-16,-50); FT:Panel(panel)
         self.panel=panel; panel:SetFrameLevel(home:GetFrameLevel()+20); panel:Hide()
         local toggle=FT:QuietButton(home,"Profiles",105,28,"profiles")
         toggle:SetPoint("RIGHT",home.closeButton,"LEFT",-6,0)
         toggle:SetScript("OnClick",function() panel:SetShown(not panel:IsShown()) end)
         FT:Tooltip(toggle,"Profiles","Create, load, save or delete your local profiles.")
         home:HookScript("OnHide",function() panel:Hide() end)
-        local label=FT:Label(panel,"Profiles",14,true); label:SetPoint("TOPLEFT",10,-8)
+        local label=FT:Label(panel,"Profiles",14,true); label:SetPoint("TOPLEFT",10,-16)
+        local close=FT:AddClose(panel,nil,8)
         local info=FT:Info(panel,"Profiles","Profiles save your setup for reuse on other characters. Choose one to load it, or type a name and select Create. Use Export to keep a backup copy.")
-        info:SetPoint("TOPRIGHT",-6,-4)
+        info:SetPoint("RIGHT",close,"LEFT",-4,0)
         self.choice=FT:Dropdown(panel,372,function()
             local list={}; for name,value in pairs(self:Store()) do if type(name)=="string" and type(value)=="table" then list[#list+1]={value=name,label=name,icon="Interface\\Icons\\INV_Misc_Book_09"} end end
             table.sort(list,function(a,b) return a.label<b.label end); return list
         end,function(name) self:Load(name) end,"profiles")
-        self.choice:SetPoint("TOPLEFT",10,-38)
-        self.name=CreateFrame("EditBox",nil,panel); self.name:SetSize(245,28); self.name:SetPoint("TOPLEFT",10,-72)
+        self.choice:SetPoint("TOPLEFT",10,-46)
+        self.name=CreateFrame("EditBox",nil,panel); self.name:SetSize(245,28); self.name:SetPoint("TOPLEFT",10,-80)
         self.name:SetFont(FT.bodyFont,14,""); self.name:SetAutoFocus(false); self.name:SetTextInsets(8,8,0,0); FT:Panel(self.name)
         FT:Tooltip(self.name,"New profile name","Type a name, then click Create to save the current settings.")
         local create=FT:QuietButton(panel,"Create",122,28,"add"); create:SetPoint("LEFT",self.name,"RIGHT",10,0)
         create:SetScript("OnClick",function() if self:Create(self.name:GetText()) then self.name:SetText(""); self.name:ClearFocus() end end)
         FT:Tooltip(create,"Create profile","Start a new profile with default settings (everything off) and switch to it. Your custom macros and fonts stay available. To store your current look instead, use Save on an existing profile.")
-        self.load=FT:QuietButton(panel,"Load",116,28,"profiles"); self.load:SetPoint("TOPLEFT",10,-106)
+        self.load=FT:QuietButton(panel,"Load",116,28,"profiles"); self.load:SetPoint("TOPLEFT",10,-114)
         self.load:SetScript("OnClick",function() self:Load(self.selected) end)
         self.save=FT:QuietButton(panel,"Save",116,28,"profiles"); self.save:SetPoint("LEFT",self.load,"RIGHT",12,0)
         self.delete=FT:QuietButton(panel,"Delete",116,28,"delete"); self.delete:SetPoint("LEFT",self.save,"RIGHT",12,0)
@@ -217,7 +218,7 @@ function Profiles:Attach(home)
             FT:ShowPopup("FOREVERTOOLS_PROFILE_SAVE")
         end)
         self.delete:SetScript("OnClick",function() self.pendingDelete=self.selected; FT:ShowPopup("FOREVERTOOLS_PROFILE_DELETE") end)
-        local export=FT:QuietButton(panel,"Export",180,28,"profiles"); export:SetPoint("TOPLEFT",10,-144)
+        local export=FT:QuietButton(panel,"Export",180,28,"profiles"); export:SetPoint("TOPLEFT",10,-152)
         export:SetScript("OnClick",function() self:Transfer(false) end)
         local import=FT:QuietButton(panel,"Import",180,28,"profiles"); import:SetPoint("LEFT",export,"RIGHT",12,0)
         import:SetScript("OnClick",function() self:Transfer(true) end)
@@ -228,13 +229,13 @@ function Profiles:Attach(home)
             for _,name in ipairs(names) do list[#list+1]={value=name,label="New characters: "..name,icon="Interface\\Icons\\INV_Misc_Book_09"} end
             return list
         end,function(value) FT.db.newCharacterProfile=value~="\001last" and value or nil; self:Refresh() end,"character")
-        self.newCharacter:SetPoint("TOPLEFT",10,-180)
-        FT:Tooltip(self.newCharacter,"Profile for new characters","New characters load this profile automatically, with no setup. \"Last used\" follows whichever profile you loaded or saved most recently.")
-        self.defaults=FT:QuietButton(panel,"Default settings",372,28,"reset"); self.defaults:SetPoint("TOPLEFT",10,-214)
+        self.newCharacter:SetPoint("TOPLEFT",10,-188)
+        FT:Tooltip(self.newCharacter,"Profile for new characters","A new character asks once whether to use a saved profile or start a new one. This profile is preselected in that question. \"Last used\" follows whichever profile you loaded or saved most recently.")
+        self.defaults=FT:QuietButton(panel,"Default settings",372,28,"reset"); self.defaults:SetPoint("TOPLEFT",10,-222)
         self.defaults:SetScript("OnClick",function() self:DefaultSettings() end)
         FT:Tooltip(self.defaults,"Default settings","Put everything ForeverTools changes back to Blizzard's defaults, as if the addon was just installed: skins, colors, fonts, chat, tooltips, counters, reminders and game options such as the Lua error display. The selected profile is reset too. Custom macros, other profiles and learned flight times are kept. Asks first, then reloads your interface.")
         self.emptyHint=FT:Label(panel,"Make your changes, then save a profile here.",12)
-        self.emptyHint:SetPoint("TOPLEFT",10,-252)
+        self.emptyHint:SetPoint("TOPLEFT",10,-260)
         FT:Tooltip(self.load,"Load profile","Restore the selected saved settings.")
         FT:Tooltip(self.save,"Save profile","Update the selected profile with your current settings.")
         FT:Tooltip(self.delete,"Delete profile","Remove the selected snapshot. Your current settings stay active.")
@@ -253,19 +254,63 @@ function Profiles:WelcomeCharacter()
         for _,key in ipairs(keys) do FT.db[key]=copy(source[key]) end
         local assigned=previous and self:Store()[previous] and previous or nil
         self.active,self.selected=assigned,assigned
-        for _,name in ipairs({"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling"}) do
+        for _,name in ipairs({"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow"}) do
             local module=FT.modules[name]; if module then module:Apply() end
         end
         FT:UpdateMinimap()
     elseif previous==nil then
-        -- A new character: no wizard or popup. Quietly apply the profile chosen
-        -- for new characters (or the last one used) and say so once.
+        -- A new character: ask once whether to use a saved profile or start a
+        -- new one. Closing the question keeps Blizzard's defaults.
         FT.db.profileCharacters[guid]=false
-        local name=self:NewCharacterProfile()
-        if name and not InCombatLockdown() and self:Load(name,false,true) then
-            C_Timer.After(4,function() FT:Toast('Using profile "'..name..'". Change it in /ft → Profiles.',5) end)
-        end
+        if self:NewCharacterProfile() or self:AnyProfile() then C_Timer.After(3,function() self:AskNewCharacter() end) end
     end
+end
+function Profiles:AnyProfile()
+    for name,profile in pairs(self:Store()) do if type(name)=="string" and type(profile)=="table" then return name end end
+end
+function Profiles:ProfileList()
+    local list={}
+    for name,profile in pairs(self:Store()) do
+        if type(name)=="string" and type(profile)=="table" then list[#list+1]={value=name,label=name,icon="Interface\\Icons\\INV_Misc_Book_09"} end
+    end
+    table.sort(list,function(a,b) return a.label<b.label end)
+    return list
+end
+function Profiles:AskNewCharacter()
+    if InCombatLockdown() then self.askAfterCombat=true; return end
+    self.askAfterCombat=nil
+    if not self.newCharacterFrame then
+        local frame=FT:Window("ForeverToolsNewCharacter","New character",480,262); self.newCharacterFrame=frame
+        frame.noSavePrompt=true
+        frame:SetFrameStrata("FULLSCREEN_DIALOG"); frame.homeButton:Hide()
+        local text=FT:Label(frame,"",14); text:SetPoint("TOPLEFT",24,-60); text:SetWidth(432); frame.text=text
+        local pick=FT:Dropdown(frame,432,function() return self:ProfileList() end,function(name) frame.choice=name; frame.pick.value=name; frame.pick.label:SetText(name) end,"profiles")
+        pick:SetPoint("TOPLEFT",24,-104); pick:SetHeight(34); pick.menuWidth=300; frame.pick=pick
+        FT:Tooltip(pick,"Profile","Choose one of your saved profiles for this character.")
+        local note=FT:Label(frame,"Closing keeps Blizzard's default look. You can change this any time in /ft → Profiles.",12)
+        note:SetPoint("TOPLEFT",24,-150); note:SetWidth(432); note:SetTextColor(.66,.57,.77)
+        local new=FT:QuietButton(frame,"New profile",200,34,"add"); new:SetPoint("BOTTOMLEFT",24,22)
+        new:SetScript("OnClick",function()
+            local base=self:CharacterName(); local name,n=base,2
+            while self:Store()[name] do name=base.." "..n; n=n+1 end
+            frame:Hide()
+            if self:Create(name) and FT.modules.Onboarding then FT.modules.Onboarding:ShowSetup(false) end
+        end)
+        FT:Tooltip(new,"New profile","Start a profile for this character with default settings, then pick a look in the short setup.")
+        local use=FT:AccentButton(frame,"Use profile",200,34,"confirm"); use:SetPoint("BOTTOMRIGHT",-24,22)
+        use:SetScript("OnClick",function()
+            local name=frame.choice; if not name or not self:Store()[name] then return end
+            frame:Hide()
+            if self:Load(name,false,true) then FT:Toast('Using profile "'..name..'".',3) end
+        end)
+        FT:Tooltip(use,"Use profile","Load the selected profile on this character.")
+    end
+    local frame=self.newCharacterFrame
+    local name=self:NewCharacterProfile() or self:AnyProfile()
+    frame.choice=name; frame.pick.value=name; frame.pick.label:SetText(name or "")
+    local who=UnitName and UnitName("player") or "this character"
+    frame.text:SetText("Which settings should "..who.." use? Pick a saved profile, or start a new one.")
+    frame:ClearAllPoints(); frame:SetPoint("CENTER"); frame:Show()
 end
 -- The explicit choice, else the most recently used profile, if it still exists.
 function Profiles:NewCharacterProfile()
@@ -276,10 +321,12 @@ function Profiles:NewCharacterProfile()
     if type(last)=="string" and type(store[last])=="table" then return last end
 end
 local events=CreateFrame("Frame")
-events:RegisterEvent("PLAYER_LOGIN"); events:RegisterEvent("PLAYER_LOGOUT")
+events:RegisterEvent("PLAYER_LOGIN"); events:RegisterEvent("PLAYER_LOGOUT"); events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:SetScript("OnEvent",function(_,event)
     if not FT.dbReady then return end
-    if event=="PLAYER_LOGIN" then C_Timer.After(0,function() Profiles:WelcomeCharacter(); Profiles:Checkpoint(); FT.profilesReady=true; if FT.modules.MinimapIcons then FT.modules.MinimapIcons:Apply() end end)
+    if event=="PLAYER_REGEN_ENABLED" then
+        if Profiles.askAfterCombat then C_Timer.After(1,function() Profiles:AskNewCharacter() end) end
+    elseif event=="PLAYER_LOGIN" then C_Timer.After(0,function() Profiles:WelcomeCharacter(); Profiles:Checkpoint(); FT.profilesReady=true; if FT.modules.MinimapIcons then FT.modules.MinimapIcons:Apply() end end)
     elseif event=="PLAYER_LOGOUT" then
         if Profiles.resetting then return end
         FT.db.profileDrafts=FT.db.profileDrafts or {}
@@ -289,7 +336,7 @@ end)
 
 -- Settings only: saved profiles, custom macros/fonts, learned flight routes,
 -- rank knowledge and macro history are kept. A reload re-applies native UI.
-local resettable={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","chat","system","customKeybinds","lootRoll","tooltip","buffReminder","flightTimer","leveling","vendor"}
+local resettable={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","chat","system","customKeybinds","lootRoll","tooltip","buffReminder","flightTimer","leveling","vendor","dispelGlow"}
 -- Game options ForeverTools can change on the player's behalf, returned to the
 -- client's own defaults so the game looks as if the addon was never installed.
 local function restoreGameOptions()
@@ -345,7 +392,7 @@ end
 -- Fill every module's defaults up front. Defaults are written lazily when a
 -- module first reads its settings, which must never look like a user change.
 function Profiles:Normalize()
-    for _,name in ipairs({"LootRoll","System","Tooltip","QualityOfLife","FlightTimer","BuffReminder","Leveling","UnitColors","Chat","CustomKeybinds","IconStyles"}) do
+    for _,name in ipairs({"LootRoll","System","Tooltip","QualityOfLife","FlightTimer","BuffReminder","Leveling","UnitColors","Chat","CustomKeybinds","IconStyles","DispelGlow"}) do
         local module=FT.modules[name]
         if module and module.Settings then pcall(module.Settings,module) end
     end
@@ -385,6 +432,7 @@ function Profiles:OfferSave()
         self.saveDialog=dialog;dialog:SetSize(440,172);dialog:SetPoint("CENTER")
         dialog:SetFrameStrata("DIALOG");dialog:EnableMouse(true);FT:Panel(dialog)
         local title=FT:Label(dialog,"Save changes?",18,true);title:SetPoint("TOPLEFT",22,-22)
+        FT:AddClose(dialog,function() self:DismissSave(false) end)
         local message=FT:Label(dialog,"",14);message:SetPoint("TOPLEFT",22,-62);message:SetWidth(396);dialog.message=message
         local yes=FT:AccentButton(dialog,"Save",190,34,"confirm");yes:SetPoint("BOTTOMLEFT",22,20)
         yes:SetScript("OnClick",function() self:DismissSave(true) end)
@@ -409,6 +457,56 @@ savePromptEvents:RegisterEvent("PLAYER_REGEN_DISABLED")
 savePromptEvents:SetScript("OnEvent",function()
     if Profiles.prompting then Profiles:DismissSave(false,true) end
 end)
+-- Key bindings travel only inside an export string, never inside saved
+-- settings: WoW keeps bindings itself. Import applies them on request, out of
+-- combat, through the game's own binding API into the current binding set.
+function Profiles:CaptureBindings()
+    if type(GetNumBindings)~="function" or type(GetBinding)~="function" then return nil end
+    local map,count={},0
+    for i=1,GetNumBindings() do
+        local info={GetBinding(i)}
+        local action=info[1]
+        if type(action)=="string" and action~="" then
+            for k=3,#info do
+                local key=info[k]
+                if type(key)=="string" and key~="" and not map[key] then map[key]=action; count=count+1 end
+            end
+        end
+    end
+    return count>0 and map or nil
+end
+function Profiles:ValidBindings(map)
+    if type(map)~="table" then return nil end
+    local count=0
+    for key,action in pairs(map) do
+        if type(key)~="string" or type(action)~="string" or #key>64 or #action>256 or key=="" or action=="" then return nil end
+        count=count+1; if count>1500 then return nil end
+    end
+    return count>0 and map or nil
+end
+function Profiles:ApplyBindings(map)
+    if InCombatLockdown() then FT:Toast("Keybinds can only change outside combat."); return false end
+    if type(SetBinding)~="function" or type(SaveBindings)~="function" then FT:Toast("This client cannot change keybinds."); return false end
+    -- Clear the current keys first so the result matches the exported layout
+    -- exactly, then bind every imported key. Unknown actions are skipped.
+    local current=self:CaptureBindings() or {}
+    for key in pairs(current) do SetBinding(key) end
+    local applied,skipped=0,0
+    for key,action in pairs(map) do
+        local ok,result=pcall(SetBinding,key,action)
+        if ok and result~=false then applied=applied+1 else skipped=skipped+1 end
+    end
+    if applied==0 then
+        -- Nothing matched this client: put the previous bindings back untouched.
+        for key,action in pairs(current) do SetBinding(key,action) end
+        FT:Toast("No keybinds from this profile match this client. Your keybinds are unchanged.",4)
+        return false
+    end
+    local set=GetCurrentBindingSet and GetCurrentBindingSet() or 1
+    SaveBindings(set)
+    FT:Toast(applied.." keybinds applied"..(skipped>0 and (" ("..skipped.." not available here)") or "")..".",4)
+    return true
+end
 function Profiles:Transfer(importing,onImported)
     if not self.transfer then
         local frame=FT:Window("ForeverToolsProfileTransfer","Profile transfer",600,390); self.transfer=frame
@@ -419,7 +517,15 @@ function Profiles:Transfer(importing,onImported)
         local scroll=CreateFrame("ScrollFrame",nil,frame,"UIPanelScrollFrameTemplate"); scroll:SetPoint("TOPLEFT",24,-150); scroll:SetSize(528,160); FT:Panel(scroll)
         local box=CreateFrame("EditBox",nil,scroll); box:SetMultiLine(true); box:SetFont(FT.bodyFont,12,""); box:SetSize(520,160); box:SetAutoFocus(false); scroll:SetScrollChild(box); frame.box=box
         local pasteHint=FT:Label(box,"Paste string here",13);pasteHint:SetPoint("TOPLEFT",box,10,-10);frame.pasteHint=pasteHint
-        box:SetScript("OnTextChanged",function() local n=#box:GetText(); box:SetHeight(math.max(160,math.ceil(n/65)*16));pasteHint:SetShown(n==0) end)
+        box:SetScript("OnTextChanged",function(_,user)
+            local n=#box:GetText(); box:SetHeight(math.max(160,math.ceil(n/65)*16));pasteHint:SetShown(n==0)
+            if frame.importing and user then
+                local data=n>0 and FT:DecodeProfile(box:GetText())
+                frame.hasBindings=type(data)=="table" and data.bindings~=nil
+                frame.applyBindings=frame.hasBindings
+                self:RefreshTransfer()
+            end
+        end)
         local name=CreateFrame("EditBox",nil,frame,"InputBoxTemplate"); name:SetSize(540,28); name:SetPoint("TOPLEFT",30,-114); name:SetFont(FT.bodyFont,14,""); name:SetAutoFocus(false); frame.name=name
         local nameHint=FT:Label(name,"Add profile name here",13);nameHint:SetPoint("LEFT",8,0);frame.nameHint=nameHint
         name:SetScript("OnTextChanged",function() nameHint:SetShown(name:GetText()=="") end)
@@ -432,19 +538,54 @@ function Profiles:Transfer(importing,onImported)
             if profileName=="" or #profileName>120 or self:Store()[profileName] then FT:Toast("Choose a new profile name (1–120 characters)."); return end
             local clean,reason=self:ValidateImport(data.settings)
             if not clean then FT:Toast(reason); return end
+            local bindings=data.bindings~=nil and self:ValidBindings(data.bindings)
+            if data.bindings~=nil and not bindings then FT:Toast("Invalid keybinds in this profile."); return end
+            if bindings and frame.applyBindings and InCombatLockdown() then FT:Toast("Import keybinds outside combat."); return end
             self:Store()[profileName]=clean; FT.db.profileVault[profileName]=copy(clean); self.selected=profileName; self:Refresh(); frame:Hide()
+            if bindings and frame.applyBindings then self:ApplyBindings(bindings) end
             local callback=self.onImported; self.onImported=nil
-            if callback then callback(profileName) else FT:Toast("Profile imported. Select it to load.") end
+            if callback then callback(profileName) elseif not (bindings and frame.applyBindings) then FT:Toast("Profile imported. Select it to load.") end
+        end)
+        -- One toggle, two meanings: include keybinds in an export, or apply the
+        -- keybinds found in a pasted string. Hidden when there is nothing to apply.
+        local keys=FT:QuietButton(frame,"",250,32,"keybind"); keys:SetPoint("BOTTOMRIGHT",-24,25); frame.keys=keys
+        keys:SetScript("OnClick",function()
+            if frame.importing then frame.applyBindings=not frame.applyBindings
+            else FT.db.exportBindings=not FT.db.exportBindings; self:FillExport() end
+            self:RefreshTransfer()
+        end)
+        FT:Tooltip(keys,"Keybinds",function()
+            return frame.importing and "Also apply the keybinds saved in this string: action bars, movement, interface and every other key binding. Your current keybinds are replaced. Mouse-wheel casting spells are part of the profile itself."
+                or "Add all your current keybinds to the export string, so they can be applied when the profile is imported on another computer or account."
         end)
     end
     local frame=self.transfer
     self.onImported=importing and onImported or nil
+    frame.importing=importing; frame.hasBindings=false; frame.applyBindings=false
+    frame.titleText:SetText(importing and "Import profile" or "Export profile")
     frame.import:SetShown(importing); frame.name:SetShown(importing);frame.nameHint:SetShown(importing)
-    frame.info:SetText(importing and "Paste a ForeverTools export string, enter a new profile name, then import. Import does not change your current setup." or "Export string selected. Press Ctrl+C to copy it, then paste it somewhere safe.")
-    frame.box:SetText(importing and "" or FT:EncodeProfile({format=1,addonVersion=FT.version,settings=self:Snapshot()}))
-    frame.name:SetText(""); FT:PlaceBeside(frame); frame:Show()
+    frame.info:SetText(importing and "Paste a ForeverTools export string, enter a new profile name, then import. Import does not change your current setup unless you apply its keybinds." or "Export string selected. Press Ctrl+C to copy it, then paste it somewhere safe.")
+    if importing then frame.box:SetText("") else self:FillExport() end
+    frame.name:SetText(""); self:RefreshTransfer(); FT:PlaceBeside(frame); frame:Show()
     if frame.box.SetFocus then frame.box:SetFocus() end
-    if not importing and frame.box.HighlightText then frame.box:HighlightText() end
+end
+function Profiles:FillExport()
+    local frame=self.transfer
+    local data={format=1,addonVersion=FT.version,settings=self:Snapshot()}
+    if FT.db.exportBindings then data.bindings=self:CaptureBindings() end
+    frame.box:SetText(FT:EncodeProfile(data))
+    if frame.box.HighlightText then frame.box:HighlightText() end
+end
+function Profiles:RefreshTransfer()
+    local frame=self.transfer; if not frame then return end
+    local keys=frame.keys
+    if frame.importing then
+        keys:SetShown(frame.hasBindings)
+        keys.label:SetText("Apply keybinds: "..(frame.applyBindings and "On" or "Off")); FT:SetSelected(keys,frame.applyBindings)
+    else
+        keys:Show()
+        keys.label:SetText("Include keybinds: "..(FT.db.exportBindings and "On" or "Off")); FT:SetSelected(keys,FT.db.exportBindings)
+    end
 end
 -- Import only supported preference keys. Reject mismatched types before any
 -- consumer sees data; never merge executable data or addon-owned frame state.
@@ -463,7 +604,10 @@ function Profiles:ValidateImport(data)
     if not check(result.fps,{enabled="boolean",fontSize="number",x="number",y="number",screenWidth="number",screenHeight="number"}) then return nil,"Invalid FPS settings." end
     if not check(result.flightTimer,{enabled="boolean",font="string",size="number",outline="string",color="table",x="number",y="number"}) then return nil,"Invalid flight timer settings." end
     if not check(result.lootRoll,{x="number",y="number",custom="boolean"}) then return nil,"Invalid loot-roll position." end
-    if not check(result.leveling,{enabled="boolean",progress="boolean",rested="boolean",perHour="boolean",timeToLevel="boolean",kills="boolean",tooltip="boolean",fontSize="number",x="number",y="number",screenWidth="number",screenHeight="number",layout="string",order="table"}) then return nil,"Invalid leveling settings." end
+    if not check(result.leveling,{enabled="boolean",progress="boolean",rested="boolean",perHour="boolean",timeToLevel="boolean",kills="boolean",tooltip="boolean",fontSize="number",x="number",y="number",screenWidth="number",screenHeight="number",layout="string",order="table",background="boolean",backgroundColor="table",backgroundAlpha="number"}) then return nil,"Invalid leveling settings." end
+    if result.leveling and result.leveling.backgroundColor then
+        for i=1,3 do local v=result.leveling.backgroundColor[i]; if type(v)~="number" or v<0 or v>1 then return nil,"Invalid leveling background color." end end
+    end
     for _,key in ipairs(result.leveling and type(result.leveling.order)=="table" and result.leveling.order or {}) do
         if type(key)~="string" then return nil,"Invalid leveling order." end
     end
@@ -477,10 +621,17 @@ function Profiles:ValidateImport(data)
         if type(pref)~="table" or not check(pref,{enabled="boolean",up="table",down="table"}) then return nil,"Invalid bindings." end
         for _,dir in ipairs({"up","down"}) do if not check(pref[dir],{spellID="number",friendly="string",hostile="string"}) then return nil,"Invalid spell." end end
     end
+    if not check(result.dispelGlow,{enabled="boolean",player="boolean",target="boolean",focus="boolean",party="boolean",raid="boolean",strength="string",pulse="boolean"}) then return nil,"Invalid dispel glow settings." end
+    if result.dispelGlow and result.dispelGlow.strength and not FT.modules.DispelGlow.strengths[result.dispelGlow.strength] then return nil,"Invalid glow strength." end
     for _,v in pairs(result.chat or {}) do if v~="show" and v~="hide" and v~="hover" then return nil,"Invalid chat mode." end end
     for _,key in ipairs({"unitColors","system"}) do for _,v in pairs(result[key] or {}) do if type(v)~="boolean" then return nil,"Invalid toggle." end end end
     if not check(result.tooltip,{guildFactionColor="boolean",guildFactionIcon="boolean",target="boolean",guild="boolean",healthBar="boolean",position="string",order="string",offsetX="number",offsetY="number",x="number",y="number",screenWidth="number",screenHeight="number",name="number",details="number",targetSize="number"}) then return nil,"Invalid tooltip settings." end
-    if not check(result.buffReminder,{enabled="boolean",selected="table",mainEnchant="string",offEnchant="string",rankMarker="boolean",ignoredRanks="table"}) then return nil,"Invalid buff reminders." end
+    if not check(result.buffReminder,{enabled="boolean",selected="table",mainEnchant="string",offEnchant="string",rankMarker="boolean",ignoredRanks="table",selfWhere="table",groupWhere="table"}) then return nil,"Invalid buff reminders." end
+    for _,field in ipairs({"selfWhere","groupWhere"}) do
+        for key,on in pairs(result.buffReminder and result.buffReminder[field] or {}) do
+            if type(key)~="string" or type(on)~="boolean" then return nil,"Invalid reminder places." end
+        end
+    end
     for name,on in pairs(result.buffReminder and type(result.buffReminder.ignoredRanks)=="table" and result.buffReminder.ignoredRanks or {}) do
         if type(name)~="string" or on~=true then return nil,"Invalid rank exception." end
     end

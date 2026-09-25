@@ -67,9 +67,32 @@ function S:TargetRim(frame,key)
         rim:ClearAllPoints()
         rim:SetPoint("TOPLEFT",bar,"TOPLEFT",-2,2);rim:SetPoint("BOTTOMRIGHT",bar,"BOTTOMRIGHT",right,-2)
     end
+    -- Where the backing stops short of the ring, an empty bar (a dead or hurt
+    -- unit) would show the world through a thin gap. Fill that strip with the
+    -- same color, clipped by Blizzard's own health-bar mask so it follows the
+    -- portrait curve exactly like the health fill and never covers the ring.
+    local mask=main.HealthBarsContainer and main.HealthBarsContainer.HealthBarMask or main.HealthBarMask
+    if not rim.filler and mask and rim.AddMaskTexture then
+        local filler=bar:CreateTexture(nil,"BACKGROUND",nil,-8)
+        filler:SetTexture("Interface\\Buttons\\WHITE8x8")
+        filler:AddMaskTexture(mask)
+        rim.filler=filler
+    end
+    local filler=rim.filler
+    if filler and filler.fillerOffset~=right then
+        filler.fillerOffset=right
+        filler:ClearAllPoints()
+        -- Tuck 2 px under the backing so pixel rounding can never leave a seam.
+        filler:SetPoint("TOPLEFT",bar,"TOPRIGHT",math.min(right,0)-2,0)
+        filler:SetPoint("BOTTOMRIGHT",bar,"BOTTOMRIGHT",0,0)
+    end
     local s=self:Area(key)
     rim:SetVertexColor(s.borderColor[1],s.borderColor[2],s.borderColor[3],s[key] and s.borderOpacity or 0)
     rim:SetShown(s[key])
+    if filler then
+        filler:SetVertexColor(s.borderColor[1],s.borderColor[2],s.borderColor[3],s[key] and s.borderOpacity or 0)
+        filler:SetShown(s[key] and right<0)
+    end
 end
 function S:PaintArtwork(texture,record)
     if self.paintingArtwork then return end

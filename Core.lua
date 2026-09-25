@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "0.13.6"
+FT.version = "0.14.2"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -226,6 +226,19 @@ function FT:AccentButton(parent, label, width, height, icon)
     self:UpdateButton(button)
     return button
 end
+-- The one close button every ForeverTools window, dialog and panel uses:
+-- Blizzard's standard X, 28 px, in the top-right corner. Windows and dialogs
+-- use a 14 px corner inset; panels inside a window use 8 px.
+function FT:AddClose(frame, onClick, inset)
+    local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    frame.closeButton = close
+    close:SetSize(28, 28)
+    close:SetPoint("TOPRIGHT", -(inset or 14), -(inset or 14))
+    close:SetFrameLevel(frame:GetFrameLevel() + 5)
+    self:Tooltip(close, "Close", "Close this window.")
+    close:SetScript("OnClick", onClick or function() frame:Hide() end)
+    return close
+end
 function FT:Window(name, title, width, height)
     local frame = CreateFrame("Frame", name, UIParent)
     self.controlWindows=self.controlWindows or {}
@@ -254,12 +267,7 @@ function FT:Window(name, title, width, height)
         titleText:ClearAllPoints(); titleText:SetPoint("LEFT", logo, "RIGHT", 8, 0)
     end
     titleText:SetTextColor(0.82, 0.68, 1)
-    local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    frame.closeButton=close
-    close:SetSize(28,28)
-    self:Tooltip(close, "Close", "Close this window.")
-    close:SetPoint("TOPRIGHT", -14, -14)
-    close:SetScript("OnClick", function() frame:Hide() end)
+    local close = self:AddClose(frame)
     if name ~= "ForeverToolsHome" then
         local home = self:QuietButton(frame, "Home", 88, 28, "home")
         frame.homeButton = home

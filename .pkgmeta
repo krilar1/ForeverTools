@@ -1,0 +1,5 @@
+# CurseForge packaging: use CHANGELOG.md as the file's "What's new" text
+# instead of a list of git commits. Update CHANGELOG.md before tagging a release.
+manual-changelog:
+    filename: CHANGELOG.md
+    markup-type: markdown

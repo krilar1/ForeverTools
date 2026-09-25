@@ -23,6 +23,11 @@ function Leveling:Settings()
         if type(s[entry[1]])~="boolean" then s[entry[1]]=entry[1]=="perHour" or entry[1]=="timeToLevel" or entry[1]=="kills" end
     end
     if type(s.tooltip)~="boolean" then s.tooltip=true end
+    -- Optional rounded background behind the stats.
+    if type(s.background)~="boolean" then s.background=false end
+    local c=s.backgroundColor
+    if type(c)~="table" or type(c[1])~="number" or type(c[2])~="number" or type(c[3])~="number" then s.backgroundColor={0,0,0} end
+    s.backgroundAlpha=number(s.backgroundAlpha,.5,0,1)
     s.fontSize=number(s.fontSize,13,10,32)
     -- Player-built layout: the order of the stats, and one per line or all on one line.
     if s.layout~="single" then s.layout="lines" end
@@ -94,7 +99,9 @@ function Leveling:Stats()
     local current,maximum=UnitXP("player"),UnitXPMax("player")
     if not readable(current) or not readable(maximum) or maximum<=0 then return end
     local elapsed=GetTime()-self.start
-    local perSecond=(elapsed>=60 and self.gained>0) and self.gained/elapsed or nil
+    -- Start estimating from the first experience gained. Early on, the session
+    -- is counted as at least one minute so a single quick kill cannot spike it.
+    local perSecond=self.gained>0 and self.gained/math.max(elapsed,60) or nil
     local rested=GetXPExhaustion and GetXPExhaustion() or 0
     if not readable(rested) then rested=0 end
     local remaining=maximum-current
@@ -145,6 +152,7 @@ function Leveling:Create()
     line.text=line:CreateFontString(nil,"OVERLAY","GameFontNormal")
     line.text:SetPoint("TOPLEFT",8,-6); line.text:SetJustifyH("LEFT"); line.text:SetJustifyV("TOP")
     if line.text.SetSpacing then line.text:SetSpacing(3) end
+    line.background=FT:RoundedFill(line,0,0,0,.5)
     FT:Panel(line)
     line.hint=FT:Label(line,"Drag to move",12); line.hint:SetPoint("TOPLEFT",line,"BOTTOMLEFT",4,-4)
     line:SetScript("OnDragStart",function(owner) if self.moving and not InCombatLockdown() then owner:StartMoving() end end)
@@ -183,6 +191,10 @@ function Leveling:Apply()
     for _,texture in ipairs(self.line.fillTextures) do texture:SetShown(moving) end
     for _,texture in ipairs(self.line.borderTextures) do texture:SetShown(moving) end
     self.line.hint:SetShown(moving)
+    local c=s.backgroundColor
+    for _,texture in ipairs(self.line.background) do
+        texture:SetVertexColor(c[1],c[2],c[3],s.backgroundAlpha); texture:SetShown(s.background and not moving)
+    end
     self.line:SetShown(moving or (s.enabled and not self:MaxLevel()))
     self:Update()
     self:HookBars()
@@ -255,6 +267,11 @@ function Leveling:Refresh()
     self.tooltipButton.label:SetText("XP bar tooltip: "..(s.tooltip and "On" or "Off")); FT:SetSelected(self.tooltipButton,s.tooltip)
     self.moveButton.label:SetText(self.moving and "Moving unlocked — click to lock" or "Move stats"); FT:SetSelected(self.moveButton,self.moving)
     self.sizeLabel:SetText(string.format("Font size: %d",s.fontSize))
+    self.bgToggle.label:SetText("Background: "..(s.background and "On" or "Off")); FT:SetSelected(self.bgToggle,s.background)
+    self.bgColor.swatch:SetColorTexture(s.backgroundColor[1],s.backgroundColor[2],s.backgroundColor[3],1)
+    self.alphaLabel:SetText(string.format("Transparency: %d%%",math.floor((1-s.backgroundAlpha)*100+.5)))
+    self.solidButton:SetEnabled(s.backgroundAlpha<1); self.clearButton:SetEnabled(s.backgroundAlpha>0)
+    for _,control in ipairs({self.bgColor,self.solidButton,self.clearButton}) do control:SetAlpha(s.background and 1 or .5) end
     self.smaller:SetEnabled(s.fontSize>10); self.larger:SetEnabled(s.fontSize<32)
 end
 function Leveling:Open()
@@ -304,13 +321,39 @@ function Leveling:Open()
         local reset=FT:QuietButton(frame,"Reset position",240,34,"reset"); reset:SetPoint("TOPLEFT",276,y)
         reset:SetScript("OnClick",function() local s=self:Settings(); s.x,s.y,s.screenWidth,s.screenHeight=nil,nil,nil,nil; self:Apply() end)
         FT:Tooltip(reset,"Reset position","Return the stats to the top left of the screen.")
+        y=y-44
+        self.bgToggle=FT:QuietButton(frame,"",240,34,"skins"); self.bgToggle:SetPoint("TOPLEFT",24,y)
+        self.bgToggle:SetScript("OnClick",function() local s=self:Settings(); s.background=not s.background; self:Apply() end)
+        FT:Tooltip(self.bgToggle,"Background","Show a rounded background behind the stats. Pick its color and transparency next to it.")
+        self.bgColor=FT:QuietButton(frame,"Background color",240,34); self.bgColor:SetPoint("TOPLEFT",276,y)
+        self.bgColor.swatch=self.bgColor:CreateTexture(nil,"ARTWORK"); self.bgColor.swatch:SetSize(18,18); self.bgColor.swatch:SetPoint("LEFT",10,0)
+        self.bgColor.label:ClearAllPoints(); self.bgColor.label:SetPoint("LEFT",self.bgColor.swatch,"RIGHT",8,0)
+        self.bgColor:SetScript("OnClick",function()
+            if not ColorPickerFrame then return end
+            local s=self:Settings(); local old={unpack(s.backgroundColor)}
+            s.background=true
+            local function change() s.backgroundColor={ColorPickerFrame:GetColorRGB()}; self:Apply() end
+            local function cancel() s.backgroundColor=old; self:Apply() end
+            if ColorPickerFrame.SetupColorPickerAndShow then FT:TrackColorPicker(); ColorPickerFrame:SetupColorPickerAndShow({r=old[1],g=old[2],b=old[3],hasOpacity=false,swatchFunc=change,cancelFunc=cancel})
+            else ColorPickerFrame:SetColorRGB(unpack(old)); ColorPickerFrame.func=change; ColorPickerFrame.cancelFunc=cancel; ColorPickerFrame:Show() end
+            self:Apply()
+        end)
+        FT:Tooltip(self.bgColor,"Background color","Choose the background color. Choosing a color turns the background on.")
         y=y-48
         self.smaller=FT:QuietButton(frame,"−",40,32); self.smaller:SetPoint("TOPLEFT",24,y)
         self.smaller:SetScript("OnClick",function() local s=self:Settings(); s.fontSize=math.max(10,s.fontSize-1); self:Apply() end)
         self.sizeLabel=FT:Label(frame,"",16); self.sizeLabel:SetPoint("LEFT",self.smaller,"RIGHT",18,0); self.sizeLabel:SetWidth(135)
         self.larger=FT:QuietButton(frame,"+",40,32); self.larger:SetPoint("LEFT",self.sizeLabel,"RIGHT",10,0)
         self.larger:SetScript("OnClick",function() local s=self:Settings(); s.fontSize=math.min(32,s.fontSize+1); self:Apply() end)
-        local note=FT:Label(frame,"Kills to level uses your recent kill experience. XP per hour starts after a minute of play.",12)
+        -- Transparency in 10% steps, like the other −/+ controls.
+        self.solidButton=FT:QuietButton(frame,"−",40,32); self.solidButton:SetPoint("TOPLEFT",276,y)
+        self.solidButton:SetScript("OnClick",function() local s=self:Settings(); s.backgroundAlpha=math.min(1,math.floor(s.backgroundAlpha*10+.5)/10+.1); self:Apply() end)
+        FT:Tooltip(self.solidButton,"Less transparent","Make the background more solid.")
+        self.alphaLabel=FT:Label(frame,"",16); self.alphaLabel:SetPoint("LEFT",self.solidButton,"RIGHT",12,0); self.alphaLabel:SetWidth(138)
+        self.clearButton=FT:QuietButton(frame,"+",40,32); self.clearButton:SetPoint("LEFT",self.alphaLabel,"RIGHT",8,0)
+        self.clearButton:SetScript("OnClick",function() local s=self:Settings(); s.backgroundAlpha=math.max(0,math.floor(s.backgroundAlpha*10+.5)/10-.1); self:Apply() end)
+        FT:Tooltip(self.clearButton,"More transparent","Make the background more see-through.")
+        local note=FT:Label(frame,"Kills to level uses your recent kill experience. XP per hour starts with your first experience and settles over a few minutes.",12)
         note:SetPoint("BOTTOMLEFT",24,20); note:SetWidth(492); note:SetTextColor(.66,.57,.77)
         frame:SetHeight(-y+32+50)
         frame:HookScript("OnHide",function() if self.moving then self:SetMoving(false) end end)

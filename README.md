@@ -1,11 +1,11 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 0.13.6.**
+**Quality-of-life tools for WoW: Forever — version 0.14.2.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
 one place. Everything starts **off**, so the game looks like Blizzard's until you
 choose otherwise. A short first-time setup offers Minimal, Dark mode and Full
-presets, and new characters reuse your profile automatically.
+presets, and new characters can reuse any saved profile.
 
 Open the menu with **`/ft`** or the minimap button, and search any setting from
 the home window. Use **`/rl`** to reload the UI.
@@ -21,6 +21,9 @@ the home window. Use **`/rl`** to reload the UI.
 - **Unit-frame colors:** Class-colored health bars for player, target,
   target-of-target, focus and focus-target frames. Party colors link to
   Blizzard's Edit Mode settings.
+- **Dispel glow:** A colored outline around player, target, focus, party or
+  raid-style frames while they have a debuff you can remove. Only dispels you
+  have learned count; no icons are added.
 - **Tooltips:** Text sizes, layout, position and health-bar visibility; guild
   names with optional faction icons, unit targets, buff sources and tooltip IDs.
 - **Chat:** Show, hide or mouseover-reveal chat controls, change the chat font,
@@ -29,18 +32,20 @@ the home window. Use **`/rl`** to reload the UI.
   mouseover support; and build custom macros with spell and equipment actions.
 - **Buff reminders:** Self and group buff notices with talent-based choices,
   weapon enchants, low-rank alerts and an optional low-rank marker on action
-  bars, with per-spell exceptions.
+  bars, with per-spell exceptions. Choose where notices appear.
 - **Leveling stats:** XP per hour, time to level, kills to level, XP progress and
   rested XP. Pick which to show and their order, one per line or on a single
-  line; movable, and also added to the XP bar tooltip.
+  line, with an optional rounded background; movable, and also added to the
+  XP bar tooltip.
 - **Flight countdown:** Destination and estimated time until landing. Completed
   flights teach new routes and replace bundled estimates.
 - **Merchant helpers:** Optional auto-sell of grey items and auto-repair, with
   guild funds if allowed, and a one-line summary.
 - **Minimap:** ForeverTools button, coordinates, and an optional launcher that
   groups other addons' minimap buttons into one menu.
-- **Profiles:** Save named snapshots, switch from any page, export/import as text,
-  and pick which profile new characters use.
+- **Profiles:** Save named snapshots, export/import as text (optionally with
+  all your keybinds), and choose a profile or a fresh start on each new
+  character.
 - **More:** FPS counter, movable loot rolls, group-role helper, custom
   mouse-wheel casting on mouseover, a Lua-error toggle and a copyable bug report.
 - **Combat-aware menus:** Settings close during combat; requesting the menu in
@@ -61,8 +66,12 @@ the home window. Use **`/rl`** to reload the UI.
   **Create** starts a new profile from default settings and switches to it.
   **Default settings** resets the selected profile and returns everything
   ForeverTools changes to Blizzard's defaults, as if the addon was just installed.
-- New characters automatically load the profile chosen under **Profiles → New
-  characters** (by default, the last profile you used), without any setup.
+- A new character asks once whether to use a saved profile or start a new one.
+  The profile chosen under **Profiles → New characters** (by default, the last
+  one you used) is preselected. Closing the question keeps Blizzard's defaults.
+- **Include keybinds** on the export window adds all your key bindings to the
+  string. When you import a string with keybinds, **Apply keybinds** replaces
+  your current bindings with them (outside combat).
 - **System → General → Reset all settings** returns everything to the defaults
   (all off) and reloads. Saved profiles, custom macros and flight times are kept.
 - Working settings and profiles are stored through WoW's SavedVariables system,
@@ -74,8 +83,9 @@ the home window. Use **`/rl`** to reload the UI.
 
 ## Mouse-wheel casting
 
-- Open **/ft → Custom keybinds**, then hover a spell in the list and scroll up
-  or down to bind it (binding a spell turns casting on).
+- Open **/ft → Custom keybinds**, click a spell in the list, then scroll up or
+  down to bind it (binding a spell turns casting on). A click or Esc
+  cancels; scrolling over the list without clicking only pages it.
 - Scroll while hovering a unit (unit frames or characters in the world) to cast
   on that unit. Away from a unit, the wheel keeps zooming the camera.
 - Bindings change outside combat. If casting does not work, type
@@ -99,7 +109,9 @@ the home window. Use **`/rl`** to reload the UI.
 ## Reminder and flight details
 
 - Buff notices hide during combat, flights, death, and other unsupported player
-  states. Group reminders stay quiet when solo or grouped in the open world.
+  states. Use **Show in** to pick where self and group notices appear: open
+  world, cities (while resting), dungeons, raids and PvP. Group notices default
+  to dungeons, raids and PvP, and always need a group.
 - Optional low-rank alerts use learned ranks and trainer-confirmed upgrades.
   Visit a trainer to record available upgrades; unknown ranks are not flagged.
   Disable **Low-rank alerts** or enable **Ignore rank 1** for intentional use.
