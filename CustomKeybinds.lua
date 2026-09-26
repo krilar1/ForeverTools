@@ -8,18 +8,30 @@ function B:Settings()
     if type(all[class])~="table" then all[class]={enabled=false,up={},down={}} end
     return all[class]
 end
--- Enumerate the player's actual spellbook, never the macro template catalogue.
+-- The spellbook only changes on a few events, so the scan is kept until one
+-- of them fires. Callers only read the list; nobody may change it.
 function B:LearnedSpells()
+    if self.spellCache then return self.spellCache end
+    local list=self:ScanSpells()
+    -- An empty book usually means it is not loaded yet: do not keep that.
+    if #list>0 then self.spellCache=list end
+    return list
+end
+local spellbookEvents=CreateFrame("Frame")
+for _,event in ipairs({"SPELLS_CHANGED","LEARNED_SPELL_IN_SKILL_LINE","PLAYER_LEVEL_UP","PLAYER_TALENT_UPDATE","CHARACTER_POINTS_CHANGED","ACTIVE_TALENT_GROUP_CHANGED","PLAYER_ENTERING_WORLD","TRAINER_UPDATE"}) do pcall(spellbookEvents.RegisterEvent,spellbookEvents,event) end
+spellbookEvents:SetScript("OnEvent",function() B.spellCache=nil end)
+-- Enumerate the player's actual spellbook, never the macro template catalogue.
+function B:ScanSpells()
     local list,seen={},{}
     local bank=Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player or 0
-    local function add(id,name,icon,rank,passive)
+    local function add(id,name,icon,rank,passive,line)
         if not id or not name or passive or seen[id] then return end
         if C_SpellBook and C_SpellBook.IsSpellKnown then
             if not C_SpellBook.IsSpellKnown(id,bank) then return end
         elseif IsPlayerSpell then if not IsPlayerSpell(id) then return end
         elseif IsSpellKnown and not IsSpellKnown(id,false) then return end
         seen[id]=true
-        list[#list+1]={value=id,name=name,rank=rank,label=name..(rank and rank~="" and (" ("..rank..")") or ""),icon=icon}
+        list[#list+1]={value=id,name=name,rank=rank,label=name..(rank and rank~="" and (" ("..rank..")") or ""),icon=icon,line=line}
     end
     if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines and C_SpellBook.GetSpellBookItemInfo then
         for line=1,C_SpellBook.GetNumSpellBookSkillLines() do
@@ -28,7 +40,7 @@ function B:LearnedSpells()
                 for slot=info.itemIndexOffset+1,info.itemIndexOffset+info.numSpellBookItems do
                     local spell=C_SpellBook.GetSpellBookItemInfo(slot,bank)
                     if spell and not spell.isOffSpec and spell.itemType==(Enum and Enum.SpellBookItemType and Enum.SpellBookItemType.Spell or 1) then
-                        add(spell.spellID or spell.actionID,spell.name,spell.iconID,spell.subName,spell.isPassive)
+                        add(spell.spellID or spell.actionID,spell.name,spell.iconID,spell.subName,spell.isPassive,line)
                     end
                 end
             end
@@ -41,7 +53,7 @@ function B:LearnedSpells()
                 if kind=="SPELL" then
                     local name,rank=GetSpellBookItemName(slot,BOOKTYPE_SPELL or "spell")
                     local icon=GetSpellBookItemTexture and GetSpellBookItemTexture(slot,BOOKTYPE_SPELL or "spell")
-                    add(id,name,icon,rank,IsPassiveSpell and IsPassiveSpell(slot,BOOKTYPE_SPELL or "spell"))
+                    add(id,name,icon,rank,IsPassiveSpell and IsPassiveSpell(slot,BOOKTYPE_SPELL or "spell"),tab)
                 end
             end
         end
@@ -165,7 +177,8 @@ function B:Refresh()
 end
 function B:Open()
     if not self.frame then
-        self.frame=FT:Window("ForeverToolsCustomKeybinds","ForeverTools | Custom keybinds",640,680); self.pickers={}
+        self.frame=FT:Window("ForeverToolsCustomKeybinds","ForeverTools | Mouse-wheel casting",640,680); self.pickers={}
+        FT:BackTo(self.frame,"SystemKeybinds")
         self.toggle=FT:QuietButton(self.frame,"",592,46,"mouseover"); self.toggle:SetPoint("TOPLEFT",24,-66)
         self.toggle:SetScript("OnClick",function() local s=self:Settings(); s.enabled=not s.enabled; self:Apply() end)
         self.search=CreateFrame("EditBox",nil,self.frame,"InputBoxTemplate")
@@ -182,7 +195,7 @@ function B:Open()
         end)
         for i,d in ipairs(directions) do
             local key=d[1]
-            local label=FT:Label(self.frame,d[2],16,true); label:SetPoint("TOPLEFT",24,-128-(i-1)*72)
+            local label=FT:Label(self.frame,d[2],16,true); label:SetPoint("TOPLEFT",24,-128-(i-1)*72); FT:SectionHeading(label,"INV_Misc_Key_03",300)
             local picker=FT:Dropdown(self.frame,592,function() return self:SpellOptions() end,function(id) self:SelectSpell(key,id) end,"mouseover")
             picker:SetPoint("TOPLEFT",24,-152-(i-1)*72); picker:SetHeight(36)
             self.pickers[key]=picker

@@ -427,4 +427,9 @@ end
 
 local artworkEvents=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_TARGET_CHANGED","PLAYER_FOCUS_CHANGED","UNIT_TARGET","UNIT_CLASSIFICATION_CHANGED","UPDATE_EXPANSION_LEVEL","UPDATE_FACTION","BAG_UPDATE_DELAYED"}) do artworkEvents:RegisterEvent(event) end
-artworkEvents:SetScript("OnEvent",function() if FT.dbReady then S:Queue() end end)
+-- Unit events for other units (party, nameplates) do not change our artwork.
+local artworkUnits={player=true,target=true,focus=true,targettarget=true,focustarget=true}
+artworkEvents:SetScript("OnEvent",function(_,event,unit)
+    if (event=="UNIT_TARGET" or event=="UNIT_CLASSIFICATION_CHANGED") and not artworkUnits[unit] then return end
+    if FT.dbReady then S:Queue() end
+end)

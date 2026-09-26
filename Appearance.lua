@@ -1,16 +1,16 @@
 local _, FT = ...
 local Appearance = {}
 function FT:AppearanceBack(frame)
-    frame.homeButton.label:SetText("Back")
     frame.homeButton:SetScript("OnClick", function() FT:OpenModule("Appearance") end)
 end
 function Appearance:Open()
     if not self.frame then
-        self.frame = FT:Window("ForeverToolsAppearance", "ForeverTools | Fonts & colors", 440, 290)
+        self.frame = FT:Window("ForeverToolsAppearance", "ForeverTools | Appearance", 440, 348)
         local entries = {
             {"Font manager", "Choose fonts, sizes and outlines for each text area.", "FontManager", "fonts"},
             {"Unitframe colors", "Class-colored health bars for player, target and focus, and a dispel glow for debuffs you can remove. Party and raid class colors use Blizzard settings.", "UnitColors", "classes"},
             {"Skins", "Built-in action-bar and buff styles with color and transparency controls.", "IconStyles", "skins"},
+            {"Chat", "Show, hide or mouseover-reveal chat buttons, the chat font and clickable links.", "Chat", "chat"},
         }
         for i, entry in ipairs(entries) do
             local target = entry[3]

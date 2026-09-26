@@ -39,6 +39,9 @@ function Reminder:Settings()
     if s.ignoreRankOne==nil then s.ignoreRankOne=false end
     if s.rankMarker==nil then s.rankMarker=false end
     s.size=math.max(.7,math.min(1.5,tonumber(s.size) or 1))
+    -- Seconds a notice stays before hiding by itself; 0 = until the buff is back.
+    s.hideAfter=tonumber(s.hideAfter) or 30
+    if s.hideAfter~=0 and s.hideAfter~=10 and s.hideAfter~=30 and s.hideAfter~=60 and s.hideAfter~=120 then s.hideAfter=30 end
     if type(s.textColor)~="table" then s.textColor={1,1,1} end
     for i=1,3 do s.textColor[i]=math.max(0,math.min(1,tonumber(s.textColor[i]) or 1)) end
     if type(s.groupTextColor)~="table" then s.groupTextColor={.82,.68,1} end
@@ -68,8 +71,10 @@ function Reminder:TalentSpecs()
                 local name=type(first)=="string" and first or second
                 local points=type(first)=="string" and third or fifth
                 local icon=type(first)=="string" and second or fourth
-                if ok and safe(name) and type(name)=="string" and name==names[i] then
-                    result[#result+1]={name=name,icon=safe(icon) and icon or nil,points=safe(points) and type(points)=="number" and points or 0}
+                -- Trees come in the same order as our list; Forever may word a
+                -- tree name differently, so match by position when names differ.
+                if ok and safe(name) and type(name)=="string" and names[i] then
+                    result[#result+1]={name=names[i],icon=safe(icon) and icon or nil,points=safe(points) and type(points)=="number" and points or 0}
                 end
             end
         end
@@ -114,11 +119,11 @@ function Reminder:CurrentSpec()
             end
         end
     end
-    local best,name=0,"Unassigned"
-    for _,spec in ipairs(self:TalentSpecs()) do
-        if spec.points>best then best,name=spec.points,spec.name end
-    end
-    return name
+    -- No talent points yet (low level): use the tree the player picked.
+    local chosen=self:Settings().chosenSpec
+    chosen=type(chosen)=="table" and chosen[self:Class()]
+    for _,tree in ipairs(fallbackTrees[self:Class()] or {}) do if chosen==tree then return chosen end end
+    return "Unassigned"
 end
 function Reminder:SpecChoices()
     local result={}
@@ -150,7 +155,10 @@ function Reminder:Learned()
     local book=FT.modules.CustomKeybinds
     if book and book.LearnedSpells then
         local ok,spells=pcall(book.LearnedSpells,book)
+        -- Same spellbook scan as last time: reuse the map built from it.
+        if ok and spells==self.learnedFrom and self.learnedMap then return self.learnedMap end
         if ok and type(spells)=="table" then
+            self.learnedFrom,self.learnedMap=spells,found
             for _,spell in ipairs(spells) do
                 if safe(spell.name) and type(spell.name)=="string" then
                     local _,rank=FT.BuffRanks:NameRank(spell.name,spell.rank or spell.label)
@@ -314,19 +322,34 @@ function Reminder:WeaponMissing(slot)
     if not state then return nil end
     return not state.present
 end
--- Polling the same missing buffs must not restart a dismissed notice.
+-- The timer (and a dismissed notice) restarts only when a buff goes missing
+-- that was not missing before. A buff coming back, or checking again, keeps
+-- the current countdown.
 function Reminder:NoticeVisible(key,entries)
     self.notices=self.notices or {}
-    local names={}
-    for _,entry in ipairs(entries) do names[#names+1]=entry.message or entry.name end
-    table.sort(names)
-    local signature=table.concat(names,"\n")
     local notice=self.notices[key]
     local now=GetTime and GetTime() or 0
-    if not notice or notice.signature~=signature then
-        notice={signature=signature,expires=now+30};self.notices[key]=notice
+    local names,fresh={},not notice
+    for _,entry in ipairs(entries) do
+        local name=entry.message or entry.name
+        names[name]=true
+        if notice and not notice.names[name] then fresh=true end
     end
-    return #entries>0 and not notice.dismissed and now<notice.expires
+    if fresh then notice={names=names,started=now};self.notices[key]=notice
+    else notice.names=names end
+    if #entries==0 then self.notices[key]=nil; return false end
+    local limit=self:Settings().hideAfter
+    return not notice.dismissed and (limit==0 or now<notice.started+limit)
+end
+local hideChoices={{0,"Never (until the buff is back)"},{10,"10 seconds"},{30,"30 seconds"},{60,"1 minute"},{120,"2 minutes"}}
+function Reminder:HideAfterText()
+    local v=self:Settings().hideAfter
+    for _,c in ipairs(hideChoices) do if c[1]==v then return "Hide notice after: "..(v==0 and "Never" or c[2]) end end
+    return "Hide notice after: 30 seconds"
+end
+function Reminder:HideHint()
+    local v=self:Settings().hideAfter
+    return (v==0 and "Stays until the buff is back." or ("Hides after "..(v>=60 and (v/60).." minute"..(v>60 and "s" or "") or v.." seconds")..".")).." Left-click to dismiss, right-click for settings."
 end
 function Reminder:ClickNotice(key,button)
     if button=="RightButton" then
@@ -350,6 +373,9 @@ function Reminder:Refresh(cachedSpells)
     if self:Suppressed() then
         self.missing={}
         if self.badge then self.badge:Hide();self.groupBadge:Hide() end
+        -- Notices pause on flights, while dead or in combat, but the settings
+        -- page must still lay itself out, or it opens empty and jumbled.
+        if self.frame then self:RefreshMenu(cachedSpells or self.learnedCache) end
         return
     end
     local learned=cachedSpells or self:Learned()
@@ -437,7 +463,7 @@ function Reminder:Apply()
         badge:SetScript("OnClick",function(_,button) self:ClickNotice("self",button) end)
         FT:Tooltip(badge,"Missing self buffs",function()
             local lines={};for _,entry in ipairs(self.missing) do lines[#lines+1]=entry.detail or entry.message or entry.name.." missing" end
-            return table.concat(lines,"\n").."\nHides after 30 seconds. Left-click to dismiss, right-click for settings."
+            return table.concat(lines,"\n").."\n"..self:HideHint()
         end)
         badge:RegisterForDrag("LeftButton")
         badge:SetScript("OnDragStart",function(owner) self:DragStart(owner) end)
@@ -455,9 +481,31 @@ function Reminder:Apply()
         group:SetScript("OnClick",function(_,button) self:ClickNotice("group",button) end)
         group:RegisterForDrag("LeftButton");group:SetScript("OnDragStart",function(owner) self:DragStart(owner) end)
         group:SetScript("OnDragStop",function() self:DragUpdate();self.dragging=false end)
-        FT:Tooltip(group,"Group buffs","Hides after 30 seconds. Left-click to dismiss, right-click for settings.")
+        FT:Tooltip(group,"Group buffs",function() return self:HideHint() end)
     end
     self:Refresh()
+end
+local kindOrder={"group","blessing","aura","armor","self"}
+local kindLabels={group="Group buffs",blessing="Blessings",aura="Auras & stances",armor="Armor",self="Self buffs"}
+local kindIcons={group="Spell_Holy_PrayerOfFortitude",blessing="Spell_Holy_FistOfJustice",aura="Spell_Holy_DevotionAura",armor="Spell_Frost_FrostArmor02",self="Spell_Holy_WordFortitude"}
+local function kindOf(entry)
+    local g=entry.group
+    if g=="wild" or g=="fortitude" or g=="intellect" then return "group" end
+    if g=="blessing" then return "blessing" end
+    if g=="stance" or g=="protection" then return "aura" end
+    if g=="armor" then return "armor" end
+    return "self"
+end
+-- Stable sort into the heading order above, keeping each class's own order inside a group.
+function Reminder:SortByKind(list)
+    local rank={}; for i,kind in ipairs(kindOrder) do rank[kind]=i end
+    for i,entry in ipairs(list) do entry.listIndex=i end
+    table.sort(list,function(a,b)
+        local ka,kb=rank[kindOf(a)],rank[kindOf(b)]
+        if ka~=kb then return ka<kb end
+        return a.listIndex<b.listIndex
+    end)
+    return list
 end
 function Reminder:RefreshMenu(learned)
     local s=self:Settings();learned=learned or self:Learned()
@@ -479,6 +527,7 @@ function Reminder:RefreshMenu(learned)
     FT:SetSelected(self.groupPreview,self.previewGroup)
     self.sizeValue:SetText("Size: "..math.floor(s.size*100+.5).."%")
     self.settingSize=true;self.sizeSlider:SetValue(s.size);self.settingSize=false
+    self.hideChoice.value=s.hideAfter;self.hideChoice.label:SetText(self:HideAfterText())
     self.colorSwatch:SetVertexColor(unpack(s.textColor))
     self.groupColorSwatch:SetVertexColor(unpack(s.groupTextColor))
     local editSpec=self.editSpec
@@ -488,7 +537,7 @@ function Reminder:RefreshMenu(learned)
     local icon=specs[1] and specs[1].icon or "Interface\\Icons\\INV_Misc_Book_09"
     for _,spec in ipairs(specs) do if spec.value==editSpec then icon=spec.icon;break end end
     self.specChoice.icon:SetTexture(icon)
-    local available=self:Available(learned,editSpec)
+    local available=self:SortByKind(self:Available(learned,editSpec))
     for i,button in ipairs(self.rows) do
         local entry=available[i];button.entry=entry;button:SetShown(entry~=nil)
         if entry then
@@ -511,14 +560,32 @@ function Reminder:RefreshMenu(learned)
     -- holds the optional extras. Each section has a heading and a short hint.
     local function place(control,x,top) control:ClearAllPoints();control:SetPoint("TOPLEFT",self.frame,"TOPLEFT",x,-top) end
     local L,R=24,580
-    local function section(key,x,top) local h=self.sections[key]; place(h.title,x,top); place(h.hint,x,top+22); if h.line then place(h.line,x,top-12) end; return top+50 end
+    local function section(key,x,top) local h=self.sections[key]; place(h.title,x,top); place(h.hint,x,top+26); if h.line then place(h.line,x,top-12) end; return top+54 end
     local y=section("self",L,98)
     place(self.toggle,L,y);y=y+46
     place(self.specChoice,L,y);y=y+40
-    for i,button in ipairs(self.rows) do place(button,L+((i-1)%2)*262,y+math.floor((i-1)/2)*38) end
-    place(self.empty,L,y+8)
-    y=y+math.max(1,math.ceil(#available/2))*38+4
-    if weapon then place(self.mainDropdown,L,y);place(self.offDropdown,L,y+38);y=y+80 end
+    -- Buffs grouped under small headings (Blessings, Auras & stances, ...),
+    -- two per row inside each group.
+    for _,h in ipairs(self.kindHeads) do h:Hide() end
+    for _,button in ipairs(self.rows) do button:ClearAllPoints() end
+    local index,headUsed=1,0
+    for _,kind in ipairs(kindOrder) do
+        local first=index
+        while available[index] and kindOf(available[index])==kind do index=index+1 end
+        local count=index-first
+        if count>0 then
+            headUsed=headUsed+1
+            local h=self.kindHeads[headUsed]; h.ftHeading.icon=kindIcons[kind]; h:SetText(kindLabels[kind]); place(h,L,y); h:Show(); y=y+18
+            for n=0,count-1 do place(self.rows[first+n],L+(n%2)*262,y+math.floor(n/2)*38) end
+            y=y+math.ceil(count/2)*38+6
+        end
+    end
+    if #available==0 and not weapon then place(self.empty,L,y+4); y=y+30 end
+    if weapon then
+        headUsed=headUsed+1
+        local h=self.kindHeads[headUsed]; h.ftHeading.icon="INV_Sword_04"; h:SetText("Weapon buffs"); place(h,L,y); h:Show(); y=y+18
+        place(self.mainDropdown,L,y);place(self.offDropdown,L,y+38);y=y+80
+    end
     place(self.whereRows.selfWhere.label,L,y+9);self:PlaceWhere("selfWhere",L,y);y=y+40
     place(self.selfColorButton,L,y);y=y+36
     local left=y
@@ -533,6 +600,7 @@ function Reminder:RefreshMenu(learned)
     place(self.selfPreview,R,y);place(self.groupPreview,R+262,y);y=y+40
     place(self.moveButton,R,y);y=y+42
     place(self.sizeValue,R,y);place(self.sizeSlider,R+162,y);y=y+34
+    place(self.hideChoice,R,y);y=y+40
     place(self.resetPosition,R,y);y=y+30
     local bottom=math.max(left,y)
     self.columnLine:ClearAllPoints()
@@ -558,6 +626,7 @@ function Reminder:Open()
             look={"Look and position","Preview, move and resize the notices."}}) do
             local h={}
             h.title=FT:Label(frame,text[1],16,true); h.title:SetTextColor(.82,.68,1)
+            FT:SectionHeading(h.title,({self="Spell_Holy_WordFortitude",group="Spell_Holy_PrayerOfFortitude",rank="INV_Misc_Book_07",look="Ability_Rogue_Sprint"})[key],300)
             h.hint=FT:Label(frame,text[2],12); h.hint:SetTextColor(.66,.57,.77); h.hint:SetWidth(512)
             if key=="rank" or key=="look" then
                 h.line=frame:CreateTexture(nil,"ARTWORK"); h.line:SetColorTexture(.30,.23,.46,.6); h.line:SetSize(512,1)
@@ -568,12 +637,22 @@ function Reminder:Open()
         self.toggle=FT:QuietButton(frame,"",512,36,"buffs");self.toggle:SetPoint("TOPLEFT",24,-96)
         self.toggle:SetScript("OnClick",function() local s=self:Settings();s.enabled=not s.enabled;self:Apply() end)
         FT:Tooltip(self.toggle,"Self-buff reminders","Shows a small notice at the top of the screen when one of your buffs is missing. Hidden in combat, on flights and while dead. It never casts anything for you.")
-        self.specChoice=FT:Dropdown(frame,512,function() return self:SpecChoices() end,function(value) self.editSpec=value;self:RefreshMenu() end,"classes")
+        self.specChoice=FT:Dropdown(frame,512,function() return self:SpecChoices() end,function(value)
+            self.editSpec=value
+            -- Before any talent points are spent, the picked tree becomes your tree.
+            local spent=0; for _,spec in ipairs(self:TalentSpecs()) do spent=spent+spec.points end
+            if spent==0 then local s=self:Settings(); s.chosenSpec=type(s.chosenSpec)=="table" and s.chosenSpec or {}; s.chosenSpec[self:Class()]=value; self:Apply() end
+            self:RefreshMenu()
+        end,"classes")
         self.specChoice.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
         self.specChoice:SetPoint("TOPLEFT",24,-145)
-        FT:Tooltip(self.specChoice,"Buffs for each talent tree","Pick which buffs to watch for each talent tree. The addon switches with your talents automatically.")
+        FT:Tooltip(self.specChoice,"Buffs for each talent tree","Pick which buffs to watch for each talent tree. The addon follows the tree you have spent the most points in. Before you have talent points, the tree you pick here is used.")
         self.rows={}
-        for i=1,8 do
+        self.kindHeads={}
+        for i=1,6 do
+            local h=FT:Label(frame,"",12,true); h:SetTextColor(.66,.57,.77); FT:SectionHeading(h,nil,260,14); h:Hide(); self.kindHeads[i]=h
+        end
+        for i=1,12 do
             local b=FT:QuietButton(frame,"",250,32,"welcome");b:SetPoint("TOPLEFT",24+((i-1)%2)*262,-185-math.floor((i-1)/2)*38)
             b.label:SetFont(FT.font or "Fonts\\FRIZQT__.TTF",12,"")
             b:SetScript("OnClick",function()
@@ -627,6 +706,11 @@ function Reminder:Open()
             self:Settings().size=math.floor(value*20+.5)/20;self:Apply()
         end)
         FT:Tooltip(self.sizeSlider,"Reminder size","Make the notices smaller or bigger (70% to 150%).")
+        self.hideChoice=FT:Dropdown(frame,512,function()
+            local list={};for _,c in ipairs(hideChoices) do list[#list+1]={value=c[1],label=c[2],icon="Interface\\Icons\\INV_Misc_PocketWatch_01"} end;return list
+        end,function(value) self:Settings().hideAfter=value;self.notices=nil;self:Apply() end,"fps")
+        self.hideChoice:SetHeight(32); self.hideChoice.menuWidth=512
+        FT:Tooltip(self.hideChoice,"Hide notice after","How long a notice stays before it hides by itself. It shows again when another buff goes missing. Never: it stays until the buff is back or you click it.")
         for i,entry in ipairs({{"textColor","Self text color"},{"groupTextColor","Group text color"}}) do
             local field,label=entry[1],entry[2]
             local color=FT:QuietButton(frame,label,250,34,"fonts");color:SetPoint("TOPLEFT",24+(i-1)*262,-611)
@@ -678,6 +762,12 @@ function Reminder:Open()
     self:Apply();self.frame:Show()
 end
 FT:RegisterModule("BuffReminder",Reminder)
+-- Many events in the same moment lead to one check.
+function Reminder:QueueApply(delay)
+    if self.applyQueued then return end
+    self.applyQueued=true
+    C_Timer.After(delay or 0,function() self.applyQueued=false; if FT.dbReady then self:Apply() end end)
+end
 local events=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","PLAYER_DEAD","PLAYER_ALIVE","PLAYER_UNGHOST","PLAYER_CONTROL_LOST","PLAYER_CONTROL_GAINED","UNIT_ENTERED_VEHICLE","UNIT_EXITED_VEHICLE","ZONE_CHANGED_NEW_AREA","GROUP_ROSTER_UPDATE","UNIT_AURA","SPELLS_CHANGED","PLAYER_TALENT_UPDATE","UPDATE_SHAPESHIFT_FORM","UPDATE_SHAPESHIFT_FORMS","PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","WEAPON_ENCHANT_CHANGED","WEAPON_SLOT_CHANGED","UNIT_SPELLCAST_START","UNIT_SPELLCAST_SUCCEEDED","PLAYER_LEVEL_UP","TRAINER_SHOW","TRAINER_UPDATE","PLAYER_UPDATE_RESTING"}) do pcall(events.RegisterEvent,events,event) end
 events:SetScript("OnEvent",function(_,event,unit,castGUID,spellID)
@@ -692,7 +782,9 @@ events:SetScript("OnEvent",function(_,event,unit,castGUID,spellID)
     end
     if event=="UNIT_AURA" and (not safe(unit) or type(unit)~="string" or (unit~="player" and not unit:match("^party%d+$") and not unit:match("^raid%d+$"))) then return end
     if event=="PLAYER_REGEN_DISABLED" then if Reminder.badge then Reminder.badge:Hide();Reminder.groupBadge:Hide() end;return end
-    C_Timer.After(0,function() if FT.dbReady then Reminder:Apply() end end)
+    -- Aura changes come in bursts (many per second in a raid): check at most
+    -- four times a second. Other events are handled on the next frame.
+    Reminder:QueueApply(event=="UNIT_AURA" and .25 or 0)
     if event=="PLAYER_ENTERING_WORLD" or event=="ZONE_CHANGED_NEW_AREA" then
         C_Timer.After(1.5,function() if FT.dbReady then Reminder:Apply() end end)
     end

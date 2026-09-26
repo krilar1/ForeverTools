@@ -270,14 +270,15 @@ function Leveling:Refresh()
     self.bgToggle.label:SetText("Background: "..(s.background and "On" or "Off")); FT:SetSelected(self.bgToggle,s.background)
     self.bgColor.swatch:SetColorTexture(s.backgroundColor[1],s.backgroundColor[2],s.backgroundColor[3],1)
     self.alphaLabel:SetText(string.format("Transparency: %d%%",math.floor((1-s.backgroundAlpha)*100+.5)))
-    self.solidButton:SetEnabled(s.backgroundAlpha<1); self.clearButton:SetEnabled(s.backgroundAlpha>0)
-    for _,control in ipairs({self.bgColor,self.solidButton,self.clearButton}) do control:SetAlpha(s.background and 1 or .5) end
-    self.smaller:SetEnabled(s.fontSize>10); self.larger:SetEnabled(s.fontSize<32)
+    self.settingSliders=true
+    self.sizeSlider:SetValue(s.fontSize); self.alphaSlider:SetValue(math.floor((1-s.backgroundAlpha)*100+.5))
+    self.settingSliders=false
+    for _,control in ipairs({self.bgColor,self.alphaSlider,self.alphaLabel}) do control:SetAlpha(s.background and 1 or .5) end
 end
 function Leveling:Open()
     if not self.frame then
         local frame=FT:Window("ForeverToolsLeveling","ForeverTools | Leveling stats",540,560); self.frame=frame
-        FT:BackTo(frame,"SystemGameplay")
+        FT:BackTo(frame,"SystemDisplay")
         local hint=FT:Label(frame,"Session stats reset when you reload or level up. Hidden at max level.",13)
         hint:SetPoint("TOPLEFT",24,-60); hint:SetWidth(492)
         self.toggle=FT:QuietButton(frame,"",492,36,"fps"); self.toggle:SetPoint("TOPLEFT",24,-86)
@@ -340,19 +341,19 @@ function Leveling:Open()
         end)
         FT:Tooltip(self.bgColor,"Background color","Choose the background color. Choosing a color turns the background on.")
         y=y-48
-        self.smaller=FT:QuietButton(frame,"−",40,32); self.smaller:SetPoint("TOPLEFT",24,y)
-        self.smaller:SetScript("OnClick",function() local s=self:Settings(); s.fontSize=math.max(10,s.fontSize-1); self:Apply() end)
-        self.sizeLabel=FT:Label(frame,"",16); self.sizeLabel:SetPoint("LEFT",self.smaller,"RIGHT",18,0); self.sizeLabel:SetWidth(135)
-        self.larger=FT:QuietButton(frame,"+",40,32); self.larger:SetPoint("LEFT",self.sizeLabel,"RIGHT",10,0)
-        self.larger:SetScript("OnClick",function() local s=self:Settings(); s.fontSize=math.min(32,s.fontSize+1); self:Apply() end)
-        -- Transparency in 10% steps, like the other −/+ controls.
-        self.solidButton=FT:QuietButton(frame,"−",40,32); self.solidButton:SetPoint("TOPLEFT",276,y)
-        self.solidButton:SetScript("OnClick",function() local s=self:Settings(); s.backgroundAlpha=math.min(1,math.floor(s.backgroundAlpha*10+.5)/10+.1); self:Apply() end)
-        FT:Tooltip(self.solidButton,"Less transparent","Make the background more solid.")
-        self.alphaLabel=FT:Label(frame,"",16); self.alphaLabel:SetPoint("LEFT",self.solidButton,"RIGHT",12,0); self.alphaLabel:SetWidth(138)
-        self.clearButton=FT:QuietButton(frame,"+",40,32); self.clearButton:SetPoint("LEFT",self.alphaLabel,"RIGHT",8,0)
-        self.clearButton:SetScript("OnClick",function() local s=self:Settings(); s.backgroundAlpha=math.max(0,math.floor(s.backgroundAlpha*10+.5)/10-.1); self:Apply() end)
-        FT:Tooltip(self.clearButton,"More transparent","Make the background more see-through.")
+        -- Sliders, like the size slider in Buff reminders.
+        local function slider(label,top,min,max,step,tip,onChange)
+            local text=FT:Label(frame,"",14); text:SetPoint("TOPLEFT",24,top-6); text:SetWidth(150)
+            local bar=CreateFrame("Slider",nil,frame,"OptionsSliderTemplate"); bar:SetSize(320,18); bar:SetPoint("TOPLEFT",196,top-4)
+            bar:SetMinMaxValues(min,max); bar:SetValueStep(step); bar:SetObeyStepOnDrag(true)
+            for _,key in ipairs({"Low","High","Text"}) do local r=bar[key] or (bar.GetName and bar:GetName() and _G[bar:GetName()..key]); if r and r.Hide then r:Hide() end end
+            bar:SetScript("OnValueChanged",function(_,value) if not self.settingSliders then onChange(value) end end)
+            FT:Tooltip(bar,label,tip)
+            return text,bar
+        end
+        self.sizeLabel,self.sizeSlider=slider("Font size",y,10,32,1,"Text size of the stats (10 to 32).",function(v) self:Settings().fontSize=math.floor(v+.5); self:Apply() end)
+        y=y-38
+        self.alphaLabel,self.alphaSlider=slider("Transparency",y,0,100,5,"How see-through the background is (0% solid, 100% invisible).",function(v) self:Settings().backgroundAlpha=1-math.floor(v+.5)/100; self:Apply() end)
         local note=FT:Label(frame,"Kills to level uses your recent kill experience. XP per hour starts with your first experience and settles over a few minutes.",12)
         note:SetPoint("BOTTOMLEFT",24,20); note:SetWidth(492); note:SetTextColor(.66,.57,.77)
         frame:SetHeight(-y+32+50)

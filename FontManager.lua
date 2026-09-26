@@ -9,8 +9,17 @@ local stock = {
     { value = "inter", label = "Inter", path = media .. "Inter-Regular.ttf" },
     { value = "expressway", label = "Expressway", path = media .. "expressway.otf" },
 }
-local outlines = { {value="original", label="Original outline"}, {value="", label="No outline"},
+-- WoW draws two outline widths (Outline, Thick). Thin outline (saved as THIN)
+-- is the outline without the text's drop shadow, so it reads much lighter.
+local outlines = { {value="original", label="Default"}, {value="", label="No outline"},
     {value="THIN", label="Thin outline"}, {value="OUTLINE", label="Outline"}, {value="THICKOUTLINE", label="Thick outline"} }
+-- Chat has no outline by default, so "No outline" would be the same as Default.
+local function outlineChoices(area)
+    if area ~= "chat" then return outlines end
+    local list = {}
+    for _, entry in ipairs(outlines) do if entry.value ~= "" then list[#list + 1] = entry end end
+    return list
+end
 
 function Fonts:RegisterArea(id, label, description, collect, engine)
     self.order[#self.order + 1] = id
@@ -47,7 +56,13 @@ end
 function Fonts:Resolve(s)
     if type(s.font)=="string" and s.font:sub(1,5)=="file:" then
         local file=s.font:sub(6)
-        if file:match("^[%w _%-%.]+%.[tT][tT][fF]$") or file:match("^[%w _%-%.]+%.[oO][tT][fF]$") then return media..file,file end
+        if file:match("^[%w _%-%.]+%.[tT][tT][fF]$") or file:match("^[%w _%-%.]+%.[oO][tT][fF]$") then
+            -- A font file can be removed while it is still chosen. Never hand a
+            -- missing file to the game: remember it and fall back instead.
+            if self:ValidFont(media..file) then return media..file,file end
+            self.missingFiles=self.missingFiles or {}; self.missingFiles[file]=true
+            return nil,file.." (missing)"
+        end
     end
     if s.font == "expressway" then
         for _, name in ipairs({"expressway.ttf", "expressway.otf", "Expressway.ttf", "Expressway.otf"}) do
@@ -59,10 +74,18 @@ function Fonts:Resolve(s)
         if entry.value == s.font then return entry.path, entry.label end
     end
     -- A provider may load after us; remember its selected path for early engine setup.
-    if s.pathFor == s.font then return s.path, s.font:gsub("^shared:", "") end
+    if s.pathFor == s.font and self:ValidFont(s.path) then return s.path, (s.font:gsub("^shared:", "")) end
 end
 function Fonts:ValidFont(path)
     if type(path) ~= "string" or path == "" then return false end
+    -- Files cannot appear or vanish without restarting the game, so one check per session is enough.
+    self.validCache = self.validCache or {}
+    if self.validCache[path] ~= nil then return self.validCache[path] end
+    local result = self:ProbeFont(path)
+    self.validCache[path] = result
+    return result
+end
+function Fonts:ProbeFont(path)
     if not self.probe then self.probe = CreateFont("ForeverToolsFontProbe") end
     -- A FontString can return false even after loading a valid font. Use a Font
     -- object and confirm GetFont; reset first so a failed probe cannot reuse a result.
@@ -167,7 +190,7 @@ Fonts:RegisterArea("objectives","Quest objectives","Quest tracker titles and obj
     collectTree(list,QuestWatchFrame,5)
 end)
 function Fonts:Flags(value,original)
-    return value=="THIN" and "" or value=="original" and (original or "") or value
+    return value=="THIN" and "OUTLINE" or value=="original" and (original or "") or value
 end
 function Fonts:ThinShadow(object,outline)
     if not object.SetShadowOffset or not object.SetShadowColor then return end
@@ -179,7 +202,9 @@ function Fonts:ThinShadow(object,outline)
         self.shadows[object]={x,y,r,g,b,a}
     end
     local old=self.shadows[object]
-    if outline=="THIN" then object:SetShadowOffset(.5,-.5); object:SetShadowColor(0,0,0,.85)
+    -- Thin outline: WoW's outline without the drop shadow underneath, which
+    -- is what makes the normal outline look heavy.
+    if outline=="THIN" then object:SetShadowOffset(0,0); object:SetShadowColor(0,0,0,0)
     else object:SetShadowOffset(old[1],old[2]); object:SetShadowColor(old[3],old[4],old[5],old[6]) end
 end
 function Fonts:ApplyArea(id)
@@ -210,13 +235,22 @@ function Fonts:ApplyArea(id)
             if not cache[object] then cache[object] = {file, size, flags or ""} end
         end
     end
+    local lowerPath = path:lower()
     for object in pairs(objects) do
         local original = cache[object]
         if original then
-            local applied, result = pcall(object.SetFont, object, path, s.size == 0 and original[2] or s.size, self:Flags(s.outline,original[3]))
-            self:ThinShadow(object,s.outline)
-            local actual = applied and object:GetFont()
-            if applied and actual and actual:lower() == path:lower() then count = count + 1 else self.errors[id] = "The client rejected this font for one or more text areas." end
+            local size, flags = s.size == 0 and original[2] or s.size, self:Flags(s.outline,original[3])
+            -- Already showing this font, size and outline: nothing to do.
+            local ok, file, currentSize, currentFlags = pcall(object.GetFont, object)
+            if ok and type(file) == "string" and file:lower() == lowerPath and currentSize and math.abs(currentSize - size) < 0.01 and (currentFlags or "") == flags then
+                self:ThinShadow(object,s.outline)
+                count = count + 1
+            else
+                local applied = pcall(object.SetFont, object, path, size, flags)
+                self:ThinShadow(object,s.outline)
+                local actual = applied and object:GetFont()
+                if applied and actual and actual:lower() == lowerPath then count = count + 1 else self.errors[id] = "The client rejected this font for one or more text areas." end
+            end
         end
     end
     if id=="restedxp" or id=="swingMain" or id=="swingOff" or id=="swingRanged" or id=="objectives" then
@@ -238,16 +272,45 @@ function Fonts:ApplyArea(id)
     end
     self.counts[id] = count
 end
-function Fonts:Apply()
-    if InCombatLockdown() then self.deferred = true; self:Refresh(); return end
-    self.deferred = false
-    for _, id in ipairs(self.order) do self:ApplyArea(id) end
-    self:Refresh()
+function Fonts:Apply(only)
+    if InCombatLockdown() then self.deferred = true; self:RefreshShown(); return end
+    if not only then self.deferred = false end
+    for _, id in ipairs(self.order) do
+        if not only or only[id] then self:ApplyArea(id) end
+    end
+    self:WarnMissing()
+    self:RefreshShown()
 end
-function Fonts:Queue()
+-- The settings page only needs redrawing while it is open.
+function Fonts:RefreshShown()
+    if self.frame and self.frame:IsShown() then self:Refresh() end
+end
+-- Queue(): everything. Queue({actions=true}): only those areas. Requests in
+-- the same moment are merged into one pass on the next frame.
+function Fonts:Queue(areas)
+    if areas and self.queuedAreas ~= "all" then
+        self.queuedAreas = self.queuedAreas or {}
+        for id in pairs(areas) do self.queuedAreas[id] = true end
+    else self.queuedAreas = "all" end
     if self.queued then return end
     self.queued = true
-    C_Timer.After(0, function() self.queued = false; self:Apply() end)
+    C_Timer.After(0, function()
+        local only = self.queuedAreas; self.queued = false; self.queuedAreas = nil
+        self:Apply(only ~= "all" and only or nil)
+    end)
+end
+-- Tell the player once per session which chosen font files are gone and
+-- where to put them back. Those areas keep the game's own font meanwhile.
+function Fonts:WarnMissing()
+    local files = {}
+    for file in pairs(self.missingFiles or {}) do if not (self.warned and self.warned[file]) then files[#files + 1] = file end end
+    if #files == 0 then return end
+    table.sort(files)
+    self.warned = self.warned or {}
+    for _, file in ipairs(files) do self.warned[file] = true end
+    local text = "Font file missing: " .. table.concat(files, ", ") .. ". Put it back in Interface\\AddOns\\ForeverTools\\Media\\Fonts and restart WoW, or choose another font in Font manager. Until then the game's own font is used."
+    print("|cffc9a0ffForeverTools:|r " .. text)
+    FT:Toast("A chosen font file is missing. Details are in chat.", 5)
 end
 function Fonts:ChooseFont(value)
     local s = self:Settings(self.selected)
@@ -348,9 +411,9 @@ function Fonts:Open()
             local list = {{value=0,label="Original size"}}; for i=8,40 do list[#list+1]={value=i,label=i .. " px"} end; return list
         end, function(value) self:Settings(self.selected).size=value; self:Apply() end, "fonts")
         self.sizeChoice:SetPoint("TOPLEFT", 240, -212)
-        self.outlineChoice = self:Stepper(self.frame, 244, function() return outlines end, function(value) self:Settings(self.selected).outline=value; self:Apply() end, "fonts")
+        self.outlineChoice = self:Stepper(self.frame, 244, function() return outlineChoices(self.selected) end, function(value) self:Settings(self.selected).outline=value; self:Apply() end, "fonts")
         self.outlineChoice:SetPoint("TOPLEFT", 490, -212)
-        self.previewTitle = FT:Label(self.frame, "Preview", 14, true); self.previewTitle:SetPoint("TOPLEFT",240,-262)
+        self.previewTitle = FT:Label(self.frame, "Preview", 14, true); self.previewTitle:SetPoint("TOPLEFT",240,-262); FT:SectionHeading(self.previewTitle, "INV_Inscription_Tradeskill01", 260)
         self.preview = FT:Label(self.frame, "The quick brown fox jumps over the lazy dog.", 22); self.preview:SetPoint("TOPLEFT", 240, -286); self.preview:SetSize(494, 80)
         local all=FT:QuietButton(self.frame,"Apply selected font to all",494,32,"fonts")
         all:SetPoint("TOPLEFT",240,-406)
@@ -362,7 +425,7 @@ function Fonts:Open()
         allHint:SetPoint("TOPLEFT",240,-446)
         self.customFont=CreateFrame("EditBox",nil,self.frame,"InputBoxTemplate"); self.customFont:SetSize(350,28); self.customFont:SetPoint("TOPLEFT",246,-212); self.customFont:SetFont(FT.bodyFont,14,""); self.customFont:SetAutoFocus(false)
         self.customFontAdd=FT:QuietButton(self.frame,"Add font",128,28,"add"); self.customFontAdd:SetPoint("LEFT",self.customFont,"RIGHT",12,0)
-        self.customFontAdd:SetScript("OnClick",function() local file=self.customFont:GetText(); local path=self:Resolve({font="file:"..file}); if not self:ValidFont(path) then FT:Toast("Font unavailable. Check filename and restart WoW."); return end; FT.db.customFonts=FT.db.customFonts or {}; local found=false; for _,v in ipairs(FT.db.customFonts) do if v==file then found=true end end; if not found then table.insert(FT.db.customFonts,file) end; self:ChooseFont("file:"..file) end)
+        self.customFontAdd:SetScript("OnClick",function() local file=self.customFont:GetText(); local path=self:Resolve({font="file:"..file}); if not path then FT:Toast("Font not found. Put the file in Interface\\AddOns\\ForeverTools\\Media\\Fonts, then fully restart WoW."); return end; FT.db.customFonts=FT.db.customFonts or {}; local found=false; for _,v in ipairs(FT.db.customFonts) do if v==file then found=true end end; if not found then table.insert(FT.db.customFonts,file) end; self:ChooseFont("file:"..file) end)
         FT:Tooltip(self.customFont,"Font filename","Type the file name, for example MyFont.ttf. Put the file in ForeverTools/Media/Fonts while WoW is closed, then start WoW. Only use fonts you are allowed to use.")
         self.status = FT:Label(self.frame, "", 13); self.status:SetPoint("TOPLEFT", 240, -392); self.status:SetSize(494, 62); self.status:SetJustifyV("TOP")
         local reset = FT:QuietButton(self.frame, "Reset this area", 238, 32, "reset"); reset:SetPoint("BOTTOMLEFT", 240, 30)
@@ -393,16 +456,25 @@ function Fonts:Open()
         FT:Tooltip(reset, "Reset area", "Restore the original font settings for this area.")
         FT:Tooltip(apply, "Reapply fonts", "Apply your font settings again to everything on screen, in case something did not update.")
     end
-    self:Apply(); self.frame:Show()
+    self:Apply(); self.frame:Show(); self:Refresh()
 end
 FT:RegisterModule("FontManager", Fonts)
 local events = CreateFrame("Frame")
 for _, event in ipairs({"ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED", "UPDATE_BINDINGS", "ACTIONBAR_SLOT_CHANGED", "UPDATE_CHAT_WINDOWS", "GROUP_ROSTER_UPDATE", "PLAYER_TARGET_CHANGED"}) do events:RegisterEvent(event) end
 local ready = false
+-- Which font areas each event can affect. Events not listed redo everything.
+local eventAreas = {
+    UPDATE_BINDINGS = {actions = true}, ACTIONBAR_SLOT_CHANGED = {actions = true, cooldowns = true},
+    UPDATE_CHAT_WINDOWS = {chat = true},
+    GROUP_ROSTER_UPDATE = {units = true}, PLAYER_TARGET_CHANGED = {units = true},
+}
 events:SetScript("OnEvent", function(_, event, loaded)
-    if event == "ADDON_LOADED" and loaded == addonName then
-        FT:InitializeDB(); ready = true; Fonts:Apply()
-    elseif ready then Fonts:Queue() end
+    if event == "ADDON_LOADED" then
+        if loaded == addonName then FT:InitializeDB(); ready = true; Fonts:Apply() end
+    elseif ready then
+        if event == "PLAYER_REGEN_ENABLED" and not Fonts.deferred then return end
+        Fonts:Queue(eventAreas[event])
+    end
 end)
 
 -- RestedXP creates rows as guide steps change. A bounded scan discovers these
@@ -412,8 +484,8 @@ events:SetScript("OnUpdate",function(_,dt)
     scanElapsed=scanElapsed+dt
     if scanElapsed<2 or not FT.dbReady or InCombatLockdown() then return end
     scanElapsed=0
-    if RXPFrame or RXPV2GuideWindow then Fonts:ApplyArea("restedxp") end
-    if ObjectiveTrackerFrame or QuestObjectiveTracker or QuestWatchFrame then Fonts:ApplyArea("objectives") end
+    if (RXPFrame or RXPV2GuideWindow) and Fonts:Settings("restedxp").enabled then Fonts:ApplyArea("restedxp") end
+    if (ObjectiveTrackerFrame or QuestObjectiveTracker or QuestWatchFrame) and Fonts:Settings("objectives").enabled then Fonts:ApplyArea("objectives") end
 end)
 
 -- Chat's own Font Size menu is an explicit user change. Adopt it instead of

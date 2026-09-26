@@ -74,7 +74,7 @@ function Onboarding:ShowSetup(again)
         frame.noSavePrompt=true -- setup saves its own result to the profile
         frame:SetFrameStrata("FULLSCREEN_DIALOG"); frame.homeButton:Hide()
         local intro=FT:Label(frame,"",14); intro:SetPoint("TOPLEFT",24,-58); intro:SetWidth(512); self.intro=intro
-        local head=FT:Label(frame,"Start with",15,true); head:SetPoint("TOPLEFT",24,-104)
+        local head=FT:Label(frame,"Start with",15,true); head:SetPoint("TOPLEFT",24,-104); FT:SectionHeading(head,"INV_Misc_Book_11",380)
         self.presetButtons={}
         for i,preset in ipairs(presets) do
             local b=FT:QuietButton(frame,preset.label,164,40,preset.icon)
@@ -85,7 +85,7 @@ function Onboarding:ShowSetup(again)
         end
         self.presetText=FT:Label(frame,"",13); self.presetText:SetPoint("TOPLEFT",24,-176); self.presetText:SetWidth(512)
         self.presetText:SetTextColor(.78,.74,.86)
-        local extraHead=FT:Label(frame,"Also turn on",15,true); extraHead:SetPoint("TOPLEFT",24,-222)
+        local extraHead=FT:Label(frame,"Also turn on",15,true); extraHead:SetPoint("TOPLEFT",24,-222); FT:SectionHeading(extraHead,"INV_Misc_Note_02",380)
         self.extraButtons={}
         for i,extra in ipairs(extras) do
             local b=FT:QuietButton(frame,"",250,32,extra.icon); b.title=extra.label
@@ -126,27 +126,64 @@ function Onboarding:ShowSetup(again)
     FT:PlaceBeside(self.frame)
     self.frame:Show()
 end
+-- "What's new": a small card panel near the top right (below the minimap),
+-- not in the middle of the screen. Each note is an icon, a short title and
+-- one short line. Older plain-text notes still work.
+local NEWS_WIDTH, CARD_HEIGHT, CARD_GAP = 400, 50, 6
+local function newsCard(parent)
+    local card = CreateFrame("Frame", nil, parent)
+    card:SetSize(NEWS_WIDTH - 40, CARD_HEIGHT)
+    FT:RoundedFill(card, 0.09, 0.075, 0.13, 1)
+    card.icon = card:CreateTexture(nil, "ARTWORK"); card.icon:SetSize(34, 34); card.icon:SetPoint("LEFT", 8, 0)
+    card.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    card.title = FT:Label(card, "", 14, true); card.title:SetPoint("TOPLEFT", 52, -8); card.title:SetWidth(NEWS_WIDTH - 104)
+    card.title:SetTextColor(1, 0.84, 0.45)
+    card.text = FT:Label(card, "", 12); card.text:SetPoint("TOPLEFT", card.title, "BOTTOMLEFT", 0, -3); card.text:SetWidth(NEWS_WIDTH - 104)
+    card.text:SetTextColor(0.86, 0.82, 0.93)
+    return card
+end
 function Onboarding:ShowWhatsNew()
     local entry=FT.changelog and FT.changelog[1]
     if not entry or InCombatLockdown() then return end
     if not self.news then
-        local frame=FT:Window("ForeverToolsWhatsNew","What's new",540,200); self.news=frame
+        local frame=FT:Window("ForeverToolsWhatsNew","What's new",NEWS_WIDTH,300); self.news=frame
         frame.noSavePrompt=true
-        frame:SetFrameStrata("FULLSCREEN_DIALOG"); frame.homeButton:Hide()
-        frame.body=FT:Label(frame,"",13); frame.body:SetPoint("TOPLEFT",24,-60); frame.body:SetWidth(492)
-        frame.body:SetSpacing(4)
-        local off=FT:QuietButton(frame,"Don't show again",180,32,"reset"); off:SetPoint("BOTTOMLEFT",24,20)
+        frame.homeButton:Hide()
+        frame.logo=frame:CreateTexture(nil,"ARTWORK"); frame.logo:SetSize(40,40); frame.logo:SetPoint("TOPLEFT",18,-16)
+        frame.logo:SetTexture("Interface\\AddOns\\ForeverTools\\Media\\MinimapIcon.tga")
+        frame.titleText:ClearAllPoints(); frame.titleText:SetPoint("TOPLEFT",66,-18)
+        frame.sub=FT:Label(frame,"",12); frame.sub:SetPoint("TOPLEFT",66,-42); frame.sub:SetTextColor(.66,.57,.77)
+        FT:SetTitleLine(frame,64)
+        frame.cards={}
+        local off=FT:QuietButton(frame,"Don't show again",170,30,"reset"); off:SetPoint("BOTTOMLEFT",20,18)
         off:SetScript("OnClick",function() FT.modules.System:Settings().hideWhatsNew=true; frame:Hide(); FT:Toast("Turn it back on in System → General.",3) end)
-        local close=FT:AccentButton(frame,"Got it",140,32,"confirm"); close:SetPoint("BOTTOMRIGHT",-24,20)
+        FT:Tooltip(off,"Don't show again","Stop showing this after updates. You can still open it from System → General.")
+        local close=FT:AccentButton(frame,"Got it",120,30,"confirm"); close:SetPoint("BOTTOMRIGHT",-20,18)
         close:SetScript("OnClick",function() frame:Hide() end)
     end
     local frame=self.news
-    frame.titleText:SetText("What's new in v"..entry.version)
-    local lines={}
-    for _,note in ipairs(entry.notes) do lines[#lines+1]="•  "..note end
-    frame.body:SetText(table.concat(lines,"\n"))
-    frame:SetHeight(math.max(200,(frame.body:GetStringHeight() or 0)+130))
-    FT:PlaceBeside(frame)
+    frame.titleText:SetText("What's new")
+    frame.sub:SetText("ForeverTools v"..entry.version)
+    for _,card in ipairs(frame.cards) do card:Hide() end
+    local y=-74
+    for index,note in ipairs(entry.notes) do
+        local card=frame.cards[index] or newsCard(frame); frame.cards[index]=card
+        local icon,title,text
+        if type(note)=="table" then icon,title,text=note.icon,note.title,note.text
+        else text=tostring(note) end
+        card.icon:SetTexture("Interface\\Icons\\"..(icon or "INV_Misc_Note_01"))
+        card.title:SetText(title or ""); card.title:SetShown(title~=nil)
+        card.text:ClearAllPoints()
+        if title then card.text:SetPoint("TOPLEFT",card.title,"BOTTOMLEFT",0,-3) else card.text:SetPoint("LEFT",52,0) end
+        card.text:SetText(text or "")
+        local height=math.max(CARD_HEIGHT,(title and 29 or 16)+(card.text:GetStringHeight() or 14))
+        card:SetHeight(height)
+        card:ClearAllPoints(); card:SetPoint("TOPLEFT",20,y); card:Show()
+        y=y-height-CARD_GAP
+    end
+    frame:SetHeight(-y+62)
+    -- Near the top right, below the minimap and clear of the screen corner.
+    frame:ClearAllPoints(); frame:SetPoint("TOPRIGHT",UIParent,"TOPRIGHT",-240,-190)
     frame:Show()
 end
 -- One check per login, after profiles and settings are in place.

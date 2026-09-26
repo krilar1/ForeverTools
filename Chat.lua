@@ -15,47 +15,98 @@ function Chat:Settings()
     if type(FT.db.chat)~="table" then FT.db.chat={} end
     return FT.db.chat
 end
-function Chat:Track(object,key,owner)
+function Chat:Track(object,key,owner,cluster)
     if not object or not object.SetAlpha then return end
     local rec=self.tracked[object]
+    if rec then rec.cluster=rec.cluster or cluster end
     if not rec then
-        rec={alpha=object:GetAlpha(),key=key,owner=owner}; self.tracked[object]=rec
+        rec={alpha=object:GetAlpha(),key=key,owner=owner,cluster=cluster}; self.tracked[object]=rec
         if object.EnableMouse and object.IsMouseEnabled then rec.mouse=object:IsMouseEnabled() end
         if hooksecurefunc then
-            hooksecurefunc(object,"SetAlpha",function()
-                if not self.painting and FT.dbReady then self:Paint() end
+            hooksecurefunc(object,"SetAlpha",function(target)
+                if not self.painting and FT.dbReady then self:Paint(target) end
             end)
         end
     end
 end
-function Chat:Paint()
+local function tabsHovered(self)
+    for object,rec in pairs(self.tracked) do
+        if rec.key=="tabs" and ((object.IsMouseOver and object:IsMouseOver()) or (rec.owner and rec.owner.IsMouseOver and rec.owner:IsMouseOver())) then return true end
+    end
+    return false
+end
+-- Side buttons (and the social button) show when the cursor is anywhere over
+-- the box they sit in, not only exactly on one button. The box is the area
+-- covering every button of that group on the same chat frame.
+local function overGroup(self,cluster,padding)
+    local left,right,top,bottom
+    for object,rec in pairs(self.tracked) do
+        if rec.cluster==cluster and object.IsShown and object:IsShown() and object.GetLeft then
+            local l,r,t,b=object:GetLeft(),object:GetRight(),object:GetTop(),object:GetBottom()
+            if l and r and t and b then
+                local scale=object:GetEffectiveScale()
+                l,r,t,b=l*scale,r*scale,t*scale,b*scale
+                left=left and math.min(left,l) or l; right=right and math.max(right,r) or r
+                top=top and math.max(top,t) or t; bottom=bottom and math.min(bottom,b) or b
+            end
+        end
+    end
+    if not left then return false end
+    local x,y=GetCursorPosition()
+    return x>=left-padding and x<=right+padding and y>=bottom-padding and y<=top+padding
+end
+local function paintOne(self,s,object,rec,tabsOver)
+    local mode=s[rec.key] or "show"
+    local hover=false
+    if mode=="hover" then
+        if rec.key=="tabs" then hover=tabsOver
+        elseif rec.key=="icons" or rec.key=="social" then
+            local cache,cluster=self.groupHover,rec.cluster
+            if not cluster then hover=overBox(object,8)
+            elseif cache and cache[cluster]~=nil then hover=cache[cluster]
+            else
+                hover=overGroup(self,cluster,8)
+                if cache then cache[cluster]=hover end
+            end
+        else hover=(rec.key=="input" and rec.owner and rec.owner.IsMouseOver and rec.owner:IsMouseOver()) or (object.IsMouseOver and object:IsMouseOver()) end
+    end
+    local visible=mode=="show" or (mode=="hover" and hover)
+    object:SetAlpha(visible and (mode=="hover" and 1 or rec.alpha) or 0)
+    if rec.mouse~=nil then object:EnableMouse(mode~="hide" and rec.mouse) end
+end
+-- Paint(): every tracked object. Paint(object): just that one (used when
+-- Blizzard changes its alpha, for example while fading chat tabs).
+function Chat:Paint(only)
     if self.painting then return end
     self.painting=true
     local s=self:Settings()
-    local tabsHovered=false
-    for object,rec in pairs(self.tracked) do
-        if rec.key=="tabs" and ((object.IsMouseOver and object:IsMouseOver()) or (rec.owner and rec.owner.IsMouseOver and rec.owner:IsMouseOver())) then tabsHovered=true end
-    end
-    for object,rec in pairs(self.tracked) do
-        local mode=s[rec.key] or "show"
-        local hover=rec.key=="tabs" and tabsHovered or (rec.key=="input" and rec.owner and rec.owner.IsMouseOver and rec.owner:IsMouseOver())
-        if object.IsMouseOver and object:IsMouseOver() then hover=true end
-        if rec.key=="icons" or rec.key=="social" then hover=overBox(object,8) end
-        local visible=mode=="show" or (mode=="hover" and hover)
-        object:SetAlpha(visible and (mode=="hover" and 1 or rec.alpha) or 0)
-        if rec.mouse~=nil then object:EnableMouse(mode~="hide" and rec.mouse) end
+    if only then
+        local rec=self.tracked[only]
+        if rec then paintOne(self,s,only,rec,rec.key=="tabs" and s.tabs=="hover" and tabsHovered(self)) end
+    else
+        local tabsOver=s.tabs=="hover" and tabsHovered(self)
+        -- Work out each box once per paint, not once per button.
+        self.groupHover={}
+        for object,rec in pairs(self.tracked) do paintOne(self,s,object,rec,tabsOver) end
+        self.groupHover=nil
     end
     self.painting=false
 end
+-- Mouseover modes need polling; shown and hidden ones do not.
+function Chat:NeedsPolling()
+    local s=self:Settings()
+    for _,entry in ipairs(options) do if s[entry[1]]=="hover" then return true end end
+    return false
+end
 function Chat:Apply()
     if not FT.dbReady or InCombatLockdown() then return end
-    self:Track(QuickJoinToastButton,"social",ChatFrame1)
-    self:Track(FriendsMicroButton,"social",ChatFrame1)
-    for _,name in ipairs({"ChatFrameMenuButton","ChatFrameChannelButton","ChatFrameToggleVoiceDeafenButton","ChatFrameToggleVoiceMuteButton"}) do self:Track(_G[name],"icons",ChatFrame1) end
+    self:Track(QuickJoinToastButton,"social",ChatFrame1,"social")
+    self:Track(FriendsMicroButton,"social",ChatFrame1,"social")
+    for _,name in ipairs({"ChatFrameMenuButton","ChatFrameChannelButton","ChatFrameToggleVoiceDeafenButton","ChatFrameToggleVoiceMuteButton"}) do self:Track(_G[name],"icons",ChatFrame1,"side1") end
     for i=1,(NUM_CHAT_WINDOWS or 10) do
         local name="ChatFrame"..i; local frame=_G[name]
         self:Track(_G[name.."Tab"],"tabs",frame)
-        self:Track(_G[name.."ButtonFrame"],"icons",frame)
+        self:Track(_G[name.."ButtonFrame"],"icons",frame,"side"..i)
         self:Track(_G[name.."ScrollBar"],"icons",frame)
         if frame then self:Track(frame.ScrollBar,"icons",frame); self:Track(frame.ScrollToBottomButton,"icons",frame) end
         local box=_G[name.."EditBox"]
@@ -82,13 +133,14 @@ function Chat:Refresh()
         for _,choice in ipairs(fonts:Catalogue()) do if choice.value==pref.font then label=choice.label;break end end
         self.fontChoice.label:SetText("Chat font: "..label)
         self.fontSize.label:SetText("Size: "..(pref.size==0 and "Blizzard default" or pref.size.." px"))
-        local outlineNames={original="Blizzard default",[""]="None",THIN="Thin",OUTLINE="Outline",THICKOUTLINE="Thick outline"}
+        local outlineNames={original="Default",[""]="Default",THIN="Thin outline",OUTLINE="Outline",THICKOUTLINE="Thick outline"}
         self.outline.label:SetText("Outline: "..(outlineNames[pref.outline] or pref.outline))
     end
 end
 function Chat:Open()
     if not self.frame then
         self.frame=FT:Window("ForeverToolsChat","ForeverTools | Chat",500,560); self.buttons={}
+        FT:AppearanceBack(self.frame)
         for i,entry in ipairs(options) do
             local key=entry[1]; local b=FT:QuietButton(self.frame,"",452,46,"chat")
             b:SetPoint("TOPLEFT",24,-65-(i-1)*58)
@@ -99,7 +151,7 @@ function Chat:Open()
             FT:Tooltip(b,entry[2],"Click to switch between Shown, Hidden and Mouseover (shows up when you hover it).")
             self.buttons[key]=b
         end
-        local heading=FT:Label(self.frame,"Chat text",15,true);heading:SetPoint("TOPLEFT",24,-305)
+        local heading=FT:Label(self.frame,"Chat text",15,true);heading:SetPoint("TOPLEFT",24,-305);FT:SectionHeading(heading,"INV_Misc_Note_03",260)
         local fonts=FT.modules.FontManager
         self.fontChoice=FT:Dropdown(self.frame,452,function() return fonts:Catalogue() end,function(value)
             local pref=fonts:Settings("chat");local path=fonts:Resolve({font=value})
@@ -118,15 +170,16 @@ function Chat:Open()
             button:SetScript("OnClick",function()local p=fonts:Settings("chat");p.size=math.max(8,math.min(40,(p.size==0 and 14 or p.size)+delta));p.enabled=true;fonts:ApplyArea("chat");self:Refresh() end)
         end
         self.outline=FT:QuietButton(self.frame,"",452,32,"fonts");self.outline:SetPoint("TOPLEFT",24,-426)
-        local choices={"original","","THIN","OUTLINE","THICKOUTLINE"}
+        local choices={"original","THIN","OUTLINE","THICKOUTLINE"}
         self.outline:SetScript("OnClick",function()
             local p=fonts:Settings("chat")
-            for i,value in ipairs(choices) do if value==p.outline then p.outline=choices[i%#choices+1];break end end
+            local current=(p.outline=="" or p.outline==nil) and "original" or p.outline
+            for i,value in ipairs(choices) do if value==current then p.outline=choices[i%#choices+1];break end end
             p.enabled=true;fonts:ApplyArea("chat");self:Refresh()
         end)
         FT:Tooltip(self.fontChoice,"Chat font","The font for chat text. This is the same setting as Chat in Font manager.")
         FT:Tooltip(self.fontSize,"Chat font size","Use + and − to change the size. Click the number to go back to Blizzard's size.")
-        FT:Tooltip(self.outline,"Chat outline","Click to switch the text outline: default, none, thin, normal or thick.")
+        FT:Tooltip(self.outline,"Chat outline","Click to switch: Default (the game's soft shadow), Thin outline (a light outline without the shadow), Outline or Thick outline.")
         self.links=FT:QuietButton(self.frame,"",452,32,"chat");self.links:SetPoint("TOPLEFT",24,-472)
         self.links:SetScript("OnClick",function() local s=FT.modules.System:Settings();s.chatLinks=not s.chatLinks;self:Refresh() end)
         FT:Tooltip(self.links,"Clickable links","Web addresses in chat become clickable. Click one to get a box you can copy it from. Works on new messages.")
@@ -136,9 +189,9 @@ end
 FT:RegisterModule("Chat",Chat)
 local events=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_LOGIN","UPDATE_CHAT_WINDOWS","PLAYER_ENTERING_WORLD","PLAYER_REGEN_ENABLED","ADDON_LOADED"}) do events:RegisterEvent(event) end
-events:SetScript("OnEvent",function() if FT.dbReady then Chat:Apply() end end)
+events:SetScript("OnEvent",function() if FT.dbReady then FT:Coalesce("chat",function() Chat:Apply() end) end end)
 local elapsed=0
 events:SetScript("OnUpdate",function(_,dt)
     elapsed=elapsed+dt
-    if elapsed>.15 then elapsed=0; if FT.dbReady and not InCombatLockdown() then Chat:Paint() end end
+    if elapsed>.15 then elapsed=0; if FT.dbReady and not InCombatLockdown() and Chat:NeedsPolling() then Chat:Paint() end end
 end)

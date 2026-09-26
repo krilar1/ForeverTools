@@ -1,7 +1,8 @@
 local _,FT=...
 -- Merchant helpers (each opt-in, off by default): sell grey items and repair
--- when a merchant opens. They do what the merchant's own Sell All Junk and
--- Repair buttons do, never run in combat, and print one summary line.
+-- when a merchant opens. Selling works like right-clicking each grey item (so
+-- it can be bought back); repairing like the Repair button. Never in combat;
+-- one summary line.
 local Vendor={}
 local function readable(v) return v~=nil and (not issecretvalue or not issecretvalue(v)) end
 local function call(fn,...)
@@ -39,22 +40,22 @@ end
 function Vendor:Sell()
     local items,value=self:Junk()
     if #items==0 then return end
-    local native=C_MerchantFrame and C_MerchantFrame.SellAllJunkItems
-    local enabled=C_MerchantFrame and call(C_MerchantFrame.IsSellAllJunkEnabled)
-    if native and enabled then
-        local ok=pcall(native)
-        if ok then return #items,value end
-    end
-    -- Fallback when the client has no Sell All Junk: sell one item at a time
-    -- while the merchant stays open.
+    -- Sold one at a time like a right-click, so every item lands in the
+    -- merchant's Buyback tab. (The game's Sell All Junk skips buyback.)
+    -- Buyback keeps the last 12 items, as usual.
     if not C_Container or not C_Container.UseContainerItem then return end
     local index=0
     local function step()
         index=index+1
         local item=items[index]
         if not item or not self.merchantOpen or InCombatLockdown() then return end
-        pcall(C_Container.UseContainerItem,item.bag,item.slot)
-        C_Timer.After(.2,step)
+        -- Check again: the item in that slot may have been moved meanwhile.
+        local info=call(C_Container.GetContainerItemInfo,item.bag,item.slot)
+        local poor=Enum and Enum.ItemQuality and Enum.ItemQuality.Poor or 0
+        if type(info)=="table" and readable(info.quality) and info.quality==poor and not info.hasNoValue then
+            pcall(C_Container.UseContainerItem,item.bag,item.slot)
+        end
+        C_Timer.After(.15,step)
     end
     step()
     return #items,value

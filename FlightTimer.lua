@@ -201,8 +201,8 @@ end
 function Flight:Open()
     if not self.frame then
         local frame=FT:Window("ForeverToolsFlightSettings","Flight timer",440,402);self.frame=frame
-        -- Opens centered like every other page; Back returns to System → Gameplay.
-        FT:BackTo(frame,"SystemGameplay")
+        -- Opens centered like every other page; Back returns to System → On-screen info.
+        FT:BackTo(frame,"SystemDisplay")
         self.toggle=FT:QuietButton(frame,"",392,34,"fps");self.toggle:SetPoint("TOPLEFT",24,-66)
         self.toggle:SetScript("OnClick",function() local s=self:Settings();s.enabled=not s.enabled;self:Apply() end)
         self.previewButton=FT:QuietButton(frame,"",392,34,"move");self.previewButton:SetPoint("TOPLEFT",24,-106)

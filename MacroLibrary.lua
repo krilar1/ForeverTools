@@ -17,7 +17,7 @@ end
 function FT:FlushMacroRevision(entry)
     if not entry then return end
     local record = self:MacroRecord(entry)
-    if not record.dirty then return end
+    if not record.dirty or type(record.body) ~= "string" then record.dirty = nil; return end
     record.dirty = nil
     local last = record.versions[#record.versions]
     if not last or last.body ~= record.body then

@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "0.14.3"
+FT.version = "0.14.4"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -49,6 +49,14 @@ databaseEvents:SetScript("OnEvent", function(_, event, name)
 end)
 
 function FT:RegisterModule(name, module) self.modules[name] = module end
+-- Run fn once on the next frame (or after delay), however many times this is
+-- called before then. Used so bursts of events lead to a single update.
+function FT:Coalesce(key, fn, delay)
+    self.coalesced = self.coalesced or {}
+    if self.coalesced[key] then return end
+    self.coalesced[key] = true
+    C_Timer.After(delay or 0, function() self.coalesced[key] = nil; fn() end)
+end
 function FT:CombatOpenRequest()
     if not InCombatLockdown() then return false end
     if not self.openAfterCombat then
@@ -118,6 +126,107 @@ function FT:RoundedFill(frame, r, g, b, a)
     for _, texture in ipairs(textures) do texture:SetVertexColor(r, g, b, a or 1) end
     return textures
 end
+-- Window decoration: a soft purple band behind the title that fades out
+-- downward, and a thin gold line under it that fades at both ends. Built from
+-- the addon's own rounded texture and plain colored textures only.
+local WHITE = "Interface\\Buttons\\WHITE8x8"
+local function gradient(texture, orientation, r1, g1, b1, a1, r2, g2, b2, a2)
+    texture:SetTexture(WHITE)
+    if CreateColor and texture.SetGradient then
+        texture:SetGradient(orientation, CreateColor(r1, g1, b1, a1), CreateColor(r2, g2, b2, a2))
+    else texture:SetVertexColor(r1, g1, b1, (a1 + a2) / 2) end
+end
+function FT:TitleBand(frame, lineY)
+    if frame.titleBand then return end
+    lineY = lineY or 48
+    local r, g, b, a = 0.17, 0.11, 0.28, 0.9
+    -- Rounded top edge (the same 8 px corners as the panel), then the fade.
+    local cuts = {0, 0.25, 0.75, 1}
+    frame.titleBand = {}
+    for col = 0, 2 do
+        local t = frame:CreateTexture(nil, "BACKGROUND", nil, -6)
+        t:SetTexture("Interface\\AddOns\\" .. addonName .. "\\Media\\Rounded.tga")
+        t:SetTexCoord(cuts[col + 1], cuts[col + 2], 0, 0.25)
+        t:SetVertexColor(r, g, b, a)
+        local x1 = col == 0 and 1 or (col == 1 and 9 or -9)
+        local x2 = col == 0 and 9 or (col == 1 and -9 or -1)
+        t:SetPoint("TOPLEFT", frame, col == 2 and "TOPRIGHT" or "TOPLEFT", x1, -1)
+        t:SetPoint("BOTTOMRIGHT", frame, col == 0 and "TOPLEFT" or "TOPRIGHT", x2, -9)
+        frame.titleBand[#frame.titleBand + 1] = t
+    end
+    local fade = frame:CreateTexture(nil, "BACKGROUND", nil, -6)
+    gradient(fade, "VERTICAL", r, g, b, 0, r, g, b, a)
+    fade:SetPoint("TOPLEFT", 1, -9); fade:SetPoint("TOPRIGHT", -1, -9); fade:SetHeight(lineY + 6)
+    frame.titleBand[#frame.titleBand + 1] = fade
+    local gr, gg, gb = 0.79, 0.63, 0.29
+    local left = frame:CreateTexture(nil, "ARTWORK")
+    gradient(left, "HORIZONTAL", gr, gg, gb, 0, gr, gg, gb, 0.75)
+    left:SetPoint("TOPLEFT", 1, -lineY); left:SetPoint("TOPRIGHT", frame, "TOP", 0, -lineY); left:SetHeight(1)
+    local right = frame:CreateTexture(nil, "ARTWORK")
+    gradient(right, "HORIZONTAL", gr, gg, gb, 0.75, gr, gg, gb, 0)
+    right:SetPoint("TOPLEFT", frame, "TOP", 0, -lineY); right:SetPoint("TOPRIGHT", -1, -lineY); right:SetHeight(1)
+    frame.titleLine = {left, right}
+    frame.titleFade = fade
+end
+-- Move the gold line (and the fade) for windows with a taller header.
+function FT:SetTitleLine(frame, lineY)
+    if not frame.titleLine then return end
+    local left, right = frame.titleLine[1], frame.titleLine[2]
+    left:ClearAllPoints(); left:SetPoint("TOPLEFT", 1, -lineY); left:SetPoint("TOPRIGHT", frame, "TOP", 0, -lineY)
+    right:ClearAllPoints(); right:SetPoint("TOPLEFT", frame, "TOP", 0, -lineY); right:SetPoint("TOPRIGHT", -1, -lineY)
+    frame.titleFade:SetHeight(lineY + 6)
+end
+-- Section heading: a small icon before the text and a faint underline that
+-- fades out to the right. Keeps the label's own position.
+-- Pop-ups: drag anywhere on them to move them. Panels inside a window pass
+-- the drag to their window (target), so the whole window moves together.
+function FT:MakeDraggable(frame, target)
+    target = target or frame
+    target:SetMovable(true); target:SetClampedToScreen(true)
+    frame:EnableMouse(true); frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", function() target:StartMoving() end)
+    frame:SetScript("OnDragStop", function() target:StopMovingOrSizing() end)
+end
+-- Windows and panels fade in quickly (0.15 s) instead of popping up.
+function FT:FadeIn(frame)
+    if frame.fadeIn or not frame.CreateAnimationGroup then return end
+    local group = frame:CreateAnimationGroup()
+    local alpha = group:CreateAnimation("Alpha")
+    alpha:SetFromAlpha(0); alpha:SetToAlpha(1); alpha:SetDuration(0.15)
+    frame.fadeIn = group
+    frame:HookScript("OnShow", function() group:Stop(); group:Play() end)
+end
+function FT:SectionHeading(label, icon, lineWidth, iconSize)
+    if not label or label.ftHeading then return label end
+    local parent = label:GetParent()
+    local _, size = label:GetFont()
+    iconSize = iconSize or math.floor((size or 14) + 3)
+    label.ftHeading = {icon = icon, size = iconSize}
+    local line = parent:CreateTexture(nil, "ARTWORK")
+    gradient(line, "HORIZONTAL", 0.42, 0.34, 0.63, 0.8, 0.42, 0.34, 0.63, 0)
+    line:SetHeight(1); line:SetWidth(lineWidth or 180)
+    label.ftHeading.line = line
+    local function update()
+        local text = label.ftHeading.raw or ""
+        line:ClearAllPoints()
+        line:SetPoint("LEFT", label, "LEFT", (label:GetStringWidth() or 0) + 8, 0)
+        line:SetShown(label:IsShown() and text ~= "")
+    end
+    local setText = label.SetText
+    label.SetText = function(owner, text)
+        owner.ftHeading.raw = text
+        local shown = text
+        if text and text ~= "" and owner.ftHeading.icon then
+            shown = "|TInterface\\Icons\\" .. owner.ftHeading.icon .. ":" .. iconSize .. ":" .. iconSize .. ":0:0:64:64:5:59:5:59|t  " .. text
+        end
+        setText(owner, shown); update()
+    end
+    function label:SetHeadingIcon(newIcon) self.ftHeading.icon = newIcon; self:SetText(self.ftHeading.raw) end
+    hooksecurefunc(label, "Show", update); hooksecurefunc(label, "Hide", function() line:Hide() end)
+    if label.SetShown then hooksecurefunc(label, "SetShown", update) end
+    label:SetText(label:GetText())
+    return label
+end
 function FT:Label(parent, text, size, heading)
     local label = parent:CreateFontString(nil, "OVERLAY")
     label:SetFont(heading and self.headingFont or self.bodyFont, size or 14, "")
@@ -126,7 +235,38 @@ function FT:Label(parent, text, size, heading)
     label:SetJustifyH("LEFT")
     return label
 end
+-- Hover glow: a soft light inside the button's edges, shown only on hover.
+local function hoverGlow(button)
+    if button.glow then return button.glow end
+    local glow = {}
+    local r, g, b, a, depth = 0.63, 0.45, 0.85, 0.32, 7
+    local sides = {
+        {"TOPLEFT", "TOPRIGHT", "VERTICAL", false}, {"BOTTOMLEFT", "BOTTOMRIGHT", "VERTICAL", true},
+        {"TOPLEFT", "BOTTOMLEFT", "HORIZONTAL", true}, {"TOPRIGHT", "BOTTOMRIGHT", "HORIZONTAL", false},
+    }
+    for i, side in ipairs(sides) do
+        local t = button:CreateTexture(nil, "BORDER")
+        t:SetBlendMode("ADD")
+        -- Bright at the edge, fading toward the middle.
+        if side[4] then gradient(t, side[3], r, g, b, a, r, g, b, 0) else gradient(t, side[3], r, g, b, 0, r, g, b, a) end
+        -- Kept clear of the rounded corners so the glow never pokes outside.
+        if i <= 2 then
+            local y = i == 1 and -2 or 2
+            t:SetPoint(side[1], 6, y); t:SetPoint(side[2], -6, y); t:SetHeight(depth)
+        else
+            local x = i == 3 and 2 or -2
+            t:SetPoint(side[1], x, -6); t:SetPoint(side[2], x, 6); t:SetWidth(depth)
+        end
+        t:Hide(); glow[i] = t
+    end
+    button.glow = glow
+    return glow
+end
 function FT:UpdateButton(button)
+    if button.hover or button.glow then
+        local on = button.hover and (not button.IsEnabled or button:IsEnabled())
+        for _, t in ipairs(hoverGlow(button)) do t:SetShown(on and true or false) end
+    end
     if button.selected then
         self:Paint(button, {0.30, 0.17, 0.51, 1}, {0.83, 0.62, 1, 1})
     elseif button.hover then
@@ -262,11 +402,19 @@ function FT:Window(name, title, width, height)
     titleText:SetPoint("TOPLEFT", 22, -21)
     titleText:SetTextColor(0.82, 0.68, 1)
     local close = self:AddClose(frame)
+    self:TitleBand(frame)
+    self:FadeIn(frame)
+    -- One pattern everywhere: settings windows have "Back" (to the page they
+    -- were opened from; the main menu for top-level pages) and the close X.
+    -- Pop-ups and dialogs have only the X.
     if name ~= "ForeverToolsHome" then
-        local home = self:QuietButton(frame, "Home", 88, 28, "home")
+        local home = self:QuietButton(frame, "Back", 88, 28, "home")
         frame.homeButton = home
         home:SetPoint("RIGHT", close, "LEFT", -8, 0)
         home:SetScript("OnClick", function() FT:OpenHome() end)
+        self:Tooltip(home, "Back", "Go back to the previous page.")
+        local arrow = GetFileIDFromPath and GetFileIDFromPath("Interface\\Icons\\misc_arrowleft")
+        if type(arrow) == "number" and arrow > 0 then home.icon:SetTexture(arrow) end
     end
     -- The profile switcher lives only on the home window (Profiles button).
     if UISpecialFrames then table.insert(UISpecialFrames, name) end
@@ -282,7 +430,7 @@ function FT:OpenHome()
     if self:CombatOpenRequest() then return end
     for _, module in pairs(self.modules) do if module.frame then module.frame:Hide() end end
     if not self.home then
-        self.home = self:Window("ForeverToolsHome", "ForeverTools", 440, 364)
+        self.home = self:Window("ForeverToolsHome", "ForeverTools", 440, 306)
         self.home.titleText:SetText("ForeverTools")
         -- The addon is still in active development: a quiet amber note after the version.
         local version = self:Label(self.home, "v" .. self.version .. "  |cffffb840- work in progress|r", 11)
@@ -294,19 +442,25 @@ function FT:OpenHome()
         self.home.profileStatus:SetPoint("TOPRIGHT", -24, -61)
         self.home.profileStatus:SetWidth(190)
         self.home.profileStatus:SetJustifyH("RIGHT")
+        -- Six buttons in an even 2 x 3 grid; FPS, keybinds and chat live
+        -- inside System and Appearance.
         local tools={
             {"Macros","MacroForge","macros"},{"Buff reminders","BuffReminder","buffs"},
-            {"FPS counter","QualityOfLife","fps"},{"Fonts & colors","Appearance","fonts"},
-            {"Chat","Chat","chat"},{"Tooltip","Tooltip","tooltip"},
-            {"Custom keybinds","CustomKeybinds","keybind"},{"System","System","generic"},
+            {"Appearance","Appearance","fonts"},{"Tooltip","Tooltip","tooltip"},
+            {"System","System","generic"},{"Profiles",nil,"profiles"},
         }
         for i,entry in ipairs(tools) do
             local row=math.floor((i-1)/2);local column=(i-1)%2
             local button=self:QuietButton(self.home,entry[1],190,46,entry[3])
             self:ButtonIcon(button,entry[3],26)
             button:SetPoint("TOPLEFT",24+column*202,-86-row*58)
-            button:SetScript("OnClick",function() FT:OpenModule(entry[2]) end)
-            self:Tooltip(button,entry[1],"Open "..entry[1].." settings.")
+            if entry[2] then
+                button:SetScript("OnClick",function() FT:OpenModule(entry[2]) end)
+                self:Tooltip(button,entry[1],"Open "..entry[1].." settings.")
+            else
+                button:SetScript("OnClick",function() if FT.modules.Profiles then FT.modules.Profiles:TogglePanel() end end)
+                self:Tooltip(button,"Profiles","Create, load, save or delete your local profiles.")
+            end
         end
     end
     if self.modules.Profiles then self.modules.Profiles:Attach(self.home) end
@@ -440,9 +594,8 @@ function FT:ShowChoices(owner)
     menu:Show()
 end
 
--- Point a subpage's Home button back to its hub, like Fonts & colors.
+-- Point a subpage's Home button back to its hub, like Appearance.
 function FT:BackTo(frame, moduleName)
-    frame.homeButton.label:SetText("Back")
     frame.homeButton:SetScript("OnClick", function() FT:OpenModule(moduleName) end)
 end
 -- Secondary windows (setup, what's new, copy boxes, profile transfer) open in

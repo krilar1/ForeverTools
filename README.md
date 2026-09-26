@@ -1,6 +1,6 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 0.14.3.**
+**Quality-of-life tools for WoW: Forever — version 0.14.4.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
 one place. Everything starts **off**, so the game looks like Blizzard's until you
@@ -41,6 +41,8 @@ the home window. Use **`/rl`** to reload the UI.
   XP bar tooltip.
 - **Flight countdown:** Destination and estimated time until landing. Completed
   flights teach new routes and replace bundled estimates.
+- **Quest objectives:** keep the objective tracker collapsed or open after
+  login and reload, or hide it altogether (System → Gameplay).
 - **Faster looting:** With auto loot on, take everything the moment a corpse
   opens. Off by default.
 - **Merchant helpers:** Optional auto-sell of grey items and auto-repair, with
@@ -54,6 +56,10 @@ the home window. Use **`/rl`** to reload the UI.
   revert, save or discard, and a restore list of earlier sessions.
 - **More:** FPS counter, movable loot rolls, group-role helper, custom
   mouse-wheel casting on mouseover, a Lua-error toggle and a copyable bug report.
+- **Where things are:** Fonts, unit-frame colors, skins and chat are under
+  **Appearance**. FPS counter, leveling stats and flight countdown are under
+  **System → On-screen info**; quick keybinds and mouse-wheel casting under
+  **System → Keybinds**.
 - **Combat-aware menus:** Settings close during combat; requesting the menu in
   combat opens it afterward.
 
@@ -72,6 +78,10 @@ the home window. Use **`/rl`** to reload the UI.
   **Create** starts a new profile from default settings and switches to it.
   **Default settings** resets the selected profile and returns everything
   ForeverTools changes to Blizzard's defaults, as if the addon was just installed.
+- **Rename** gives the selected profile the name typed in the box.
+- Saving a profile also remembers where your macros sit on the action bars,
+  separately for each class. Loading or importing the profile on that class
+  offers to put them back, adding any macros you are missing (outside combat).
 - A new character asks once whether to use a saved profile or start a new one.
   The profile chosen under **Profiles → New characters** (by default, the last
   one you used) is preselected. Closing the question keeps Blizzard's defaults.
@@ -93,13 +103,13 @@ the home window. Use **`/rl`** to reload the UI.
 
 ## Quick keybinds
 
-- Type **`/kb`** or use **System → Gameplay → Quick keybind mode**. Hover any
+- Type **`/kb`** or use **System → Keybinds → Quick keybind mode**. Hover any
   action button and press a key to bind it; press Escape on a bound slot to
   unbind it. This opens Blizzard's own quick keybind mode.
 - A snapshot of your keybinds is taken when you start. **Take snapshot** saves
   more points while you edit, and **Revert to snapshot** returns to any of them.
   Finish with **Save** or **Discard**.
-- **Restore keybinds** (System → Gameplay) lists your last 10 saved sessions.
+- **Restore keybinds** (System → Keybinds) lists your last 10 saved sessions.
   Hover one to see what it changed, such as "Action Button 1: 1 → Q"; choose it
   to put back the keybinds from before it. Only changed keys are stored, on
   this computer, and never in profile exports. Keybinds change only outside
@@ -107,7 +117,7 @@ the home window. Use **`/rl`** to reload the UI.
 
 ## Mouse-wheel casting
 
-- Open **/ft → Custom keybinds**, click a spell in the list, then scroll up or
+- Open **/ft → System → Keybinds → Mouse-wheel casting**, click a spell in the list, then scroll up or
   down to bind it (binding a spell turns casting on). A click or Esc
   cancels; scrolling over the list without clicking only pages it.
 - Scroll while hovering a unit (unit frames or characters in the world) to cast
@@ -121,6 +131,28 @@ the home window. Use **`/rl`** to reload the UI.
 - Use **New macro** to add a custom entry to Generic or your class list.
 - For a combination macro, open **Macros → Generic → 1-shot combo**. Add learned
   spells, then use Advanced for equipment-slot or other supported lines.
+- **Add all class macros** adds spells you know first, then by learn level, and
+  skips utility spells such as teleports and tracking (add those one by one).
+  **Delete macros** removes either the ForeverTools macros you have not changed
+  or every Character macro; both ask twice.
+- If Add all does not fit, a **Make room** window lists your Character macros
+  and the new ones. Tick what to delete and what to add; the slot counter turns
+  green when it fits.
+- Hide macros you never use with the small X on their row. Hidden macros are
+  never added by Add all; the **Hidden** filter shows them so you can bring them
+  back.
+- **Unlearned icons** (in the Add all row) gives macros for spells you have not
+  learned yet their icon, so bars can be set up from level 1. Add all again to
+  give macros you already added their icon.
+- **Mouseover** in the Add all row is the default for every macro and is
+  remembered; a macro's own Mouseover button makes an exception (marked *),
+  cleared when the row setting changes.
+- With mouseover on, spells cast on the unit under your mouse and keep your
+  target. Melee strikes stay on your target, except interrupts, taunts, stuns
+  and debuffs meant for a second enemy.
+- Melee abilities start auto attack. Stealth openers (Cheap Shot, Ambush,
+  Garrote) and effects that damage would break (Gouge, Sap, Blind) do not.
+  Stealth and Prowl only enter stealth.
 - Choose **General** or **Character** as the destination before adding a macro.
   The game determines whether space is available.
 - Macros still require your input and obey normal casting rules. Off-global-

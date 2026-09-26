@@ -25,3 +25,34 @@ as castable templates. Spellbook-only handling covers ambiguous or future entrie
 Macro capacity: creation is attempted through the game API, with failure handled
 without a Lua error. A stale MAX_CHARACTER_MACROS constant no longer prevents
 creation. The bulk capacity hint uses the client constant, falling back to 30.
+
+## Auto attack and use-case audit — 0.14.4
+
+Rules applied to every class template and to melee spells learned later:
+- /startattack: melee abilities used in normal combat (strikes, finishers,
+  interrupts, taunts, shouts that need a target), e.g. Stormstrike, Claw,
+  Growl, Taunt, Victory Rush, Expose Armor, Kidney Shot, Hammer of Justice.
+- No /startattack: stealth openers (Cheap Shot, Ambush, Garrote, Sap, Pick
+  Pocket), crowd control that damage breaks (Gouge, Blind, Polymorph, Fear,
+  Hibernate, Shackle Undead), ranged shots and spells, and self buffs.
+- Stealth and Prowl use [nostealth], so a second press cannot drop stealth.
+- Macros still holding the previous default text for a changed template are
+  recognised as that macro and updated in place, never duplicated.
+Stormstrike (Shaman) was added on request; the spellbook remains authoritative.
+
+## Mouseover audit — 0.14.4
+
+With Mouseover on, a macro casts on the unit under the cursor, and otherwise
+on your target, so you can hit, dot, interrupt or crowd-control an enemy
+beside you (or heal and dispel a party member) without changing target.
+- Yes: every spell cast at a unit: damage spells, damage over time,
+  interrupts, crowd control, debuffs, Purge, heals, buffs, dispels,
+  resurrections; melee abilities aimed at a second enemy (Kick, Pummel,
+  Shield Bash, Bash, Hammer of Justice, Taunt, Growl, Mocking Blow, Sunder
+  Armor, Rend, Hamstring, Wing Clip, Disarm).
+- No: other melee strikes (auto attack stays on your target and combo points
+  would land on the wrong enemy), Auto Shot (a toggle), self buffs, ground
+  effects and next-swing attacks.
+- The row setting applies to every macro; a macro's own Mouseover button makes
+  an exception for that macro, cleared when the row setting changes.
+Common practice checked against classic guides, e.g. Icy Veins' shaman macros.

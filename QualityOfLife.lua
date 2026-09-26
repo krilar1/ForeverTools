@@ -139,6 +139,7 @@ end
 function QoL:Open()
     if not self.frame then
         self.frame = FT:Window("ForeverToolsFPSSettings", "ForeverTools | FPS counter", 500, 320)
+        FT:BackTo(self.frame,"SystemDisplay")
         local hint = FT:Label(self.frame, "Unlock, drag the counter anywhere, then lock it in place.", 14)
         hint:SetPoint("TOPLEFT", 24, -60)
         self.toggle = FT:QuietButton(self.frame, "", 452, 36, "fps")

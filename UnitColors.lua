@@ -108,6 +108,18 @@ function Colors:Track(bar, unit, group, owner)
                 info.original = {r,g,b,a}
                 self:Paint(bar)
             end)
+            -- Blizzard can swap the bar's artwork back to its green fill (for
+            -- example on a target in combat). Our color on that green art
+            -- turns dark olive, so take the new art as the original and
+            -- paint again right away.
+            local function artChanged()
+                if self.painting then return end
+                info.art = nil
+                self:Paint(bar)
+            end
+            if bar.SetStatusBarTexture then hooksecurefunc(bar, "SetStatusBarTexture", artChanged) end
+            local fill = bar.GetStatusBarTexture and bar:GetStatusBarTexture()
+            if fill and fill.SetAtlas then hooksecurefunc(fill, "SetAtlas", artChanged) end
         end
     end
     info.unit, info.group, info.owner = unit, group, owner
@@ -220,7 +232,7 @@ function Colors:Apply()
             local resolved = unit or (frame and (frame.displayedUnit or frame.unit))
             local group=groupFor(resolved)
             if bar and group and group~="party" and group~="raid" then self:Track(bar, resolved, group, frame) end
-            self:Queue()
+            self:QueuePaint()
         end)
     end
     for bar in pairs(self.tracked) do self:Paint(bar) end
@@ -240,6 +252,19 @@ function Colors:Apply()
     end
     for loss in pairs(self.losses or {}) do self:PaintLoss(loss) end
     self:Refresh()
+end
+-- Health changes only need the known bars repainted, not a full pass.
+function Colors:QueuePaint()
+    if self.paintQueued or self.queued then return end
+    self.paintQueued=true
+    C_Timer.After(0,function()
+        self.paintQueued=false
+        -- Repainting known bars is allowed in combat (only colors and art of
+        -- the bar itself change), so a target never shows the wrong color.
+        if not FT.dbReady then return end
+        for bar in pairs(self.tracked) do self:Paint(bar) end
+        for loss in pairs(self.losses or {}) do self:PaintLoss(loss) end
+    end)
 end
 function Colors:Queue()
     if self.queued then return end
@@ -263,7 +288,7 @@ end
 function Colors:BuildDispel()
     local glow=FT.modules.DispelGlow; if not glow then return end
     local frame=self.frame
-    local head=FT:Label(frame,"Dispel glow",16,true); head:SetPoint("TOPLEFT",24,-340)
+    local head=FT:Label(frame,"Dispel glow",16,true); head:SetPoint("TOPLEFT",24,-340); FT:SectionHeading(head,"Spell_Holy_DispelMagic",300)
     local info=FT:Info(frame,"Dispel glow","A soft outline in the debuff's color (magic, curse, disease or poison) appears around a frame's bars while that unit has a debuff you can remove. Only dispels you have learned count, so nothing lights up before you train them. No icons are added.")
     info:SetPoint("TOPRIGHT",-24,-334)
     self.dispelToggle=FT:AccentButton(frame,"",542,34,"buffs"); self.dispelToggle:SetPoint("TOPLEFT",24,-368)
@@ -340,5 +365,17 @@ function Colors:Open()
 end
 FT:RegisterModule("UnitColors", Colors)
 local events=CreateFrame("Frame")
-for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","ADDON_LOADED","GROUP_ROSTER_UPDATE","PLAYER_TARGET_CHANGED","PLAYER_FOCUS_CHANGED","UNIT_TARGET","UNIT_CONNECTION","UNIT_NAME_UPDATE","UNIT_HEALTH","UNIT_MAXHEALTH","PLAYER_REGEN_ENABLED"}) do events:RegisterEvent(event) end
-events:SetScript("OnEvent",function() if FT.dbReady then Colors:Queue() end end)
+for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","GROUP_ROSTER_UPDATE","PLAYER_TARGET_CHANGED","PLAYER_FOCUS_CHANGED","UNIT_TARGET","UNIT_CONNECTION","UNIT_NAME_UPDATE","UNIT_HEALTH","UNIT_MAXHEALTH","PLAYER_REGEN_ENABLED"}) do events:RegisterEvent(event) end
+-- Only the frames this module colors matter; other units' events are ignored.
+local ours={player=true,target=true,focus=true,targettarget=true,focustarget=true}
+local unitEvents={UNIT_CONNECTION=true,UNIT_NAME_UPDATE=true,UNIT_HEALTH=true,UNIT_MAXHEALTH=true}
+events:SetScript("OnEvent",function(_,event,unit)
+    if not FT.dbReady then return end
+    if event=="UNIT_TARGET" then
+        if unit=="target" or unit=="focus" then Colors:Queue() end
+    elseif unitEvents[event] then
+        if ours[unit] then Colors:QueuePaint() end
+    elseif event=="PLAYER_REGEN_ENABLED" then
+        if Colors.deferred then Colors:Queue() else Colors:QueuePaint() end
+    else Colors:Queue() end
+end)

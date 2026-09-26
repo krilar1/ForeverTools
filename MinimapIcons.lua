@@ -210,12 +210,7 @@ function Icons:Toggle()
     if InCombatLockdown() then FT:Toast("Change minimap icons after combat.");return end
     FT.modules.System:Settings().minimapIcons=not self:Enabled()
     self:Apply()
-    local profiles=FT.modules.Profiles
-    local guid=profiles and profiles:Character()
-    if guid then
-        FT.db.profileDrafts=FT.db.profileDrafts or {}
-        FT.db.profileDrafts[guid]=profiles:Snapshot()
-    end
+    if FT.modules.Profiles then FT.modules.Profiles:SaveDraft() end
     ForeverToolsDB=FT.db;KrilarToolsDB=FT.db
     FT.modules.System:Refresh()
 end
@@ -224,7 +219,7 @@ local events=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","ADDON_LOADED","PLAYER_REGEN_ENABLED","PLAYER_REGEN_DISABLED"}) do events:RegisterEvent(event) end
 events:SetScript("OnEvent",function(_,event)
     if event=="PLAYER_REGEN_DISABLED" then Icons.dragging=false;if Icons.panel then Icons.panel:Hide() end;return end
-    if FT.dbReady then Icons:Apply() end
+    if FT.dbReady then FT:Coalesce("minimapIcons",function() Icons:Apply() end) end
 end)
 events:SetScript("OnUpdate",function(_,dt)
     if not Icons.active or InCombatLockdown() then return end

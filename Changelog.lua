@@ -1,6 +1,15 @@
 local _,FT=...
 -- Short player-facing notes for the "What's new" window. Newest first.
 FT.changelog={
+    -- Each note: an icon (Interface\\Icons name), a short title and one short line.
+    {version="0.14.4",notes={
+        {icon="INV_Misc_Book_09",title="Rename profiles",text="Give a profile a new name in the Profiles panel."},
+        {icon="INV_Misc_Note_01",title="Macros stay on your bars",text="Profiles remember where your macros sit, for each class."},
+        {icon="INV_Misc_EngGizmos_20",title="Make room, hide macros",text="Pick what to delete when Add all doesn't fit. Hide the ones you never use."},
+        {icon="Ability_Shaman_Stormstrike",title="Smarter macros",text="Better auto attack and mouseover choices, icons for unlearned spells, Stormstrike."},
+        {icon="INV_Misc_Book_11",title="Fresh look, tidier menus",text="Subtle new styling, an even main menu, and settings in clearer places."},
+        {icon="INV_Misc_PocketWatch_01",title="More control, less load",text="Buff notice timer, leveling sliders, quest objectives on login. Lighter and faster."},
+    }},
     {version="0.14.3",notes={
         "New: quick keybind mode. Type /kb (or System → Gameplay), hover a slot and press a key to bind it; Escape on a bound slot unbinds it.",
         "A snapshot of your keybinds is taken first. Take more while you edit, revert to any of them, then save or discard.",

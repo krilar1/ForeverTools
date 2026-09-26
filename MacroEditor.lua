@@ -79,7 +79,7 @@ function Editor:CommitSave()
             self:Message("The existing macro changed. Nothing was replaced; open it again and retry.", true); return
         end
         self:SaveVersion("Before replacement", oldBody)
-        local index = EditMacro(target.index, Macros:MacroName(request.entry), 134400, request.body)
+        local index = EditMacro(target.index, Macros:MacroName(request.entry), Macros:MacroIcon(request.entry), request.body)
         if not index then self:Message("WoW could not replace the macro.", true); return end
     else
         local entry = copy(request.entry); entry.code = request.body
@@ -235,7 +235,6 @@ function Editor:CreateUI()
         return options
     end, function(value) self.rank = value; self:ApplyBuilder() end, "macros")
     self.rankDropdown:SetPoint("TOPLEFT", 432, -83)
-    frame.homeButton.label:SetText("Back")
     frame.homeButton:SetScript("OnClick", function() self:GoBack() end)
     frame:HookScript("OnHide", function() FT:FlushMacroRevision(self.entry) end)
     self.targetButtons = {}

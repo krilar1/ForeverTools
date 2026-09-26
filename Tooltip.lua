@@ -332,9 +332,11 @@ function Tip:Open()
         self.frame=frame
         local intro=FT:Label(frame,"Build your player tooltip on the left and watch the preview. Everything else is on the right.",14)
         intro:SetPoint("TOPLEFT",24,-62); intro:SetTextColor(.78,.74,.86)
+        local sectionIcons={Layout="INV_Misc_Note_01",Extras="INV_Misc_Book_07",["Text size"]="INV_Inscription_Tradeskill01",Position="INV_Misc_Map_01"}
         local function section(x,y,title,hint)
             local h=FT:Label(frame,title,16,true); h:SetPoint("TOPLEFT",x,y); h:SetTextColor(.82,.68,1)
-            local t=FT:Label(frame,hint,12); t:SetPoint("TOPLEFT",x,y-22); t:SetWidth(512); t:SetTextColor(.66,.57,.77)
+            FT:SectionHeading(h,sectionIcons[title],300)
+            local t=FT:Label(frame,hint,12); t:SetPoint("TOPLEFT",x,y-26); t:SetWidth(512); t:SetTextColor(.66,.57,.77)
         end
         section(24,-98,"Layout","Turn parts on or off, order them with the arrows, and choose Same line to join a part to the one above.")
         self.layoutTop=148
@@ -366,7 +368,7 @@ function Tip:Open()
             self.rows[key]=row
         end
         local previewTop=self.layoutTop+#partKeys*40+10
-        local ph=FT:Label(frame,"Preview",16,true); ph:SetPoint("TOPLEFT",24,-previewTop); ph:SetTextColor(.82,.68,1)
+        local ph=FT:Label(frame,"Preview",16,true); ph:SetPoint("TOPLEFT",24,-previewTop); ph:SetTextColor(.82,.68,1); FT:SectionHeading(ph,"INV_Misc_Note_01",300)
         local pnote=FT:Label(frame,"Uses your own character. Other players' tooltips follow the same layout.",12); pnote:SetPoint("TOPLEFT",24,-previewTop-22); pnote:SetTextColor(.66,.57,.77)
         local box=CreateFrame("Frame",nil,frame); box:SetPoint("TOPLEFT",24,-previewTop-44); box:SetWidth(512)
         FT:RoundedFill(box,0,0,0,.85)

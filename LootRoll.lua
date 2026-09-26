@@ -124,5 +124,5 @@ events:SetScript("OnEvent",function(_,event)
         Loot.moving=false; Loot.dragging=nil
         if Loot.anchor then Loot.anchor:Hide() end
         if FT.modules.System then FT.modules.System:Refresh() end
-    else Loot:Apply() end
+    else FT:Coalesce("lootRoll",function() Loot:Apply() end) end
 end)

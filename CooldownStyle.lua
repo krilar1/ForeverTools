@@ -4,16 +4,32 @@ local icons,texts={},{}
 local bars={"ActionButton","MultiBarBottomLeftButton","MultiBarBottomRightButton","MultiBarRightButton","MultiBarLeftButton","MultiBar5Button","MultiBar6Button","MultiBar7Button"}
 local function cooling(cd)
     if not cd or not cd.GetCooldownTimes then return false end
-    local ok,result=pcall(function()
-        local start,duration=cd:GetCooldownTimes()
-        -- Ignore the global cooldown. Restricted beta values cannot be compared.
-        return type(start)=="number" and type(duration)=="number" and duration>1500 and start>0 and start+duration>GetTime()*1000
-    end)
-    return ok and result
+    local ok,start,duration=pcall(cd.GetCooldownTimes,cd)
+    if not ok then return false end
+    -- Ignore the global cooldown. Restricted beta values cannot be compared.
+    if issecretvalue and (issecretvalue(start) or issecretvalue(duration)) then return false end
+    return type(start)=="number" and type(duration)=="number" and duration>1500 and start>0 and start+duration>GetTime()*1000
+end
+-- Cooldown frames keep the same text regions, so collect them once per frame
+-- (again only if the number of regions changes).
+local regionCache=setmetatable({},{__mode="k"})
+local function cooldownTexts(cd)
+    local count=cd.GetNumRegions and cd:GetNumRegions() or 0
+    local cached=regionCache[cd]
+    if cached and cached.count==count then return cached end
+    cached={count=count}
+    if cd.GetRegions then for _,text in ipairs({cd:GetRegions()}) do
+        if text.GetFont and text.GetTextColor and text.SetTextColor then cached[#cached+1]=text end
+    end end
+    regionCache[cd]=cached
+    return cached
 end
 local function update()
     if not FT.dbReady then return end
     local s=Fonts:Settings("cooldowns")
+    local colorOn=s.enabled and type(s.numberColor)=="table"
+    -- Nothing turned on and nothing to put back: skip the 96 buttons.
+    if not colorOn and s.greyCooldowns~=true and next(icons)==nil and next(texts)==nil then return end
     for _,prefix in ipairs(bars) do for i=1,12 do
         local name=prefix..i; local button=_G[name]
         local cd=button and (button.cooldown or button.Cooldown) or _G[name.."Cooldown"]
@@ -25,13 +41,11 @@ local function update()
                 icon:SetDesaturated(true)
             elseif icons[icon]~=nil then icon:SetDesaturated(icons[icon]); icons[icon]=nil end
         end
-        if cd and cd.GetRegions then for _,text in ipairs({cd:GetRegions()}) do
-            if text.GetFont and text.GetTextColor and text.SetTextColor then
-                if s.enabled and type(s.numberColor)=="table" then
-                    if not texts[text] then texts[text]={text:GetTextColor()} end
-                    text:SetTextColor(s.numberColor[1],s.numberColor[2],s.numberColor[3],1)
-                elseif texts[text] then text:SetTextColor(unpack(texts[text])); texts[text]=nil end
-            end
+        if cd then for _,text in ipairs(cooldownTexts(cd)) do
+            if colorOn then
+                if not texts[text] then texts[text]={text:GetTextColor()} end
+                text:SetTextColor(s.numberColor[1],s.numberColor[2],s.numberColor[3],1)
+            elseif texts[text] then text:SetTextColor(unpack(texts[text])); texts[text]=nil end
         end end
     end end
 end

@@ -60,18 +60,25 @@ local pages={
         {"coordinates","Minimap coordinates","map","Show or hide Forever's built-in coordinates below the minimap."},
         {"minimapIcons","Group minimap buttons","map","Put other addons' minimap buttons into one small menu. Click its icon to open it. A few buttons may stay on the minimap. Do not use it together with another button-collector addon."},
     }},
-    {key="SystemGameplay",title="Gameplay",icon="classes",description="Quick keybinds, group role, loot, flight timer, leveling stats and merchant helpers.",items={
-        {"quickKeybind","Quick keybind mode (/kb)","keybind","Hover any action button and press a key to bind it; Escape on a bound slot unbinds it. A snapshot of your keybinds is taken first, so you can save, revert to a snapshot or discard. You can also type /kb in chat."},
-        {"undoKeybinds","Restore keybinds","reset","Pick an earlier keybind session to go back to. Hover a session to see what it changed; choosing it puts back the keybinds you had before it. The last 10 sessions are kept on this computer."},
+    {key="SystemGameplay",title="Gameplay",icon="classes",description="Group role, loot rolls, faster looting and merchant helpers.",items={
         {"autoRole","Set role when joining a group","classes","When you join a group, set your role (tank, healer or damage) from your talents. Changing it yourself always wins. Feral druids are asked once."},
         {"lootMove","Move loot rolls","move","Show a sample loot-roll window you can drag. Click again to lock it. Until you move it, loot rolls appear where Blizzard puts them."},
         {"lootDefault","Use Blizzard's loot-roll position","reset","Forget your moved position and let the game place loot rolls again."},
-        {"flightTimer","Flight timer settings","fps","Turn the flight countdown on or off, preview and move it, and change its font, size, outline and color."},
-        {"leveling","Leveling stats settings","fps","XP per hour, time to level, kills to level and more, on a small movable line and in the XP bar tooltip."},
         {"fastLoot","Faster looting","generic","Loot everything the moment a corpse is opened, instead of waiting for each slot. Works when auto loot is on (the Auto Loot game option, or holding the auto-loot key). Items that ask before binding still ask."},
-        {"autoSell","Auto-sell grey items","generic","Sell all grey (junk) items when you open a merchant, like the Sell All Junk button."},
+        {"autoSell","Auto-sell grey items","generic","Sell all grey (junk) items when you open a merchant. They go to the Buyback tab like items you sell yourself (it keeps the last 12)."},
         {"autoRepair","Auto-repair","generic","Repair all your gear when you visit a merchant who can repair."},
         {"guildRepair","Use guild funds for repairs first","party","When auto-repair runs, use guild bank repair money if your guild allows it, otherwise your own gold."},
+        {"objectives","Quest objectives","INV_Misc_Note_01","Choose: Default (the game's own behavior), Collapsed on login, Open on login, or Hidden. Collapsed and Open are applied when you log in or reload; opening or closing it yourself is kept until then. Hidden keeps the tracker off the screen."},
+    }},
+    {key="SystemKeybinds",title="Keybinds",icon="keybind",description="Quick keybind mode, restoring earlier keybinds and mouse-wheel casting.",items={
+        {"quickKeybind","Quick keybind mode (/kb)","keybind","Hover any action button and press a key to bind it; Escape on a bound slot unbinds it. A snapshot of your keybinds is taken first, so you can save, revert to a snapshot or discard. You can also type /kb in chat."},
+        {"undoKeybinds","Restore keybinds","reset","Pick an earlier keybind session to go back to. Hover a session to see what it changed; choosing it puts back the keybinds you had before it. The last 10 sessions are kept on this computer."},
+        {"wheelCasting","Mouse-wheel casting","mouseover","Bind a spell to scrolling up or down, cast on the unit under your mouse. Anywhere else the wheel zooms the camera."},
+    }},
+    {key="SystemDisplay",title="On-screen info",icon="fps",description="FPS counter, leveling stats and the flight timer.",items={
+        {"fps","FPS counter settings","fps","Show a small, movable frames-per-second counter."},
+        {"leveling","Leveling stats settings","fps","XP per hour, time to level, kills to level and more, on a small movable line and in the XP bar tooltip."},
+        {"flightTimer","Flight timer settings","fps","Turn the flight countdown on or off, preview and move it, and change its font, size, outline and color."},
     }},
     {key="SystemTroubleshooting",title="Troubleshooting",icon="errors",description="Lua error display and a copyable bug report.",items={
         {"scriptErrors","Show Lua errors","errors","Show or hide Lua error popups. Hiding them does not fix the errors."},
@@ -114,6 +121,20 @@ function System:Refresh()
             local leveling=FT.modules.Leveling
             button.label:SetText("Leveling stats: "..(leveling and leveling:Settings().enabled and "On" or "Off").." — settings")
         end
+        if key=="fps" then
+            local fps=FT.modules.QualityOfLife
+            button.label:SetText("FPS counter: "..(fps and fps.Settings and fps:Settings().enabled and "On" or "Off").." — settings")
+        end
+        if key=="objectives" then
+            local mode=FT.modules.QuestTracker and FT.modules.QuestTracker:Mode() or "default"
+            button.label:SetText("Quest objectives: "..({default="Default",collapsed="Collapsed on login",open="Open on login",hidden="Hidden"})[mode])
+            if not button.arrow then button.arrow=FT:Label(button,"v",12); button.arrow:SetPoint("RIGHT",-12,0) end
+            FT:SetSelected(button,mode~="default")
+        end
+        if key=="wheelCasting" then
+            local wheel=FT.modules.CustomKeybinds
+            button.label:SetText("Mouse-wheel casting: "..(wheel and wheel:Settings().enabled and "On" or "Off").." — settings")
+        end
         if key=="flightTimer" then
             local flight=FT.modules.FlightTimer
             button.label:SetText("Flight timer: "..(flight and flight:Settings().enabled and "On" or "Off").." — settings")
@@ -132,13 +153,38 @@ end
 function System:Click(key)
     if key=="minimapIcons" then FT.modules.MinimapIcons:Toggle();return end
     if key=="flightTimer" then FT:OpenModule("FlightTimer");return end
+    if key=="fps" then FT:OpenModule("QualityOfLife");return end
+    if key=="wheelCasting" then FT:OpenModule("CustomKeybinds");return end
     if key=="leveling" then FT:OpenModule("Leveling");return end
     if key=="bugReport" then FT.modules.BugReport:Open();return end
     if key=="quickKeybind" then FT.modules.QuickBind:Open();return end
-    if key=="undoKeybinds" then FT.modules.QuickBind:ShowRestore(self.buttons.undoKeybinds);return end
+    if key=="undoKeybinds" then
+        if not self.buttons.undoKeybinds then FT:OpenModule("SystemKeybinds") end
+        if self.buttons.undoKeybinds then FT.modules.QuickBind:ShowRestore(self.buttons.undoKeybinds) end
+        return
+    end
     if key=="setup" then FT.modules.Onboarding:ShowSetup(true);return end
     if key=="reset" then FT.modules.Profiles:ResetSettings();return end
     if key=="lootMove" then FT.modules.LootRoll:ToggleMove(); return end
+    if key=="objectives" then
+        local button=self.buttons.objectives
+        button.options=function()
+            local icon="Interface\\Icons\\INV_Misc_Note_01"
+            return {
+                {value="default",label="Default",icon=icon,tooltip="The game's own behavior."},
+                {value="collapsed",label="Collapsed on login",icon=icon,tooltip="Collapsed after every login and reload. Opening it yourself is kept until then."},
+                {value="open",label="Open on login",icon=icon,tooltip="Open after every login and reload. Closing it yourself is kept until then."},
+                {value="hidden",label="Hidden",icon=icon,tooltip="Keep the tracker off the screen."},
+            }
+        end
+        button.value=FT.modules.QuestTracker:Mode()
+        button.menuWidth=button:GetWidth()
+        button.onSelect=function(value)
+            self:Settings().objectives=value~="default" and value or nil
+            FT.modules.QuestTracker:Apply(); self:Refresh()
+        end
+        FT:ShowChoices(button); return
+    end
     if key=="lootDefault" then FT.modules.LootRoll:UseDefault(); self:Refresh(); return end
     if key=="scriptErrors" then
         local get=(C_CVar and C_CVar.GetCVar) or GetCVar
@@ -574,7 +620,7 @@ function System:CheckFeralPrompt()
         local frame=CreateFrame("Frame","ForeverToolsRoleChoice",UIParent)
         self.rolePrompt=frame
         frame:SetSize(330,132);frame:SetPoint("CENTER",UIParent,"CENTER",0,170)
-        frame:SetFrameStrata("DIALOG");FT:Panel(frame)
+        frame:SetFrameStrata("DIALOG");FT:Panel(frame);FT:MakeDraggable(frame)
         local title=FT:Label(frame,"Your role for this group?",15)
         title:SetPoint("TOP",0,-18)
         FT:AddClose(frame)

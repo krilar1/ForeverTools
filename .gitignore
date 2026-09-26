@@ -5,3 +5,6 @@ Media/Fonts/Expressway.ttf
 Media/Fonts/Expressway.otf
 # A separate nested Git checkout was detected here; it is not part of the addon.
 /ForeverTools/
+
+# Local test fonts (not licensed for release)
+Media/Fonts/expressway.*

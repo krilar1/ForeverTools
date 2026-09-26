@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: ForeverTools
 ## Notes: A toolkit of customizable quality-of-life tools for WoW: Forever.
-## Version: 0.14.3
+## Version: 0.14.4
 ## SavedVariables: ForeverToolsDB, KrilarToolsDB
 
 Core.lua
@@ -11,6 +11,7 @@ MacroLibrary.lua
 VerifiedMacros.lua
 MacroForge.lua
 MacroActions.lua
+MacroRoom.lua
 MacroEditor.lua
 Minimap.lua
 QualityOfLife.lua
@@ -41,6 +42,7 @@ DispelGlow.lua
 QuickBind.lua
 Vendor.lua
 FastLoot.lua
+QuestTracker.lua
 ChatLinks.lua
 BugReport.lua
 Search.lua

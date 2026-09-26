@@ -26,10 +26,10 @@ local classMacros = {
         {"Lesser Heal", 3, "friendly", "spell_holy_lesserheal"}, {"Heal", 4, "friendly", "spell_holy_heal"}, {"Flash Heal", 7, "friendly", "spell_holy_flashheal"}, {"Renew", 10, "friendly", "spell_holy_renew"}, {"Power Word: Shield", 10, "friendly", "spell_holy_powerwordshield"}, {"Dispel Magic", 2, "friendly", "spell_holy_dispelmagic"}, {"Cure Disease", 1, "friendly", "spell_holy_nullifydisease"}, {"Levitate", 1, "friendly", "spell_holy_layonhands"}, {"Resurrection", 5, "friendly", "spell_holy_resurrection"}, {"Mind Blast", 9, nil, "spell_shadow_unholyfrenzy"}, {"Shadow Word: Pain", 8, nil, "spell_shadow_shadowwordpain"}, {"Mind Flay", 6, nil, "spell_shadow_siphonmana"}, {"Psychic Scream", 4, nil, "spell_shadow_psychicscream"}, {"Silence", 1, nil, "spell_shadow_impphaseshift"},
     },
     Rogue = {
-        {"Sinister Strike", 9, "startattack", "spell_shadow_ritualofsacrifice"}, {"Backstab", 9, "startattack", "ability_backstab"}, {"Eviscerate", 9, "startattack", "ability_rogue_eviscerate"}, {"Kick", 1, "startattack", "ability_kick"}, {"Gouge", 5, "startattack", "ability_gouge"}, {"Sap", 3, nil, "ability_sap"}, {"Blind", 1, nil, "spell_shadow_mindsteal"}, {"Vanish", 3, "self", "ability_vanish"}, {"Garrote", 6, "startattack", "ability_rogue_garrote"}, {"Rupture", 6, "startattack", "ability_rogue_rupture"}, {"Ambush", 6, "startattack", "ability_rogue_ambush"}, {"Cheap Shot", 1, "startattack", "ability_cheapshot"}, {"Kidney Shot", 2, "startattack", "ability_rogue_kidneyshot"}, {"Stealth", 4, "self", "ability_stealth"}, {"Sprint", 3, "self", "ability_rogue_sprint"}, {"Evasion", 1, "self", "spell_shadow_shadowward"},
+        {"Sinister Strike", 9, "startattack", "spell_shadow_ritualofsacrifice"}, {"Backstab", 9, "startattack", "ability_backstab"}, {"Eviscerate", 9, "startattack", "ability_rogue_eviscerate"}, {"Kick", 1, "startattack", "ability_kick"}, {"Gouge", 5, nil, "ability_gouge"}, {"Sap", 3, nil, "ability_sap"}, {"Blind", 1, nil, "spell_shadow_mindsteal"}, {"Vanish", 3, "self", "ability_vanish"}, {"Garrote", 6, nil, "ability_rogue_garrote"}, {"Rupture", 6, "startattack", "ability_rogue_rupture"}, {"Ambush", 6, nil, "ability_rogue_ambush"}, {"Cheap Shot", 1, nil, "ability_cheapshot"}, {"Kidney Shot", 2, "startattack", "ability_rogue_kidneyshot"}, {"Stealth", 4, "self", "ability_stealth"}, {"Sprint", 3, "self", "ability_rogue_sprint"}, {"Evasion", 1, "self", "spell_shadow_shadowward"},
     },
     Shaman = {
-        {"Lightning Bolt", 10, nil, "spell_nature_lightning"}, {"Chain Lightning", 6, nil, "spell_nature_chainlightning"}, {"Earth Shock", 7, nil, "spell_nature_earthshock"}, {"Flame Shock", 6, nil, "spell_fire_flameshock"}, {"Frost Shock", 7, nil, "spell_frost_frostshock"}, {"Healing Wave", 10, "friendly", "spell_nature_magicimmunity"}, {"Lesser Healing Wave", 6, "friendly", "spell_nature_healingwavelesser"}, {"Purge", 2, nil, "spell_nature_purge"}, {"Chain Heal", 3, "friendly", "spell_nature_healingwavegreater"}, {"Ghost Wolf", 1, "self", "spell_nature_spiritwolf"}, {"Lightning Shield", 7, "self", "spell_nature_lightningshield"}, {"Windfury Weapon", 3, "self", "spell_nature_cyclone"},
+        {"Lightning Bolt", 10, nil, "spell_nature_lightning"}, {"Chain Lightning", 6, nil, "spell_nature_chainlightning"}, {"Earth Shock", 7, nil, "spell_nature_earthshock"}, {"Flame Shock", 6, nil, "spell_fire_flameshock"}, {"Frost Shock", 7, nil, "spell_frost_frostshock"}, {"Healing Wave", 10, "friendly", "spell_nature_magicimmunity"}, {"Lesser Healing Wave", 6, "friendly", "spell_nature_healingwavelesser"}, {"Purge", 2, nil, "spell_nature_purge"}, {"Chain Heal", 3, "friendly", "spell_nature_healingwavegreater"}, {"Ghost Wolf", 1, "self", "spell_nature_spiritwolf"}, {"Lightning Shield", 7, "self", "spell_nature_lightningshield"}, {"Windfury Weapon", 3, "self", "spell_nature_cyclone"}, {"Stormstrike", 1, "startattack", "ability_shaman_stormstrike"},
     },
     Warlock = {
         {"Shadow Bolt", 11, nil, "spell_shadow_shadowbolt"}, {"Corruption", 7, nil, "spell_shadow_abominationexplosion"}, {"Bane of Agony", 6, nil, "spell_shadow_curseofsargeras"}, {"Fear", 3, nil, "spell_shadow_possession"}, {"Drain Life", 6, nil, "spell_shadow_lifedrain02"}, {"Immolate", 8, nil, "spell_fire_immolation"}, {"Life Tap", 6, "self", "spell_shadow_burningspirit"}, {"Howl of Terror", 2, nil, "spell_shadow_deathscream"}, {"Death Coil", 4, nil, "spell_shadow_deathcoil"}, {"Banish", 2, nil, "spell_shadow_cripple"}, {"Shadow Ward", 4, "self", "spell_shadow_antishadow"},
@@ -98,12 +98,41 @@ end
 local noUnitTarget = {
     ["Consecration"] = true, ["Freezing Trap"] = true, ["Frost Nova"] = true,
     ["Psychic Scream"] = true, ["Howl of Terror"] = true, ["Thunder Clap"] = true,
-    ["War Stomp"] = true, ["Swipe"] = true,
+    ["War Stomp"] = true, ["Swipe"] = true, ["Whirlwind"] = true,
     -- Queued next-swing attacks use the current melee target, not a mouseover unit.
     ["Heroic Strike"] = true, ["Cleave"] = true, ["Maul"] = true, ["Raptor Strike"] = true,
 }
+-- Melee abilities that may appear later from the spellbook (talents, higher
+-- levels). Like the class templates, they start auto attack by default.
+-- Stealth openers and CC that damage would break never do.
+local learnedMelee = {
+    ["Stormstrike"] = true, ["Crusader Strike"] = true, ["Riposte"] = true, ["Ghostly Strike"] = true,
+    ["Hemorrhage"] = true, ["Shield Slam"] = true, ["Whirlwind"] = true, ["Mangle"] = true,
+    ["Lacerate"] = true, ["Counterattack"] = true, ["Devastate"] = true,
+}
+-- Pressing these again while stealthed would drop stealth; the macro only
+-- enters stealth, it never leaves it by accident.
+local stealthOnly = { ["Stealth"] = true, ["Prowl"] = true }
+-- Mouseover audit (see SPELL_AUDIT.md). Every spell you cast at a unit can
+-- use mouseover: hit an enemy beside you while keeping your target, heal or
+-- dispel a party member, dot or crowd-control an add. Left out: melee strikes
+-- that start auto attack (auto attack stays on your target and combo points
+-- would land on the wrong enemy), apart from the ones meant for a second
+-- enemy below; Auto Shot (a toggle); self buffs, ground effects, next-swing
+-- attacks.
+local mainTarget = { ["Auto Shot"] = true }
+-- Melee abilities that are aimed at a second enemy: interrupts, taunts,
+-- stuns, and debuffs you spread on adds.
+local meleeMouseover = {
+    ["Kick"] = true, ["Pummel"] = true, ["Shield Bash"] = true, ["Taunt"] = true, ["Growl"] = true,
+    ["Mocking Blow"] = true, ["Hammer of Justice"] = true, ["Bash"] = true, ["Sunder Armor"] = true,
+    ["Rend"] = true, ["Hamstring"] = true, ["Wing Clip"] = true, ["Disarm"] = true,
+}
 function MacroForge:CanMouseover(entry)
-    return entry and entry.category ~= "generic" and not entry.code and entry.kind ~= "self" and not noUnitTarget[entry.name]
+    if not entry or entry.category == "generic" or entry.code or entry.kind == "self" or noUnitTarget[entry.name] then return false end
+    if mainTarget[entry.name] then return false end
+    if entry.kind == "startattack" then return meleeMouseover[entry.name] == true end
+    return true
 end
 function MacroForge:BuildMacro(entry)
     if entry.code then return entry.code end
@@ -115,6 +144,8 @@ function MacroForge:BuildMacro(entry)
         lines[#lines+1]="/cast "..(self.mouseover and "[@mouseover,exists,nodead][] " or "")..spell
     elseif entry.name=="Redemption" or entry.name=="Resurrection" or entry.name=="Revive" or entry.name=="Rebirth" or entry.name=="Ancestral Spirit" then
         lines[#lines+1]="/cast "..(self.mouseover and "[@mouseover,help,dead][@target,help,dead] " or "[@target,help,dead] ")..spell
+    elseif stealthOnly[entry.name] then
+        lines[#lines + 1] = "/cast [nostealth] " .. spell
     elseif entry.kind == "friendly" then
         local target = self.mouseover and "[@mouseover,help,nodead][@target,help,nodead][@player]" or "[@target,help,nodead][@player]"
         lines[#lines + 1] = "/cast " .. target .. " " .. spell
@@ -130,7 +161,24 @@ local classIcons = {
     Paladin = "ClassIcon_Paladin", Priest = "ClassIcon_Priest", Rogue = "ClassIcon_Rogue",
     Shaman = "ClassIcon_Shaman", Warlock = "ClassIcon_Warlock", Warrior = "ClassIcon_Warrior",
 }
-function MacroForge:AddLearnedEntries(entries,className)
+-- Spells that "Add all class macros" never adds (utility, tracking and
+-- teleports). They still appear in the list and can be added one by one.
+local bulkExcluded = {
+    Druid = {"Nature's Grasp", "Teleport: Moonglade"},
+    Hunter = {"Track Beasts", "Track Undead"},
+    Mage = {"Teleport: Ironforge", "Teleport: Orgrimmar", "Teleport: Stormwind", "Teleport: Undercity"},
+    Paladin = {"Sense Undead"},
+    Priest = {"Confounding Flash", "Hex of Weakness", "Fade", "Touch of Weakness", "Elune's Grace", "Shadowguard"},
+}
+local excludedSet = {}
+for class, names in pairs(bulkExcluded) do
+    excludedSet[class] = {}
+    for _, name in ipairs(names) do excludedSet[class][name] = true end
+end
+function MacroForge:IsBulkExcluded(className, name)
+    return excludedSet[className] and excludedSet[className][name] == true
+end
+function MacroForge:AddLearnedEntries(entries,className,includeGeneral)
     if className~=classKey() then return end
     local book=KT.modules.CustomKeybinds
     if not book then return end
@@ -138,17 +186,31 @@ function MacroForge:AddLearnedEntries(entries,className)
     if not ok or type(spells)~="table" then return end
     local known={};for _,entry in ipairs(entries) do known[entry.name]=entry end
     for _,spell in ipairs(spells) do
-        if type(spell.name)=="string" then
+        -- The first spellbook line is General (Attack, racials, professions);
+        -- those are not class spells and are only listed for clean-up.
+        if type(spell.name)=="string" and (includeGeneral or spell.line~=1) then
             local rank=tonumber((spell.rank or ""):match("(%d+)")) or 1
             if not known[spell.name] then
                 -- Unknown targeting stays a plain cast; never guess help/harm.
-                local entry={name=spell.name,ranks=rank,class=className,category="class",liveIcon=spell.icon,kind="self",fromSpellbook=true}
+                local entry={name=spell.name,ranks=rank,class=className,category="class",liveIcon=spell.icon,kind=learnedMelee[spell.name] and "startattack" or "self",fromSpellbook=true}
                 entries[#entries+1]=entry;known[spell.name]=entry
             else known[spell.name].ranks=math.max(known[spell.name].ranks or 1,rank);known[spell.name].liveIcon=spell.icon end
         end
     end
 end
+-- The list only changes with the filter, the browsed class, the spellbook or
+-- your custom macros, so typing in the search box reuses it.
 function MacroForge:AllEntries()
+    local book = KT.modules.CustomKeybinds
+    local custom = KT.db.customMacros
+    local spells = book and book.LearnedSpells and select(2, pcall(book.LearnedSpells, book))
+    local key = tostring(self.filter) .. "|" .. tostring(self.browsedClass) .. "|" .. tostring(spells) .. "|" .. tostring(custom) .. "|" .. (type(custom) == "table" and #custom or 0)
+    if self.entriesKey == key and self.entriesCache then return self.entriesCache end
+    local entries = self:BuildEntries()
+    self.entriesKey, self.entriesCache = key, entries
+    return entries
+end
+function MacroForge:BuildEntries()
     local entries, playerClass, playerRace = {}, classKey(), raceKey()
     if self.filter == "class" then
         if self.browsedClass and classMacros[self.browsedClass] then
@@ -197,12 +259,25 @@ function MacroForge:RefreshNewPanel()
     KT:SetSelected(self.newClassButton,self.newClass==true)
 end
 
+-- Icon name -> the game's file ID, or nil when the game has no such icon.
+-- Macros need the file ID (a path makes an invisible icon), and checking
+-- means a wrong name can never show as an empty square.
+local iconIDs = {}
+local function iconFile(name)
+    if type(name) ~= "string" or name == "" or not GetFileIDFromPath then return nil end
+    local key = name:lower()
+    if iconIDs[key] == nil then
+        local ok, id = pcall(GetFileIDFromPath, "Interface\\Icons\\" .. name)
+        iconIDs[key] = ok and type(id) == "number" and id > 0 and id or false
+    end
+    return iconIDs[key] or nil
+end
 function MacroForge:IconForEntry(entry)
     if entry.category == "classPicker" or entry.category == "generic" then return "Interface\\Icons\\" .. (entry.icon or "INV_MISC_QUESTIONMARK") end
     local texture
     if C_Spell and C_Spell.GetSpellTexture then texture = C_Spell.GetSpellTexture(entry.name)
     elseif GetSpellTexture then texture = GetSpellTexture(entry.name) end
-    return texture or entry.liveIcon or (entry.icon and "Interface\\Icons\\" .. entry.icon) or 134400
+    return texture or entry.liveIcon or (self.futureIcons and self.futureIcons[entry.name]) or iconFile(entry.icon) or 134400
 end
 function MacroForge:ClassIcon(className)
     return "Interface\\Icons\\" .. (classIcons[className] or "INV_Misc_QuestionMark")
@@ -212,6 +287,45 @@ function MacroForge:MacroName(entry)
 end
 
 local function normalizeBody(body) return (body or ""):gsub("\r\n", "\n"):gsub("\n+$", "") end
+-- Other default texts a Character macro may still have for this template:
+-- the other mouseover setting, the pre-0.14.4 mouseover rule (every hostile
+-- spell) and the pre-0.14.4 auto attack / stealth texts. Such a macro counts
+-- as this macro, so Add all updates it in place instead of adding a copy.
+-- Macros the player changed never match and are never touched.
+local changedTemplates = {
+    ["Cheap Shot"] = true, ["Ambush"] = true, ["Garrote"] = true, ["Gouge"] = true,
+    ["Claw"] = true, ["Growl"] = true, ["Taunt"] = true, ["Victory Rush"] = true,
+    ["Expose Armor"] = true, ["Stealth"] = true, ["Prowl"] = true,
+}
+local oldHostile = "[@mouseover,harm,nodead][harm,nodead] "
+function MacroForge:LegacyBodies(entry, body)
+    if type(body) ~= "string" or not entry or entry.code then return {} end
+    local bases = {body}
+    -- The same macro with mouseover switched the other way.
+    local mouseover = self.mouseover
+    self.mouseover = not mouseover
+    local ok, other = pcall(self.BuildMacro, self, entry)
+    self.mouseover = mouseover
+    if ok and other and other ~= body then bases[#bases + 1] = other end
+    -- Old rule: every hostile spell got mouseover.
+    if entry.kind ~= "self" and entry.kind ~= "friendly" and not noUnitTarget[entry.name] and not body:find("@mouseover", 1, true) then
+        local plain = body:gsub("\n/cast ", "\n/cast " .. oldHostile, 1)
+        if plain ~= body then bases[#bases + 1] = plain end
+    end
+    local list = {}
+    for i = 2, #bases do list[#list + 1] = bases[i] end
+    if changedTemplates[entry.name] then
+        for _, base in ipairs(bases) do
+            if base:find("\n/startattack\n", 1, true) then list[#list + 1] = (base:gsub("\n/startattack\n", "\n", 1))
+            else
+                local head, rest = base:match("^(#showtooltip[^\n]*)\n(.*)$")
+                if head then list[#list + 1] = head .. "\n/startattack\n" .. rest end
+            end
+            if base:find("[nostealth] ", 1, true) then list[#list + 1] = (base:gsub("%[nostealth%] ", "", 1)) end
+        end
+    end
+    return list
+end
 function MacroForge:EntryExists(entry, body)
     if entry.name=="1-shot combo" then
         local account,character=GetNumMacros()
@@ -226,10 +340,19 @@ function MacroForge:EntryExists(entry, body)
     end
     if not entry.class and not entry.characterOnly then return (GetMacroIndexByName(self:MacroName(entry)) or 0) > 0 end
     local _, count = GetNumMacros()
+    local wanted = normalizeBody(body)
+    local legacy = {}
+    for _, old in ipairs(self:LegacyBodies(entry, body)) do legacy[normalizeBody(old)] = true end
+    local legacyIndex
     for index = (MAX_ACCOUNT_MACROS or 120) + 1, (MAX_ACCOUNT_MACROS or 120) + count do
         local _, _, existing = GetMacroInfo(index)
-        if existing and normalizeBody(existing) == normalizeBody(body) then return true, index end
+        if existing then
+            local text = normalizeBody(existing)
+            if text == wanted then return true, index end
+            if legacy[text] and not legacyIndex then legacyIndex = index end
+        end
     end
+    if legacyIndex then return true, legacyIndex end
     return false
 end
 
@@ -263,12 +386,13 @@ function MacroForge:CreateEntry(entry, confirmed)
         return false
     end
     local body = self:BuildMacro(entry)
+    local icon = self:MacroIcon(entry)
     if #body > 255 then self.skipReason = "long"; self:Status("This macro is too long for WoW's 255-character limit.", true); return false end
     local name = self:MacroName(entry)
     local exists, existingIndex = self:EntryExists(entry, body)
     if exists then
         if entry.class and existingIndex then
-            EditMacro(existingIndex, " ", 134400, body)
+            EditMacro(existingIndex, " ", icon, body)
             self:Status(entry.name .. " already exists; blank name and automatic icon applied.")
         else self:Status(entry.name .. " already exists — skipped to protect it.", true) end
         self.skipReason = "exists"
@@ -278,7 +402,7 @@ function MacroForge:CreateEntry(entry, confirmed)
     local accountCount, characterCount = GetNumMacros()
     -- The client is authoritative. Some beta builds expose stale slot constants;
     -- do not reject a valid creation merely because a guessed limit was reached.
-    local ok,macroIndex = pcall(CreateMacro,name,134400,body,scope=="character")
+    local ok,macroIndex = pcall(CreateMacro,name,icon,body,scope=="character")
     if ok and type(macroIndex)=="number" and macroIndex>0 then
         local destination = scope == "character" and "Character" or "General"
         self:Status("Added " .. entry.name .. " to " .. destination .. " macros.")
@@ -290,10 +414,28 @@ function MacroForge:CreateEntry(entry, confirmed)
     return false
 end
 
+-- Macro icon. Normally the question mark, so WoW shows the spell's own icon
+-- (#showtooltip). With "Icons for unlearned spells" on, a spell you have not
+-- learned yet gets its real icon right away (from your spellbook's upcoming
+-- spells, or the template), so bars can be set up from level 1.
+function MacroForge:MacroIcon(entry)
+    if KT.db.macroUnlearnedIcons ~= true or not entry.class then return 134400 end
+    local book = KT.modules.CustomKeybinds
+    local ok, spells = pcall(book.LearnedSpells, book)
+    if ok and type(spells) == "table" then
+        for _, spell in ipairs(spells) do if spell.name == entry.name then return 134400 end end
+    end
+    -- One spellbook scan per spellbook change, not one per macro.
+    if self.futureFor ~= spells or not self.futureIcons then self:LearnLevels(); self.futureFor = spells end
+    local future = self.futureIcons and self.futureIcons[entry.name]
+    if type(future) == "number" then return future end
+    return iconFile(entry.icon) or 134400
+end
 -- Level each spell is learned at, from your own spellbook (it also lists
 -- spells you have not learned yet). Spells you already know count as level 0.
 function MacroForge:LearnLevels()
-    local levels = {}
+    local levels, icons = {}, {}
+    self.futureIcons = icons
     if not (C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines and C_SpellBook.GetSpellBookItemInfo) then return levels end
     local bank = Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player or 0
     local future = Enum and Enum.SpellBookItemType and Enum.SpellBookItemType.FutureSpell or 2
@@ -306,6 +448,7 @@ function MacroForge:LearnLevels()
                     if item and type(item.name) == "string" then
                         local level = 0
                         if item.itemType == future then
+                            if item.iconID and not (issecretvalue and issecretvalue(item.iconID)) then icons[item.name] = item.iconID end
                             level = C_SpellBook.GetSpellBookItemLevelLearned and C_SpellBook.GetSpellBookItemLevelLearned(slot, bank) or 99
                             if type(level) ~= "number" or (issecretvalue and issecretvalue(level)) then level = 99 end
                         end
@@ -315,6 +458,23 @@ function MacroForge:LearnLevels()
             end
         end
     end)
+    -- Talent spells (Stormstrike and the like) are not in the spellbook until
+    -- learned; the talent list has their icons.
+    if type(GetNumTalentTabs) == "function" and type(GetNumTalents) == "function" and type(GetTalentInfo) == "function" then
+        pcall(function()
+            for tab = 1, math.min(GetNumTalentTabs() or 0, 4) do
+                for index = 1, math.min(GetNumTalents(tab) or 0, 60) do
+                    local name, icon = GetTalentInfo(tab, index)
+                    if type(name) == "string" and not (issecretvalue and (issecretvalue(name) or issecretvalue(icon))) and icons[name] == nil then
+                        if type(icon) == "number" then icons[name] = icon
+                        elseif type(icon) == "string" and GetFileIDFromPath then
+                            local id = GetFileIDFromPath(icon); if type(id) == "number" and id > 0 then icons[name] = id end
+                        end
+                    end
+                end
+            end
+        end)
+    end
     return ok and levels or {}
 end
 function MacroForge:BulkEntries(className)
@@ -350,15 +510,55 @@ local function nameList(names, limit)
     if #names > limit then text = text .. " and " .. (#names - limit) .. " more" end
     return text
 end
-function MacroForge:CreateBulk(className)
+-- Macros the player hid from the list (per account). Hidden macros are
+-- also never added by Add all; the Hidden filter shows them again.
+function MacroForge:HiddenKey(entry) return (entry.class or entry.race or "Generic") .. "|" .. entry.name end
+function MacroForge:IsHidden(entry)
+    return type(KT.db.hiddenMacros) == "table" and KT.db.hiddenMacros[self:HiddenKey(entry)] == true
+end
+function MacroForge:SetHidden(entry, hidden)
+    if type(KT.db.hiddenMacros) ~= "table" then KT.db.hiddenMacros = {} end
+    KT.db.hiddenMacros[self:HiddenKey(entry)] = hidden and true or nil
+    local count = 0; for _ in pairs(KT.db.hiddenMacros) do count = count + 1 end
+    if count == 0 then self.showHidden = false end
+    self:RenderList()
+    if hidden then KT:Toast(entry.name .. " hidden. Use the Hidden filter to show it again.", 3)
+    else KT:Toast(entry.name .. " is back in the list.", 2) end
+end
+function MacroForge:HiddenCount()
+    local count = 0; for _ in pairs(type(KT.db.hiddenMacros) == "table" and KT.db.hiddenMacros or {}) do count = count + 1 end
+    return count
+end
+function MacroForge:AddableEntries(className)
+    className = className or self:BulkClass()
+    local list = {}
+    for _, entry in ipairs(self:BulkEntries(className)) do
+        if not self:IsBulkExcluded(className, entry.name) and not self:IsHidden(entry) then list[#list + 1] = entry end
+    end
+    return list
+end
+-- Mouseover for one macro: your own choice for it (the Mouseover button on
+-- that macro), otherwise the Bulk Mouseover setting.
+function MacroForge:EntryMouseover(entry)
+    if type(KT.db.macroMouseover) == "table" then
+        local key = KT:MacroKey(entry)
+        local own = KT.db.macroMouseover[key]
+        -- An exception equal to the row setting is no exception: forget it.
+        if own == (self.bulkMouseover == true) then KT.db.macroMouseover[key] = nil
+        elseif type(own) == "boolean" then return own end
+    end
+    return self.bulkMouseover == true
+end
+function MacroForge:CreateBulk(className, chosen)
     if InCombatLockdown() then self:Status("Leave combat before adding macros.", true); return end
-    local entries = self:BulkEntries(className)
+    local entries = chosen or self:AddableEntries(className)
     local rank, mouseover = self.selectedRank, self.mouseover
     self.selectedRank, self.mouseover = "max", self.bulkMouseover == true
     local created = 0; self.bulkAdding = true
     local skipped = {exists = {}, full = {}, long = {}}
     for _, entry in ipairs(entries) do
         self.skipReason = nil
+        self.mouseover = self:EntryMouseover(entry)
         if self:CreateEntry(entry, true) then created = created + 1
         else
             local list = skipped[self.skipReason or "full"] or skipped.full
@@ -399,7 +599,8 @@ function MacroForge:RenderList()
     local shown = 0
     for _, entry in ipairs(self:AllEntries()) do
         local haystack = string.lower(entry.name .. " " .. (entry.class or "") .. " " .. (entry.race or "") .. " " .. entry.category)
-        if query == "" or haystack:find(query, 1, true) then
+        local hidden = entry.category ~= "classPicker" and self:IsHidden(entry)
+        if (query == "" or haystack:find(query, 1, true)) and (hidden == (self.showHidden == true) or entry.category == "classPicker") then
             shown = shown + 1
             local button = self.rows[shown]
             if not button then
@@ -421,6 +622,14 @@ function MacroForge:RenderList()
                         self:Status("Browsing " .. self.browsedClass .. " macros. Click Classes to choose another class.")
                     else self:Select(owner.entry) end
                 end)
+                -- Small hide / show-again button on the right of each row.
+                button.hide = KT:QuietButton(button, "", 24, 24)
+                button.hide:SetPoint("RIGHT", -8, 0)
+                button.hide.glyph = button.hide:CreateTexture(nil, "ARTWORK"); button.hide.glyph:SetSize(14, 14); button.hide.glyph:SetPoint("CENTER")
+                button.hide:SetScript("OnClick", function() local e = button.entry; if e then self:SetHidden(e, not self:IsHidden(e)) end end)
+                KT:Tooltip(button.hide, "Hide or show", function()
+                    return button.entry and self:IsHidden(button.entry) and "Show this macro in the list again." or "Hide this macro from the list. Hidden macros are never added by Add all. Use the Hidden filter to bring it back."
+                end)
                 KT:Tooltip(button,"Macro template",function()
                     return button.entry and button.entry.name=="1-shot combo"
                         and "Build one macro that does several things. Pick learned spells below the text, and add trinkets or start attack with one click. Abilities off the global cooldown fire together; other spells may need another press."
@@ -433,20 +642,29 @@ function MacroForge:RenderList()
             button.entry = entry
             button.icon:SetTexture(self:IconForEntry(entry))
             button.title:SetText(entry.name)
-            button.meta:SetText(entry.category == "classPicker" and "View class macros" or entry.category=="custom" and (entry.class and "Custom • "..entry.class or "Custom • Generic") or entry.class or entry.race or "Generic")
+            local isHidden = entry.category ~= "classPicker" and self:IsHidden(entry)
+            button.hide:SetShown(entry.category ~= "classPicker")
+            button.hide.glyph:SetTexture(isHidden and "Interface\\Icons\\Spell_Nature_TimeStop" or "Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+            button.title:SetWidth(isHidden and 200 or 210)
+            button.meta:SetText(isHidden and "Hidden" or entry.category == "classPicker" and "View class macros" or entry.category=="custom" and (entry.class and "Custom • "..entry.class or "Custom • Generic") or entry.class or entry.race or "Generic")
             KT:SetSelected(button, sameEntry(entry, self.selectedMacro))
             button:Show()
         end
     end
     self.list:SetHeight(math.max(1, shown * 48))
     self.empty:SetShown(shown == 0)
+    self.empty:SetText(self.showHidden and "No hidden macros here." or "No matching macros.")
+    local hiddenCount = self:HiddenCount()
+    self.hiddenButton.label:SetText(self.showHidden and "Back to list" or ("Hidden (" .. hiddenCount .. ")"))
+    KT:SetSelected(self.hiddenButton, self.showHidden == true)
+    self.hiddenButton:SetEnabled(hiddenCount > 0 or self.showHidden == true); self.hiddenButton:SetAlpha((hiddenCount > 0 or self.showHidden) and 1 or .45)
     self.detail:SetShown(not (self.filter == "class" and not self.browsedClass))
     self:UpdateFilters()
     self:UpdateBulkInfo()
 end
 function MacroForge:Select(entry)
     KT:FlushMacroRevision(self.selectedMacro)
-    self.selectedMacro, self.selectedRank, self.mouseover = entry, "max", false
+    self.selectedMacro, self.selectedRank, self.mouseover = entry, "max", self:EntryMouseover(entry)
     self.quickSpell=nil
     if self.spellChoice then
         self.spellChoice.value=nil;self.spellChoice.label:SetText("Choose learned spell")
@@ -454,13 +672,27 @@ function MacroForge:Select(entry)
     end
     if self.historyPanel then self.historyPanel:Hide() end
     if self.advancedPanel then self.advancedPanel:Hide() end
-    local saved=KT:MacroRecord(entry).body; if type(saved)=="string" then self.mouseover=saved:find("@mouseover",1,true)~=nil end
     self:UpdatePreview()
     self:RenderList()
+end
+-- A saved text that is only a default (the other mouseover setting, another
+-- default version) is not an edit: drop it so the preview shows what Add
+-- would actually create.
+function MacroForge:ForgetDefaultBody(entry)
+    local record = KT.db.macroHistory and KT.db.macroHistory[KT:MacroKey(entry)]
+    if not record or type(record.body) ~= "string" or entry.code then return end
+    local current = self:BuildMacro(entry)
+    local saved = normalizeBody(record.body)
+    -- false (not nil): nil would bring back the last saved version.
+    if saved == normalizeBody(current) then record.body = false; record.dirty = nil; return end
+    for _, old in ipairs(self:LegacyBodies(entry, current)) do
+        if saved == normalizeBody(old) then record.body = false; record.dirty = nil; return end
+    end
 end
 function MacroForge:UpdatePreview()
     local entry = self.selectedMacro
     if not entry then return end
+    self:ForgetDefaultBody(entry)
     self.title:SetText(entry.name)
     self.rankLabel:SetText(entry.ranks and entry.ranks > 1 and (self.selectedRank == "max" and "Max rank" or "Rank " .. self.selectedRank) or "Single rank")
     local hasRanks = entry.ranks and entry.ranks > 1
@@ -475,7 +707,8 @@ function MacroForge:UpdatePreview()
     self.prevRank:SetEnabled(hasRanks)
     self.nextRank:SetEnabled(entry.ranks and entry.ranks > 1)
     self.mouseoverButton:SetShown(showMouseover)
-    self.mouseoverButton.label:SetText(self.mouseover and "Mouseover: On" or "Mouseover: Off")
+    local own = self.mouseover ~= (self.bulkMouseover == true)
+    self.mouseoverButton.label:SetText((self.mouseover and "Mouseover: On" or "Mouseover: Off") .. (own and " *" or ""))
     KT:SetSelected(self.mouseoverButton, self.mouseover)
     self.loadingPreview = true
     self.preview:SetText(KT:MacroBody(entry, self:BuildMacro(entry)))
@@ -518,6 +751,7 @@ function MacroForge:EditQuickLine(line)
     local body=table.concat(rows,"\n")
     if #body>255 then self:Status("Too long for a WoW macro (255 bytes).",true);return end
     self.preview:SetText(body)
+    KT:StoreMacroBody(self.selectedMacro, body)
     self:RefreshQuickButtons()
 end
 function MacroForge:AddQuickSpell()
@@ -533,6 +767,7 @@ function MacroForge:AddQuickSpell()
     body=body..(body~="" and "\n" or "")..line
     if #body>255 then self:Status("Too long for a WoW macro (255 bytes).",true);return end
     self.preview:SetText(body)
+    KT:StoreMacroBody(self.selectedMacro, body)
     self:Status("Added "..choice.name.." to this macro.")
 end
 function MacroForge:RefreshQuickButtons()
@@ -579,24 +814,33 @@ function MacroForge:ChooseScope(scope)
     KT.db.macroScope = scope
     self:UpdatePreview()
 end
+function MacroForge:UpdateIconsButton()
+    if not self.iconsButton then return end
+    local on = KT.db.macroUnlearnedIcons == true
+    self.iconsButton.label:SetText("Unlearned icons: " .. (on and "On" or "Off"))
+    KT:SetSelected(self.iconsButton, on)
+end
 function MacroForge:UpdateBulkInfo()
+    self.bulkMouseover = KT.db.macroBulkMouseover == true
     local _, count = GetNumMacros()
     local free = math.max(0, (MAX_CHARACTER_MACROS or 30) - count)
     local needed = 0
     local oldRank, oldMouseover = self.selectedRank, self.mouseover
     self.selectedRank, self.mouseover = "max", self.bulkMouseover == true
-    for _, entry in ipairs(self:BulkEntries()) do
+    for _, entry in ipairs(self:AddableEntries()) do
+        self.mouseover = self:EntryMouseover(entry)
         if not self:EntryExists(entry, self:BuildMacro(entry)) then needed = needed + 1 end
     end
     self.selectedRank, self.mouseover = oldRank, oldMouseover
     local className = self:BulkClass()
     local icon = classIcons[className] or "INV_Misc_QuestionMark"
-    self.bulkStatus:SetText("|TInterface\\Icons\\" .. icon .. ":18:18|t " .. className .. " macros")
-    self.bulkButton.label:SetText("Add all " .. className .. " macros")
+    self.bulkStatus:SetText("|TInterface\\Icons\\" .. icon .. ":18:18|t " .. className)
+    self.bulkButton.label:SetText("Add all")
     self.bulkButton.icon:SetTexture(self:ClassIcon(className))
     self.bulkMouseoverButton.label:SetText(self.bulkMouseover and "Mouseover: On" or "Mouseover: Off")
     KT:SetSelected(self.bulkMouseoverButton, self.bulkMouseover)
     self.bulkInfo:SetText(""); self.bulkInfo:Hide()
+    self:UpdateIconsButton()
     return needed, free
 end
 function MacroForge:ConfirmBulk()
@@ -604,27 +848,10 @@ function MacroForge:ConfirmBulk()
     local className = self:BulkClass()
     local foreign = className ~= classKey()
     if needed <= free and not foreign then self:CreateBulk(className); return end
+    -- Not enough room: let the player pick what to delete and what to add.
+    if needed > free then self:OpenMakeRoom(className); return end
     self.pendingBulkClass = className
-    local left = {}
-    if needed > free then
-        -- Name the macros that will not fit (the last ones in the list).
-        local oldRank, oldMouseover = self.selectedRank, self.mouseover
-        self.selectedRank, self.mouseover = "max", self.bulkMouseover == true
-        local new = {}
-        for _, entry in ipairs(self:BulkEntries(className)) do
-            if not self:EntryExists(entry, self:BuildMacro(entry)) then
-                new[#new + 1] = entry.name .. ((entry.learnLevel or 0) > 0 and entry.learnLevel < 99 and (" (level " .. entry.learnLevel .. ")") or "")
-            end
-        end
-        self.selectedRank, self.mouseover = oldRank, oldMouseover
-        for i = free + 1, #new do left[#left + 1] = new[i] end
-    end
-    StaticPopupDialogs.FOREVERTOOLS_BULK.text = needed > free
-        and string.format("Only %d of %d new %s macros fit in your Character macros. Spells you know are added first, then by the level you learn them.\n\nThese will not be added:\n%s\n\nMake room in Esc → Macros first, or add the ones that fit.", free, needed, className, nameList(left, 20))
-        or string.format("Add all %s macros to Character macros?", className)
-    if foreign then
-        StaticPopupDialogs.FOREVERTOOLS_BULK.text = "WARNING: You are a " .. classKey() .. ", not a " .. className .. ".\n\n" .. StaticPopupDialogs.FOREVERTOOLS_BULK.text
-    end
+    StaticPopupDialogs.FOREVERTOOLS_BULK.text = "WARNING: You are a " .. classKey() .. ", not a " .. className .. ".\n\n" .. string.format("Add all %s macros to Character macros?", className)
     KT:ShowPopup("FOREVERTOOLS_BULK")
 end
 function MacroForge:CreateUI()
@@ -633,47 +860,81 @@ function MacroForge:CreateUI()
     self.rows = {}
     local frame = KT:Window("ForeverToolsMacros", "ForeverTools | Macros", 880, 744)
     self.frame = frame
+    frame:HookScript("OnHide", function() self.entriesCache, self.entriesKey = nil, nil end)
     local hint = KT:Label(frame, "", 14)
     hint:SetPoint("TOPLEFT", 24, -57)
     local bulkPanel = CreateFrame("Frame", nil, frame)
     bulkPanel:SetSize(832, 58); bulkPanel:SetPoint("TOPLEFT", 24, -82); KT:Panel(bulkPanel)
-    self.bulkStatus = KT:Label(bulkPanel, "", 15, true); self.bulkStatus:SetPoint("LEFT", 14, 0); self.bulkStatus:SetWidth(160)
-    self.bulkMouseoverButton = KT:QuietButton(bulkPanel, "", 180, 34, "mouseover")
+    -- One row: class | Mouseover | Unlearned icons | Add all | Delete.
+    self.bulkStatus = KT:Label(bulkPanel, "", 15, true); self.bulkStatus:SetPoint("LEFT", 14, 0); self.bulkStatus:SetWidth(150)
+    self.bulkMouseover = KT.db.macroBulkMouseover == true
+    self.bulkMouseoverButton = KT:QuietButton(bulkPanel, "", 160, 34, "mouseover")
     self.bulkMouseoverButton:SetPoint("LEFT", self.bulkStatus, "RIGHT", 8, 0)
-    self.bulkMouseoverButton:SetScript("OnClick", function() self.bulkMouseover = not self.bulkMouseover; self:UpdateBulkInfo() end)
-    KT:Tooltip(self.bulkMouseoverButton, "Bulk Mouseover", "Adds mouseover to every macro whose spell can use it, so it casts on the unit under your mouse. Tip: also turn on Mouseover Cast in the game's Combat settings.")
-    self.bulkButton = KT:QuietButton(bulkPanel, "", 230, 34, "add")
-    self.bulkButton:SetPoint("LEFT", self.bulkMouseoverButton, "RIGHT", 8, 0)
+    self.bulkMouseoverButton:SetScript("OnClick", function()
+        self.bulkMouseover = not self.bulkMouseover; KT.db.macroBulkMouseover = self.bulkMouseover
+        -- The row sets every macro; single-macro exceptions start over.
+        KT.db.macroMouseover = nil
+        if self.selectedMacro then self:Select(self.selectedMacro) end
+        self:UpdateBulkInfo()
+    end)
+    KT:Tooltip(self.bulkMouseoverButton, "Mouseover for all macros", "Macros cast on the unit under your mouse and keep your target: heal or dispel a party member, hit or crowd-control an enemy beside you. Melee strikes stay on your target. Add all updates macros you already added. A macro's own Mouseover button can make an exception (marked *); changing this clears them. Tip: also turn on Mouseover Cast in the game's Combat settings.")
+    self.iconsButton = KT:QuietButton(bulkPanel, "", 190, 34, "classes")
+    self.iconsButton:SetPoint("LEFT", self.bulkMouseoverButton, "RIGHT", 8, 0)
+    self.iconsButton:SetScript("OnClick", function() KT.db.macroUnlearnedIcons = not (KT.db.macroUnlearnedIcons == true); self:UpdateIconsButton() end)
+    KT:Tooltip(self.iconsButton, "Icons for unlearned spells", "When on, macros for spells you have not learned yet get the spell's icon, so you can set up your action bars from level 1. Add all also gives macros you already added their icon. Once learned, they work as usual.")
+    self.bulkButton = KT:QuietButton(bulkPanel, "", 150, 34, "add")
+    self.bulkButton:SetPoint("LEFT", self.iconsButton, "RIGHT", 8, 0)
     self.bulkButton:SetScript("OnClick", function() self:ConfirmBulk() end)
-    KT:Tooltip(self.bulkButton, "Add all class macros", "Add every macro for this class to your Character macros.")
-    self.deleteButton = KT:QuietButton(bulkPanel, "Delete class macros", 200, 34, "delete")
+    KT:Tooltip(self.bulkButton, "Add all class macros", function() return "Add every " .. self:BulkClass() .. " macro to your Character macros. Macros you already added are updated, not copied." end)
+    self.deleteButton = KT:QuietButton(bulkPanel, "Delete…", 130, 34, "delete")
     self.deleteButton:SetPoint("LEFT", self.bulkButton, "RIGHT", 8, 0)
-    self.deleteButton:SetScript("OnClick", function() self:RequestDeleteClass() end)
-    for _,button in ipairs({self.bulkMouseoverButton,self.bulkButton,self.deleteButton}) do
-        if button.label.SetWordWrap then button.label:SetWordWrap(false) end
+    -- Two ways to clean up: only untouched ForeverTools macros, or everything.
+    self.deleteButton.options = function()
+        return {
+            {value = "unchanged", label = "Delete unchanged macros", icon = "Interface\\Icons\\INV_Misc_Note_01",
+                tooltip = "Delete Character macros that ForeverTools made and you have not changed: class, racial and generic ones. Macros you changed or made yourself are kept."},
+            {value = "all", label = "Delete ALL Character macros", icon = "Interface\\Icons\\Spell_Shadow_UnholyFrenzy",
+                tooltip = "Delete every macro in your Character tab, including ones you made or changed. General macros are not touched. Asks twice."},
+        }
     end
-    KT:Tooltip(self.deleteButton, "Delete character macros", "Delete this class's macros that you have not changed. General, racial and edited macros are kept.")
+    self.deleteButton.onSelect = function(mode) self:RequestDeleteClass(mode) end
+    self.deleteButton.menuWidth = 260
+    self.deleteButton:SetScript("OnClick", function(owner) KT:ShowChoices(owner) end)
+    for _,button in ipairs({self.bulkMouseoverButton,self.iconsButton,self.bulkButton,self.deleteButton}) do
+        if button.label.SetWordWrap then button.label:SetWordWrap(false) end
+        button.label:SetFont(KT.bodyFont, 13, "")
+    end
+    KT:Tooltip(self.deleteButton, "Delete Character macros", "Choose: delete only the ForeverTools macros you have not changed, or every Character macro. Both ask before deleting.")
     self.bulkInfo = KT:Label(bulkPanel, "", 12)
     self.bulkInfo:SetPoint("TOPLEFT", 14, -53); self.bulkInfo:SetWidth(725); self.bulkInfo:Hide()
     self.filterButtons = {}
     local filters = {{"mine", "Character", "character"}, {"class", "Classes", "classes"}, {"generic", "Generic", "generic"}}
     for index, item in ipairs(filters) do
         local key = item[1]
-        local button = KT:QuietButton(frame, item[2], 104, 28, item[3])
-        button:SetPoint("TOPLEFT", 24 + (index - 1) * 110, -156)
+        local button = KT:QuietButton(frame, item[2], index == 1 and 124 or 108, 28, item[3])
+        button:SetPoint("TOPLEFT", index == 1 and 24 or (index == 2 and 154 or 268), -156)
         button:SetScript("OnClick", function() self.filter = key; if key == "class" then self.browsedClass = nil; self:Status("Choose a class to browse its macros.") end; self:RenderList() end)
         self.filterButtons[key] = button
         KT:Tooltip(button, item[2], key == "mine" and "Macros installed for this character." or (key == "class" and "Browse every class before adding its macros." or "Useful macros that are not class-specific."))
     end
-    self.newButton=KT:QuietButton(frame,"New macro",160,28,"add");self.newButton:SetPoint("TOPLEFT",354,-156)
+    self.newButton=KT:QuietButton(frame,"New macro",136,28,"add");self.newButton:SetPoint("TOPLEFT",382,-156)
     self.newButton:SetScript("OnClick",function() self.newName:SetText("");self.newClass=false;self:RefreshNewPanel();self.newPanel:Show();if self.newName.SetFocus then self.newName:SetFocus() end end)
     KT:Tooltip(self.newButton,"New macro","Create your own macro in My class or Generic, then edit its text and add it to WoW.")
+    self.hiddenButton = KT:QuietButton(frame, "Hidden (0)", 130, 28, "reset"); self.hiddenButton:SetPoint("TOPLEFT", 524, -156)
+    if self.hiddenButton.label.SetWordWrap then self.hiddenButton.label:SetWordWrap(false) end
+    if self.hiddenButton.SetMotionScriptsWhileDisabled then self.hiddenButton:SetMotionScriptsWhileDisabled(true) end
+    self.hiddenButton:SetScript("OnClick", function() self.showHidden = not self.showHidden; self:RenderList() end)
+    KT:Tooltip(self.hiddenButton, "Hidden macros", "Show the macros you hid, so you can bring them back. Hidden macros are never added by Add all.")
     self.search = CreateFrame("EditBox", nil, frame)
-    self.search:SetSize(330, 28); self.search:SetPoint("TOPRIGHT", -24, -156)
+    self.search:SetSize(196, 28); self.search:SetPoint("TOPRIGHT", -24, -156)
     KT:Panel(self.search)
     self.search:SetAutoFocus(false); self.search:SetFont(KT.bodyFont, 14, "")
     self.search:SetTextInsets(10, 10, 0, 0)
-    self.search:SetScript("OnTextChanged", function() self:RenderList() end)
+    -- Wait for a short pause in typing before filtering the list.
+    self.search:SetScript("OnTextChanged", function(_, userInput)
+        if not userInput then self:RenderList(); return end
+        KT:Coalesce("macroSearch", function() self:RenderList() end, 0.15)
+    end)
     self.search:SetScript("OnEscapePressed", function(box) box:ClearFocus() end)
     self.search.placeholder = KT:Label(self.search, "Search macros...", 14)
     self.search.placeholder:SetPoint("LEFT", 10, 0)
@@ -689,7 +950,7 @@ function MacroForge:CreateUI()
     detail:SetSize(494, 482); detail:SetPoint("TOPRIGHT", -24, -198); KT:Panel(detail)
     self.title = KT:Label(detail, "", 18, true); self.title:SetPoint("TOPLEFT", 16, -16); self.title:SetWidth(462)
     local newPanel=CreateFrame("Frame",nil,frame);self.newPanel=newPanel
-    newPanel:SetSize(420,250);newPanel:SetPoint("CENTER",frame,"CENTER");newPanel:SetFrameLevel(frame:GetFrameLevel()+40);newPanel:EnableMouse(true);KT:Panel(newPanel);newPanel:Hide()
+    newPanel:SetSize(420,250);newPanel:SetPoint("CENTER",frame,"CENTER");newPanel:SetFrameLevel(frame:GetFrameLevel()+40);KT:MakeDraggable(newPanel,frame);KT:Panel(newPanel);newPanel:Hide()
     local newTitle=KT:Label(newPanel,"New macro",18,true);newTitle:SetPoint("TOPLEFT",16,-16)
     KT:AddClose(newPanel,nil,8)
     local nameHint=KT:Label(newPanel,"Name (up to 16 characters)",13);nameHint:SetPoint("TOPLEFT",18,-56)
@@ -712,8 +973,18 @@ function MacroForge:CreateUI()
     self.nextRank:SetScript("OnClick", function() self:StepRank(1) end)
     KT:Tooltip(self.nextRank, "Spell rank", "Pick a higher rank. Your highest rank is used by default.")
     self.mouseoverButton = KT:QuietButton(detail, "", 168, 26, "mouseover"); self.mouseoverButton:SetPoint("LEFT", self.nextRank, "RIGHT", 20, 0)
-    self.mouseoverButton:SetScript("OnClick", function() self.mouseover = not self.mouseover; KT:StoreMacroBody(self.selectedMacro, self:BuildMacro(self.selectedMacro)); self:UpdatePreview() end)
-    KT:Tooltip(self.mouseoverButton, "Mouseover", "Cast on the unit under your mouse, when the spell allows it.")
+    self.mouseoverButton:SetScript("OnClick", function()
+        self.mouseover = not self.mouseover
+        -- Remember this macro's own choice; Add all respects it too.
+        -- Only a choice that differs from Mouseover in the Add all row is kept.
+        if type(KT.db.macroMouseover) ~= "table" then KT.db.macroMouseover = {} end
+        local own = nil
+        if self.mouseover ~= (self.bulkMouseover == true) then own = self.mouseover end
+        KT.db.macroMouseover[KT:MacroKey(self.selectedMacro)] = own
+        -- The preview follows the setting; no text is saved for a default.
+        local record = KT:MacroRecord(self.selectedMacro); record.body = false; record.dirty = nil
+        self:UpdatePreview() end)
+    KT:Tooltip(self.mouseoverButton, "Mouseover", "Cast on the unit under your mouse, keeping your target. Follows Mouseover in the Add all row; changing it here makes an exception for this macro only (marked *). Changing the row setting clears the exceptions.")
     self.previewArea = CreateFrame("ScrollFrame", nil, detail, "UIPanelScrollFrameTemplate")
     self.previewArea:SetSize(446, 100); self.previewArea:SetPoint("TOPLEFT", 16, -96)
     self.preview = CreateFrame("EditBox", nil, self.previewArea)
@@ -721,10 +992,12 @@ function MacroForge:CreateUI()
     self.preview:SetFont(KT.bodyFont, 14, ""); self.preview:SetSize(438, 100)
     self.preview:SetTextInsets(6,6,6,6); KT:Panel(self.preview)
     self.previewArea:SetScrollChild(self.preview)
-    self.preview:SetScript("OnTextChanged", function(box)
+    self.preview:SetScript("OnTextChanged", function(box, userInput)
         local _, lines = box:GetText():gsub("\n", "")
         box:SetHeight(math.max(100, (lines + math.ceil(#box:GetText() / 60) + 1) * 17 + 12))
-        if self.selectedMacro and not self.loadingPreview then
+        -- Only typing counts as an edit. Showing a macro must never save its
+        -- text, or the preview would stop following Mouseover and ranks.
+        if self.selectedMacro and userInput and not self.loadingPreview then
             KT:StoreMacroBody(self.selectedMacro, box:GetText())
             self:UpdateDefaultButton()
             self:RefreshQuickButtons()
@@ -753,10 +1026,7 @@ function MacroForge:CreateUI()
     self.advancedPanel:SetPoint("TOPLEFT",frame,"TOPRIGHT",8,-198)
     self.advancedPanel:SetFrameLevel(frame:GetFrameLevel()+20)
     self.advancedPanel:SetFrameStrata("DIALOG");self.advancedPanel:SetClampedToScreen(true)
-    self.advancedPanel:SetMovable(true);self.advancedPanel:EnableMouse(true)
-    self.advancedPanel:RegisterForDrag("LeftButton")
-    self.advancedPanel:SetScript("OnDragStart",self.advancedPanel.StartMoving)
-    self.advancedPanel:SetScript("OnDragStop",self.advancedPanel.StopMovingOrSizing)
+    KT:MakeDraggable(self.advancedPanel,frame)
     KT:Panel(self.advancedPanel);self.advancedPanel:Hide()
     self.advancedButton:SetScript("OnClick",function()
         if not self.advancedPanel:IsShown() then
@@ -849,7 +1119,8 @@ end
 function MacroForge:Open()
     self:CreateUI()
     self.search:SetText("")
-    if not self.selectedMacro then self:Select(self:AllEntries()[1]) end
+    if not self.selectedMacro then self:Select(self:AllEntries()[1])
+    else self.bulkMouseover = KT.db.macroBulkMouseover == true; self.mouseover = self:EntryMouseover(self.selectedMacro) end
     self:RenderList(); self:UpdatePreview(); self:UpdateBulkInfo()
     self:Status("Select a macro to preview it, or use Add all " .. classKey() .. " macros above.")
     self.frame:Show()
