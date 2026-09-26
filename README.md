@@ -32,26 +32,30 @@ the home window. Use **`/rl`** to reload the UI.
   and optional clickable links that open a copy box.
 - **Macros:** Browse class, racial and general templates; select ranks; add
   mouseover support; and build custom macros with spell and equipment actions.
+  Add all fits your macro tab (Make room), hides macros you never use, and can
+  give unlearned spells their icon so bars can be set up from level 1.
 - **Buff reminders:** Self and group buff notices with talent-based choices,
   weapon enchants, low-rank alerts and an optional low-rank marker on action
-  bars, with per-spell exceptions. Choose where notices appear.
+  bars, with per-spell exceptions. Choose where notices appear and how long
+  they stay.
 - **Leveling stats:** XP per hour, time to level, kills to level, XP progress and
   rested XP. Pick which to show and their order, one per line or on a single
-  line, with an optional rounded background; movable, and also added to the
-  XP bar tooltip.
+  line, with an optional rounded background; font size and transparency
+  sliders; movable, and also added to the XP bar tooltip.
 - **Flight countdown:** Destination and estimated time until landing. Completed
   flights teach new routes and replace bundled estimates.
 - **Quest objectives:** keep the objective tracker collapsed or open after
   login and reload, or hide it altogether (System → Gameplay).
 - **Faster looting:** With auto loot on, take everything the moment a corpse
   opens. Off by default.
-- **Merchant helpers:** Optional auto-sell of grey items and auto-repair, with
-  guild funds if allowed, and a one-line summary.
+- **Merchant helpers:** Optional auto-sell of grey items (they can be bought
+  back, as usual the last 12) and auto-repair, with guild funds if allowed,
+  and a one-line summary.
 - **Minimap:** ForeverTools button, coordinates, and an optional launcher that
   groups other addons' minimap buttons into one menu.
-- **Profiles:** Save named snapshots, export/import as text (optionally with
-  all your keybinds), and choose a profile or a fresh start on each new
-  character.
+- **Profiles:** Named profiles shared by the characters that use them,
+  export/import as text (optionally with all your keybinds), and a profile or
+  a fresh start on each new character.
 - **Quick keybinds:** `/kb` binds keys by hovering a slot, with snapshots to
   revert, save or discard, and a restore list of earlier sessions.
 - **More:** FPS counter, movable loot rolls, group-role helper, custom
@@ -60,6 +64,9 @@ the home window. Use **`/rl`** to reload the UI.
   **Appearance**. FPS counter, leveling stats and flight countdown are under
   **System → On-screen info**; quick keybinds and mouse-wheel casting under
   **System → Keybinds**.
+- **Menus:** every settings window has Back and a close X; pop-ups have only
+  the X. A short What's new panel appears after each update (can be turned off
+  in System → General).
 - **Combat-aware menus:** Settings close during combat; requesting the menu in
   combat opens it afterward.
 
@@ -74,7 +81,13 @@ the home window. Use **`/rl`** to reload the UI.
 
 ## Settings and profiles
 
-- Changes apply immediately. Save a named profile to keep a reusable snapshot.
+- Open **Profiles** from the main menu. Changes apply immediately; **Save**
+  stores them in the profile you use.
+- Profiles are shared: every character using a profile follows it. Save on one
+  character and the others get the change at their next login. A character
+  with unsaved changes of its own keeps them until you save or load there.
+- Deleting a profile sends other characters that used it back to default
+  settings at their next login.
   **Create** starts a new profile from default settings and switches to it.
   **Default settings** resets the selected profile and returns everything
   ForeverTools changes to Blizzard's defaults, as if the addon was just installed.
