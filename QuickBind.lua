@@ -88,7 +88,7 @@ local function keyName(key)
     local ok,text=pcall(GetBindingText,key)
     return ok and type(text)=="string" and text~="" and text or key
 end
--- Readable lines, one per changed action: "Action Button 1: Q → E".
+-- Readable lines, one per changed action: "Action Button 1: Q > E".
 function Q:ChangeLines(changes)
     local byAction={}
     local function entry(action) byAction[action]=byAction[action] or {added={},removed={}}; return byAction[action] end
@@ -100,7 +100,7 @@ function Q:ChangeLines(changes)
     for action,e in pairs(byAction) do
         table.sort(e.added); table.sort(e.removed)
         local text
-        if #e.added==1 and #e.removed==1 then text=e.removed[1].." → "..e.added[1]
+        if #e.added==1 and #e.removed==1 then text=e.removed[1].." to "..e.added[1]
         else
             local parts={}
             if #e.added>0 then parts[#parts+1]=table.concat(e.added,", ").." added" end
@@ -158,7 +158,7 @@ function Q:Finish(save)
     if save then
         SaveBindings(GetCurrentBindingSet())
         self:RecordSession()
-        FT:Toast("Keybinds saved. Restore earlier keybinds any time in System → Keybinds.",4)
+        FT:Toast("Keybinds saved. Restore earlier keybinds any time in Keybinds.",4)
     else
         LoadBindings(GetCurrentBindingSet())
         FT:Toast("Changes discarded.",2)
@@ -231,7 +231,7 @@ function Q:ShowPanel()
         FT:Tooltip(discard,"Discard & exit","Leave quick keybind mode and go back to the keybinds you had before this session.")
         local save=FT:AccentButton(panel,"Save",124,34,"confirm"); save:SetPoint("BOTTOMRIGHT",-20,20)
         save:SetScript("OnClick",function() self:Finish(true) end)
-        FT:Tooltip(save,"Save & exit","Keep your new keybinds and leave quick keybind mode. You can go back later with Restore keybinds in System → Keybinds.")
+        FT:Tooltip(save,"Save & exit","Keep your new keybinds and leave quick keybind mode. You can go back later with Restore keybinds in Keybinds.")
         panel:Hide()
     end
     self:Place()

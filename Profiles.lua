@@ -58,18 +58,23 @@ function Profiles:ShowSwitcher(owner)
 end
 -- Only preferences are copied. Macro history and installed WoW macros belong to
 -- the character and are never rewritten by loading an appearance profile.
-local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros"}
+local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey"}
 -- Every module that must redraw after settings change (load, login, reset).
-local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons"}
+local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey"}
 local function copy(value)
     if type(value) ~= "table" then return value end
     local result={}; for k,v in pairs(value) do result[k]=copy(v) end; return result
 end
+-- Values the addon keeps up to date by itself (a font's resolved file path)
+-- are not user changes, and positions re-clamped to the screen move by a
+-- fraction of a pixel; neither should count as "unsaved changes".
+local derived={path=true,pathFor=true}
 local function same(a,b)
     if a==b then return true end
+    if type(a)=="number" and type(b)=="number" then return math.abs(a-b)<0.5 end
     if type(a)~="table" or type(b)~="table" then return false end
-    for k,v in pairs(a) do if not same(v,b[k]) then return false end end
-    for k in pairs(b) do if a[k]==nil then return false end end
+    for k,v in pairs(a) do if not derived[k] and not same(v,b[k]) then return false end end
+    for k in pairs(b) do if a[k]==nil and not derived[k] then return false end end
     return true
 end
 function Profiles:Store()
@@ -318,35 +323,36 @@ function Profiles:Attach(home)
         window.noSavePrompt=true
         self.panel=window; self.frame=window; self.panelTop=16
         local panel=CreateFrame("Frame",nil,window); panel:SetPoint("TOPLEFT",16,-self.panelTop); panel:SetSize(392,326)
-        local info=FT:Info(window,"Profiles","A profile is a saved copy of your ForeverTools settings. Load it on any character, or export it as text to keep a backup or move it to another computer.")
-        info:SetPoint("RIGHT",window.homeButton,"LEFT",-6,0)
+        FT:PageInfo(window,"Profiles","A profile is a saved copy of your ForeverTools settings. Load it on any character, or export it as text to keep a backup or move it to another computer.")
         self.choice=FT:Dropdown(panel,372,function()
             local list={}; for name,value in pairs(self:Store()) do if type(name)=="string" and type(value)=="table" then list[#list+1]={value=name,label=name,icon="Interface\\Icons\\INV_Misc_Book_09"} end end
             table.sort(list,function(a,b) return a.label<b.label end); return list
         end,function(name) self:Load(name) end,"profiles")
         self.choice:SetPoint("TOPLEFT",10,-46); self.choice:SetHeight(32)
-        self.name=CreateFrame("EditBox",nil,panel); self.name:SetSize(160,30); self.name:SetPoint("TOPLEFT",10,-90)
+        self.name=CreateFrame("EditBox",nil,panel); self.name:SetSize(266,30); self.name:SetPoint("TOPLEFT",10,-90)
         self.name:SetFont(FT.bodyFont,14,""); self.name:SetAutoFocus(false); self.name:SetTextInsets(8,8,0,0); FT:Panel(self.name)
-        FT:Tooltip(self.name,"Profile name","Type a name, then click Create for a new profile or Rename to rename the selected one.")
+        FT:Tooltip(self.name,"New profile name","Type a name, then click Create to make a new profile.")
         local create=FT:QuietButton(panel,"Create",98,30,"INV_Misc_Note_02"); create:SetPoint("LEFT",self.name,"RIGHT",8,0)
         create:SetScript("OnClick",function() if self:Create(self.name:GetText()) then self.name:SetText(""); self.name:ClearFocus() end end)
-        self.rename=FT:QuietButton(panel,"Rename",98,30,"fonts"); self.rename:SetPoint("LEFT",create,"RIGHT",8,0)
+        FT:Tooltip(create,"Create profile","Make a new profile with default settings (everything off) and switch to it. Your custom macros and fonts stay. To keep your current look, use Save instead.")
+        -- Actions on the profile chosen above: Load, Save, Rename, Delete.
+        self.load=FT:QuietButton(panel,"Load",87,30,"INV_Misc_Book_11"); self.load:SetPoint("TOPLEFT",10,-130)
+        self.load:SetScript("OnClick",function() self:Load(self.selected) end)
+        self.save=FT:QuietButton(panel,"Save",87,30,"confirm"); self.save:SetPoint("LEFT",self.load,"RIGHT",8,0)
+        self.rename=FT:QuietButton(panel,"Rename",87,30,"fonts"); self.rename:SetPoint("LEFT",self.save,"RIGHT",8,0)
         self.rename:SetScript("OnClick",function()
-            local old,new=self.selected,(self.name:GetText() or ""):match("^%s*(.-)%s*$")
-            if not old or not self:Store()[old] then FT:Toast("Choose a profile to rename first."); return end
-            if new=="" then FT:Toast("Type the new name in the box first."); return end
-            if new==old then return end
-            if self:Store()[new] then FT:Toast("A profile with that name already exists."); return end
-            FT:Confirm('Rename profile "'..old..'" to "'..new..'"?',function()
-                if self:Rename(old,new) then self.name:SetText(""); self.name:ClearFocus() end
+            local old=self.selected
+            if not old or not self:Store()[old] then FT:Toast("Choose a profile first."); return end
+            FT:AskText('Rename profile "'..old..'" to:',old,function(new)
+                if new=="" or new==old then return end
+                if #new>120 then FT:Toast("Use at most 120 characters."); return end
+                if self:Store()[new] then FT:Toast("A profile with that name already exists."); return end
+                self:Rename(old,new)
             end)
         end)
-        FT:Tooltip(self.rename,"Rename profile","Type a new name in the box, then click Rename to give the selected profile that name. Its settings do not change.")
-        FT:Tooltip(create,"Create profile","Make a new profile with default settings (everything off) and switch to it. Your custom macros and fonts stay. To keep your current look, use Save instead.")
-        self.load=FT:QuietButton(panel,"Load",116,30,"INV_Misc_Book_11"); self.load:SetPoint("TOPLEFT",10,-130)
-        self.load:SetScript("OnClick",function() self:Load(self.selected) end)
-        self.save=FT:QuietButton(panel,"Save",116,30,"confirm"); self.save:SetPoint("LEFT",self.load,"RIGHT",12,0)
-        self.delete=FT:QuietButton(panel,"Delete",116,30,"delete"); self.delete:SetPoint("LEFT",self.save,"RIGHT",12,0)
+        FT:Tooltip(self.rename,"Rename profile",function() return self.selected and ('Give "'..self.selected..'" a new name. Its settings do not change.') or "Choose a profile above first." end)
+        self.delete=FT:QuietButton(panel,"Delete",87,30,"delete"); self.delete:SetPoint("LEFT",self.rename,"RIGHT",8,0)
+        for _,b in ipairs({self.load,self.save,self.rename,self.delete}) do b.label:SetFont(FT.bodyFont,13,""); if b.label.SetWordWrap then b.label:SetWordWrap(false) end end
         StaticPopupDialogs.FOREVERTOOLS_PROFILE_SAVE={text="Replace this saved profile with your current settings?",button1="Save",button2="Cancel",timeout=0,whileDead=true,hideOnEscape=true,OnAccept=function() if self.pendingSave then self:Save(self.pendingSave,true); self.pendingSave=nil end end}
         StaticPopupDialogs.FOREVERTOOLS_PROFILE_DELETE={text="Delete this saved profile? Current settings will remain in use.",button1="Delete",button2="Cancel",timeout=0,whileDead=true,hideOnEscape=true,OnAccept=function() if self.pendingDelete then self:Delete(self.pendingDelete); self.pendingDelete=nil end end}
         self.save:SetScript("OnClick",function()
@@ -444,7 +450,7 @@ function Profiles:AskNewCharacter()
         local pick=FT:Dropdown(frame,432,function() return self:ProfileList() end,function(name) frame.choice=name; frame.pick.value=name; frame.pick.label:SetText(name) end,"profiles")
         pick:SetPoint("TOPLEFT",24,-104); pick:SetHeight(34); pick.menuWidth=300; frame.pick=pick
         FT:Tooltip(pick,"Profile","Choose one of your saved profiles for this character.")
-        local note=FT:Label(frame,"Closing keeps Blizzard's default look. You can change this any time in /ft → Profiles.",12)
+        local note=FT:Label(frame,"Closing keeps Blizzard's default look. You can change this any time in /ft > Profiles.",12)
         note:SetPoint("TOPLEFT",24,-150); note:SetWidth(432); note:SetTextColor(.66,.57,.77)
         local new=FT:QuietButton(frame,"New profile",200,34,"add"); new:SetPoint("BOTTOMLEFT",24,22)
         new:SetScript("OnClick",function()
@@ -492,7 +498,7 @@ end)
 
 -- Settings only: saved profiles, custom macros/fonts, learned flight routes,
 -- rank knowledge and macro history are kept. A reload re-applies native UI.
-local resettable={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","chat","system","customKeybinds","lootRoll","tooltip","buffReminder","flightTimer","leveling","vendor","dispelGlow"}
+local resettable={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","chat","system","customKeybinds","lootRoll","tooltip","buffReminder","flightTimer","leveling","vendor","dispelGlow","rareAlert","threat","fireAlert","smartKey"}
 function Profiles:DefaultsForCharacter()
     for _,key in ipairs(resettable) do FT.db[key]=nil end
     self.active,self.selected=nil,nil
@@ -634,9 +640,13 @@ function Profiles:OfferSave()
         local dialog=CreateFrame("Frame","ForeverToolsSaveChanges",UIParent)
         self.saveDialog=dialog;dialog:SetSize(440,172);dialog:SetPoint("CENTER")
         dialog:SetFrameStrata("DIALOG");dialog:EnableMouse(true);FT:Panel(dialog)
-        local title=FT:Label(dialog,"Save changes?",18,true);title:SetPoint("TOPLEFT",22,-22);title:SetTextColor(.82,.68,1)
-        FT:TitleBand(dialog,50);FT:FadeIn(dialog);FT:MakeDraggable(dialog)
-        FT:AddClose(dialog,function() self:DismissSave(false) end)
+        -- Same look as the other ForeverTools questions (the damage meter's).
+        local skinned=FT:MeterSkin(dialog,32)
+        local title=skinned and dialog:CreateFontString(nil,"OVERLAY","GameFontNormalMed1") or FT:Label(dialog,"Save changes?",18,true)
+        title:SetText("Save changes?")
+        if skinned then title:SetPoint("TOPLEFT",12,-9) else title:SetPoint("TOPLEFT",22,-22);title:SetTextColor(.82,.68,1);FT:TitleBand(dialog,50) end
+        FT:FadeIn(dialog);FT:MakeDraggable(dialog)
+        FT:AddClose(dialog,function() self:DismissSave(false) end,skinned and 2 or nil)
         local message=FT:Label(dialog,"",14);message:SetPoint("TOPLEFT",22,-62);message:SetWidth(396);dialog.message=message
         local yes=FT:AccentButton(dialog,"Save",190,34,"confirm");yes:SetPoint("BOTTOMLEFT",22,20)
         yes:SetScript("OnClick",function() self:DismissSave(true) end)
@@ -721,7 +731,7 @@ function Profiles:Transfer(importing,onImported)
         if frame.homeButton then frame.homeButton:Hide() end
         -- Plain answers to "will my string still work later?"
         local about=FT:Info(frame,"Will my string keep working?","Yes. Export strings keep working after ForeverTools and game updates.\n\n• Settings added after you exported start at their defaults.\n• Keybinds carry over. A key for an action that no longer exists is skipped.\n• Mouse-wheel spells need that spell learned on the character.\n• Custom fonts need the same font file on the other computer.\n\nTip: export again after big changes, so your backup matches your setup.")
-        about:SetPoint("RIGHT",frame.closeButton,"LEFT",-6,0)
+        about:SetPoint("RIGHT",frame.closeButton,"LEFT",-8,0)
         local info=FT:Label(frame,"",13); info:SetPoint("TOPLEFT",24,-66); info:SetSize(550,45); frame.info=info
         local scroll=CreateFrame("ScrollFrame",nil,frame,"UIPanelScrollFrameTemplate"); scroll:SetPoint("TOPLEFT",24,-150); scroll:SetSize(528,160); FT:Panel(scroll)
         local box=CreateFrame("EditBox",nil,scroll); box:SetMultiLine(true); box:SetFont(FT.bodyFont,12,""); box:SetSize(520,160); box:SetAutoFocus(false); scroll:SetScrollChild(box); frame.box=box
@@ -752,6 +762,7 @@ function Profiles:Transfer(importing,onImported)
             if bindings and frame.applyBindings and InCombatLockdown() then FT:Toast("Import keybinds outside combat."); return end
             self:Store()[profileName]=clean; FT.db.profileVault[profileName]=copy(clean); self.selected=profileName; self:Refresh(); frame:Hide()
             if bindings and frame.applyBindings then self:ApplyBindings(bindings) end
+            self:ImportSkinTemplates(data.skinTemplates)
             local callback=self.onImported; self.onImported=nil
             if callback then callback(profileName) elseif not (bindings and frame.applyBindings) then FT:Toast("Profile imported. Select it to load.") end
         end)
@@ -778,10 +789,27 @@ function Profiles:Transfer(importing,onImported)
     frame.name:SetText(""); self:RefreshTransfer(); FT:PlaceBeside(frame); frame:Show()
     if frame.box.SetFocus then frame.box:SetFocus() end
 end
+-- Skin templates travel with an export. On import they are added; a name
+-- already in use gets " (imported)". Each one is checked like a profile's skins.
+function Profiles:ImportSkinTemplates(list)
+    if type(list)~="table" then return end
+    if type(FT.db.skinTemplates)~="table" then FT.db.skinTemplates={} end
+    for name,template in pairs(list) do
+        if type(name)=="string" and #name>0 and #name<=40 and type(template)=="table" then
+            local clean=self:ValidateImport({iconStyles=template})
+            if clean and type(clean.iconStyles)=="table" then
+                local target=name
+                if FT.db.skinTemplates[target] then target=(name:sub(1,29)).." (imported)" end
+                if not FT.db.skinTemplates[target] then FT.db.skinTemplates[target]=clean.iconStyles end
+            end
+        end
+    end
+end
 function Profiles:FillExport()
     local frame=self.transfer
     local data={format=1,addonVersion=FT.version,settings=self:Snapshot()}
     if FT.db.exportBindings then data.bindings=self:CaptureBindings() end
+    if type(FT.db.skinTemplates)=="table" and next(FT.db.skinTemplates) then data.skinTemplates=copy(FT.db.skinTemplates) end
     frame.box:SetText(FT:EncodeProfile(data))
     if frame.box.HighlightText then frame.box:HighlightText() end
 end
@@ -810,10 +838,10 @@ function Profiles:ValidateImport(data)
     local function check(t,types)
         for k,v in pairs(t or {}) do if types[k] and type(v)~=types[k] then return false end end; return true
     end
-    if not check(result.fps,{enabled="boolean",fontSize="number",x="number",y="number",screenWidth="number",screenHeight="number"}) then return nil,"Invalid FPS settings." end
+    if not check(result.fps,{enabled="boolean",fontSize="number",x="number",y="number",screenWidth="number",screenHeight="number",align="string",anchorX="number",anchorY="number",anchorWidth="number",anchorHeight="number"}) then return nil,"Invalid FPS settings." end
     if not check(result.flightTimer,{enabled="boolean",font="string",size="number",outline="string",color="table",x="number",y="number"}) then return nil,"Invalid flight timer settings." end
     if not check(result.lootRoll,{x="number",y="number",custom="boolean"}) then return nil,"Invalid loot-roll position." end
-    if not check(result.leveling,{enabled="boolean",progress="boolean",rested="boolean",perHour="boolean",timeToLevel="boolean",kills="boolean",tooltip="boolean",fontSize="number",x="number",y="number",screenWidth="number",screenHeight="number",layout="string",order="table",background="boolean",backgroundColor="table",backgroundAlpha="number"}) then return nil,"Invalid leveling settings." end
+    if not check(result.leveling,{enabled="boolean",progress="boolean",rested="boolean",perHour="boolean",timeToLevel="boolean",kills="boolean",tooltip="boolean",fontSize="number",x="number",y="number",screenWidth="number",screenHeight="number",layout="string",order="table",background="boolean",backgroundColor="table",backgroundAlpha="number",align="string"}) then return nil,"Invalid leveling settings." end
     if result.leveling and result.leveling.backgroundColor then
         for i=1,3 do local v=result.leveling.backgroundColor[i]; if type(v)~="number" or v<0 or v>1 then return nil,"Invalid leveling background color." end end
     end
@@ -849,6 +877,16 @@ function Profiles:ValidateImport(data)
         if type(entry)~="table" or type(entry.key)~="string" or not FT.modules.Tooltip.partLabels[entry.key] or (entry.show~=nil and type(entry.show)~="boolean") or (entry.join~=nil and type(entry.join)~="boolean") then return nil,"Invalid tooltip layout." end
     end
     if type(result.system)=="table" and result.system.objectives~=nil and result.system.objectives~="collapsed" and result.system.objectives~="open" and result.system.objectives~="hidden" then result.system.objectives=nil end
+    if not check(result.threat,{enabled="boolean",show="string",rows="number",collapsed="boolean",x="number",y="number",text="boolean",font="string",size="number",outline="string",background="boolean",backgroundColor="table",backgroundAlpha="number",textX="number",textY="number",width="number",height="number",locked="boolean",grip="string"}) then return nil,"Invalid threat settings." end
+    local cooldowns=nil; if type(result.buffReminder)=="table" then cooldowns=result.buffReminder.cooldowns end
+    if cooldowns~=nil then
+        if type(cooldowns)~="table" or not check(cooldowns,{enabled="boolean",sound="boolean",tough="boolean",pulls="boolean",defensive="boolean",chosen="table",roles="table"}) then return nil,"Invalid cooldown reminders." end
+        for k,v in pairs(cooldowns.chosen or {}) do if type(k)~="string" or type(v)~="boolean" then return nil,"Invalid cooldown reminders." end end
+        for k,v in pairs(cooldowns.roles or {}) do if type(k)~="string" or (v~="offensive" and v~="defensive" and v~="off") then return nil,"Invalid cooldown reminders." end end
+    end
+    if not check(result.smartKey,{enabled="boolean",key="string",confirmed="boolean"}) then return nil,"Invalid smart key settings." end
+    if not check(result.fireAlert,{sound="string",channel="string"}) then return nil,"Invalid standing-in-fire settings." end
+    if not check(result.rareAlert,{enabled="boolean",sound="boolean",soundKey="string",duration="number",size="number",glow="table",x="number",y="number"}) then return nil,"Invalid rare alert settings." end
     if not check(result.buffReminder,{enabled="boolean",selected="table",mainEnchant="string",offEnchant="string",rankMarker="boolean",ignoredRanks="table",selfWhere="table",groupWhere="table",chosenSpec="table",hideAfter="number"}) then return nil,"Invalid buff reminders." end
     for class,tree in pairs(result.buffReminder and result.buffReminder.chosenSpec or {}) do
         if type(class)~="string" or type(tree)~="string" then return nil,"Invalid talent tree choice." end
@@ -872,7 +910,7 @@ function Profiles:ValidateImport(data)
     end
     if result.iconStyles then
         local function skin(pref)
-            if type(pref)~="table" or not check(pref,{preset="string",opacity="number",shadow="boolean",thickness="number",borderOpacity="number",slotOpacity="number",rares="boolean",elites="boolean",color="table",borderColor="table"}) then return false end
+            if type(pref)~="table" or not check(pref,{preset="string",opacity="number",shadow="boolean",thickness="number",borderOpacity="number",slotOpacity="number",slotColor="table",hideSlotArt="boolean",rares="boolean",elites="boolean",color="table",borderColor="table"}) then return false end
             for _,field in ipairs({"color","borderColor"}) do
                 if pref[field] then for i=1,3 do if type(pref[field][i])~="number" or pref[field][i]<0 or pref[field][i]>1 then return false end end end
             end

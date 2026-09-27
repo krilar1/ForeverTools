@@ -93,7 +93,7 @@ function Macros:RefreshRoom()
     local used, deleting, adding, max = self:RoomCounts()
     local total = used - deleting + adding
     local fits = total <= max
-    frame.counter:SetText(string.format("Slots: %d used  −  %d deleted  +  %d added  =  %s%d / %d|r",
+    frame.counter:SetText(string.format("Slots: %d used  -  %d deleted  +  %d added  =  %s%d / %d|r",
         used, deleting, adding, fits and "|cff7dff8a" or "|cffff6b6b", total, max))
     local ready = fits and (deleting + adding) > 0
     frame.go.label:SetText(deleting > 0 and string.format("Delete %d & add %d", deleting, adding) or string.format("Add %d macros", adding))

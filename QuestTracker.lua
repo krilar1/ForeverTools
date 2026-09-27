@@ -13,7 +13,9 @@ function Tracker:Hook(tracker)
     -- The game shows the tracker again on its own (new quests, zoning).
     tracker:HookScript("OnShow",function(frame)
         if Tracker:Mode()~="hidden" then return end
-        if InCombatLockdown() then Tracker.pending=true else frame:Hide() end
+        -- In combat the game may not let us hide it: make it invisible now
+        -- and hide it for real when combat ends (one check, no polling).
+        if InCombatLockdown() then frame:SetAlpha(0); Tracker.pending=true else frame:Hide() end
     end)
 end
 function Tracker:Apply()
@@ -22,8 +24,8 @@ function Tracker:Apply()
     if not tracker then return end
     if InCombatLockdown() then self.pending=true; return end
     self.pending=nil
-    if mode=="hidden" then self:Hook(tracker); self.wasHidden=true; tracker:Hide(); return end
-    if self.wasHidden then self.wasHidden=nil; tracker:Show() end
+    if mode=="hidden" then self:Hook(tracker); self.wasHidden=true; tracker:Hide(); tracker:SetAlpha(1); return end
+    if self.wasHidden then self.wasHidden=nil; tracker:SetAlpha(1); tracker:Show() end
     if mode=="default" then return end
     local collapse=mode=="collapsed"
     if tracker.SetCollapsed and tracker.IsCollapsed then

@@ -81,5 +81,15 @@ function Fonts:Refresh()
     end
     update()
 end
-local events=CreateFrame("Frame"); local elapsed=0
-events:SetScript("OnUpdate",function(_,dt) elapsed=elapsed+dt; if elapsed<.2 then return end; elapsed=0; update() end)
+-- Event driven: cooldown and bar changes trigger one pass (at most ten a
+-- second). While an icon is grey, look again once a second so it turns back
+-- when the cooldown ends.
+local events=CreateFrame("Frame")
+for _,event in ipairs({"PLAYER_ENTERING_WORLD","ACTIONBAR_UPDATE_COOLDOWN","SPELL_UPDATE_COOLDOWN","ACTIONBAR_SLOT_CHANGED","ACTIONBAR_PAGE_CHANGED","UPDATE_BONUS_ACTIONBAR","UPDATE_SHAPESHIFT_FORM"}) do pcall(events.RegisterEvent,events,event) end
+local function pass() FT:Coalesce("cooldownStyle",update,.1) end
+events:SetScript("OnEvent",pass)
+local elapsed=0
+events:SetScript("OnUpdate",function(_,dt)
+    if next(icons)==nil then elapsed=0; return end
+    elapsed=elapsed+dt; if elapsed<1 then return end; elapsed=0; update()
+end)

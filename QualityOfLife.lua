@@ -29,47 +29,79 @@ function QoL:Settings()
     end
     return settings
 end
+-- Position works like the leveling stats: the point on the chosen side
+-- (top-left, top or top-right) sits at anchorX/anchorY, the text lines up
+-- on that side, and the counter can go right up to the screen edge.
+local anchors = { left = "TOPLEFT", center = "TOP", right = "TOPRIGHT" }
+local PAD = 2
+function QoL:Anchor()
+    local s = self:Settings()
+    if s.align ~= "left" and s.align ~= "center" and s.align ~= "right" then s.align = "left" end
+    local width, height = UIParent:GetWidth(), UIParent:GetHeight()
+    if not finite(s.anchorX) or not finite(s.anchorY) then
+        -- Older saves stored the counter's center; start from its left/top edge.
+        local oldW, oldH = math.max(100, s.fontSize * 5), s.fontSize + 16
+        local x, y = s.x, s.y
+        if finite(s.screenWidth) and s.screenWidth > 0 then x = x * width / s.screenWidth end
+        if finite(s.screenHeight) and s.screenHeight > 0 then y = y * height / s.screenHeight end
+        s.anchorX, s.anchorY = x - oldW / 2 + 8, y + oldH / 2 - 8
+        s.anchorWidth, s.anchorHeight = width, height
+    end
+    local x, y = s.anchorX, s.anchorY
+    if finite(s.anchorWidth) and s.anchorWidth > 0 then x = x * width / s.anchorWidth end
+    if finite(s.anchorHeight) and s.anchorHeight > 0 then y = y * height / s.anchorHeight end
+    return x, y
+end
+function QoL:Clamp(x, y)
+    local w, h = self.counter:GetWidth(), self.counter:GetHeight()
+    local W, H = UIParent:GetWidth(), UIParent:GetHeight()
+    local align = self:Settings().align
+    local low = align == "right" and w or align == "center" and w / 2 or 0
+    local high = align == "right" and W or align == "center" and W - w / 2 or W - w
+    return math.max(low, math.min(high, x)), math.max(h, math.min(H, y))
+end
+function QoL:Place(x, y)
+    self.counter:ClearAllPoints()
+    self.counter:SetPoint(anchors[self:Settings().align], UIParent, "BOTTOMLEFT", x, y)
+end
+function QoL:RestorePosition()
+    if not self.counter or self.dragging then return end
+    -- Clamp only the displayed position; startup layout must never rewrite saved coordinates.
+    self:Place(self:Clamp(self:Anchor()))
+end
+function QoL:BeginDrag()
+    if not self.moving then return end
+    local cx, cy = GetCursorPosition(); local scale = UIParent:GetEffectiveScale()
+    local x, y = self:Anchor()
+    self.dragOffsetX, self.dragOffsetY = x - cx / scale, y - cy / scale
+    self.dragging = true
+end
+function QoL:UpdateDrag()
+    if not self.dragging then return end
+    local cx, cy = GetCursorPosition(); local scale = UIParent:GetEffectiveScale()
+    local x, y = self:Clamp(cx / scale + self.dragOffsetX, cy / scale + self.dragOffsetY)
+    local s = self:Settings()
+    -- Persist during dragging as well as on release.
+    s.anchorX, s.anchorY, s.anchorWidth, s.anchorHeight = x, y, UIParent:GetWidth(), UIParent:GetHeight()
+    self:Place(x, y)
+end
 function QoL:SavePosition()
     if not self.dragging then return end
     self:UpdateDrag()
     self.dragging = false
     self:RestorePosition()
 end
-function QoL:BeginDrag()
-    if not self.moving then return end
-    local x, y = GetCursorPosition()
-    local centerX, centerY = self.counter:GetCenter()
-    if not centerX or not centerY then return end
-    local scale = UIParent:GetEffectiveScale()
-    local frameScale = self.counter:GetEffectiveScale() / scale
-    self.dragOffsetX, self.dragOffsetY = centerX * frameScale - x / scale, centerY * frameScale - y / scale
-    self.dragging = true
-end
-function QoL:UpdateDrag()
-    if not self.dragging then return end
-    local x, y = GetCursorPosition()
-    local scale = UIParent:GetEffectiveScale()
-    local width, height = UIParent:GetWidth(), UIParent:GetHeight()
+-- Changing the side keeps the counter where it is on screen.
+function QoL:SetAlign(align)
     local s = self:Settings()
-    s.x = math.max(60, math.min(width - 60, x / scale + self.dragOffsetX))
-    s.y = math.max(24, math.min(height - 24, y / scale + self.dragOffsetY))
-    s.screenWidth, s.screenHeight = width, height
-    -- Persist during dragging as well as on release; no engine layout cache involved.
-    self.counter:ClearAllPoints()
-    self.counter:SetPoint("CENTER", UIParent, "BOTTOMLEFT", s.x, s.y)
-end
-function QoL:RestorePosition()
-    if not self.counter or self.dragging then return end
-    local settings = self:Settings()
-    local width, height = UIParent:GetWidth(), UIParent:GetHeight()
-    local x, y = settings.x, settings.y
-    if finite(settings.screenWidth) and settings.screenWidth > 0 then x = x * width / settings.screenWidth end
-    if finite(settings.screenHeight) and settings.screenHeight > 0 then y = y * height / settings.screenHeight end
-    -- Clamp only the displayed position; startup layout must never rewrite saved coordinates.
-    x = math.max(60, math.min(width - 60, x))
-    y = math.max(24, math.min(height - 24, y))
-    self.counter:ClearAllPoints()
-    self.counter:SetPoint("CENTER", UIParent, "BOTTOMLEFT", x, y)
+    if self.counter and self.counter:GetLeft() and s.align ~= align then
+        local scale = self.counter:GetEffectiveScale() / UIParent:GetEffectiveScale()
+        local left, right, top = self.counter:GetLeft() * scale, self.counter:GetRight() * scale, self.counter:GetTop() * scale
+        s.anchorX = align == "left" and left or align == "right" and right or (left + right) / 2
+        s.anchorY = top; s.anchorWidth, s.anchorHeight = UIParent:GetWidth(), UIParent:GetHeight()
+    end
+    s.align = align
+    self:Apply()
 end
 function QoL:SetMoving(value)
     if self.moving then self:SavePosition() end
@@ -77,47 +109,61 @@ function QoL:SetMoving(value)
     if self.moving then self:Settings().enabled = true end
     self:Apply()
 end
+-- The text and a tight box around it (like the leveling stats), lined up
+-- on the chosen side, so both sit exactly on the same edge.
+function QoL:SetReading(text)
+    local counter = self.counter
+    counter.text:SetText(text)
+    local w = counter.text:GetStringWidth()
+    local size = self:Settings().fontSize
+    if type(w) ~= "number" or w <= 0 then w = size * 3 end
+    counter:SetSize(w + PAD * 2, size + 4)
+end
 function QoL:Apply()
     local settings = self:Settings()
     if not self.counter then
         local counter = CreateFrame("Frame", "ForeverToolsFPS", UIParent)
         self.counter = counter
-        counter:SetFrameStrata("HIGH")
         if counter.SetDontSavePosition then counter:SetDontSavePosition(true) end
         counter:SetClampedToScreen(true)
         counter:RegisterForDrag("LeftButton")
         counter.text = counter:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        counter.text:SetPoint("CENTER")
-        counter.text:SetJustifyH("CENTER")
         FT:Panel(counter)
         counter.hint = FT:Label(counter, "Drag to move", 12)
-        counter.hint:SetPoint("TOP", counter, "BOTTOM", 0, -4)
+        counter.hint:SetPoint("TOPLEFT", counter, "BOTTOMLEFT", 0, -4)
         counter:SetScript("OnDragStart", function() self:BeginDrag() end)
         counter:SetScript("OnDragStop", function() self:SavePosition() end)
         counter:SetScript("OnMouseUp", function(_, button) if button == "LeftButton" then self:SavePosition() end end)
     end
-    self.counter:SetSize(math.max(100, settings.fontSize * 5), settings.fontSize + 16)
-    self:RestorePosition()
+    local align = (settings.align == "center" or settings.align == "right") and settings.align or "left"
+    local text = self.counter.text
+    text:ClearAllPoints()
+    if align == "left" then text:SetPoint("TOPLEFT", PAD, 0); text:SetJustifyH("LEFT")
+    elseif align == "right" then text:SetPoint("TOPRIGHT", -PAD, 0); text:SetJustifyH("RIGHT")
+    else text:SetPoint("TOP", 0, 0); text:SetJustifyH("CENTER") end
     -- Match the original counter's GameFontNormal face, flags, shadow and gold color.
     local font, _, flags = GameFontNormal:GetFont()
-    self.counter.text:SetFont(font, settings.fontSize, flags or "")
-    self.counter.text:SetTextColor(GameFontNormal:GetTextColor())
+    text:SetFont(font, settings.fontSize, flags or "")
+    text:SetTextColor(GameFontNormal:GetTextColor())
+    self:SetReading(string.format("%d FPS", math.floor(GetFramerate() + 0.5)))
+    -- Behind game windows (like buff reminders); on top only while you move it.
+    self.counter:SetFrameStrata(self.moving and "HIGH" or "LOW")
     self.counter:EnableMouse(self.moving or false)
     for _, texture in ipairs(self.counter.fillTextures) do texture:SetShown(self.moving or false) end
     for _, texture in ipairs(self.counter.borderTextures) do texture:SetShown(self.moving or false) end
     self.counter.hint:SetShown(self.moving or false)
+    self:RestorePosition()
     self.counter:SetScript("OnUpdate", nil)
     local visible = settings.enabled or self.moving
     self.counter:SetShown(visible)
     if visible then
-        self.counter.text:SetText(string.format("%d FPS", math.floor(GetFramerate() + 0.5)))
         self.counter.elapsed = 0
         self.counter:SetScript("OnUpdate", function(owner, elapsed)
             self:UpdateDrag()
             owner.elapsed = owner.elapsed + elapsed
             if owner.elapsed >= 0.5 then
                 owner.elapsed = 0
-                owner.text:SetText(string.format("%d FPS", math.floor(GetFramerate() + 0.5)))
+                self:SetReading(string.format("%d FPS", math.floor(GetFramerate() + 0.5)))
             end
         end)
     end
@@ -129,6 +175,8 @@ function QoL:Apply()
         self.sizeLabel:SetText(string.format("Font size: %d", settings.fontSize))
         self.smaller:SetEnabled(settings.fontSize > 10)
         self.larger:SetEnabled(settings.fontSize < 48)
+        local names = { left = "Line up: left", center = "Line up: center", right = "Line up: right" }
+        self.alignChoice.value = align; self.alignChoice.label:SetText(names[align])
     end
 end
 function QoL:ChangeSize(delta)
@@ -138,23 +186,22 @@ function QoL:ChangeSize(delta)
 end
 function QoL:Open()
     if not self.frame then
-        self.frame = FT:Window("ForeverToolsFPSSettings", "ForeverTools | FPS counter", 500, 320)
+        self.frame = FT:Window("ForeverToolsFPSSettings", "ForeverTools | FPS counter", 500, 240)
         FT:BackTo(self.frame,"SystemDisplay")
-        local hint = FT:Label(self.frame, "Unlock, drag the counter anywhere, then lock it in place.", 14)
-        hint:SetPoint("TOPLEFT", 24, -60)
-        self.toggle = FT:QuietButton(self.frame, "", 452, 36, "fps")
-        self.toggle:SetPoint("TOPLEFT", 24, -90)
+        FT:PageInfo(self.frame, "FPS counter", "A small frames-per-second counter. Unlock, drag it anywhere (right up to the screen edge), then lock it in place. Moving turns the counter on. Changes apply right away.")
+        self.toggle = FT:AccentButton(self.frame, "", 452, 34, "fps")
+        self.toggle:SetPoint("TOPLEFT", 24, -62)
         self.toggle:SetScript("OnClick", function()
             if self.moving then self:SetMoving(false) end
             local settings = self:Settings()
             settings.enabled = not settings.enabled
             self:Apply()
         end)
-        self.moveButton = FT:QuietButton(self.frame, "", 452, 36, "move")
-        self.moveButton:SetPoint("TOPLEFT", 24, -138)
+        self.moveButton = FT:QuietButton(self.frame, "", 452, 32, "move")
+        self.moveButton:SetPoint("TOPLEFT", 24, -104)
         self.moveButton:SetScript("OnClick", function() self:SetMoving(not self.moving) end)
-        self.smaller = FT:QuietButton(self.frame, "−", 40, 32)
-        self.smaller:SetPoint("TOPLEFT", 24, -198)
+        self.smaller = FT:QuietButton(self.frame, "-", 40, 32)
+        self.smaller:SetPoint("TOPLEFT", 24, -144)
         self.smaller:SetScript("OnClick", function() self:ChangeSize(-2) end)
         self.sizeLabel = FT:Label(self.frame, "", 16)
         self.sizeLabel:SetPoint("LEFT", self.smaller, "RIGHT", 18, 0); self.sizeLabel:SetWidth(135)
@@ -162,15 +209,27 @@ function QoL:Open()
         self.larger:SetPoint("LEFT", self.sizeLabel, "RIGHT", 10, 0)
         self.larger:SetScript("OnClick", function() self:ChangeSize(2) end)
         local reset = FT:QuietButton(self.frame, "Reset position", 160, 32, "reset")
-        reset:SetPoint("TOPRIGHT", -24, -198)
+        reset:SetPoint("TOPRIGHT", -24, -144)
         reset:SetScript("OnClick", function()
             local settings = self:Settings()
-            settings.x, settings.y = 100, UIParent:GetHeight() - 48
-            settings.screenWidth, settings.screenHeight = UIParent:GetWidth(), UIParent:GetHeight()
+            settings.align = "left"
+            settings.anchorX, settings.anchorY = 16, UIParent:GetHeight() - 16
+            settings.anchorWidth, settings.anchorHeight = UIParent:GetWidth(), UIParent:GetHeight()
             self:Apply()
         end)
-        local note = FT:Label(self.frame, "Moving turns the counter on. Changes apply right away.", 13)
-        note:SetPoint("BOTTOMLEFT", 24, 32); note:SetWidth(450)
+        FT:Tooltip(reset, "Reset position", "Put the counter back in the top-left corner.")
+        FT:Tooltip(self.toggle, "FPS counter", "Show or hide the frames-per-second counter.")
+        FT:Tooltip(self.moveButton, "Move counter", "Click to unlock, drag the counter where you want it, then click again to lock it. Moving turns the counter on.")
+        FT:Tooltip(self.smaller, "Smaller", "Make the counter's text smaller.")
+        FT:Tooltip(self.larger, "Larger", "Make the counter's text larger.")
+        local icon = "Interface\\Icons\\INV_Misc_PocketWatch_01"
+        self.alignChoice = FT:Dropdown(self.frame, 452, function()
+            return {{value="left",label="Line up: left",icon=icon,tooltip="Text lines up on the left; the counter grows to the right."},
+                {value="center",label="Line up: center",icon=icon,tooltip="Text is centered."},
+                {value="right",label="Line up: right",icon=icon,tooltip="Text lines up on the right; good next to the right screen edge."}}
+        end, function(value) self:SetAlign(value) end, "move")
+        self.alignChoice:SetPoint("TOPLEFT", 24, -184); self.alignChoice.menuWidth = 452
+        FT:Tooltip(self.alignChoice, "Line up", "Which side the counter lines up on, the same as the leveling stats. It stays anchored on that side, so it can sit flush against a screen edge.")
         self.frame:HookScript("OnHide", function() if self.moving then self:SetMoving(false) end end)
     end
     self:Apply()

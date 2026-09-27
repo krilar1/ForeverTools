@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "0.14.4"
+FT.version = "0.14.7"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -334,12 +334,46 @@ function FT:Info(parent, title, text)
     self:Tooltip(button, title, text)
     return button
 end
+-- One place for a page's explanation: an (i) in the title bar, left of
+-- Back. Single controls explain themselves in their own tooltips.
+function FT:PageInfo(frame, title, text)
+    if frame.pageInfo then self:Tooltip(frame.pageInfo, title, text); return frame.pageInfo end
+    local info = self:Info(frame, title, text)
+    info:SetPoint("RIGHT", frame.homeButton or frame.closeButton, "LEFT", -8, 0)
+    frame.pageInfo = info
+    return info
+end
+-- The game's damage meter look for notices and dialogs: its dark header
+-- bar (the whole notice, or the top of a dialog) over its background art,
+-- referenced from the game, not bundled. Falls back to our panel.
+local function atlasOK(name) return C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name) ~= nil end
+function FT:MeterSkin(frame, headerHeight)
+    if not atlasOK("ui-damagemeters-header-bar") then return false end
+    for _, t in ipairs(frame.fillTextures or {}) do t:SetAlpha(0) end
+    for _, t in ipairs(frame.borderTextures or {}) do t:SetAlpha(0) end
+    if not frame.meterBody and atlasOK("damagemeters-background") and headerHeight then
+        frame.meterBody = frame:CreateTexture(nil, "BACKGROUND", nil, -6)
+        frame.meterBody:SetAtlas("damagemeters-background"); frame.meterBody:SetAllPoints()
+        -- A solid backing so text stays readable over bright ground.
+        frame.meterShade = frame:CreateTexture(nil, "BACKGROUND", nil, -7)
+        frame.meterShade:SetColorTexture(0, 0, 0, .75); frame.meterShade:SetAllPoints()
+    end
+    if not frame.meterHeader then
+        frame.meterHeader = frame:CreateTexture(nil, "BACKGROUND", nil, -5)
+        frame.meterHeader:SetAtlas("ui-damagemeters-header-bar")
+        frame.meterHeader:SetPoint("TOPLEFT"); frame.meterHeader:SetPoint("TOPRIGHT")
+    end
+    if headerHeight then frame.meterHeader:SetHeight(headerHeight) else frame.meterHeader:SetPoint("BOTTOM") end
+    frame.meterSkinned = true
+    return true
+end
 function FT:Toast(message, seconds)
     if not self.toast then
         local frame = CreateFrame("Frame", "ForeverToolsToast", UIParent)
         frame:SetSize(270, 42); frame:SetPoint("TOP", UIParent, "TOP", 0, -135); frame:SetFrameStrata("DIALOG")
-        self:Panel(frame)
+        self:Panel(frame); self:MeterSkin(frame)
         frame.text = self:Label(frame, "", 14, true); frame.text:SetPoint("CENTER"); frame.text:SetWidth(242); frame.text:SetJustifyH("CENTER")
+        frame:SetFrameStrata("FULLSCREEN_DIALOG")
         self.toast = frame
     end
     local toast = self.toast; toast.text:SetText(message)
@@ -356,7 +390,7 @@ function FT:QuietButton(parent, label, width, height, icon)
     button.label:SetPoint("CENTER")
     button:SetScript("OnEnter", function(owner) owner.hover = true; FT:UpdateButton(owner) end)
     button:SetScript("OnLeave", function(owner) owner.hover = false; FT:UpdateButton(owner) end)
-    if icon and label~="+" and label~="−" and label~="-" then self:ButtonIcon(button, icon) end
+    if icon and label~="+" and label~="-" and label~="-" then self:ButtonIcon(button, icon) end
     self:UpdateButton(button)
     return button
 end
@@ -428,9 +462,15 @@ function FT:Window(name, title, width, height)
 end
 function FT:OpenHome()
     if self:CombatOpenRequest() then return end
+    local resume = self.resumeModule
+    if resume then
+        self.resumeModule = nil
+        local now = GetTime and GetTime() or 0
+        if self.modules[resume] and now - (self.resumeAt or 0) < 300 then self:OpenModule(resume); return end
+    end
     for _, module in pairs(self.modules) do if module.frame then module.frame:Hide() end end
     if not self.home then
-        self.home = self:Window("ForeverToolsHome", "ForeverTools", 440, 306)
+        self.home = self:Window("ForeverToolsHome", "ForeverTools", 440, 364)
         self.home.titleText:SetText("ForeverTools")
         -- The addon is still in active development: a quiet amber note after the version.
         local version = self:Label(self.home, "v" .. self.version .. "  |cffffb840- work in progress|r", 11)
@@ -442,11 +482,13 @@ function FT:OpenHome()
         self.home.profileStatus:SetPoint("TOPRIGHT", -24, -61)
         self.home.profileStatus:SetWidth(190)
         self.home.profileStatus:SetJustifyH("RIGHT")
-        -- Six buttons in an even 2 x 3 grid; FPS, keybinds and chat live
-        -- inside System and Appearance.
+        -- Eight buttons in an even 2 x 4 grid; FPS and chat live inside
+        -- System and Appearance.
         local tools={
             {"Macros","MacroForge","macros"},{"Buff reminders","BuffReminder","buffs"},
             {"Appearance","Appearance","fonts"},{"Tooltip","Tooltip","tooltip"},
+            {"Combat","SystemCombat","Ability_Warrior_DefensiveStance","Threat meter, rare alerts and the standing-in-fire sound."},
+            {"Keybinds","SystemKeybinds","keybind","Quick keybind mode, restoring keybinds, mouse-wheel casting and the smart interact key."},
             {"System","System","generic"},{"Profiles",nil,"profiles"},
         }
         for i,entry in ipairs(tools) do
@@ -456,7 +498,7 @@ function FT:OpenHome()
             button:SetPoint("TOPLEFT",24+column*202,-86-row*58)
             if entry[2] then
                 button:SetScript("OnClick",function() FT:OpenModule(entry[2]) end)
-                self:Tooltip(button,entry[1],"Open "..entry[1].." settings.")
+                self:Tooltip(button,entry[1],entry[4] or ("Open "..entry[1].." settings."))
             else
                 button:SetScript("OnClick",function() if FT.modules.Profiles then FT.modules.Profiles:TogglePanel() end end)
                 self:Tooltip(button,"Profiles","Create, load, save or delete your local profiles.")
@@ -470,6 +512,13 @@ end
 -- Addon controls should never remain over combat gameplay. Saved changes remain
 -- available; closing only hides the interface until the player opens it again.
 function FT:CloseCombatControls()
+    -- Remember the page that was open, so opening ForeverTools again right
+    -- after combat brings you back to it instead of the main menu.
+    for name, module in pairs(self.modules) do
+        if module.frame and module.frame.IsShown and module.frame:IsShown() then
+            self.resumeModule, self.resumeAt = name, GetTime and GetTime() or 0
+        end
+    end
     for frame in pairs(self.controlWindows or {}) do frame:Hide() end
     if self.home then self.home:Hide() end
     for _,module in pairs(self.modules) do
@@ -510,6 +559,9 @@ SlashCmdList.FOREVERTOOLS = function(message)
     elseif command == "tooltip" or command == "tips" then FT:OpenModule("Tooltip")
     elseif command == "keybinds" then FT:OpenModule("CustomKeybinds")
     elseif command == "wheeldebug" then FT.modules.CustomKeybinds:Debug()
+    elseif command == "probe" then FT.modules.Probe:Toggle()
+    elseif command == "threat" then FT:OpenModule("Threat")
+    elseif command == "cpu" then FT.modules.Profiler:Toggle()
     elseif command == "buffs" or command == "reminders" then FT:OpenModule("BuffReminder")
     elseif command == "chat" then FT:OpenModule("Chat")
     elseif command == "appearance" then FT:OpenModule("Appearance")
@@ -663,8 +715,47 @@ function FT:CopyBox(title, text, hint, tall)
     frame:Show()
     frame.box:SetFocus(); frame.box:HighlightText()
 end
+-- Ask for a short text (a name) in the game's own pop-up with a text field.
+function FT:AskText(title,start,onText,maxLetters)
+    if InCombatLockdown() then return end
+    local function clean(text) return type(text)=="string" and text:match("^%s*(.-)%s*$") or "" end
+    local function box(popup) return popup.editBox or (popup.GetEditBox and popup:GetEditBox()) end
+    StaticPopupDialogs.FOREVERTOOLS_ASK_TEXT={
+        text=title,button1="OK",button2="Cancel",hasEditBox=true,maxLetters=maxLetters or 120,
+        timeout=0,whileDead=true,hideOnEscape=true,preferredIndex=3,
+        OnShow=function(popup) local b=box(popup); if b then b:SetText(start or ""); b:HighlightText() end end,
+        OnAccept=function(popup) local b=box(popup); onText(clean(b and b:GetText())) end,
+        EditBoxOnEnterPressed=function(b) local popup=b:GetParent(); onText(clean(b:GetText())); popup:Hide() end,
+        EditBoxOnEscapePressed=function(b) b:GetParent():Hide() end,
+    }
+    FT:ShowPopup("FOREVERTOOLS_ASK_TEXT")
+end
+-- Yes/no questions: the damage meter's look with the game's own buttons.
+-- Escape or Cancel closes it; nothing happens unless you confirm.
 function FT:Confirm(message,action)
     if InCombatLockdown() then return end
-    StaticPopupDialogs.FOREVERTOOLS_CONFIRM={text=message,button1="Confirm",button2="Cancel",timeout=0,whileDead=true,hideOnEscape=true,OnAccept=action}
-    FT:ShowPopup("FOREVERTOOLS_CONFIRM")
+    if not self.confirm then
+        local f = CreateFrame("Frame", "ForeverToolsConfirm", UIParent)
+        f:SetSize(400, 150); f:SetPoint("CENTER", 0, 120); f:SetFrameStrata("FULLSCREEN_DIALOG"); f:SetToplevel(true)
+        f:EnableMouse(true); f:SetClampedToScreen(true)
+        self:Panel(f); self:MeterSkin(f, 32)
+        f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalMed1"); f.title:SetPoint("TOPLEFT", 12, -9); f.title:SetText("ForeverTools")
+        f.text = self:Label(f, "", 14); f.text:SetPoint("TOP", 0, -46); f.text:SetWidth(360); f.text:SetJustifyH("CENTER")
+        f.yes = CreateFrame("Button", nil, f, "UIPanelButtonTemplate"); f.yes:SetSize(150, 26); f.yes:SetText("Confirm")
+        f.no = CreateFrame("Button", nil, f, "UIPanelButtonTemplate"); f.no:SetSize(150, 26); f.no:SetText(CANCEL or "Cancel")
+        f.yes:SetPoint("BOTTOMRIGHT", f, "BOTTOM", -6, 16); f.no:SetPoint("BOTTOMLEFT", f, "BOTTOM", 6, 16)
+        f.yes:SetScript("OnClick", function() local fn = f.action; f.action = nil; f:Hide(); if fn then fn() end end)
+        f.no:SetScript("OnClick", function() f.action = nil; f:Hide() end)
+        f:HookScript("OnHide", function() f.action = nil end)
+        self:AddClose(f, function() f.action = nil; f:Hide() end, 2)
+        if UISpecialFrames then table.insert(UISpecialFrames, "ForeverToolsConfirm") end
+        f:Hide()
+        self.confirm = f
+    end
+    local f = self.confirm
+    f.action = action
+    f.text:SetText(message)
+    local h = f.text:GetStringHeight(); if type(h) ~= "number" then h = 40 end
+    f:SetHeight(math.max(130, h + 104))
+    f:Show(); f:Raise()
 end

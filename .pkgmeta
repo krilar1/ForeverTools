@@ -3,3 +3,7 @@
 manual-changelog:
     filename: CHANGELOG.md
     markup-type: markdown
+
+# Never package working files that are not part of the addon.
+ignore:
+    - "Claude outputs"

@@ -29,6 +29,8 @@ function Leveling:Settings()
     if type(c)~="table" or type(c[1])~="number" or type(c[2])~="number" or type(c[3])~="number" then s.backgroundColor={0,0,0} end
     s.backgroundAlpha=number(s.backgroundAlpha,.5,0,1)
     s.fontSize=number(s.fontSize,13,10,32)
+    -- Which side the text lines up on; the stats stay anchored on that side.
+    if s.align~="left" and s.align~="center" and s.align~="right" then s.align="left" end
     -- Player-built layout: the order of the stats, and one per line or all on one line.
     if s.layout~="single" then s.layout="lines" end
     local order,seen={},{}
@@ -111,82 +113,191 @@ function Leveling:Stats()
         perHour=perSecond and perSecond*3600,timeToLevel=perSecond and remaining/perSecond,
         kills=average and math.ceil(remaining/average),gained=self.gained,elapsed=elapsed}
 end
-function Leveling:Text(stats)
-    local s=self:Settings(); local out={}
-    local lines=s.layout=="lines"
+-- The stats as lines of pieces. A piece marked tilde is drawn on its own,
+-- nudged down, because the game font draws "~" near the top of the line.
+function Leveling:Lines(stats)
+    local s=self:Settings(); local parts={}
     for _,key in ipairs(s.order) do
         if s[key] then
-            local text
-            if key=="progress" then text=string.format(lines and "XP: %s / %s (%d%%)" or "XP %s / %s (%d%%)",short(stats.current),short(stats.maximum),stats.percent)
-            elseif key=="rested" then text=(lines and "Rested: " or "Rested ")..short(stats.rested)
-            elseif key=="perHour" then text=stats.perHour and (short(stats.perHour).." XP/h") or "– XP/h"
-            elseif key=="timeToLevel" then text=(lines and "Level in: " or "Level in ")..(duration(stats.timeToLevel) or "–")
-            elseif key=="kills" then text=lines and ("Kills to level: "..(stats.kills or "–")) or (stats.kills and ("~"..stats.kills.." kills") or "– kills") end
-            out[#out+1]=text
+            -- Label first, value after, so rows line up: "XP/h: 567".
+            local piece
+            if key=="progress" then piece={{string.format("XP: %s / %s (%d%%)",short(stats.current),short(stats.maximum),stats.percent)}}
+            elseif key=="rested" then piece={{"Rested: "..short(stats.rested)}}
+            elseif key=="perHour" then piece={{"XP/h: "..(stats.perHour and short(stats.perHour) or "–")}}
+            elseif key=="timeToLevel" then piece={{"Level in: "..(duration(stats.timeToLevel) or "–")}}
+            elseif key=="kills" then
+                if stats.kills then piece={{"Kills to level: "},{"~",tilde=true},{tostring(stats.kills)}} else piece={{"Kills to level: –"}} end
+            end
+            parts[#parts+1]=piece
         end
     end
-    return table.concat(out,lines and "\n" or "  ·  ")
+    local lines={}
+    if s.layout=="lines" then lines=parts
+    elseif #parts>0 then
+        local line={}
+        for i,piece in ipairs(parts) do
+            if i>1 then line[#line+1]={"  ·  "} end
+            for _,p in ipairs(piece) do line[#line+1]=p end
+        end
+        lines[1]=line
+    end
+    return lines
+end
+-- Position: the point on the chosen side (top-left, top or top-right) sits
+-- at x,y. Like the FPS counter, dragging follows the cursor and can go right
+-- up to the screen edge.
+local anchors={left="TOPLEFT",center="TOP",right="TOPRIGHT"}
+-- The same stats as plain text (tilde included), one line per row.
+function Leveling:Text(stats)
+    local out={}
+    for _,line in ipairs(self:Lines(stats)) do
+        local parts={}; for _,p in ipairs(line) do parts[#parts+1]=p[1] end
+        out[#out+1]=table.concat(parts)
+    end
+    return table.concat(out,"\n")
 end
 function Leveling:DefaultPosition()
     return 16,UIParent:GetHeight()-54
 end
-function Leveling:Position()
-    if not self.line then return end
+function Leveling:Point()
     local s=self:Settings()
     local x,y=s.x,s.y
-    if type(x)~="number" or type(y)~="number" then x,y=self:DefaultPosition()
+    if type(x)~="number" or type(y)~="number" then
+        x,y=self:DefaultPosition()
+        if s.align=="right" then x=x+(self.line and self.line:GetWidth() or 120) elseif s.align=="center" then x=x+(self.line and self.line:GetWidth() or 120)/2 end
     else
         if type(s.screenWidth)=="number" and s.screenWidth>0 then x=x*UIParent:GetWidth()/s.screenWidth end
         if type(s.screenHeight)=="number" and s.screenHeight>0 then y=y*UIParent:GetHeight()/s.screenHeight end
     end
+    return x,y
+end
+function Leveling:Clamp(x,y)
+    local w,h=self.line:GetWidth(),self.line:GetHeight()
+    local W,H=UIParent:GetWidth(),UIParent:GetHeight()
+    local align=self:Settings().align
+    local low=align=="right" and w or align=="center" and w/2 or 0
+    local high=align=="right" and W or align=="center" and W-w/2 or W-w
+    return math.max(low,math.min(high,x)),math.max(h,math.min(H,y))
+end
+function Leveling:Position()
+    if not self.line or self.dragging then return end
+    local x,y=self:Clamp(self:Point())
     self.line:ClearAllPoints()
-    self.line:SetPoint("TOPLEFT",UIParent,"BOTTOMLEFT",x,y)
+    self.line:SetPoint(anchors[self:Settings().align],UIParent,"BOTTOMLEFT",x,y)
+end
+function Leveling:BeginDrag()
+    if not self.moving or InCombatLockdown() then return end
+    local cx,cy=GetCursorPosition(); local scale=UIParent:GetEffectiveScale()
+    local x,y=self:Point()
+    self.dragOffsetX,self.dragOffsetY=x-cx/scale,y-cy/scale
+    self.dragging=true
+end
+function Leveling:UpdateDrag()
+    if not self.dragging then return end
+    local cx,cy=GetCursorPosition(); local scale=UIParent:GetEffectiveScale()
+    local x,y=self:Clamp(cx/scale+self.dragOffsetX,cy/scale+self.dragOffsetY)
+    local s=self:Settings()
+    s.x,s.y,s.screenWidth,s.screenHeight=x,y,UIParent:GetWidth(),UIParent:GetHeight()
+    self.line:ClearAllPoints()
+    self.line:SetPoint(anchors[s.align],UIParent,"BOTTOMLEFT",x,y)
+end
+function Leveling:EndDrag()
+    if not self.dragging then return end
+    self:UpdateDrag(); self.dragging=false; self:Position()
+end
+-- Changing the side keeps the stats where they are on screen.
+function Leveling:SetAlign(align)
+    local s=self:Settings()
+    if self.line and self.line:GetLeft() and s.align~=align then
+        local scale=self.line:GetEffectiveScale()/UIParent:GetEffectiveScale()
+        local left,right,top=self.line:GetLeft()*scale,self.line:GetRight()*scale,self.line:GetTop()*scale
+        s.x=align=="left" and left or align=="right" and right or (left+right)/2
+        s.y=top; s.screenWidth,s.screenHeight=UIParent:GetWidth(),UIParent:GetHeight()
+    end
+    s.align=align
+    self:Apply()
 end
 function Leveling:Create()
     if self.line then return end
     local line=CreateFrame("Frame","ForeverToolsLeveling",UIParent)
     self.line=line
-    line:SetFrameStrata("HIGH"); line:SetClampedToScreen(true); line:SetMovable(true)
+    line:SetFrameStrata("HIGH"); line:SetClampedToScreen(true)
     if line.SetDontSavePosition then line:SetDontSavePosition(true) end
     line:RegisterForDrag("LeftButton")
-    line.text=line:CreateFontString(nil,"OVERLAY","GameFontNormal")
-    line.text:SetPoint("TOPLEFT",8,-6); line.text:SetJustifyH("LEFT"); line.text:SetJustifyV("TOP")
-    if line.text.SetSpacing then line.text:SetSpacing(3) end
+    line.pieces={}
     line.background=FT:RoundedFill(line,0,0,0,.5)
     FT:Panel(line)
     line.hint=FT:Label(line,"Drag to move",12); line.hint:SetPoint("TOPLEFT",line,"BOTTOMLEFT",4,-4)
-    line:SetScript("OnDragStart",function(owner) if self.moving and not InCombatLockdown() then owner:StartMoving() end end)
-    line:SetScript("OnDragStop",function(owner)
-        owner:StopMovingOrSizing()
-        local s=self:Settings()
-        s.x,s.y=owner:GetLeft(),owner:GetTop(); s.screenWidth,s.screenHeight=UIParent:GetWidth(),UIParent:GetHeight()
-        self:Position()
-    end)
+    line:SetScript("OnDragStart",function() self:BeginDrag() end)
+    line:SetScript("OnDragStop",function() self:EndDrag() end)
+    line:SetScript("OnMouseUp",function(_,button) if button=="LeftButton" then self:EndDrag() end end)
     line.elapsed=0
     line:SetScript("OnUpdate",function(owner,dt)
+        self:UpdateDrag()
         owner.elapsed=owner.elapsed+dt
         if owner.elapsed>=1 then owner.elapsed=0; self:Update() end
     end)
 end
+function Leveling:Piece(index)
+    local pieces=self.line.pieces
+    local piece=pieces[index]
+    if not piece then
+        piece=self.line:CreateFontString(nil,"OVERLAY","GameFontNormal")
+        pieces[index]=piece
+    end
+    local s=self:Settings(); local font,_,flags=GameFontNormal:GetFont()
+    piece:SetFont(font,s.fontSize,flags or ""); piece:SetTextColor(GameFontNormal:GetTextColor())
+    return piece
+end
 function Leveling:Update()
     if not self.line or not self.line:IsShown() then return end
+    local s=self:Settings()
+    self.line:SetAlpha((not self.moving and self:MaxLevel()) and 0 or 1)
     local stats=self:Stats()
-    local text=stats and self:Text(stats) or ""
-    if text=="" then text=self.moving and "Leveling stats — choose what to show" or "" end
-    self.line.text:SetText(text)
-    local height=self.line.text:GetStringHeight() or 0
-    if height<=0 then height=self:Settings().fontSize end
-    self.line:SetSize(math.max(120,(self.line.text:GetStringWidth() or 0)+16),height+12)
+    local lines=stats and self:Lines(stats) or {}
+    if #lines==0 and self.moving then lines={{{"Leveling stats — choose what to show"}}} end
+    -- Lay out each line from its pieces, then line them up on the chosen side.
+    local pad=s.background and 8 or 2
+    local lineHeight=s.fontSize+3
+    local used,widths,rows=0,{},{}
+    for i,line in ipairs(lines) do
+        local row,width={},0
+        for _,part in ipairs(line) do
+            used=used+1
+            local piece=self:Piece(used)
+            piece:SetText(part[1]); piece:Show()
+            local w=piece:GetStringWidth() or 0
+            row[#row+1]={piece=piece,width=w,tilde=part.tilde}
+            width=width+w
+        end
+        rows[i]=row; widths[i]=width
+    end
+    for i=used+1,#self.line.pieces do self.line.pieces[i]:Hide() end
+    local blockWidth=0; for _,w in ipairs(widths) do blockWidth=math.max(blockWidth,w) end
+    local frameWidth=math.max(s.background and 60 or 20,blockWidth+pad*2)
+    for i,row in ipairs(rows) do
+        local x=pad
+        if s.align=="center" then x=(frameWidth-widths[i])/2 elseif s.align=="right" then x=frameWidth-pad-widths[i] end
+        local y=-(pad-2)-(i-1)*lineHeight
+        for _,entry in ipairs(row) do
+            entry.piece:ClearAllPoints()
+            -- The tilde sits about a fifth of the text size lower, so it
+            -- lines up with the middle of the numbers.
+            entry.piece:SetPoint("TOPLEFT",self.line,"TOPLEFT",x,y-(entry.tilde and math.floor(s.fontSize*.22+.5) or 0))
+            x=x+entry.width
+        end
+    end
+    self.line:SetSize(frameWidth,math.max(1,#rows)*lineHeight+(pad-2)*2+2)
+    if not self.dragging then self:Position() end
 end
 function Leveling:Apply()
     if not FT.dbReady then return end
     local s=self:Settings()
     self:Create()
-    local font,_,flags=GameFontNormal:GetFont()
-    self.line.text:SetFont(font,s.fontSize,flags or "")
-    self.line.text:SetTextColor(GameFontNormal:GetTextColor())
     self:Position()
     local moving=self.moving==true
+    -- Behind game windows (like buff reminders); on top only while you move it.
+    self.line:SetFrameStrata(moving and "HIGH" or "LOW")
     self.line:EnableMouse(moving)
     for _,texture in ipairs(self.line.fillTextures) do texture:SetShown(moving) end
     for _,texture in ipairs(self.line.borderTextures) do texture:SetShown(moving) end
@@ -195,13 +306,16 @@ function Leveling:Apply()
     for _,texture in ipairs(self.line.background) do
         texture:SetVertexColor(c[1],c[2],c[3],s.backgroundAlpha); texture:SetShown(s.background and not moving)
     end
-    self.line:SetShown(moving or (s.enabled and not self:MaxLevel()))
+    -- Stay shown while on; max level is checked every update instead, so a
+    -- brief wrong answer (for example while zoning) can't hide it for good.
+    self.line:SetShown(moving or s.enabled)
     self:Update()
     self:HookBars()
     self:Refresh()
 end
 function Leveling:SetMoving(value)
     if InCombatLockdown() then value=false end
+    if not value then self:EndDrag() end
     self.moving=value==true
     if self.moving then self:Settings().enabled=true end
     self:Apply()
@@ -258,13 +372,15 @@ function Leveling:Refresh()
     -- Rows follow the chosen order, top to bottom, like the stats on screen.
     for i,key in ipairs(s.order) do
         local row=self.rows[key]
-        row.toggle:ClearAllPoints(); row.toggle:SetPoint("TOPLEFT",self.frame,"TOPLEFT",24,-178-(i-1)*40)
+        row.toggle:ClearAllPoints(); row.toggle:SetPoint("TOPLEFT",self.frame,"TOPLEFT",24,-106-(i-1)*40)
         row.toggle.label:SetText(partByKey[key][2]..": "..(s[key] and "On" or "Off")); FT:SetSelected(row.toggle,s[key])
         row.up:SetEnabled(i>1); row.up:SetAlpha(i>1 and 1 or .35)
         row.down:SetEnabled(i<#s.order); row.down:SetAlpha(i<#s.order and 1 or .35)
     end
     self.layout.label:SetText("Layout: "..(s.layout=="lines" and "One stat per line" or "All on one line"))
     self.tooltipButton.label:SetText("XP bar tooltip: "..(s.tooltip and "On" or "Off")); FT:SetSelected(self.tooltipButton,s.tooltip)
+    local alignNames={left="Line up: left",center="Line up: center",right="Line up: right"}
+    self.alignChoice.value=s.align; self.alignChoice.label:SetText(alignNames[s.align])
     self.moveButton.label:SetText(self.moving and "Moving unlocked — click to lock" or "Move stats"); FT:SetSelected(self.moveButton,self.moving)
     self.sizeLabel:SetText(string.format("Font size: %d",s.fontSize))
     self.bgToggle.label:SetText("Background: "..(s.background and "On" or "Off")); FT:SetSelected(self.bgToggle,s.background)
@@ -279,13 +395,10 @@ function Leveling:Open()
     if not self.frame then
         local frame=FT:Window("ForeverToolsLeveling","ForeverTools | Leveling stats",540,560); self.frame=frame
         FT:BackTo(frame,"SystemDisplay")
-        local hint=FT:Label(frame,"Session stats reset when you reload or level up. Hidden at max level.",13)
-        hint:SetPoint("TOPLEFT",24,-60); hint:SetWidth(492)
-        self.toggle=FT:QuietButton(frame,"",492,36,"fps"); self.toggle:SetPoint("TOPLEFT",24,-86)
+        FT:PageInfo(frame,"Leveling stats","Your chosen stats on a small movable line and in the XP bar tooltip. Session stats reset when you reload or level up, and the line hides at max level.\n\nBuild your layout: turn stats on or off and use the arrows to order them. Kills to level uses your recent kill experience; XP per hour starts with your first experience and settles over a few minutes.")
+        self.toggle=FT:AccentButton(frame,"",492,34,"fps"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function() if self.moving then self.moving=false end; local s=self:Settings(); s.enabled=not s.enabled; self:Apply() end)
         FT:Tooltip(self.toggle,"Leveling stats","Show your chosen stats on screen and extra lines in the XP bar tooltip.")
-        local build=FT:Label(frame,"Build your layout: turn stats on or off and use the arrows to order them.",13)
-        build:SetPoint("TOPLEFT",24,-150); build:SetWidth(492); build:SetTextColor(.78,.74,.86)
         self.rows={}
         for _,entry in ipairs(parts) do
             local key=entry[1]
@@ -308,7 +421,7 @@ function Leveling:Open()
             FT:Tooltip(row.down,"Move down","Show this stat later.")
             self.rows[key]=row
         end
-        local y=-178-#parts*40-6
+        local y=-106-#parts*40-6
         self.layout=FT:QuietButton(frame,"",240,34,"move"); self.layout:SetPoint("TOPLEFT",24,y)
         self.layout:SetScript("OnClick",function() local s=self:Settings(); s.layout=s.layout=="lines" and "single" or "lines"; self:Apply() end)
         FT:Tooltip(self.layout,"Layout","Show each stat on its own line, or all stats on one compact line.")
@@ -321,8 +434,17 @@ function Leveling:Open()
         FT:Tooltip(self.moveButton,"Move stats","Click to unlock, drag the stats where you want them, then click again to lock them. Moving turns the stats on.")
         local reset=FT:QuietButton(frame,"Reset position",240,34,"reset"); reset:SetPoint("TOPLEFT",276,y)
         reset:SetScript("OnClick",function() local s=self:Settings(); s.x,s.y,s.screenWidth,s.screenHeight=nil,nil,nil,nil; self:Apply() end)
-        FT:Tooltip(reset,"Reset position","Return the stats to the top left of the screen.")
+        FT:Tooltip(reset,"Reset position","Return the stats to the top left of the screen (keeps your line-up side).")
         y=y-44
+        local alignIcon="Interface\\Icons\\INV_Misc_PocketWatch_01"
+        self.alignChoice=FT:Dropdown(frame,492,function()
+            return {{value="left",label="Line up: left",icon=alignIcon,tooltip="Text lines up on the left; the stats grow to the right."},
+                {value="center",label="Line up: center",icon=alignIcon,tooltip="Text is centered; the stats grow evenly both ways."},
+                {value="right",label="Line up: right",icon=alignIcon,tooltip="Text lines up on the right; the stats grow to the left. Good next to the right screen edge."}}
+        end,function(value) self:SetAlign(value) end,"move")
+        self.alignChoice:SetPoint("TOPLEFT",24,y); self.alignChoice.menuWidth=492
+        FT:Tooltip(self.alignChoice,"Line up","Which side the text lines up on. The stats stay anchored on that side, so they can sit flush against a screen edge.")
+        y=y-40
         self.bgToggle=FT:QuietButton(frame,"",240,34,"skins"); self.bgToggle:SetPoint("TOPLEFT",24,y)
         self.bgToggle:SetScript("OnClick",function() local s=self:Settings(); s.background=not s.background; self:Apply() end)
         FT:Tooltip(self.bgToggle,"Background","Show a rounded background behind the stats. Pick its color and transparency next to it.")
@@ -354,9 +476,7 @@ function Leveling:Open()
         self.sizeLabel,self.sizeSlider=slider("Font size",y,10,32,1,"Text size of the stats (10 to 32).",function(v) self:Settings().fontSize=math.floor(v+.5); self:Apply() end)
         y=y-38
         self.alphaLabel,self.alphaSlider=slider("Transparency",y,0,100,5,"How see-through the background is (0% solid, 100% invisible).",function(v) self:Settings().backgroundAlpha=1-math.floor(v+.5)/100; self:Apply() end)
-        local note=FT:Label(frame,"Kills to level uses your recent kill experience. XP per hour starts with your first experience and settles over a few minutes.",12)
-        note:SetPoint("BOTTOMLEFT",24,20); note:SetWidth(492); note:SetTextColor(.66,.57,.77)
-        frame:SetHeight(-y+32+50)
+        frame:SetHeight(-y+32+24)
         frame:HookScript("OnHide",function() if self.moving then self:SetMoving(false) end end)
     end
     self:Apply(); self.frame:Show()

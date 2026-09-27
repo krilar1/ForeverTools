@@ -189,6 +189,51 @@ Fonts:RegisterArea("objectives","Quest objectives","Quest tracker titles and obj
     collectTree(list,QuestObjectiveTracker,8)
     collectTree(list,QuestWatchFrame,5)
 end)
+-- The ForeverTools threat meter: title, target and each bar's name and number.
+Fonts:RegisterArea("threatMeter","Threat meter","Title and bar text on the ForeverTools threat meter (Combat).",function(list)
+    local threat=FT.modules.Threat; local meter=threat and threat.meter
+    if not meter then return end
+    add(list,meter.title); add(list,meter.target); add(list,meter.empty)
+    for _,row in ipairs(threat.rows or {}) do add(list,row.name); add(list,row.value) end
+end)
+-- The game's own damage meter: the name and number on every bar, in each of
+-- its windows. Bars are reused as the list scrolls, so new ones are picked up
+-- as the game sets them up.
+local function damageMeterWindows()
+    local list={}
+    for i=1,3 do local window=_G["DamageMeterSessionWindow"..i]; if window then list[#list+1]=window end end
+    return list
+end
+local function damageMeterEntry(list,frame)
+    local bar=frame and frame.StatusBar
+    if bar then add(list,bar.Name); add(list,bar.Value) end
+end
+Fonts:RegisterArea("damageMeter","Damage meter","Names and numbers on the bars of the game's own damage meter. Its text size in Edit Mode still scales them.",function(list)
+    for _,window in ipairs(damageMeterWindows()) do
+        local container=window.MinimizeContainer
+        local box=container and container.ScrollBox
+        if box and box.ForEachFrame then pcall(box.ForEachFrame,box,function(frame) damageMeterEntry(list,frame) end) end
+        damageMeterEntry(list,container and container.LocalPlayerEntry)
+    end
+end)
+function Fonts:WatchDamageMeter()
+    self.meterHooks=self.meterHooks or {}
+    local function refresh()
+        if not self:Settings("damageMeter").enabled then return end
+        FT:Coalesce("damageMeterFonts",function() self:ApplyArea("damageMeter") end,.05)
+    end
+    for _,window in ipairs(damageMeterWindows()) do
+        if not self.meterHooks[window] and window.InitEntry and hooksecurefunc then
+            self.meterHooks[window]=true
+            hooksecurefunc(window,"InitEntry",refresh)
+        end
+    end
+    -- Extra damage meter windows are made when you open them.
+    if not self.meterHooks.owner and DamageMeter and DamageMeter.SetupSessionWindow and hooksecurefunc then
+        self.meterHooks.owner=true
+        hooksecurefunc(DamageMeter,"SetupSessionWindow",function() self:WatchDamageMeter(); refresh() end)
+    end
+end
 function Fonts:Flags(value,original)
     return value=="THIN" and "OUTLINE" or value=="original" and (original or "") or value
 end
@@ -202,6 +247,10 @@ function Fonts:ThinShadow(object,outline)
         self.shadows[object]={x,y,r,g,b,a}
     end
     local old=self.shadows[object]
+    -- Already set this way: nothing to do (this runs for every text on each pass).
+    local state=outline=="THIN" and "thin" or "original"
+    if old.state==state then return end
+    old.state=state
     -- Thin outline: WoW's outline without the drop shadow underneath, which
     -- is what makes the normal outline look heavy.
     if outline=="THIN" then object:SetShadowOffset(0,0); object:SetShadowColor(0,0,0,0)
@@ -374,7 +423,7 @@ function Fonts:Refresh()
     self:UpdateScene(path or self:Resolve(s))
     local general=id=="general"
     for _,control in ipairs({self.toggle,self.sizeChoice,self.outlineChoice,self.resetButton,self.reapplyButton}) do control:SetShown(not general) end
-    self.allButton:SetShown(general); self.allHint:SetShown(general); self.customFont:SetShown(general); self.customFontAdd:SetShown(general)
+    self.allButton:SetShown(general); self.customFont:SetShown(general); self.customFontAdd:SetShown(general)
     local status = not s.enabled and "Off — this area keeps its original font." or
         (area.engine and "Font saved. Log out and back in to see it on damage numbers." or
         ((self.counts[id] or 0) == 0 and "Nothing from this area is on screen yet. Your font applies when it appears." or "Changes apply right away."))
@@ -403,7 +452,7 @@ function Fonts:Open()
         end
         self.title = FT:Label(self.frame, "", 20, true); self.title:SetPoint("TOPLEFT", 240, -66)
         self.description = FT:Label(self.frame, "", 14); self.description:SetPoint("TOPLEFT", 240, -100); self.description:SetSize(494, 82); self.description:SetJustifyV("TOP")
-        self.toggle = FT:QuietButton(self.frame, "", 494, 34, "fonts"); self.toggle:SetPoint("TOPLEFT", 240, -120)
+        self.toggle = FT:AccentButton(self.frame, "", 494, 34, "fonts"); self.toggle:SetPoint("TOPLEFT", 240, -120)
         self.toggle:SetScript("OnClick", function() local s=self:Settings(self.selected); s.enabled=not s.enabled; self.notice=nil; self:Apply() end)
         self.fontChoice = FT:Dropdown(self.frame, 494, function() return self:Catalogue() end, function(value) self:ChooseFont(value) end, "fonts")
         self.fontChoice:SetPoint("TOPLEFT", 240, -170)
@@ -420,9 +469,6 @@ function Fonts:Open()
         self.allButton=all
         all:SetScript("OnClick",function() local font=self:Settings(self.selected).font; FT:Confirm("Apply the selected font to every area? This enables font management for all areas; sizes and outlines stay unchanged.",function() self:ApplyAllFonts(font) end) end)
         FT:Tooltip(all,"Apply font to all areas","Use this font everywhere. Each area keeps its own size and outline. World damage numbers need a relog to change.")
-        local allHint=FT:Label(self.frame,"Adjust sizes and outlines separately in each area.",12)
-        self.allHint=allHint
-        allHint:SetPoint("TOPLEFT",240,-446)
         self.customFont=CreateFrame("EditBox",nil,self.frame,"InputBoxTemplate"); self.customFont:SetSize(350,28); self.customFont:SetPoint("TOPLEFT",246,-212); self.customFont:SetFont(FT.bodyFont,14,""); self.customFont:SetAutoFocus(false)
         self.customFontAdd=FT:QuietButton(self.frame,"Add font",128,28,"add"); self.customFontAdd:SetPoint("LEFT",self.customFont,"RIGHT",12,0)
         self.customFontAdd:SetScript("OnClick",function() local file=self.customFont:GetText(); local path=self:Resolve({font="file:"..file}); if not path then FT:Toast("Font not found. Put the file in Interface\\AddOns\\ForeverTools\\Media\\Fonts, then fully restart WoW."); return end; FT.db.customFonts=FT.db.customFonts or {}; local found=false; for _,v in ipairs(FT.db.customFonts) do if v==file then found=true end end; if not found then table.insert(FT.db.customFonts,file) end; self:ChooseFont("file:"..file) end)
@@ -434,10 +480,9 @@ function Fonts:Open()
         local apply = FT:QuietButton(self.frame, "Reapply fonts", 244, 32, "confirm"); apply:SetPoint("LEFT", reset, "RIGHT", 12, 0)
         self.reapplyButton=apply
         apply:SetScript("OnClick", function() self.notice=nil; self:Apply() end)
-        local info = FT:Info(self.frame, "Font manager", function()
-            return self.areas[self.selected].description .. "\n\n" .. self.status:GetText()
+        FT:PageInfo(self.frame, "Font manager", function()
+            return "Pick an area on the left, turn it on, then choose its font, size and outline. General sets one font for every area at once (each area keeps its own size and outline).\n\nThis area: " .. self.areas[self.selected].description .. ((self.status:GetText() or "") ~= "" and ("\n\n" .. self.status:GetText()) or "")
         end)
-        info:SetPoint("TOPRIGHT", -24, -66)
         FT:Tooltip(self.toggle, "Enable font changes", "Turn on to use your chosen font in this area.")
         FT:Tooltip(self.fontChoice, "Current font", "The font this area uses now. Pick a font to change it; this also turns the area on. \"Mixed fonts\" means the area uses more than one.")
         local function controlHelp()
@@ -479,19 +524,37 @@ end)
 
 -- RestedXP creates rows as guide steps change. A bounded scan discovers these
 -- without touching other addons or scanning the entire UI every frame.
-local scanElapsed=0
+-- The quest tracker is redone when quests change or the tracker resizes (new
+-- lines), with a slow check every 10 seconds as a safety net.
+local scanElapsed,objectiveElapsed=0,0
+local function objectives()
+    if not FT.dbReady or InCombatLockdown() then return end
+    if (ObjectiveTrackerFrame or QuestObjectiveTracker or QuestWatchFrame) and Fonts:Settings("objectives").enabled then
+        objectiveElapsed=0
+        FT:Coalesce("objectiveFonts",function() if not InCombatLockdown() then Fonts:ApplyArea("objectives") end end,1)
+    end
+end
+local questEvents=CreateFrame("Frame")
+for _,event in ipairs({"QUEST_LOG_UPDATE","QUEST_WATCH_LIST_CHANGED","QUEST_ACCEPTED","QUEST_REMOVED","SUPER_TRACKING_CHANGED","PLAYER_ENTERING_WORLD"}) do pcall(questEvents.RegisterEvent,questEvents,event) end
+questEvents:SetScript("OnEvent",function()
+    for _,frame in ipairs({ObjectiveTrackerFrame or false,QuestObjectiveTracker or false,QuestWatchFrame or false}) do
+        if frame and frame.HookScript and not frame.ftFontSizeHook then frame.ftFontSizeHook=true; frame:HookScript("OnSizeChanged",objectives) end
+    end
+    objectives()
+end)
 events:SetScript("OnUpdate",function(_,dt)
-    scanElapsed=scanElapsed+dt
+    scanElapsed=scanElapsed+dt; objectiveElapsed=objectiveElapsed+dt
     if scanElapsed<2 or not FT.dbReady or InCombatLockdown() then return end
     scanElapsed=0
     if (RXPFrame or RXPV2GuideWindow) and Fonts:Settings("restedxp").enabled then Fonts:ApplyArea("restedxp") end
-    if (ObjectiveTrackerFrame or QuestObjectiveTracker or QuestWatchFrame) and Fonts:Settings("objectives").enabled then Fonts:ApplyArea("objectives") end
+    if objectiveElapsed>=10 then objectives() end
 end)
 
 -- Chat's own Font Size menu is an explicit user change. Adopt it instead of
 -- fighting it on the next global font refresh.
 local chatHook=CreateFrame("Frame"); chatHook:RegisterEvent("PLAYER_LOGIN")
 chatHook:SetScript("OnEvent",function()
+    Fonts:WatchDamageMeter()
     if Fonts.chatHooked or not FCF_SetChatWindowFontSize or not hooksecurefunc then return end
     Fonts.chatHooked=true
     hooksecurefunc("FCF_SetChatWindowFontSize",function(_,frame,size)

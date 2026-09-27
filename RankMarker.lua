@@ -77,6 +77,8 @@ function Marker:Update()
 end
 function Marker:Queue(learned)
     if learned then self.best=nil end
+    -- Bars don't change in combat: check once when it ends instead.
+    if InCombatLockdown() then self.pendingCombat=true; return end
     if self.queued then return end
     self.queued=true
     C_Timer.After(.2,function() self:Update() end)
@@ -108,6 +110,10 @@ local events=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_REGEN_ENABLED","PLAYER_ENTERING_WORLD","ACTIONBAR_SLOT_CHANGED","ACTIONBAR_PAGE_CHANGED","UPDATE_BONUS_ACTIONBAR","UPDATE_SHAPESHIFT_FORM","SPELLS_CHANGED","LEARNED_SPELL_IN_SKILL_LINE"}) do pcall(events.RegisterEvent,events,event) end
 events:SetScript("OnEvent",function(_,event)
     if not FT.dbReady then return end
+    if event=="PLAYER_REGEN_ENABLED" then
+        if Marker.pendingCombat then Marker.pendingCombat=false; Marker:Queue() end
+        return
+    end
     Marker:Queue(event=="SPELLS_CHANGED" or event=="LEARNED_SPELL_IN_SKILL_LINE" or event=="PLAYER_ENTERING_WORLD")
 end)
 if GameTooltip and GameTooltip.SetAction and hooksecurefunc then

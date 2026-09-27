@@ -173,16 +173,16 @@ function B:Refresh()
         picker.icon:SetTexture(spell and spell.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
     end
     if self.spellRows then self:RenderSpellRows() end
-    self.status:SetText(self.unavailable and "Wheel casting isn't available on this game version. Your wheel works as usual, and your spell choices are kept." or self.pending and "Saved. Bindings update after combat." or "Scroll over a unit frame or a character in the world to cast. Anywhere else, the wheel zooms the camera.")
+    self.status:SetText(self.unavailable and "Wheel casting isn't available on this game version. Your wheel works as usual, and your spell choices are kept." or self.pending and "Saved. Bindings update after combat." or "")
 end
 function B:Open()
     if not self.frame then
         self.frame=FT:Window("ForeverToolsCustomKeybinds","ForeverTools | Mouse-wheel casting",640,680); self.pickers={}
         FT:BackTo(self.frame,"SystemKeybinds")
-        self.toggle=FT:QuietButton(self.frame,"",592,46,"mouseover"); self.toggle:SetPoint("TOPLEFT",24,-66)
+        self.toggle=FT:AccentButton(self.frame,"",592,34,"mouseover"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function() local s=self:Settings(); s.enabled=not s.enabled; self:Apply() end)
         self.search=CreateFrame("EditBox",nil,self.frame,"InputBoxTemplate")
-        self.search:SetSize(580,28); self.search:SetPoint("TOPLEFT",30,-298)
+        self.search:SetSize(580,28); self.search:SetPoint("TOPLEFT",30,-306)
         self.search:SetFont(FT.bodyFont,14,""); self.search:SetAutoFocus(false)
         local searchLabel=FT:Label(self.frame,"Search learned spells",12); searchLabel:SetPoint("BOTTOMLEFT",self.search,"TOPLEFT",0,4)
         self.search:SetScript("OnEscapePressed",function(box) box:ClearFocus() end)
@@ -195,15 +195,13 @@ function B:Open()
         end)
         for i,d in ipairs(directions) do
             local key=d[1]
-            local label=FT:Label(self.frame,d[2],16,true); label:SetPoint("TOPLEFT",24,-128-(i-1)*72); FT:SectionHeading(label,"INV_Misc_Key_03",300)
+            local label=FT:Label(self.frame,d[2],16,true); label:SetPoint("TOPLEFT",24,-112-(i-1)*80); FT:SectionHeading(label,"INV_Misc_Key_03",300)
             local picker=FT:Dropdown(self.frame,592,function() return self:SpellOptions() end,function(id) self:SelectSpell(key,id) end,"mouseover")
-            picker:SetPoint("TOPLEFT",24,-152-(i-1)*72); picker:SetHeight(36)
+            picker:SetPoint("TOPLEFT",24,-142-(i-1)*80); picker:SetHeight(34)
             self.pickers[key]=picker
             FT:Tooltip(picker,d[2],"Pick a spell you have learned. It is cast on the unit under your mouse, friend or enemy as the spell allows. Choose None to scroll normally again.")
         end
         self.status=FT:Label(self.frame,"",13); self.status:SetPoint("TOPLEFT",24,-594); self.status:SetSize(592,42)
-        local hint=FT:Label(self.frame,"Click a spell below, then scroll up or down to bind it.",13)
-        hint:SetPoint("TOPLEFT",24,-336)
         self.spellRows={}
         for i=1,5 do
             local row=FT:QuietButton(self.frame,"",592,36,"mouseover"); row:SetPoint("TOPLEFT",24,-360-(i-1)*40)
@@ -220,8 +218,7 @@ function B:Open()
         prev:SetScript("OnClick",function() self:TurnPage(-1) end)
         next:SetScript("OnClick",function() self:TurnPage(1) end)
         self.pageLabel=FT:Label(self.frame,"",12); self.pageLabel:SetPoint("TOP",0,-570)
-        local info=FT:Info(self.frame,"Mouse-wheel casting","Bind a spell to scrolling up or down. Scroll over a unit frame or a character in the world to cast it on them. Anywhere else, the wheel zooms the camera as usual.")
-        info:SetPoint("BOTTOMRIGHT",-24,20)
+        FT:PageInfo(self.frame,"Mouse-wheel casting","Bind a spell to scrolling up or down. Scroll over a unit frame or a character in the world to cast it on them. Anywhere else, the wheel zooms the camera as usual.\n\nPick a spell in the Scroll up / Scroll down menus, or click a spell in the list, then scroll up or down to bind it.")
         FT:Tooltip(self.toggle,"Enable mouse-wheel casting","Turn mouse-wheel casting on or off. Off gives the wheel back to the camera. Each scroll casts once.")
     end
     self:Refresh(); self.frame:Show()

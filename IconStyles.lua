@@ -15,6 +15,10 @@ local bars={"ActionButton","MultiBarBottomLeftButton","MultiBarBottomRightButton
 function Skins:Settings()
     if type(FT.db.iconStyles)~="table" then FT.db.iconStyles={} end
     local s=FT.db.iconStyles
+    -- Painting asks for settings thousands of times; check the saved table
+    -- fully only once (and again when a profile swaps it for another one).
+    if self.checkedRoot==s then return s end
+    self.checkedRoot=s; self.checkedAreas={}
     -- Every skin area starts off; players opt in per area (or via first-run setup).
     if type(s.actions)~="boolean" then s.actions=false end
     for _,key in ipairs({"minimap","bags","bagWindows","micro","xp","player","target","tot","focus","focustarget"}) do
@@ -39,6 +43,13 @@ end
 function Skins:Area(key)
     local root=self:Settings(); root.areas=type(root.areas)=="table" and root.areas or {}
     local s=root.areas[key]
+    -- Already checked this area's table: only the on/off switches can differ.
+    if s~=nil and self.checkedAreas[key]==s then
+        if s.preset=="class" then local _,class=UnitClass("player"); local c=(RAID_CLASS_COLORS or {})[class]; if c then s.borderColor[1],s.borderColor[2],s.borderColor[3]=c.r,c.g,c.b; s.color[1],s.color[2],s.color[3]=c.r,c.g,c.b end end
+        if key=="bags" then s.hideArt=false end
+        s[key]=root[key]==true; s.buffs=root.buffs==true
+        return s
+    end
     if type(s)~="table" then
         s={preset=root.preset,opacity=root.opacity,shadow=root.shadow,color={unpack(root.color)},borderColor={unpack(root.borderColor)},thickness=key=="buffs" and 3 or 1,borderOpacity=1,rares=false,elites=false,hideSecondary=key=="micro"}
         if key=="bags" or key=="bagWindows" then s.opacity=1 end
@@ -50,6 +61,9 @@ function Skins:Area(key)
         s.solidBagDefaults=true
     end
     if key=="bags" then s.hideArt=false elseif s.hideArt==nil then s.hideArt=false end
+    -- Bag menu: window art and empty-slot art can be hidden separately.
+    -- Older saves had one switch for both; start from that.
+    if key=="bagWindows" and type(s.hideSlotArt)~="boolean" then s.hideSlotArt=s.hideArt==true end
     s.color=type(s.color)=="table" and s.color or {0,0,0}; s.borderColor=type(s.borderColor)=="table" and s.borderColor or {0,0,0}
     if key=="micro" and s.hideSecondary==nil and s.preset=="dark" then s.hideSecondary=true end
     if key=="buffs" and not s.buffBorderThreeMigration then
@@ -57,9 +71,12 @@ function Skins:Area(key)
         s.buffBorderThreeMigration=true
     end
     s.slotOpacity=math.max(0,math.min(1,tonumber(s.slotOpacity) or .35))
-    s.opacity=tonumber(s.opacity) or 0; s.thickness=math.max(1,math.min(6,tonumber(s.thickness) or 1)); s.borderOpacity=math.max(0,math.min(1,tonumber(s.borderOpacity) or 1))
+    if type(s.slotColor)~="table" then s.slotColor={.6,.63,.68} end
+    for i=1,3 do s.slotColor[i]=type(s.slotColor[i])=="number" and math.max(0,math.min(1,s.slotColor[i])) or .6 end
+    s.opacity=tonumber(s.opacity) or 0; s.thickness=math.max(1,math.min(4,tonumber(s.thickness) or 1)); s.borderOpacity=math.max(0,math.min(1,tonumber(s.borderOpacity) or 1))
     if s.preset=="class" then local _,class=UnitClass("player"); local c=(RAID_CLASS_COLORS or {})[class]; if c then s.borderColor={c.r,c.g,c.b}; s.color={c.r,c.g,c.b} end end
     s[key]=root[key]==true; s.buffs=root.buffs==true
+    self.checkedAreas[key]=s
     return s
 end
 local function textureFrom(candidate, depth)
@@ -137,10 +154,22 @@ function Skins:Track(button,kind)
                 corner:SetSize(2,2);corner:SetPoint(point,icon,point)
                 rec.auraCorners[#rec.auraCorners+1]=corner
             end
+            -- Same frame and soft rounded corners as the action buttons: the
+            -- game's own action-button frame art and icon mask, tinted.
+            local hasAtlas=C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("UI-HUD-ActionBar-IconFrame") and C_Texture.GetAtlasInfo("UI-HUD-ActionBar-IconFrame-Mask")
+            if hasAtlas then
+                rec.auraFrame=button:CreateTexture(nil,"OVERLAY",nil,2)
+                rec.auraFrame:SetAtlas("UI-HUD-ActionBar-IconFrame")
+                rec.auraFrame:SetPoint("CENTER",icon,"CENTER",0,0); rec.auraFrameExtra=-1
+            end
             if button.CreateMaskTexture and icon.AddMaskTexture and icon.RemoveMaskTexture then
                 rec.auraMask=button:CreateMaskTexture()
-                rec.auraMask:SetTexture("Interface\\AddOns\\"..FT.name.."\\Media\\Rounded.tga","CLAMPTOBLACKADDITIVE","CLAMPTOBLACKADDITIVE")
-                rec.auraMask:SetAllPoints(icon)
+                if hasAtlas then rec.auraMask:SetAtlas("UI-HUD-ActionBar-IconFrame-Mask")
+                else rec.auraMask:SetTexture("Interface\\AddOns\\"..FT.name.."\\Media\\Rounded.tga","CLAMPTOBLACKADDITIVE","CLAMPTOBLACKADDITIVE") end
+                -- A little larger than the icon, so it only rounds the
+                -- corners and the icon reaches the border.
+                if hasAtlas then rec.auraMask:SetPoint("TOPLEFT",icon,"TOPLEFT",-3,3); rec.auraMask:SetPoint("BOTTOMRIGHT",icon,"BOTTOMRIGHT",3,-3)
+                else rec.auraMask:SetAllPoints(icon) end
                 for _,edge in ipairs(rec.auraEdges) do edge:AddMaskTexture(rec.auraMask) end
                 for _,corner in ipairs(rec.auraCorners) do corner:AddMaskTexture(rec.auraMask) end
             end
@@ -186,7 +215,23 @@ function Skins:Paint(rec)
         elseif not enabled and rec.maskAttached then rec.icon:RemoveMaskTexture(rec.auraMask);rec.maskAttached=false end
     end
     for _,corner in ipairs(rec.auraCorners or {}) do
-        corner:SetVertexColor(r,g,b,s.borderOpacity);corner:SetShown(s[rec.kind] and active)
+        corner:SetVertexColor(r,g,b,s.borderOpacity);corner:SetShown(s[rec.kind] and active and not rec.auraFrame)
+    end
+    if rec.auraFrame then
+        rec.auraFrame:SetShown(s[rec.kind] and active and true or false)
+        if s[rec.kind] and active then
+            -- Thickness grows the frame outward, like a thicker rim. Anchored to
+            -- the icon's edges, never measured: sizes can be secret in combat.
+            local extra=s.thickness-1
+            if rec.auraFrameExtra~=extra then
+                rec.auraFrameExtra=extra
+                rec.auraFrame:ClearAllPoints()
+                -- The frame's inner edge sits on the icon's edge.
+                rec.auraFrame:SetPoint("TOPLEFT",rec.icon,"TOPLEFT",-2-extra,2+extra)
+                rec.auraFrame:SetPoint("BOTTOMRIGHT",rec.icon,"BOTTOMRIGHT",2+extra,-2-extra)
+            end
+            rec.auraFrame:SetVertexColor(r,g,b,1); rec.auraFrame:SetAlpha(s.borderOpacity)
+        end
     end
     if not s[rec.kind] or not active then
         rec.fill:Hide(); rec.shadow:Hide()
@@ -197,7 +242,7 @@ function Skins:Paint(rec)
     end
     for i,edge in ipairs(rec.auraEdges or {}) do
         if i<=2 then edge:SetHeight(s.thickness) else edge:SetWidth(s.thickness) end
-        edge:SetVertexColor(r,g,b,s.borderOpacity); edge:Show()
+        edge:SetVertexColor(r,g,b,s.borderOpacity); edge:SetShown(not rec.auraFrame)
     end
     rec.fill:SetVertexColor(s.color[1],s.color[2],s.color[3],s.opacity); rec.fill:Show()
     rec.shadow:SetVertexColor(0,0,0,s.shadow and (rec.kind=="buffs" and .55 or math.min(.55,s.opacity+.12)) or 0); rec.shadow:SetShown(s.shadow)
@@ -252,6 +297,30 @@ function Skins:Apply()
     for _,rec in pairs(self.records) do self:Paint(rec) end
     self:Refresh()
 end
+-- Your auras changed: only the buff and debuff icons can be new, so look at
+-- those alone (at most four times a second, never in combat).
+function Skins:ApplyBuffs() self:ApplyPart("buffs") end
+-- One kind of icon only (buffs, action buttons or stance/totem buttons),
+-- for events that can only change that kind.
+function Skins:ApplyPart(kind)
+    if not FT.dbReady or InCombatLockdown() then return end
+    local s=self:Settings()
+    if not s[kind] then return end
+    if kind=="buffs" then
+        for i=1,40 do self:Track(_G["BuffButton"..i],"buffs"); self:Track(_G["DebuffButton"..i],"buffs") end
+        for i=1,3 do self:Track(_G["TempEnchant"..i],"buffs") end
+        self:ScanBuffs(BuffFrame,2); self:ScanBuffs(DebuffFrame,2)
+    elseif kind=="actions" then
+        for _,prefix in ipairs(bars) do for i=1,12 do self:Track(_G[prefix..i],"actions") end end
+    elseif kind=="stances" then
+        for _,prefix in ipairs({"StanceButton","PossessButton","TotemFrameTotem"}) do
+            for i=1,12 do self:Track(_G[prefix..i],"stances") end
+        end
+        for _,name in ipairs({"StanceBar","StanceBarFrame","PossessBarFrame","TotemFrame","MultiCastActionBarFrame"}) do self:ScanBar(_G[name],2) end
+        if self.ApplyTotemArtwork then self:ApplyTotemArtwork() end
+    end
+    for _,rec in pairs(self.records) do if rec.kind==kind then self:Paint(rec) end end
+end
 function Skins:Queue()
     if self.queued then return end
     self.queued=true; C_Timer.After(0,function() self.queued=false; self:Apply() end)
@@ -259,4 +328,19 @@ end
 FT:RegisterModule("IconStyles",Skins)
 local events=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","ADDON_LOADED","PLAYER_REGEN_ENABLED","ACTIONBAR_SLOT_CHANGED","UPDATE_SHAPESHIFT_FORMS","UNIT_AURA","PLAYER_TOTEM_UPDATE"}) do events:RegisterEvent(event) end
-events:SetScript("OnEvent",function(_,event,unit) if event~="UNIT_AURA" or unit=="player" then if FT.dbReady then Skins:Queue() end end end)
+events:SetScript("OnEvent",function(_,event,unit)
+    if not FT.dbReady then return end
+    if event=="UNIT_AURA" then
+        if unit=="player" and not InCombatLockdown() then FT:Coalesce("skinBuffs",function() Skins:ApplyPart("buffs") end,.25) end
+        return
+    end
+    -- Events that only touch one kind of icon redo just that kind.
+    local part=(event=="ACTIONBAR_SLOT_CHANGED" and "actions") or ((event=="PLAYER_TOTEM_UPDATE" or event=="UPDATE_SHAPESHIFT_FORMS") and "stances")
+    if part then
+        if InCombatLockdown() then Skins.deferred=true
+        else FT:Coalesce("skinPart"..part,function() Skins:ApplyPart(part) end,.1) end
+        return
+    end
+    if event=="PLAYER_REGEN_ENABLED" and not Skins.deferred then return end
+    Skins:Queue()
+end)

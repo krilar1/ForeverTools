@@ -186,6 +186,8 @@ function Flight:Apply()
     if not path or not fonts:ValidFont(path) then path="Fonts\\FRIZQT__.TTF";label="Friz Quadrata (fallback)" end
     self.display.text:SetFont(path,s.size,s.outline);self.display.text:SetTextColor(unpack(s.color))
     self.display:SetSize(math.min(360,math.max(240,s.size*15)),s.size*3+16)
+    -- Behind game windows; on top only while you preview and move it.
+    self.display:SetFrameStrata(self.preview and "HIGH" or "LOW")
     self.display:EnableMouse(self.preview==true);self.display.hint:SetShown(self.preview==true)
     self:Position();self:Tick()
     if self.frame then
@@ -200,12 +202,12 @@ function Flight:Apply()
 end
 function Flight:Open()
     if not self.frame then
-        local frame=FT:Window("ForeverToolsFlightSettings","Flight timer",440,402);self.frame=frame
-        -- Opens centered like every other page; Back returns to System → On-screen info.
+        local frame=FT:Window("ForeverToolsFlightSettings","Flight timer",440,370);self.frame=frame
+        -- Opens centered like every other page; Back returns to System > On-screen info.
         FT:BackTo(frame,"SystemDisplay")
-        self.toggle=FT:QuietButton(frame,"",392,34,"fps");self.toggle:SetPoint("TOPLEFT",24,-66)
+        self.toggle=FT:AccentButton(frame,"",392,34,"fps");self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function() local s=self:Settings();s.enabled=not s.enabled;self:Apply() end)
-        self.previewButton=FT:QuietButton(frame,"",392,34,"move");self.previewButton:SetPoint("TOPLEFT",24,-106)
+        self.previewButton=FT:QuietButton(frame,"",392,34,"move");self.previewButton:SetPoint("TOPLEFT",24,-104)
         self.previewButton:SetScript("OnClick",function() self:Drag();self.dragging=false;self.preview=not self.preview;self:Apply() end)
         self.fontChoice=FT:Dropdown(frame,392,function() return FT.modules.FontManager:Catalogue() end,function(value) self:Settings().font=value;self:Apply() end,"fonts")
         self.fontChoice:SetPoint("TOPLEFT",24,-146)
@@ -227,7 +229,8 @@ function Flight:Open()
         end)
         local reset=FT:QuietButton(frame,"Reset position to center",392,34,"reset");reset:SetPoint("TOPLEFT",24,-310)
         reset:SetScript("OnClick",function() FT:Confirm("Return the flight timer to the screen center?",function() local s=self:Settings();s.x=.5;s.y=.5;self:Apply() end) end)
-        local note=FT:Label(frame,"Changes apply right away.",11);note:SetPoint("TOPLEFT",24,-360)
+        FT:PageInfo(frame,"Flight timer","Shows where you are flying and how long until you land. Times start as Classic estimates and get more exact with each flight you finish. Changes apply right away.")
+        FT:Tooltip(self.toggle,"Flight timer","Turn the flight countdown on or off.")
         FT:Tooltip(self.previewButton,"Flight timer","Shows where you are flying and how long until you land. Drag the preview to move it. Times start as Classic estimates and get more exact with each flight you finish.")
         frame:HookScript("OnHide",function() self:Drag();self.dragging=false;self.preview=false;self:Apply() end)
     end

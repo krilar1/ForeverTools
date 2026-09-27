@@ -44,7 +44,9 @@ function System:Apply()
     elseif s.coordinates~=nil and GetCVar and SetCVar and GetCVar("minimapShowPlayerCoords")~=nil then
         SetCVar("minimapShowPlayerCoords",s.coordinates and "1" or "0")
     end
-    FT:UpdateMinimap(); if FT.modules.MinimapIcons then FT.modules.MinimapIcons:Apply() end; self:Refresh()
+    FT:UpdateMinimap(); if FT.modules.MinimapIcons then FT.modules.MinimapIcons:Apply() end
+    if FT.modules.FireAlert then FT.modules.FireAlert:Apply() end
+    self:Refresh()
 end
 -- System is a small hub with four subpages, so no single page lists
 -- every switch. Each subpage is its own module for FT:OpenModule and search.
@@ -60,20 +62,28 @@ local pages={
         {"coordinates","Minimap coordinates","map","Show or hide Forever's built-in coordinates below the minimap."},
         {"minimapIcons","Group minimap buttons","map","Put other addons' minimap buttons into one small menu. Click its icon to open it. A few buttons may stay on the minimap. Do not use it together with another button-collector addon."},
     }},
-    {key="SystemGameplay",title="Gameplay",icon="classes",description="Group role, loot rolls, faster looting and merchant helpers.",items={
+    {key="SystemGameplay",title="Gameplay",icon="classes",description="Group role, faster looting, loot-roll position and quest objectives.",items={
         {"autoRole","Set role when joining a group","classes","When you join a group, set your role (tank, healer or damage) from your talents. Changing it yourself always wins. Feral druids are asked once."},
+        {"fastLoot","Faster looting","generic","Loot everything the moment a corpse is opened, instead of waiting for each slot. Works when auto loot is on (the Auto Loot game option, or holding the auto-loot key). Items that ask before binding still ask."},
         {"lootMove","Move loot rolls","move","Show a sample loot-roll window you can drag. Click again to lock it. Until you move it, loot rolls appear where Blizzard puts them."},
         {"lootDefault","Use Blizzard's loot-roll position","reset","Forget your moved position and let the game place loot rolls again."},
-        {"fastLoot","Faster looting","generic","Loot everything the moment a corpse is opened, instead of waiting for each slot. Works when auto loot is on (the Auto Loot game option, or holding the auto-loot key). Items that ask before binding still ask."},
+        {"objectives","Quest objectives","INV_Misc_Note_01","Choose: Default (the game's own behavior), Collapsed on login, Open on login, or Hidden. Collapsed and Open are applied when you log in or reload; opening or closing it yourself is kept until then. Hidden keeps the tracker off the screen."},
+    }},
+    {key="SystemMerchant",title="Merchant",icon="INV_Misc_Coin_02",description="Selling grey items and repairing when you visit a merchant.",items={
         {"autoSell","Auto-sell grey items","generic","Sell all grey (junk) items when you open a merchant. They go to the Buyback tab like items you sell yourself (it keeps the last 12)."},
         {"autoRepair","Auto-repair","generic","Repair all your gear when you visit a merchant who can repair."},
         {"guildRepair","Use guild funds for repairs first","party","When auto-repair runs, use guild bank repair money if your guild allows it, otherwise your own gold."},
-        {"objectives","Quest objectives","INV_Misc_Note_01","Choose: Default (the game's own behavior), Collapsed on login, Open on login, or Hidden. Collapsed and Open are applied when you log in or reload; opening or closing it yourself is kept until then. Hidden keeps the tracker off the screen."},
     }},
-    {key="SystemKeybinds",title="Keybinds",icon="keybind",description="Quick keybind mode, restoring earlier keybinds and mouse-wheel casting.",items={
+    {key="SystemCombat",home=true,title="Combat",icon="Ability_Warrior_DefensiveStance",description="Threat meter, rare alerts and the standing-in-fire sound.",items={
+        {"threat","Threat meter settings","Ability_Warrior_DefensiveStance","A threat meter next to the damage meter, and your threat % above your target. Off by default."},
+        {"rareAlert","Rare alerts settings","Ability_Hunter_SniperShot","A notice with a soft glow (and optional sound) when a rare appears on your minimap or nearby. Off by default."},
+        {"fireAlert","Standing in fire settings","Spell_Fire_Fire","A warning sound when you keep taking magic damage in a steady rhythm, like standing in fire or lava. Works without setup; choose the sound and loudness in its settings. Off by default."},
+    }},
+    {key="SystemKeybinds",home=true,title="Keybinds",icon="keybind",description="Quick keybind mode, restoring earlier keybinds, mouse-wheel casting and the smart interact key.",items={
         {"quickKeybind","Quick keybind mode (/kb)","keybind","Hover any action button and press a key to bind it; Escape on a bound slot unbinds it. A snapshot of your keybinds is taken first, so you can save, revert to a snapshot or discard. You can also type /kb in chat."},
         {"undoKeybinds","Restore keybinds","reset","Pick an earlier keybind session to go back to. Hover a session to see what it changed; choosing it puts back the keybinds you had before it. The last 10 sessions are kept on this computer."},
         {"wheelCasting","Mouse-wheel casting","mouseover","Bind a spell to scrolling up or down, cast on the unit under your mouse. Anywhere else the wheel zooms the camera."},
+        {"smartKey","Smart interact key settings","keybind","One key for questing: uses RestedXP's quest item or target button when the guide shows one, and Interact with target the rest of the time (always while a dialog is open). Off by default."},
     }},
     {key="SystemDisplay",title="On-screen info",icon="fps",description="FPS counter, leveling stats and the flight timer.",items={
         {"fps","FPS counter settings","fps","Show a small, movable frames-per-second counter."},
@@ -94,7 +104,7 @@ function System:Values()
     if coords==nil then coords=not getter or getter("minimapShowPlayerCoords")=="1" end
     return {welcome=FT.db.welcome==true,whatsNew=s.hideWhatsNew~=true,minimap=FT.db.minimapEnabled~=false,coordinates=coords,
         minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=getter and getter("scriptErrors")=="1",
-        autoRole=s.autoRole==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true}
+        autoRole=s.autoRole==true,fastLoot=s.fastLoot==true,fireAlert=s.fireAlert==true,autoSell=s.autoSell==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true}
 end
 function System:Refresh()
     if not self.buttons then return end
@@ -131,6 +141,21 @@ function System:Refresh()
             if not button.arrow then button.arrow=FT:Label(button,"v",12); button.arrow:SetPoint("RIGHT",-12,0) end
             FT:SetSelected(button,mode~="default")
         end
+        if key=="rareAlert" then
+            local rare=FT.modules.RareAlert
+            button.label:SetText("Rare alerts: "..(rare and rare:Settings().enabled and "On" or "Off").." — settings")
+        end
+        if key=="threat" then
+            local threat=FT.modules.Threat; local t=threat and threat:Settings()
+            button.label:SetText("Threat meter: "..(t and (t.enabled or t.text) and "On" or "Off").." — settings")
+        end
+        if key=="smartKey" then
+            local smart=FT.modules.SmartKey
+            button.label:SetText("Smart interact key: "..(smart and smart:Settings().enabled and "On" or "Off").." — settings")
+        end
+        if key=="fireAlert" then
+            button.label:SetText("Standing in fire: "..(values.fireAlert and "On" or "Off").." — settings")
+        end
         if key=="wheelCasting" then
             local wheel=FT.modules.CustomKeybinds
             button.label:SetText("Mouse-wheel casting: "..(wheel and wheel:Settings().enabled and "On" or "Off").." — settings")
@@ -154,6 +179,10 @@ function System:Click(key)
     if key=="minimapIcons" then FT.modules.MinimapIcons:Toggle();return end
     if key=="flightTimer" then FT:OpenModule("FlightTimer");return end
     if key=="fps" then FT:OpenModule("QualityOfLife");return end
+    if key=="rareAlert" then FT:OpenModule("RareAlert");return end
+    if key=="threat" then FT:OpenModule("Threat");return end
+    if key=="fireAlert" then FT:OpenModule("FireAlert");return end
+    if key=="smartKey" then FT:OpenModule("SmartKey");return end
     if key=="wheelCasting" then FT:OpenModule("CustomKeybinds");return end
     if key=="leveling" then FT:OpenModule("Leveling");return end
     if key=="bugReport" then FT.modules.BugReport:Open();return end
@@ -206,14 +235,15 @@ local function buildPage(page)
     local module={}
     function module:Open()
         if not self.frame then
-            local height=86+#page.items*52+24
-            self.frame=FT:Window("ForeverTools"..page.key,"ForeverTools | System | "..page.title,500,height)
-            FT:BackTo(self.frame,"System")
+            local height=62+#page.items*40+22
+            -- Combat and Keybinds are on the main menu; the rest live in System.
+            self.frame=FT:Window("ForeverTools"..page.key,page.home and ("ForeverTools | "..page.title) or ("ForeverTools | System | "..page.title),500,height)
+            if page.home then self.frame.homeButton:SetScript("OnClick",function() FT:OpenHome() end) else FT:BackTo(self.frame,"System") end
             if page.key=="SystemGameplay" then self.frame:HookScript("OnHide",function() FT.modules.LootRoll:FinishMove() end) end
             for i,entry in ipairs(page.items) do
                 local key=entry[1]
-                local b=FT:QuietButton(self.frame,entry[2],452,42,entry[3]); b.title=entry[2]
-                b:SetPoint("TOPLEFT",24,-66-(i-1)*52); System.buttons[key]=b
+                local b=FT:QuietButton(self.frame,entry[2],452,32,entry[3]); b.title=entry[2]
+                b:SetPoint("TOPLEFT",24,-62-(i-1)*40); System.buttons[key]=b
                 b:SetScript("OnClick",function() System:Click(key) end)
                 FT:Tooltip(b,entry[2],entry[4])
             end
@@ -227,8 +257,9 @@ end
 function System:Open()
     self.buttons=self.buttons or {}
     if not self.frame then
-        self.frame=FT:Window("ForeverToolsSystem","ForeverTools | System",500,86+#pages*58+20)
-        for i,page in ipairs(pages) do
+        local list={}; for _,page in ipairs(pages) do if not page.home then list[#list+1]=page end end
+        self.frame=FT:Window("ForeverToolsSystem","ForeverTools | System",500,86+#list*58+20)
+        for i,page in ipairs(list) do
             local button=FT:QuietButton(self.frame,page.title,452,46,page.icon)
             FT:ButtonIcon(button,page.icon,30)
             button:SetPoint("TOPLEFT",24,-68-(i-1)*58)

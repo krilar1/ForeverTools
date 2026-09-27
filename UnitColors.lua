@@ -16,83 +16,46 @@ local function groupFor(unit)
     if unit=="focustarget" then return "focus" end
     if unit == "player" or unit == "target" or unit == "focus" then return unit end
 end
-function Colors:Paint(bar)
+function Colors:Paint(bar, force)
     local info = self.tracked[bar]
     if not info or self.painting then return end
     local unit = info.owner and (info.owner.displayedUnit or info.owner.unit) or info.unit
     local enabled = self.active[info.group] == true
+    -- Nothing of ours on this bar and nothing to add: leave it alone.
+    if not enabled and not info.colored and not info.art then return end
     local color
     if enabled and unit and UnitIsPlayer(unit) and UnitIsConnected(unit) and not UnitIsDeadOrGhost(unit) then
         local _, class = UnitClass(unit)
         color = (CUSTOM_CLASS_COLORS and CUSTOM_CLASS_COLORS[class]) or (RAID_CLASS_COLORS or {})[class]
     end
+    -- Same color as last time and Blizzard hasn't changed the bar since
+    -- (it calls back when it does): nothing to redo.
+    if not force and not info.art and info.lastColor==color and info.colored==(color~=nil) then return end
+    info.lastColor=color
     self.painting = true
-    -- Forever health atlases contain a green fill. Multiplying a class color
-    -- into that artwork makes it dark green. Use a neutral fill while managed,
-    -- retaining the client's geometry and masks, then restore the native atlas.
-    local texture=bar.GetStatusBarTexture and bar:GetStatusBarTexture()
-    if color and texture and texture.SetTexture then
-        if not info.art then info.art={texture=texture,file=texture:GetTexture(),atlas=texture.GetAtlas and texture:GetAtlas(),coords=texture.GetTexCoord and {texture:GetTexCoord()},layer=texture.GetDrawLayer and {texture:GetDrawLayer()}} end
-        texture:SetTexture("Interface\\Buttons\\WHITE8x8")
-        local parent=bar.GetParent and bar:GetParent()
-        local mask=parent and parent.HealthBarMask or bar.HealthBarMask
-        if mask and texture.AddMaskTexture and not info.addedMask then texture:AddMaskTexture(mask); info.addedMask=mask end
-        -- The prediction mask alone does not preserve the portrait cutout in
-        -- Forever's health artwork. Reuse the original fill's alpha as a mask,
-        -- fixed to the whole bar so its cutout never moves as health decreases.
-        if info.art.atlas and bar.CreateMaskTexture and texture.AddMaskTexture and not info.shapeAttached then
-            if not info.shapeMask then
-                info.shapeMask=bar:CreateMaskTexture(nil,"BACKGROUND",nil,0)
-            end
-            info.shapeMask:SetAtlas(info.art.atlas)
-            info.shapeMask:SetAllPoints(bar)
-            texture:AddMaskTexture(info.shapeMask)
-            info.shapeAttached=true
-        end
-        -- Native health artwork contains a shaded rim. A neutral replacement
-        -- must stay beneath frame decorations, not in their overlay layer.
-        if texture.SetDrawLayer then texture:SetDrawLayer("BACKGROUND",0) end
-        if texture.SetTexCoord then texture:SetTexCoord(0,1,0,1) end
-    elseif info.art then
-        local art=info.art
-        if info.shapeAttached and art.texture.RemoveMaskTexture then art.texture:RemoveMaskTexture(info.shapeMask); info.shapeAttached=nil end
-        if info.addedMask and art.texture.RemoveMaskTexture then art.texture:RemoveMaskTexture(info.addedMask); info.addedMask=nil end
-        if art.atlas and art.texture.SetAtlas then art.texture:SetAtlas(art.atlas)
-        else art.texture:SetTexture(art.file); if art.coords and art.texture.SetTexCoord then art.texture:SetTexCoord(unpack(art.coords)) end end
-        if art.layer and art.texture.SetDrawLayer then art.texture:SetDrawLayer(unpack(art.layer)) end
-        info.art=nil
-    end
-    -- The player artwork supplies a dark finish above its fill. Other unit
-    -- frames lack that finish, so reduce brightness without shifting the hue.
-    local muted=enabled and (info.group=="target" or info.group=="focus")
-    local finish=muted and .58 or 1
-    if color then bar:SetStatusBarColor(color.r*finish, color.g*finish, color.b*finish)
-    elseif muted and info.original then
-        local native=info.original
-        bar:SetStatusBarColor(native[1]*finish,native[2]*finish,native[3]*finish,native[4] or 1)
+    -- Keep Blizzard's own health artwork (its shading, edges and masks) and
+    -- only recolor it: the green fill is turned grey, then tinted in the class
+    -- color. Incoming heals, absorbs and the frame edge stay exactly as in
+    -- the default look.
+    local texture = bar.GetStatusBarTexture and bar:GetStatusBarTexture()
+    if info.art then self:RestoreArt(info) end
+    if texture and texture.SetDesaturated then texture:SetDesaturated(color ~= nil) end
+    if color then bar:SetStatusBarColor(color.r, color.g, color.b)
     elseif info.colored and info.original then bar:SetStatusBarColor(unpack(info.original)) end
-    -- The neutral target fill loses the recessed inner rim baked into native
-    -- artwork. Restore a thin inset above the fill without moving its geometry.
-    if color and muted and not info.rim then
-        info.rim={}
-        for _,edge in ipairs({"TOP","BOTTOM","LEFT","RIGHT"}) do
-            local rim=bar:CreateTexture(nil,"ARTWORK",nil,1)
-            rim:SetColorTexture(0,0,0,edge=="BOTTOM" and .8 or .65)
-            if edge=="TOP" or edge=="BOTTOM" then
-                rim:SetHeight(edge=="BOTTOM" and 2 or 1)
-                rim:SetPoint(edge.."LEFT",bar,edge.."LEFT",0,0)
-                rim:SetPoint(edge.."RIGHT",bar,edge.."RIGHT",0,0)
-            else
-                rim:SetWidth(1)
-                rim:SetPoint("TOP"..edge,bar,"TOP"..edge,0,0)
-                rim:SetPoint("BOTTOM"..edge,bar,"BOTTOM"..edge,0,0)
-            end
-            info.rim[#info.rim+1]=rim
-        end
-    end
-    for _,rim in ipairs(info.rim or {}) do rim:SetShown(color~=nil and muted) end
-    info.colored = color ~= nil or muted
+    for _,rim in ipairs(info.rim or {}) do rim:Hide() end
+    info.colored = color ~= nil
     self.painting = false
+end
+-- Undo the plain fill used by older versions (only matters within a session
+-- that started before an update; kept so nothing is left behind).
+function Colors:RestoreArt(info)
+    local art=info.art
+    if info.shapeAttached and art.texture.RemoveMaskTexture then art.texture:RemoveMaskTexture(info.shapeMask); info.shapeAttached=nil end
+    if info.addedMask and art.texture.RemoveMaskTexture then art.texture:RemoveMaskTexture(info.addedMask); info.addedMask=nil end
+    if art.atlas and art.texture.SetAtlas then art.texture:SetAtlas(art.atlas)
+    else art.texture:SetTexture(art.file); if art.coords and art.texture.SetTexCoord then art.texture:SetTexCoord(unpack(art.coords)) end end
+    if art.layer and art.texture.SetDrawLayer then art.texture:SetDrawLayer(unpack(art.layer)) end
+    info.art=nil
 end
 function Colors:Track(bar, unit, group, owner)
     if not bar or type(bar.SetStatusBarColor) ~= "function" or not group then return end
@@ -106,7 +69,7 @@ function Colors:Track(bar, unit, group, owner)
             hooksecurefunc(bar, "SetStatusBarColor", function(_, r,g,b,a)
                 if self.painting then return end
                 info.original = {r,g,b,a}
-                self:Paint(bar)
+                self:Paint(bar,true)
             end)
             -- Blizzard can swap the bar's artwork back to its green fill (for
             -- example on a target in combat). Our color on that green art
@@ -115,7 +78,7 @@ function Colors:Track(bar, unit, group, owner)
             local function artChanged()
                 if self.painting then return end
                 info.art = nil
-                self:Paint(bar)
+                self:Paint(bar,true)
             end
             if bar.SetStatusBarTexture then hooksecurefunc(bar, "SetStatusBarTexture", artChanged) end
             local fill = bar.GetStatusBarTexture and bar:GetStatusBarTexture()
@@ -123,7 +86,7 @@ function Colors:Track(bar, unit, group, owner)
         end
     end
     info.unit, info.group, info.owner = unit, group, owner
-    self:Paint(bar)
+    self:Paint(bar,true)
     local parent=bar.GetParent and bar:GetParent()
     local loss=parent and (parent.PlayerFrameHealthBarAnimatedLoss or parent.TargetFrameHealthBarAnimatedLoss or parent.HealthBarAnimatedLoss)
     if loss and loss~=bar then
@@ -231,11 +194,17 @@ function Colors:Apply()
             local bar = healthBar(frame) or (frame and frame.SetStatusBarColor and frame)
             local resolved = unit or (frame and (frame.displayedUnit or frame.unit))
             local group=groupFor(resolved)
-            if bar and group and group~="party" and group~="raid" then self:Track(bar, resolved, group, frame) end
-            self:QueuePaint()
+            if not self:Busy() then return end
+            if bar and group and group~="party" and group~="raid" then
+                local info=self.tracked[bar]
+                -- Health updates many times a second in combat: only set up
+                -- bars we have not seen, or that now show another unit.
+                if not info or info.unit~=resolved or info.group~=group then self:Track(bar, resolved, group, frame) end
+            end
+            self:QueuePaint(resolved)
         end)
     end
-    for bar in pairs(self.tracked) do self:Paint(bar) end
+    for bar in pairs(self.tracked) do self:Paint(bar,true) end
     -- Draw layers only order textures within one frame level. The portrait
     -- container is a sibling below the health-bar content on this client;
     -- move its native decorations above the fill instead of adding new art.
@@ -254,16 +223,31 @@ function Colors:Apply()
     self:Refresh()
 end
 -- Health changes only need the known bars repainted, not a full pass.
-function Colors:QueuePaint()
-    if self.paintQueued or self.queued then return end
+-- True while any unit frame is class-colored, or still carries our color.
+function Colors:Busy()
+    for _,on in pairs(self.active) do if on then return true end end
+    for _,info in pairs(self.tracked) do if info.colored or info.art then return true end end
+    return false
+end
+-- Repaint once on the next frame. With a unit, only that unit's bars (health
+-- ticks many times a second in combat); without one, every bar.
+function Colors:QueuePaint(unit)
+    if self.queued or not self:Busy() then return end
+    if unit and self.paintUnits~="all" then
+        self.paintUnits=self.paintUnits or {}; self.paintUnits[unit]=true
+    else self.paintUnits="all" end
+    if self.paintQueued then return end
     self.paintQueued=true
     C_Timer.After(0,function()
         self.paintQueued=false
+        local units=self.paintUnits; self.paintUnits=nil
         -- Repainting known bars is allowed in combat (only colors and art of
         -- the bar itself change), so a target never shows the wrong color.
         if not FT.dbReady then return end
-        for bar in pairs(self.tracked) do self:Paint(bar) end
-        for loss in pairs(self.losses or {}) do self:PaintLoss(loss) end
+        for bar,info in pairs(self.tracked) do
+            if units=="all" or (units and units[info.unit]) then self:Paint(bar) end
+        end
+        if units=="all" then for loss in pairs(self.losses or {}) do self:PaintLoss(loss) end end
     end)
 end
 function Colors:Queue()
@@ -281,23 +265,21 @@ function Colors:Refresh()
     end
     self.all.label:SetText(all and "All unit frames: On" or "Enable all unit frames")
     FT:SetSelected(self.all, all)
-    self.note:SetText(self.deferred and "Saved. Changes apply when you leave combat." or "Colors players' health bars by class. NPCs, dead and offline units keep Blizzard's colors.")
+    self.note:SetText(self.deferred and "Saved. Changes apply when you leave combat." or "")
     self:RefreshDispel()
 end
 -- Dispel glow lives here with the other unit-frame visuals (DispelGlow.lua).
 function Colors:BuildDispel()
     local glow=FT.modules.DispelGlow; if not glow then return end
     local frame=self.frame
-    local head=FT:Label(frame,"Dispel glow",16,true); head:SetPoint("TOPLEFT",24,-340); FT:SectionHeading(head,"Spell_Holy_DispelMagic",300)
-    local info=FT:Info(frame,"Dispel glow","A soft outline in the debuff's color (magic, curse, disease or poison) appears around a frame's bars while that unit has a debuff you can remove. Only dispels you have learned count, so nothing lights up before you train them. No icons are added.")
-    info:SetPoint("TOPRIGHT",-24,-334)
-    self.dispelToggle=FT:AccentButton(frame,"",542,34,"buffs"); self.dispelToggle:SetPoint("TOPLEFT",24,-368)
+    local head=FT:Label(frame,"Dispel glow",16,true); head:SetPoint("TOPLEFT",24,-296); FT:SectionHeading(head,"Spell_Holy_DispelMagic",300)
+    self.dispelToggle=FT:AccentButton(frame,"",542,34,"buffs"); self.dispelToggle:SetPoint("TOPLEFT",24,-326)
     self.dispelToggle:SetScript("OnClick",function() local s=glow:Settings(); s.enabled=not s.enabled; glow:Apply(); self:RefreshDispel() end)
     FT:Tooltip(self.dispelToggle,"Dispel glow","Show a colored outline on unit frames when a debuff you can dispel is present. Choose the frames below.")
     self.dispelFrames={}
     for i,key in ipairs(glow.frameKeys) do
         local b=FT:QuietButton(frame,glow.labels[key],102,32)
-        b:SetPoint("TOPLEFT",24+(i-1)*110,-412)
+        b:SetPoint("TOPLEFT",24+(i-1)*110,-368)
         b:SetScript("OnClick",function() local s=glow:Settings(); s[key]=not s[key]; glow:Apply(); self:RefreshDispel() end)
         FT:Tooltip(b,glow.labels[key].." frames",key=="raid" and "Raid-style party and raid frames. Blizzard has its own dispel highlight for these in Edit Mode; use one or the other." or "Show the glow on the "..glow.labels[key]:lower().." frame"..(key=="party" and "s" or "")..".")
         self.dispelFrames[key]=b
@@ -307,10 +289,10 @@ function Colors:BuildDispel()
         local icon="Interface\\Icons\\"..FT.icons.skins
         return {{value="soft",label="Glow: Soft",icon=icon},{value="medium",label="Glow: Medium",icon=icon},{value="strong",label="Glow: Strong",icon=icon}}
     end,function(value) glow:Settings().strength=value; glow:Apply(); self:RefreshDispel() end,"skins")
-    self.dispelStrength:SetPoint("TOPLEFT",24,-454); self.dispelStrength:SetHeight(32)
+    self.dispelStrength:SetPoint("TOPLEFT",24,-408); self.dispelStrength:SetHeight(32)
     self.dispelStrength.names=names
     FT:Tooltip(self.dispelStrength,"Glow strength","How bright the outline is.")
-    self.dispelPulse=FT:QuietButton(frame,"",266,32,"reset"); self.dispelPulse:SetPoint("TOPLEFT",300,-454)
+    self.dispelPulse=FT:QuietButton(frame,"",266,32,"reset"); self.dispelPulse:SetPoint("TOPLEFT",300,-408)
     self.dispelPulse:SetScript("OnClick",function() local s=glow:Settings(); s.pulse=not s.pulse; glow:Apply(); self:RefreshDispel() end)
     FT:Tooltip(self.dispelPulse,"Gentle pulse","Let the outline slowly fade in and out so it catches the eye.")
 end
@@ -328,9 +310,10 @@ function Colors:RefreshDispel()
 end
 function Colors:Open()
     if not self.frame then
-        self.frame=FT:Window("ForeverToolsUnitColors", "Unitframe colors", 590, 540)
+        self.frame=FT:Window("ForeverToolsUnitColors", "Unitframe colors", 590, 470)
         FT:AppearanceBack(self.frame)
-        self.all=FT:AccentButton(self.frame, "", 542, 34, "classes"); self.all:SetPoint("TOPLEFT",24,-65)
+        FT:PageInfo(self.frame,"Unitframe colors","Class-colored health bars for the player, target and focus frames. NPCs, dead and offline units keep Blizzard's colors. Party and raid class colors are a Blizzard setting (Edit Mode).\n\nDispel glow: A soft outline in the debuff's color (magic, curse, disease or poison) appears around a frame's bars while that unit has a debuff you can remove. Only dispels you have learned count, so nothing lights up before you train them. No icons are added.")
+        self.all=FT:AccentButton(self.frame, "", 542, 34, "classes"); self.all:SetPoint("TOPLEFT",24,-62)
         self.all:SetScript("OnClick",function()
             local s=self:Settings(); local all=true
             for _, entry in ipairs(groups) do all=all and s[entry[1]] == true end
@@ -340,13 +323,13 @@ function Colors:Open()
         self.buttons={}
         for i,entry in ipairs(groups) do
             local key=entry[1]
-            local button=FT:QuietButton(self.frame,"",542,34,"character")
-            button:SetPoint("TOPLEFT",24,-113-(i-1)*44)
+            local button=FT:QuietButton(self.frame,"",542,32,"character")
+            button:SetPoint("TOPLEFT",24,-104-(i-1)*40)
             button:SetScript("OnClick",function() local s=self:Settings(); s[key]=not s[key]; self:Apply() end)
             self.buttons[key]=button
         end
-        local partyInfo=FT:QuietButton(self.frame,"Party colors: use Blizzard Edit Mode",542,34,"party")
-        partyInfo:SetPoint("TOPLEFT",24,-113-#groups*44)
+        local partyInfo=FT:QuietButton(self.frame,"Party colors: use Blizzard Edit Mode",542,32,"party")
+        partyInfo:SetPoint("TOPLEFT",24,-104-#groups*40)
         FT:Tooltip(partyInfo,"Party class colors","Party and raid class colors are a Blizzard setting. Click to open Edit Mode, select the party frame and turn on class colors.")
         partyInfo:SetScript("OnClick",function()
             if InCombatLockdown() then return end
@@ -357,7 +340,7 @@ function Colors:Open()
                 manager:Show()
             end
         end)
-        self.note=FT:Label(self.frame,"",13); self.note:SetPoint("TOPLEFT",24,-290); self.note:SetSize(542,36)
+        self.note=FT:Label(self.frame,"",13); self.note:SetPoint("TOPLEFT",24,-270); self.note:SetSize(542,20)
         self.note:SetJustifyV("TOP")
         self:BuildDispel()
     end
@@ -374,7 +357,7 @@ events:SetScript("OnEvent",function(_,event,unit)
     if event=="UNIT_TARGET" then
         if unit=="target" or unit=="focus" then Colors:Queue() end
     elseif unitEvents[event] then
-        if ours[unit] then Colors:QueuePaint() end
+        if ours[unit] then Colors:QueuePaint(unit) end
     elseif event=="PLAYER_REGEN_ENABLED" then
         if Colors.deferred then Colors:Queue() else Colors:QueuePaint() end
     else Colors:Queue() end

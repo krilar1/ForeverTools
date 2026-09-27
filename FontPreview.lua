@@ -16,7 +16,7 @@ function F:Stepper(parent,width,values,change)
     FT:Panel(box)
     box.onSelect=change
     box.label=FT:Label(box,"",13); box.label:SetPoint("LEFT",10,0); box.label:SetWidth(width-82)
-    box.minus=FT:QuietButton(box,"−",28,24); box.minus:SetPoint("RIGHT",-34,0)
+    box.minus=FT:QuietButton(box,"-",28,24); box.minus:SetPoint("RIGHT",-34,0)
     box.plus=FT:QuietButton(box,"+",28,24); box.plus:SetPoint("RIGHT",-3,0)
     local function step(delta)
         if box==self.sizeChoice and box.value==0 then
@@ -95,6 +95,8 @@ function F:UpdateScene(path)
     elseif id=="restedxp" then self.scene.text:SetText("Step 16\nTravel to the Crossroads")
     elseif id=="swingMain" or id=="swingOff" or id=="swingRanged" then self.scene.text:SetText((id=="swingMain" and "Main hand" or id=="swingOff" and "Off hand" or "Ranged").."     2.4 s")
     elseif id=="units" then self.scene.text:SetText("Player\n2,450 / 3,000")
+    elseif id=="threatMeter" then self.scene.text:SetText("Tankadin          100%\nYou                   82%")
+    elseif id=="damageMeter" then self.scene.text:SetText("Yourname        12.4K\nPartymember      9.8K")
     else
         local elapsed=self.scene.elapsed or 0
         if id=="cooldowns" then
@@ -112,7 +114,7 @@ function F:UpdateScene(path)
                 self.scene.icon:SetVertexColor(1,1,1)
             else
                 local heal=elapsed>=3
-                self.scene.text:SetText(heal and "+2,450" or "−1,280")
+                self.scene.text:SetText(heal and "+2,450" or "-1,280")
                 self.scene.text:SetTextColor(heal and .2 or 1,heal and 1 or .3,.2)
                 self.scene.text:SetAlpha(1-(elapsed%3)/3)
                 self.scene.text:ClearAllPoints(); self.scene.text:SetPoint("LEFT",98,(elapsed%3)*12-12)

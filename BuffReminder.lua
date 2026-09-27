@@ -371,6 +371,7 @@ end
 function Reminder:Refresh(cachedSpells)
     local s=self:Settings()
     if self:Suppressed() then
+        self.wasSuppressed=true
         self.missing={}
         if self.badge then self.badge:Hide();self.groupBadge:Hide() end
         -- Notices pause on flights, while dead or in combat, but the settings
@@ -378,6 +379,10 @@ function Reminder:Refresh(cachedSpells)
         if self.frame then self:RefreshMenu(cachedSpells or self.learnedCache) end
         return
     end
+    -- Back from combat, a flight or death: show missing buffs again with a
+    -- fresh timer. The countdown kept running while notices were paused, so
+    -- without this a buff that dropped earlier stayed hidden after combat.
+    if self.wasSuppressed then self.wasSuppressed=nil; self.notices=nil end
     local learned=cachedSpells or self:Learned()
     self.learnedCache=learned
     local currentSpec=self:CurrentSpec()
@@ -452,11 +457,11 @@ end
 function Reminder:Apply()
     if FT.modules.RankMarker and self.markerApplied~=self:Settings().rankMarker then
         self.markerApplied=self:Settings().rankMarker; FT.modules.RankMarker:Apply()
-    elseif FT.modules.RankMarker and self:Settings().rankMarker then FT.modules.RankMarker:Queue() end
+    end
     if not self.badge then
         local badge=CreateFrame("Button","ForeverToolsBuffReminder",UIParent)
         self.badge=badge;badge:SetSize(285,34);badge:SetPoint("TOP",UIParent,"TOP",0,-115)
-        badge:SetFrameStrata("LOW");FT:Panel(badge)
+        badge:SetFrameStrata("LOW");FT:Panel(badge);FT:MeterSkin(badge)
         badge.icon=badge:CreateTexture(nil,"ARTWORK");badge.icon:SetSize(22,22);badge.icon:SetPoint("LEFT",8,0)
         badge.text=FT:Label(badge,"",13);badge.text:SetPoint("LEFT",badge.icon,"RIGHT",8,0);badge.text:SetWidth(242)
         badge:RegisterForClicks("LeftButtonUp","RightButtonUp")
@@ -474,7 +479,7 @@ function Reminder:Apply()
             if self.elapsed>=5 then self.elapsed=0;self.cycle=self.cycle%math.max(1,#self.missing)+1;self.groupCycle=(self.groupCycle or 1)%math.max(1,#(self.groupMissing or {}))+1;self:Refresh() end
         end)
         local group=CreateFrame("Button","ForeverToolsGroupBuffReminder",UIParent);self.groupBadge=group
-        group:SetSize(285,34);group:SetFrameStrata("LOW");FT:Panel(group)
+        group:SetSize(285,34);group:SetFrameStrata("LOW");FT:Panel(group);FT:MeterSkin(group)
         group.icon=group:CreateTexture(nil,"ARTWORK");group.icon:SetSize(22,22);group.icon:SetPoint("LEFT",8,0)
         group.text=FT:Label(group,"",13);group.text:SetPoint("LEFT",group.icon,"RIGHT",8,0);group.text:SetWidth(242)
         group:RegisterForClicks("LeftButtonUp","RightButtonUp")
@@ -560,8 +565,8 @@ function Reminder:RefreshMenu(learned)
     -- holds the optional extras. Each section has a heading and a short hint.
     local function place(control,x,top) control:ClearAllPoints();control:SetPoint("TOPLEFT",self.frame,"TOPLEFT",x,-top) end
     local L,R=24,580
-    local function section(key,x,top) local h=self.sections[key]; place(h.title,x,top); place(h.hint,x,top+26); if h.line then place(h.line,x,top-12) end; return top+54 end
-    local y=section("self",L,98)
+    local function section(key,x,top) local h=self.sections[key]; place(h.title,x,top); if h.line then place(h.line,x,top-12) end; return top+32 end
+    local y=section("self",L,66)
     place(self.toggle,L,y);y=y+46
     place(self.specChoice,L,y);y=y+40
     -- Buffs grouped under small headings (Blessings, Auras & stances, ...),
@@ -587,9 +592,14 @@ function Reminder:RefreshMenu(learned)
         place(self.mainDropdown,L,y);place(self.offDropdown,L,y+38);y=y+80
     end
     place(self.whereRows.selfWhere.label,L,y+9);self:PlaceWhere("selfWhere",L,y);y=y+40
-    place(self.selfColorButton,L,y);y=y+36
+    place(self.selfColorButton,L,y);y=y+40
+    if self.cooldownButton then
+        local cd=FT.modules.CooldownReminder
+        self.cooldownButton.label:SetText("Cooldown reminders: "..(cd and cd:Settings().enabled and "On" or "Off").." — settings")
+        place(self.cooldownButton,L,y);y=y+40
+    end
     local left=y
-    y=section("group",R,98)
+    y=section("group",R,66)
     place(self.groupToggle,R,y);y=y+42
     place(self.whereRows.groupWhere.label,R,y+9);self:PlaceWhere("groupWhere",R,y);y=y+40
     place(self.groupColorButton,R,y);y=y+56
@@ -617,8 +627,6 @@ end
 function Reminder:Open()
     if not self.frame then
         local frame=FT:Window("ForeverToolsBuffReminders","Buff reminders",1116,640);self.frame=frame
-        local intro=FT:Label(frame,"Start on the left: turn reminders on and pick the buffs to watch. Everything on the right is optional.",14);intro:SetPoint("TOPLEFT",24,-62)
-        intro:SetTextColor(.78,.74,.86)
         self.sections={}
         for key,text in pairs({self={"Your buffs","Turn on, then choose the buffs to watch for each talent tree."},
             group={"Group buffs","A notice when group members are missing your group buffs."},
@@ -627,14 +635,14 @@ function Reminder:Open()
             local h={}
             h.title=FT:Label(frame,text[1],16,true); h.title:SetTextColor(.82,.68,1)
             FT:SectionHeading(h.title,({self="Spell_Holy_WordFortitude",group="Spell_Holy_PrayerOfFortitude",rank="INV_Misc_Book_07",look="Ability_Rogue_Sprint"})[key],300)
-            h.hint=FT:Label(frame,text[2],12); h.hint:SetTextColor(.66,.57,.77); h.hint:SetWidth(512)
+            h.tip=text[2]
             if key=="rank" or key=="look" then
                 h.line=frame:CreateTexture(nil,"ARTWORK"); h.line:SetColorTexture(.30,.23,.46,.6); h.line:SetSize(512,1)
             end
             self.sections[key]=h
         end
         self.columnLine=frame:CreateTexture(nil,"ARTWORK"); self.columnLine:SetColorTexture(.30,.23,.46,.6); self.columnLine:SetWidth(1)
-        self.toggle=FT:QuietButton(frame,"",512,36,"buffs");self.toggle:SetPoint("TOPLEFT",24,-96)
+        self.toggle=FT:AccentButton(frame,"",512,34,"buffs");self.toggle:SetPoint("TOPLEFT",24,-96)
         self.toggle:SetScript("OnClick",function() local s=self:Settings();s.enabled=not s.enabled;self:Apply() end)
         FT:Tooltip(self.toggle,"Self-buff reminders","Shows a small notice at the top of the screen when one of your buffs is missing. Hidden in combat, on flights and while dead. It never casts anything for you.")
         self.specChoice=FT:Dropdown(frame,512,function() return self:SpecChoices() end,function(value)
@@ -755,8 +763,10 @@ function Reminder:Open()
             FT:SetSelected(self.selfPreview,false);FT:SetSelected(self.groupPreview,false)
             self:SetMoving(false)
         end)
-        local info=FT:Info(frame,"How reminders work","Turn reminders on and pick your buffs. A small notice appears when one is missing. Notices hide in combat, on flights and while dead. Left-click a notice to dismiss it, right-click it for settings.")
-        info:SetPoint("TOPRIGHT",-22,-62)
+        self.cooldownButton=FT:QuietButton(frame,"Cooldown reminders — settings",512,32,"Spell_Nature_TimeStop")
+        self.cooldownButton:SetScript("OnClick",function() FT:OpenModule("CooldownReminder") end)
+        FT:Tooltip(self.cooldownButton,"Cooldown reminders","A short notice to use a ready racial, trinket or long cooldown on tough targets and big pulls. Off by default.")
+        FT:PageInfo(frame,"Buff reminders","Start on the left: turn reminders on and choose the buffs to watch for each talent tree. Everything on the right is optional: group buffs (a notice when group members miss your group buffs), low ranks (spells cast at a lower rank than you know), and how the notices look.\n\nA small notice appears when one is missing. Notices hide in combat, on flights and while dead. Left-click a notice to dismiss it, right-click it for settings.")
     end
     self.editSpec=self:CurrentSpec()
     self:Apply();self.frame:Show()
@@ -777,11 +787,14 @@ events:SetScript("OnEvent",function(_,event,unit,castGUID,spellID)
         if not safe(unit) or unit~="player" or not safe(spellID) then return end
         if event=="UNIT_SPELLCAST_START" then FT.BuffRanks:BeginCast(spellID);return end
         FT.BuffRanks:FinishCast(spellID)
+        if InCombatLockdown() then Reminder.pendingCombat=true; return end
         C_Timer.After(.6,function() if FT.dbReady then Reminder:Apply() end end)
         return
     end
     if event=="UNIT_AURA" and (not safe(unit) or type(unit)~="string" or (unit~="player" and not unit:match("^party%d+$") and not unit:match("^raid%d+$"))) then return end
     if event=="PLAYER_REGEN_DISABLED" then if Reminder.badge then Reminder.badge:Hide();Reminder.groupBadge:Hide() end;return end
+    -- Notices are paused in combat, so skip the work and check once afterwards.
+    if InCombatLockdown() and event~="PLAYER_REGEN_ENABLED" then Reminder.pendingCombat=true; return end
     -- Aura changes come in bursts (many per second in a raid): check at most
     -- four times a second. Other events are handled on the next frame.
     Reminder:QueueApply(event=="UNIT_AURA" and .25 or 0)

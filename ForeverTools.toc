@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: ForeverTools
 ## Notes: A toolkit of customizable quality-of-life tools for WoW: Forever.
-## Version: 0.14.4
+## Version: 0.14.7
 ## SavedVariables: ForeverToolsDB, KrilarToolsDB
 
 Core.lua
@@ -31,11 +31,14 @@ MinimapIcons.lua
 FlightDefaults.lua
 FlightTimer.lua
 CustomKeybinds.lua
+SmartKey.lua
 BuffRanks.lua
 BuffReminder.lua
+CooldownReminder.lua
 ExtraSkins.lua
 
 SkinUI.lua
+SkinTemplates.lua
 RankMarker.lua
 Leveling.lua
 DispelGlow.lua
@@ -43,8 +46,13 @@ QuickBind.lua
 Vendor.lua
 FastLoot.lua
 QuestTracker.lua
+RareAlert.lua
+Threat.lua
+FireAlert.lua
 ChatLinks.lua
 BugReport.lua
+Probe.lua
+Profiler.lua
 Search.lua
 Changelog.lua
 Onboarding.lua

@@ -1,6 +1,6 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 0.14.4.**
+**Quality-of-life tools for WoW: Forever — version 0.14.7.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
 one place. Everything starts **off**, so the game looks like Blizzard's until you
@@ -16,6 +16,7 @@ the home window. Use **`/rl`** to reload the UI.
   menu, minimap, XP/reputation bars, stance and totem bars, gryphons and unit
   frames. Choose a preset for all areas or adjust each area separately, with
   border, fill and transparency controls and separate rare/elite switches.
+  Save your own looks as skin templates and switch between them.
 - **Fonts and cooldowns:** Adjust supported fonts, sizes, outlines and colors,
   including cooldown numbers.
 - **Unit-frame colors:** Class-colored health bars for player, target,
@@ -44,13 +45,25 @@ the home window. Use **`/rl`** to reload the UI.
   sliders; movable, and also added to the XP bar tooltip.
 - **Flight countdown:** Destination and estimated time until landing. Completed
   flights teach new routes and replace bundled estimates.
+- **Threat:** a threat meter styled like and placed next to the game's damage
+  meter, and your threat % above your target (Combat). Fonts
+  can change the threat meter's and the damage meter's text.
+- **Cooldown reminders:** a short nudge to use a ready racial, trinket or long
+  cooldown on elites, rares and big pulls (Buff reminders).
+- **Smart interact key:** one key that uses RestedXP's quest item or target
+  button when the guide shows one, and is Interact with target otherwise
+  (Keybinds).
+- **Standing in fire:** a warning sound when you keep taking magic damage in
+  a steady rhythm, like fire or lava on the ground (Combat).
+- **Rare alerts:** a glowing notice and optional sound when a rare appears.
+  Click it to target the rare, out of combat (Combat).
 - **Quest objectives:** keep the objective tracker collapsed or open after
   login and reload, or hide it altogether (System → Gameplay).
 - **Faster looting:** With auto loot on, take everything the moment a corpse
   opens. Off by default.
 - **Merchant helpers:** Optional auto-sell of grey items (they can be bought
   back, as usual the last 12) and auto-repair, with guild funds if allowed,
-  and a one-line summary.
+  and a one-line summary (System → Merchant).
 - **Minimap:** ForeverTools button, coordinates, and an optional launcher that
   groups other addons' minimap buttons into one menu.
 - **Profiles:** Named profiles shared by the characters that use them,
@@ -62,10 +75,11 @@ the home window. Use **`/rl`** to reload the UI.
   mouse-wheel casting on mouseover, a Lua-error toggle and a copyable bug report.
 - **Where things are:** Fonts, unit-frame colors, skins and chat are under
   **Appearance**. FPS counter, leveling stats and flight countdown are under
-  **System → On-screen info**; quick keybinds and mouse-wheel casting under
-  **System → Keybinds**.
-- **Menus:** every settings window has Back and a close X; pop-ups have only
-  the X. A short What's new panel appears after each update (can be turned off
+  **System → On-screen info**. Quick keybinds, mouse-wheel casting and the
+  smart interact key are under **Keybinds**, and the threat meter, rare alerts
+  and standing-in-fire sound under **Combat**, both on the main menu.
+- **Menus:** every settings window has Back and a close X, with an (i) icon
+  explaining the page; pop-ups have only the X. A short What's new panel appears after each update (can be turned off
   in System → General).
 - **Combat-aware menus:** Settings close during combat; requesting the menu in
   combat opens it afterward.
@@ -91,7 +105,8 @@ the home window. Use **`/rl`** to reload the UI.
   **Create** starts a new profile from default settings and switches to it.
   **Default settings** resets the selected profile and returns everything
   ForeverTools changes to Blizzard's defaults, as if the addon was just installed.
-- **Rename** gives the selected profile the name typed in the box.
+- **Rename** (next to Load, Save and Delete) renames the profile you chose; the
+  box starts with its current name.
 - Saving a profile also remembers where your macros sit on the action bars,
   separately for each class. Loading or importing the profile on that class
   offers to put them back, adding any macros you are missing (outside combat).
@@ -116,13 +131,13 @@ the home window. Use **`/rl`** to reload the UI.
 
 ## Quick keybinds
 
-- Type **`/kb`** or use **System → Keybinds → Quick keybind mode**. Hover any
+- Type **`/kb`** or use **Keybinds → Quick keybind mode**. Hover any
   action button and press a key to bind it; press Escape on a bound slot to
   unbind it. This opens Blizzard's own quick keybind mode.
 - A snapshot of your keybinds is taken when you start. **Take snapshot** saves
   more points while you edit, and **Revert to snapshot** returns to any of them.
   Finish with **Save** or **Discard**.
-- **Restore keybinds** (System → Keybinds) lists your last 10 saved sessions.
+- **Restore keybinds** (Keybinds) lists your last 10 saved sessions.
   Hover one to see what it changed, such as "Action Button 1: 1 → Q"; choose it
   to put back the keybinds from before it. Only changed keys are stored, on
   this computer, and never in profile exports. Keybinds change only outside
@@ -130,7 +145,7 @@ the home window. Use **`/rl`** to reload the UI.
 
 ## Mouse-wheel casting
 
-- Open **/ft → System → Keybinds → Mouse-wheel casting**, click a spell in the list, then scroll up or
+- Open **/ft → Keybinds → Mouse-wheel casting**, click a spell in the list, then scroll up or
   down to bind it (binding a spell turns casting on). A click or Esc
   cancels; scrolling over the list without clicking only pages it.
 - Scroll while hovering a unit (unit frames or characters in the world) to cast

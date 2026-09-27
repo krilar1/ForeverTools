@@ -60,7 +60,9 @@ function S:TargetRim(frame,key)
     local portraitLeft=portrait and portrait:IsShown() and portrait:GetLeft()
     local barRight=bar:GetRight()
     if portraitLeft and barRight and (not issecretvalue or not (issecretvalue(portraitLeft) or issecretvalue(barRight))) then
-        right=math.max(-12,math.min(2,math.floor(portraitLeft-barRight-4)))
+        -- 1 px short of the ring: close enough that the top and bottom edges
+        -- of the backing reach the portrait like on the left side.
+        right=math.max(-12,math.min(2,math.floor(portraitLeft-barRight-1)))
     end
     if rim.rightOffset~=right then
         rim.rightOffset=right
@@ -118,7 +120,7 @@ function S:PaintArtwork(texture,record)
         and not ((elite or classification=="elite" or classification=="worldboss" or classification=="rareelite") and not s.elites))
     local active=s[record.key] and allowed
     if texture.SetDesaturated and (record.key=="micro" or record.key=="bags" or record.key=="bagWindows" or record.key=="gryphons") then texture:SetDesaturated(active or record.desaturated or false) end
-    if active and (record.bagSlotBorder or (record.hideDecoration and s.hideArt)) then
+    if active and (record.bagSlotBorder or (record.hideDecoration and (record.key=="bagWindows" and s.hideSlotArt or record.key~="bagWindows" and s.hideArt))) then
         texture:SetVertexColor(1,1,1,0)
     elseif record.background then
         if active then
@@ -197,8 +199,15 @@ function S:BagWindow(frame)
     if not self.bagWindowHooks then self.bagWindowHooks={} end
     if frame.HookScript and not self.bagWindowHooks[frame] then
         self.bagWindowHooks[frame]=true
-        frame:HookScript("OnShow",function() if FT.dbReady then self:Queue() end end)
-        if hooksecurefunc and frame.UpdateItems then hooksecurefunc(frame,"UpdateItems",function() if FT.dbReady then self:Queue() end end) end
+        -- Only this bag window needs redoing, once per burst, and only while
+        -- the Bag menu skin is on (turning it off repaints everything once).
+        local key="bagArt"..tostring(frame)
+        local function bags()
+            if not FT.dbReady or not self:Settings().bagWindows then return end
+            FT:Coalesce(key,function() if not InCombatLockdown() then self:BagWindow(frame) end end,.1)
+        end
+        frame:HookScript("OnShow",bags)
+        if hooksecurefunc and frame.UpdateItems then hooksecurefunc(frame,"UpdateItems",bags) end
     end
 end
 function S:BagSlot(button,key)
@@ -247,15 +256,32 @@ function S:BagSlot(button,key)
             record.slotFill:SetAllPoints(anchor)
         end
         local pref=self:Area(key)
-        record.slotFill:SetVertexColor(.6,.63,.68,pref.slotOpacity)
+        record.slotFill:SetVertexColor(pref.slotColor[1],pref.slotColor[2],pref.slotColor[3],pref.slotOpacity)
         record.slotFill:SetShown(pref[key])
+        -- With the slot art hidden, frame each slot with the game's own soft
+        -- action-button frame (like buffs), tinted in the border color,
+        -- instead of thin square lines.
+        if not record.frameArt and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("UI-HUD-ActionBar-IconFrame") then
+            record.frameArt=button:CreateTexture(nil,"ARTWORK",nil,7)
+            record.frameArt:SetAtlas("UI-HUD-ActionBar-IconFrame")
+            record.frameArt:SetPoint("TOPLEFT",anchor,"TOPLEFT",-2,2); record.frameArt:SetPoint("BOTTOMRIGHT",anchor,"BOTTOMRIGHT",2,-2)
+        end
+        if record.frameArt then
+            local on=pref[key] and pref.hideSlotArt
+            record.frameArt:SetShown(on and true or false)
+            if on then record.frameArt:SetVertexColor(pref.borderColor[1],pref.borderColor[2],pref.borderColor[3],1); record.frameArt:SetAlpha(pref.borderOpacity) end
+        end
     end
     if key=="bags" and not record.updateHooked and hooksecurefunc and button.UpdateTextures then
         record.updateHooked=true
-        hooksecurefunc(button,"UpdateTextures",function() if FT.dbReady then self:Queue() end end)
+        -- Looting updates the bag bar buttons: redo just that button.
+        hooksecurefunc(button,"UpdateTextures",function()
+            if not FT.dbReady or not self:Settings().bags or InCombatLockdown() then return end
+            FT:Coalesce("bagButton"..tostring(button),function() if not InCombatLockdown() then self:BagFill(button); self:BagSlot(button,"bags") end end,.1)
+        end)
     end
     local s=self:Area(key)
-    for _,edge in ipairs(record.edges) do edge:SetVertexColor(s.borderColor[1],s.borderColor[2],s.borderColor[3],s.borderOpacity);edge:SetShown(s[key] and (key=="bags" or s.hideArt)) end
+    for _,edge in ipairs(record.edges) do edge:SetVertexColor(s.borderColor[1],s.borderColor[2],s.borderColor[3],s.borderOpacity);edge:SetShown(s[key] and (key=="bags" or (s.hideSlotArt and not record.frameArt))) end
     if key=="bagWindows" then
         if C_Container and C_Container.GetContainerItemInfo and button.GetBagID and button.GetID then
             local ok,info=pcall(C_Container.GetContainerItemInfo,button:GetBagID(),button:GetID())
@@ -268,7 +294,7 @@ function S:PaintEmptyBagSlot(button,record)
     local icon=button.icon or button.Icon
     if not icon or not icon.GetAlpha or not icon.SetAlpha then return end
     local s=self:Area(record.key)
-    local hide=s[record.key] and s.hideArt and record.empty==true
+    local hide=s[record.key] and s.hideSlotArt and record.empty==true
     if hide and not record.iconHidden then record.iconAlpha=icon:GetAlpha();record.iconHidden=true;icon:SetAlpha(0)
     elseif not hide and record.iconHidden then icon:SetAlpha(record.iconAlpha or 1);record.iconHidden=false end
 end
@@ -289,16 +315,60 @@ function S:ApplyGryphons()
     self:TintArtwork(MainMenuBarLeftEndCap,"gryphons",true)
     self:TintArtwork(MainMenuBarRightEndCap,"gryphons",true)
 end
-function S:ApplyArtwork()
-    self:ApplyBagWindows();self:ApplyGryphons()
-    -- Totem bar: the element-colored square frames (earth/fire/water/air) on
-    -- the multi-cast bar and the round borders on the player totem timers
-    -- follow the Stance / totem area color, like other stance-bar borders.
+-- Player, target and focus frame art only: what changes when you pick a
+-- new target. Much lighter than redoing every skinned area.
+function S:ApplyUnitArtwork()
+    for _,entry in ipairs({{"PlayerFrame","player"},{"TargetFrame","target"},{"TargetFrameToT","tot"},{"FocusFrame","focus"},{"FocusFrameToT","focustarget"}}) do
+        local frame=_G[entry[1]]; local key=entry[2]
+        self:TintArtwork(_G[entry[1].."Texture"],key); self:TintArtwork(_G[entry[1].."TextureFrameTexture"],key)
+        if frame then
+            self:ArtworkFrame(frame,key); self:ArtworkFrame(frame.PlayerFrameContainer,key); self:ArtworkFrame(frame.TargetFrameContainer,key); self:ArtworkFrame(frame.TextureFrame,key)
+            if key=="target" or key=="focus" then self:TargetRim(frame,key) end
+            local content=frame.PlayerFrameContent or frame.TargetFrameContent
+            local main=content and (content.PlayerFrameContentMain or content.TargetFrameContentMain)
+            if main then self:TintArtwork(main.LevelBackgroundCircle,key); self:TintArtwork(main.PvpBackgroundCircle,key) end
+            local contextual=content and (content.TargetFrameContentContextual or content.PlayerFrameContentContextual)
+            if contextual then self:TintArtwork(contextual.PvpBackgroundCircle,key);self:TintArtwork(contextual.BossIcon,key) end
+        end
+    end
+end
+-- Totem bar: the element-colored square frames (earth/fire/water/air) on
+-- the multi-cast bar and the round borders on the player totem timers
+-- follow the Stance / totem area color, like other stance-bar borders.
+function S:ApplyTotemArtwork()
     for i=1,4 do local slot=_G["MultiCastSlotButton"..i]; if slot then self:TintArtwork(slot.overlayTex,"stances") end end
     for i=1,12 do local button=_G["MultiCastActionButton"..i]; if button then self:TintArtwork(button.overlayTex,"stances") end end
     if TotemFrame and TotemFrame.GetChildren then
         for _,button in ipairs({TotemFrame:GetChildren()}) do self:TintArtwork(button.Border,"stances") end
     end
+end
+-- XP / reputation bar dividers only: what changes when the watched
+-- reputation or XP bar switches.
+function S:ApplyXPArtwork()
+    local function xpDecorations(frame,depth)
+        if not frame then return end
+        for _,field in ipairs({"BarFrameTexture","Tick","TickTexture","Divider","DividerTexture","Separator","SeparatorTexture"}) do self:TintArtwork(frame[field],"xp") end
+        for i=1,40 do self:TintArtwork(frame["XpDiv"..i],"xp");self:TintArtwork(frame["Divider"..i],"xp") end
+        if frame.GetRegions then
+            for _,region in ipairs({frame:GetRegions()}) do
+                if region.GetObjectType and region:GetObjectType()=="Texture" then
+                    local name=region.GetName and region:GetName() or ""
+                    local art=region.GetAtlas and region:GetAtlas() or region.GetTexture and region:GetTexture() or ""
+                    local id=(type(name)=="string" and name or "").." "..(type(art)=="string" and art or "")
+                    id=id:lower()
+                    if id:find("divider",1,true) or id:find("separator",1,true) or id:find("xpdiv",1,true) or id:find("tick",1,true) then self:TintArtwork(region,"xp") end
+                end
+            end
+        end
+        if depth>0 and frame.GetChildren then for _,child in ipairs({frame:GetChildren()}) do xpDecorations(child,depth-1) end end
+    end
+    for _,name in ipairs({"MainStatusTrackingBarContainer","SecondaryStatusTrackingBarContainer","StatusTrackingBarManager","MainMenuExpBar"}) do
+        xpDecorations(_G[name],2)
+    end
+end
+function S:ApplyArtwork()
+    self:ApplyBagWindows();self:ApplyGryphons()
+    self:ApplyTotemArtwork()
     self:TintArtwork(MinimapCompassTexture,"minimap"); self:TintArtwork(MinimapCompassTextureUnderlay,"minimap"); self:TintArtwork(MinimapBorder,"minimap")
     if MinimapCluster then self:ArtworkFrame(MinimapCluster.BorderTop,"minimap") end
     self:ArtworkFrame(MicroMenu,"micro",true); self:ArtworkFrame(BagsBar,"bags",true); self:ArtworkFrame(MainMenuBarBackpackButton,"bags")
@@ -348,7 +418,7 @@ function S:ApplyArtwork()
             end
         end
         if not self.bagLayoutHooked and hooksecurefunc and BagsBar.UpdateDividers then
-            self.bagLayoutHooked=true;hooksecurefunc(BagsBar,"UpdateDividers",function() self:Queue() end)
+            self.bagLayoutHooked=true;hooksecurefunc(BagsBar,"UpdateDividers",function() if FT.dbReady then FT:Coalesce("allArt",function() if not InCombatLockdown() then self:ApplyArtwork() end end,.1) end end)
         end
     end
     local bagButtons={}
@@ -384,39 +454,8 @@ function S:ApplyArtwork()
             self:TintArtwork(button.SlotHighlightTexture,"bags")
         end
     end
-    for _,entry in ipairs({{"PlayerFrame","player"},{"TargetFrame","target"},{"TargetFrameToT","tot"},{"FocusFrame","focus"},{"FocusFrameToT","focustarget"}}) do
-        local frame=_G[entry[1]]; local key=entry[2]
-        self:TintArtwork(_G[entry[1].."Texture"],key); self:TintArtwork(_G[entry[1].."TextureFrameTexture"],key)
-        if frame then
-            self:ArtworkFrame(frame,key); self:ArtworkFrame(frame.PlayerFrameContainer,key); self:ArtworkFrame(frame.TargetFrameContainer,key); self:ArtworkFrame(frame.TextureFrame,key)
-            if key=="target" or key=="focus" then self:TargetRim(frame,key) end
-            local content=frame.PlayerFrameContent or frame.TargetFrameContent
-            local main=content and (content.PlayerFrameContentMain or content.TargetFrameContentMain)
-            if main then self:TintArtwork(main.LevelBackgroundCircle,key); self:TintArtwork(main.PvpBackgroundCircle,key) end
-            local contextual=content and (content.TargetFrameContentContextual or content.PlayerFrameContentContextual)
-            if contextual then self:TintArtwork(contextual.PvpBackgroundCircle,key);self:TintArtwork(contextual.BossIcon,key) end
-        end
-    end
-    local function xpDecorations(frame,depth)
-        if not frame then return end
-        for _,field in ipairs({"BarFrameTexture","Tick","TickTexture","Divider","DividerTexture","Separator","SeparatorTexture"}) do self:TintArtwork(frame[field],"xp") end
-        for i=1,40 do self:TintArtwork(frame["XpDiv"..i],"xp");self:TintArtwork(frame["Divider"..i],"xp") end
-        if frame.GetRegions then
-            for _,region in ipairs({frame:GetRegions()}) do
-                if region.GetObjectType and region:GetObjectType()=="Texture" then
-                    local name=region.GetName and region:GetName() or ""
-                    local art=region.GetAtlas and region:GetAtlas() or region.GetTexture and region:GetTexture() or ""
-                    local id=(type(name)=="string" and name or "").." "..(type(art)=="string" and art or "")
-                    id=id:lower()
-                    if id:find("divider",1,true) or id:find("separator",1,true) or id:find("xpdiv",1,true) or id:find("tick",1,true) then self:TintArtwork(region,"xp") end
-                end
-            end
-        end
-        if depth>0 and frame.GetChildren then for _,child in ipairs({frame:GetChildren()}) do xpDecorations(child,depth-1) end end
-    end
-    for _,name in ipairs({"MainStatusTrackingBarContainer","SecondaryStatusTrackingBarContainer","StatusTrackingBarManager","MainMenuExpBar"}) do
-        xpDecorations(_G[name],2)
-    end
+    self:ApplyUnitArtwork()
+    self:ApplyXPArtwork()
     for texture,record in pairs(self.artwork) do self:PaintArtwork(texture,record) end
 end
 local apply=S.Apply
@@ -429,7 +468,24 @@ local artworkEvents=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_TARGET_CHANGED","PLAYER_FOCUS_CHANGED","UNIT_TARGET","UNIT_CLASSIFICATION_CHANGED","UPDATE_EXPANSION_LEVEL","UPDATE_FACTION","BAG_UPDATE_DELAYED"}) do artworkEvents:RegisterEvent(event) end
 -- Unit events for other units (party, nameplates) do not change our artwork.
 local artworkUnits={player=true,target=true,focus=true,targettarget=true,focustarget=true}
+-- Each event only redoes the art it can change, once, out of combat (the
+-- end of combat redoes everything anyway).
 artworkEvents:SetScript("OnEvent",function(_,event,unit)
     if (event=="UNIT_TARGET" or event=="UNIT_CLASSIFICATION_CHANGED") and not artworkUnits[unit] then return end
-    if FT.dbReady then S:Queue() end
+    if not FT.dbReady or InCombatLockdown() then return end
+    -- Open bag windows redo themselves when their items update (hooked above).
+    if event=="BAG_UPDATE_DELAYED" then return
+    elseif event=="UPDATE_FACTION" or event=="UPDATE_EXPANSION_LEVEL" then
+        -- Reputation changes often (every kill for some factions). Repaint the
+        -- XP bar art we know; look for new dividers at most every 30 seconds.
+        if S:Settings().xp then FT:Coalesce("xpArt",function()
+            if InCombatLockdown() then return end
+            local now=GetTime()
+            if not S.xpScanned or now-S.xpScanned>=30 then S.xpScanned=now; S:ApplyXPArtwork()
+            else for texture,record in pairs(S.artwork) do if record.key=="xp" then S:PaintArtwork(texture,record) end end end
+        end,.5) end
+    else
+        local s=S:Settings()
+        if s.player or s.target or s.tot or s.focus or s.focustarget then FT:Coalesce("unitArt",function() if not InCombatLockdown() then S:ApplyUnitArtwork() end end) end
+    end
 end)
