@@ -69,15 +69,17 @@ local pages={
         {"lootDefault","Use Blizzard's loot-roll position","reset","Forget your moved position and let the game place loot rolls again."},
         {"objectives","Quest objectives","INV_Misc_Note_01","Choose: Default (the game's own behavior), Collapsed on login, Open on login, or Hidden. Collapsed and Open are applied when you log in or reload; opening or closing it yourself is kept until then. Hidden keeps the tracker off the screen."},
     }},
-    {key="SystemMerchant",title="Merchant",icon="INV_Misc_Coin_02",description="Selling grey items and repairing when you visit a merchant.",items={
+    {key="SystemMerchant",title="Merchant",icon="INV_Misc_Coin_02",description="Selling grey (and optionally white) items and repairing when you visit a merchant.",items={
         {"autoSell","Auto-sell grey items","generic","Sell all grey (junk) items when you open a merchant. They go to the Buyback tab like items you sell yourself (it keeps the last 12)."},
+        {"sellWhite","Also sell white gear","generic","When auto-sell runs, also sell white (common) weapons and armor. Never sold: profession tools (mining pick, skinning knife, hammer, spanners, fishing poles), shirts, tabards, bags, rings, necklaces, trinkets, food, drink, reagents, ammo and trade goods. Sold items can be bought back (the last 12)."},
         {"autoRepair","Auto-repair","generic","Repair all your gear when you visit a merchant who can repair."},
         {"guildRepair","Use guild funds for repairs first","party","When auto-repair runs, use guild bank repair money if your guild allows it, otherwise your own gold."},
     }},
-    {key="SystemCombat",home=true,title="Combat",icon="Ability_Warrior_DefensiveStance",description="Threat meter, rare alerts and the standing-in-fire sound.",items={
+    {key="SystemCombat",home=true,title="Combat",icon="Ability_Warrior_DefensiveStance",description="Threat meter, rare alerts, the standing-in-fire sound and totems.",items={
         {"threat","Threat meter settings","Ability_Warrior_DefensiveStance","A threat meter next to the damage meter, and your threat % above your target. Off by default."},
         {"rareAlert","Rare alerts settings","Ability_Hunter_SniperShot","A notice with a soft glow (and optional sound) when a rare appears on your minimap or nearby. Off by default."},
         {"fireAlert","Standing in fire settings","Spell_Fire_Fire","A warning sound when you keep taking magic damage in a steady rhythm, like standing in fire or lava. Works without setup; choose the sound and loudness in its settings. Off by default."},
+        {"totems","Totems settings","Spell_Nature_StoneSkinTotem","Shaman totem tools, starting with each totem's 30-yard reach shown on the minimap. Off by default."},
     }},
     {key="SystemKeybinds",home=true,title="Keybinds",icon="keybind",description="Quick keybind mode, restoring earlier keybinds, mouse-wheel casting and the smart interact key.",items={
         {"quickKeybind","Quick keybind mode (/kb)","keybind","Hover any action button and press a key to bind it; Escape on a bound slot unbinds it. A snapshot of your keybinds is taken first, so you can save, revert to a snapshot or discard. You can also type /kb in chat."},
@@ -85,10 +87,11 @@ local pages={
         {"wheelCasting","Mouse-wheel casting","mouseover","Bind a spell to scrolling up or down, cast on the unit under your mouse. Anywhere else the wheel zooms the camera."},
         {"smartKey","Smart interact key settings","keybind","One key for questing: uses RestedXP's quest item or target button when the guide shows one, and Interact with target the rest of the time (always while a dialog is open). Off by default."},
     }},
-    {key="SystemDisplay",title="On-screen info",icon="fps",description="FPS counter, leveling stats and the flight timer.",items={
+    {key="SystemDisplay",title="On-screen info",icon="fps",description="FPS counter, leveling stats, the flight timer and moving on-screen elements.",items={
         {"fps","FPS counter settings","fps","Show a small, movable frames-per-second counter."},
         {"leveling","Leveling stats settings","fps","XP per hour, time to level, kills to level and more, on a small movable line and in the XP bar tooltip."},
         {"flightTimer","Flight timer settings","fps","Turn the flight countdown on or off, preview and move it, and change its font, size, outline and color."},
+        {"movers","Move elements settings","move","Move all on-screen elements at once, choose whether unused ones show while moving, and reset positions."},
     }},
     {key="SystemTroubleshooting",title="Troubleshooting",icon="errors",description="Lua error display and a copyable bug report.",items={
         {"scriptErrors","Show Lua errors","errors","Show or hide Lua error popups. Hiding them does not fix the errors."},
@@ -96,7 +99,7 @@ local pages={
     }},
 }
 System.pages=pages
-local toggles={fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,scriptErrors=true}
+local toggles={fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,sellWhite=true,scriptErrors=true}
 function System:Values()
     local s=self:Settings()
     local getter=(C_CVar and C_CVar.GetCVar) or GetCVar
@@ -104,7 +107,7 @@ function System:Values()
     if coords==nil then coords=not getter or getter("minimapShowPlayerCoords")=="1" end
     return {welcome=FT.db.welcome==true,whatsNew=s.hideWhatsNew~=true,minimap=FT.db.minimapEnabled~=false,coordinates=coords,
         minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=getter and getter("scriptErrors")=="1",
-        autoRole=s.autoRole==true,fastLoot=s.fastLoot==true,fireAlert=s.fireAlert==true,autoSell=s.autoSell==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true}
+        autoRole=s.autoRole==true,fastLoot=s.fastLoot==true,fireAlert=s.fireAlert==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true}
 end
 function System:Refresh()
     if not self.buttons then return end
@@ -117,6 +120,7 @@ function System:Refresh()
         end
         if key=="scriptErrors" then button:SetEnabled(getter~=nil) end
         if key=="guildRepair" then button:SetEnabled(values.autoRepair); button:SetAlpha(values.autoRepair and 1 or .45) end
+        if key=="sellWhite" then button:SetEnabled(values.autoSell); button:SetAlpha(values.autoSell and 1 or .45) end
         if key=="undoKeybinds" then
             local quick=FT.modules.QuickBind; local has=quick and quick:HasUndo()
             button:SetEnabled(has); button:SetAlpha(has and 1 or .45)
@@ -153,6 +157,10 @@ function System:Refresh()
             local smart=FT.modules.SmartKey
             button.label:SetText("Smart interact key: "..(smart and smart:Settings().enabled and "On" or "Off").." — settings")
         end
+        if key=="totems" then
+            local totems=FT.modules.Totems
+            button.label:SetText("Totems: "..(totems and totems:Settings().range and "On" or "Off").." — settings")
+        end
         if key=="fireAlert" then
             button.label:SetText("Standing in fire: "..(values.fireAlert and "On" or "Off").." — settings")
         end
@@ -182,9 +190,11 @@ function System:Click(key)
     if key=="rareAlert" then FT:OpenModule("RareAlert");return end
     if key=="threat" then FT:OpenModule("Threat");return end
     if key=="fireAlert" then FT:OpenModule("FireAlert");return end
+    if key=="totems" then FT:OpenModule("Totems");return end
     if key=="smartKey" then FT:OpenModule("SmartKey");return end
     if key=="wheelCasting" then FT:OpenModule("CustomKeybinds");return end
     if key=="leveling" then FT:OpenModule("Leveling");return end
+    if key=="movers" then FT:OpenModule("Movers");return end
     if key=="bugReport" then FT.modules.BugReport:Open();return end
     if key=="quickKeybind" then FT.modules.QuickBind:Open();return end
     if key=="undoKeybinds" then
@@ -245,7 +255,9 @@ local function buildPage(page)
                 local b=FT:QuietButton(self.frame,entry[2],452,32,entry[3]); b.title=entry[2]
                 b:SetPoint("TOPLEFT",24,-62-(i-1)*40); System.buttons[key]=b
                 b:SetScript("OnClick",function() System:Click(key) end)
-                FT:Tooltip(b,entry[2],entry[4])
+                -- Items that open their own page say so.
+                local opens={totems=true,fps=true,leveling=true,flightTimer=true,movers=true,rareAlert=true,threat=true,fireAlert=true,wheelCasting=true,smartKey=true}
+                FT:Tooltip(b,entry[2],entry[4]..(opens[key] and "\n\nClick to open its settings page." or ""))
             end
             if page.key=="SystemMinimap" then FT.minimapToggle=System.buttons.minimap end
             if page.key=="SystemGeneral" then FT.welcomeToggle=System.buttons.welcome end
@@ -424,7 +436,7 @@ function System:TooltipLayout(tip)
         else tag="|cffffffff"..tag.."|r" end
         parts.guild=tag
     end
-    parts.target="|cffc9a0ffTarget: None|r"
+    parts.target="|cffffd100Target: None|r"
     -- The native PvP badge occupies the upper-left of a 64px canvas; crop its padding.
     local headingLine=_G[prefix.."TextLeft1"]
     local _,nativeSize=headingLine:GetFont()
@@ -469,7 +481,7 @@ function System:TargetPlayerDisplay(tip,comparison)
     local label=tip.ftTargetYou
     local file,size,flags=line:GetFont()
     label:SetFont(file,size,flags or "")
-    label:SetTextColor(.79,.63,1)
+    label:SetTextColor(1,.82,0)
     label:SetText("Target: |cffff0000You|r")
     label:ClearAllPoints();label:SetPoint("TOPLEFT",line,"TOPLEFT",0,0)
     label:SetAlpha(youAlpha);label:Show()
@@ -498,7 +510,7 @@ function System:TooltipTarget(tip)
         local prefix=tip:GetName() or "GameTooltip"
         local left=index and _G[prefix.."TextLeft"..index]
         if not left then
-            tip:AddLine("Target: Unavailable",.79,.63,1)
+            tip:AddLine("Target: Unavailable",1,.82,0)
             tip.ftTargetLine=tip:NumLines()
             left=_G[prefix.."TextLeft"..tip.ftTargetLine]
         end
@@ -519,7 +531,7 @@ function System:TooltipTarget(tip)
         local right=_G[(tip:GetName() or "GameTooltip").."TextRight"..tip.ftTargetLine]
         if right then right:SetText("") end
         line:SetText("Target: "..colored)
-    else tip:AddLine("Target: "..colored,.79,.63,1); tip.ftTargetLine=tip.NumLines and tip:NumLines() end
+    else tip:AddLine("Target: "..colored,1,.82,0); tip.ftTargetLine=tip.NumLines and tip:NumLines() end
     FT.modules.Tooltip:ApplyTooltip(tip)
     self:TargetPlayerDisplay(tip,comparison)
 end
@@ -537,7 +549,7 @@ events:SetScript("OnEvent",function()
         if (not source or source=="") and usable(aura.isFromPlayerOrPlayerPet) and aura.isFromPlayerOrPlayerPet then source="You" end
         if not source or source=="" then return end
         tip.ftBuffSource=true
-        tip:AddLine("Cast by: "..source,.79,.63,1)
+        tip:AddLine("Cast by: "..source,1,.82,0)
         tip:Show()
     end
     local function buffSourceByIndex(tip,unit,index,filter)

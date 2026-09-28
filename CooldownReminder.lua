@@ -10,6 +10,9 @@ local _,FT=...
 --     seconds), or an effect the spell removes (Stoneform: poison/disease;
 --     Will of the Forsaken: fear/charm/sleep; Escape Artist: roots; curse
 --     breakers: curses). Each at most once per 30 seconds.
+--   Leveling fallback: after about 15 kills without using a ready offensive
+--     cooldown, the next fight gets a quiet nudge (no sound), at most once
+--     every 10 minutes. Kills are counted from the XP-gain message.
 --   Off: never reminded.
 -- Known spells get their role automatically; anything else starts Off and
 -- you can set it. Work happens only in combat, on events, and only for roles
@@ -18,6 +21,7 @@ local _,FT=...
 local CD={}
 local TOUGH_DELAY,PULL_DELAY,PULL_SIZE,GAP,SHOW,DEF_GAP=2,4,3,60,6,30
 local BURST_WINDOW,BURST_SHARE=5,1/3
+local NUDGE_KILLS,NUDGE_GAP,NUDGE_DELAY=15,600,3
 local function secret(v) return issecretvalue and issecretvalue(v) or false end
 local function safe(fn,...) if not fn then return end local ok,a,b,c,d=pcall(fn,...) if ok then return a,b,c,d end end
 
@@ -58,6 +62,7 @@ function CD:Settings()
     if type(s.tough)~="boolean" then s.tough=true end
     if type(s.pulls)~="boolean" then s.pulls=true end
     if type(s.defensive)~="boolean" then s.defensive=true end
+    if type(s.leveling)~="boolean" then s.leveling=true end
     -- Your role choices: key ("spell:ID" or "trinket:13/14") > offensive,
     -- defensive or off. Earlier test builds kept on/off in "chosen".
     if type(s.roles)~="table" then s.roles={} end
@@ -198,10 +203,12 @@ function CD:Check(reason)
     if reason=="tough" and not (s.tough and tough()) then return end
     if reason=="pull" and not (s.pulls and pullSize()>=PULL_SIZE) then return end
     local now=GetTime()
+    if reason=="leveling" and not (s.leveling and (self.kills or 0)>=NUDGE_KILLS and (not self.nudged or now-self.nudged>=NUDGE_GAP)) then return end
     if self.last and now-self.last<GAP then return end
     local list=self:ReadyList()
     if #list==0 then return end
     self.fight.reminded=true; self.last=now
+    if reason=="leveling" then self.nudged=now; self.kills=0 end
     self:Show(list,reason)
 end
 
@@ -211,7 +218,7 @@ function CD:Notice()
     local f=CreateFrame("Frame","ForeverToolsCooldownReminder",UIParent)
     f:SetSize(285,34); f:SetFrameStrata("LOW"); FT:Panel(f); FT:MeterSkin(f)
     f.icons={}
-    for i=1,3 do local t=f:CreateTexture(nil,"ARTWORK"); t:SetSize(22,22); t:SetPoint("LEFT",8+(i-1)*26,0); t:SetTexCoord(.07,.93,.07,.93); f.icons[i]=t end
+    for i=1,3 do local t=f:CreateTexture(nil,"ARTWORK"); t:SetSize(22,22); t:SetPoint("LEFT",8+(i-1)*26,0); t:SetTexCoord(.07,.93,.07,.93); FT:RoundIcon(t); f.icons[i]=t end
     f.text=FT:Label(f,"",13); f.text:SetJustifyH("LEFT")
     if f.text.SetWordWrap then f.text:SetWordWrap(false) end
     f:EnableMouse(false); f:Hide()
@@ -233,13 +240,16 @@ function CD:Show(list,reason,preview)
     end
     local shown=math.min(3,#list)
     f.text:ClearAllPoints(); f.text:SetPoint("LEFT",8+shown*26+4,0); f.text:SetWidth(285-(8+shown*26+4)-8)
-    f.text:SetText("Use "..table.concat(names,", "))
+    local quiet=reason=="leveling"
+    f.text:SetText((quiet and "Ready: " or "Use ")..table.concat(names,", "))
     local c=FT.modules.BuffReminder:Settings().textColor
     if type(c)=="table" then f.text:SetTextColor(c[1] or 1,c[2] or 1,c[3] or 1) end
+    -- The leveling nudge is quieter: a little see-through, shorter, no sound.
+    f:SetAlpha(quiet and .8 or 1)
     f:Show()
     self.token=(self.token or 0)+1; local token=self.token
-    C_Timer.After(preview and 8 or SHOW,function() if self.token==token then f:Hide() end end)
-    if self:Settings().sound and not preview and PlaySound and SOUNDKIT and SOUNDKIT.MAP_PING then pcall(PlaySound,SOUNDKIT.MAP_PING,"SFX") end
+    C_Timer.After(preview and 8 or quiet and 4 or SHOW,function() if self.token==token then f:Hide() end end)
+    if self:Settings().sound and not preview and not quiet and PlaySound and SOUNDKIT and SOUNDKIT.MAP_PING then pcall(PlaySound,SOUNDKIT.MAP_PING,"SFX") end
 end
 
 -- Defensive: are you in trouble that this cooldown answers?
@@ -317,6 +327,7 @@ events:SetScript("OnEvent",function(_,event,unit,a,b,c)
         end
         C_Timer.After(TOUGH_DELAY,function() CD:Check("tough") end)
         C_Timer.After(PULL_DELAY,function() CD:Check("pull") end)
+        C_Timer.After(NUDGE_DELAY,function() CD:Check("leveling") end)
     elseif event=="PLAYER_REGEN_ENABLED" then
         CD.fight=nil; CD.damage=nil
         for _,e in ipairs({"UNIT_SPELLCAST_SUCCEEDED","UNIT_COMBAT","UNIT_AURA","LOSS_OF_CONTROL_ADDED"}) do events:UnregisterEvent(e) end
@@ -335,8 +346,15 @@ events:SetScript("OnEvent",function(_,event,unit,a,b,c)
         -- You used one of your offensive cooldowns: no reminder this fight.
         local spellID=b
         if not CD.fight or secret(spellID) or type(spellID)~="number" then return end
-        for _,entry in ipairs(CD:Candidates()) do if entry.id==spellID and CD:Chosen(entry) then CD.fight.used=true; if CD.notice then CD.notice:Hide() end return end end
-        for _,entry in ipairs(CD:Trinkets()) do if entry.spellID==spellID and CD:Chosen(entry) then CD.fight.used=true; if CD.notice then CD.notice:Hide() end return end end
+        for _,entry in ipairs(CD:Candidates()) do if entry.id==spellID and CD:Chosen(entry) then CD.fight.used=true; CD.kills=0; if CD.notice then CD.notice:Hide() end return end end
+        for _,entry in ipairs(CD:Trinkets()) do if entry.spellID==spellID and CD:Chosen(entry) then CD.fight.used=true; CD.kills=0; if CD.notice then CD.notice:Hide() end return end end
+    elseif event=="CHAT_MSG_COMBAT_XP_GAIN" then
+        -- One kill ("X dies, you gain N experience"); quest XP doesn't count.
+        if secret(unit) or type(unit)~="string" then return end
+        local template=type(COMBATLOG_XPGAIN_FIRSTPERSON)=="string" and COMBATLOG_XPGAIN_FIRSTPERSON or "%s dies, you gain %d experience."
+        local head=template:match("^(.-)%%s") or ""
+        local tail=template:match("%%s(.-)%%d") or " dies"
+        if unit:find(tail,1,true) or (head~="" and unit:find(head,1,true)) then CD.kills=(CD.kills or 0)+1 end
     elseif event=="LEARNED_SPELL_IN_SKILL_LINE" or event=="PLAYER_LEVEL_UP" or event=="PLAYER_TALENT_UPDATE" then
         CD.cache=nil
     end
@@ -345,6 +363,7 @@ function CD:Apply()
     if not FT.dbReady then return end
     if self:Settings().enabled then
         for _,event in ipairs({"PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","LEARNED_SPELL_IN_SKILL_LINE","PLAYER_LEVEL_UP","PLAYER_TALENT_UPDATE"}) do pcall(events.RegisterEvent,events,event) end
+        if self:Settings().leveling then pcall(events.RegisterEvent,events,"CHAT_MSG_COMBAT_XP_GAIN") else events:UnregisterEvent("CHAT_MSG_COMBAT_XP_GAIN") end
     else events:UnregisterAllEvents(); self.fight=nil; if self.notice then self.notice:Hide() end end
     self:Refresh()
 end
@@ -366,6 +385,7 @@ function CD:Refresh()
     self.pullToggle.label:SetText("Big pulls: "..(s.pulls and "On" or "Off")); FT:SetSelected(self.pullToggle,s.pulls)
     self.defToggle.label:SetText("In trouble: "..(s.defensive and "On" or "Off")); FT:SetSelected(self.defToggle,s.defensive)
     self.soundToggle.label:SetText("Sound: "..(s.sound and "On" or "Off")); FT:SetSelected(self.soundToggle,s.sound)
+    self.levelToggle.label:SetText("Remind while leveling: "..(s.leveling and "On" or "Off")); FT:SetSelected(self.levelToggle,s.leveling)
     local entries={}
     for _,e in ipairs(self:Trinkets()) do entries[#entries+1]=e end
     for _,e in ipairs(self:Candidates()) do entries[#entries+1]=e end
@@ -399,7 +419,7 @@ function CD:Refresh()
 end
 function CD:Open()
     if not self.frame then
-        local frame=FT:Window("ForeverToolsCooldownReminders","Cooldown reminders",520,560); self.frame=frame
+        local frame=FT:Window("ForeverToolsCooldownReminders","Cooldown reminders",520,600); self.frame=frame
         FT:BackTo(frame,"BuffReminder")
         self.rows={}
         self.toggle=FT:AccentButton(frame,"",472,34,"Spell_Nature_TimeStop"); self.toggle:SetPoint("TOPLEFT",24,-62)
@@ -417,7 +437,10 @@ function CD:Open()
         self.soundToggle=FT:QuietButton(frame,"",230,32,"INV_Misc_Bell_01"); self.soundToggle:SetPoint("TOPLEFT",266,-146)
         self.soundToggle:SetScript("OnClick",function() local s=self:Settings(); s.sound=not s.sound; if s.sound and PlaySound and SOUNDKIT and SOUNDKIT.MAP_PING then PlaySound(SOUNDKIT.MAP_PING,"SFX") end; self:Refresh() end)
         FT:Tooltip(self.soundToggle,"Sound","Also play a soft chime with the notice (effects volume).")
-        local preview=FT:QuietButton(frame,"Preview",472,32,"buffs"); preview:SetPoint("TOPLEFT",24,-186)
+        self.levelToggle=FT:QuietButton(frame,"",472,32,"fps"); self.levelToggle:SetPoint("TOPLEFT",24,-186)
+        self.levelToggle:SetScript("OnClick",function() local s=self:Settings(); s.leveling=not s.leveling; self:Apply() end)
+        FT:Tooltip(self.levelToggle,"Remind while leveling","Leveling fights are rarely tough enough for the other reminders. After about 15 kills without using a ready offensive cooldown, the next fight gets a quiet nudge: a slightly see-through notice, no sound, at most once every 10 minutes. Using one of your offensive cooldowns starts the count over.")
+        local preview=FT:QuietButton(frame,"Preview",472,32,"buffs"); preview:SetPoint("TOPLEFT",24,-226)
         preview:SetScript("OnClick",function()
             local list={}
             for _,e in ipairs(self:Trinkets()) do if self:Role(e)~="off" then list[#list+1]=e end end
@@ -426,10 +449,10 @@ function CD:Open()
             self:Show(list,"tough",true)
         end)
         FT:Tooltip(preview,"Preview","Show an example notice with your cooldowns.")
-        local head=FT:Label(frame,"Your cooldowns",15,true); head:SetPoint("TOPLEFT",24,-236)
+        local head=FT:Label(frame,"Your cooldowns",15,true); head:SetPoint("TOPLEFT",24,-276)
         FT:SectionHeading(head,"Spell_Nature_TimeStop",280)
         FT:PageInfo(frame,"Cooldown reminders","A short notice to use a ready cooldown when it matters; nothing is used for you. Offensive cooldowns on tough targets and big pulls, defensive ones when you're in trouble.\n\nThe list shows your on-use trinkets and every spell you know with a cooldown of a minute or more. Known cooldowns get their role automatically (for example Blood Fury is offensive, Stoneform defensive); others start Off. Click a row to change its role, hover it to see when it is reminded.")
-        local box=CreateFrame("Frame",nil,frame); box:SetSize(472,280); box:SetPoint("TOPLEFT",24,-266); FT:Panel(box)
+        local box=CreateFrame("Frame",nil,frame); box:SetSize(472,280); box:SetPoint("TOPLEFT",24,-306); FT:Panel(box)
         local scroll=CreateFrame("ScrollFrame",nil,box,"UIPanelScrollFrameTemplate"); scroll:SetPoint("TOPLEFT",8,-8); scroll:SetPoint("BOTTOMRIGHT",-28,8)
         self.list=CreateFrame("Frame",nil,scroll); self.list:SetSize(440,1); scroll:SetScrollChild(self.list)
         self.empty=FT:Label(box,"No on-use trinkets or long cooldowns found yet.",13); self.empty:SetPoint("CENTER")

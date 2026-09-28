@@ -1,6 +1,6 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 0.14.7.**
+**Quality-of-life tools for WoW: Forever — version 0.15.0.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
 one place. Everything starts **off**, so the game looks like Blizzard's until you
@@ -13,8 +13,9 @@ the home window. Use **`/rl`** to reload the UI.
 ## Features
 
 - **Skins and dark mode:** Style action bars, buffs and debuffs, bags, micro
-  menu, minimap, XP/reputation bars, stance and totem bars, gryphons and unit
-  frames. Choose a preset for all areas or adjust each area separately, with
+  menu, minimap, XP/reputation bars, stance and totem bars, gryphons, unit
+  frames (player, pet, target, focus, party), the personal resource display
+  and cast bars. Choose a preset for all areas or adjust each area separately, with
   border, fill and transparency controls and separate rare/elite switches.
   Save your own looks as skin templates and switch between them.
 - **Fonts and cooldowns:** Adjust supported fonts, sizes, outlines and colors,
@@ -43,13 +44,21 @@ the home window. Use **`/rl`** to reload the UI.
   rested XP. Pick which to show and their order, one per line or on a single
   line, with an optional rounded background; font size and transparency
   sliders; movable, and also added to the XP bar tooltip.
-- **Flight countdown:** Destination and estimated time until landing. Completed
+- **Totems (shamans):** each placed totem's 30-yard reach as a soft circle on
+  the minimap (Combat → Totems).
+- **Move elements:** One button on the main menu unlocks every on-screen
+  element (FPS, leveling stats, flight timer, threat meter, rare alert,
+  reminders, loot rolls, tooltip) to drag them all at once, with an option to
+  include elements you don't use and to reset positions. Also `/ft move`.
+- **Flight countdown:** A one-line countdown next to your destination, for
+  example "0:24 - Crossroads, The Barrens". Completed
   flights teach new routes and replace bundled estimates.
 - **Threat:** a threat meter styled like and placed next to the game's damage
   meter, and your threat % above your target (Combat). Fonts
   can change the threat meter's and the damage meter's text.
 - **Cooldown reminders:** a short nudge to use a ready racial, trinket or long
-  cooldown on elites, rares and big pulls (Buff reminders).
+  cooldown on elites, rares and big pulls, and now and then while leveling
+  (Buff reminders).
 - **Smart interact key:** one key that uses RestedXP's quest item or target
   button when the guide shows one, and is Interact with target otherwise
   (Keybinds).
@@ -61,8 +70,8 @@ the home window. Use **`/rl`** to reload the UI.
   login and reload, or hide it altogether (System → Gameplay).
 - **Faster looting:** With auto loot on, take everything the moment a corpse
   opens. Off by default.
-- **Merchant helpers:** Optional auto-sell of grey items (they can be bought
-  back, as usual the last 12) and auto-repair, with guild funds if allowed,
+- **Merchant helpers:** Optional auto-sell of grey items, and optionally white
+  weapons and armor (they can be bought back, as usual the last 12) and auto-repair, with guild funds if allowed,
   and a one-line summary (System → Merchant).
 - **Minimap:** ForeverTools button, coordinates, and an optional launcher that
   groups other addons' minimap buttons into one menu.
@@ -150,9 +159,8 @@ the home window. Use **`/rl`** to reload the UI.
   cancels; scrolling over the list without clicking only pages it.
 - Scroll while hovering a unit (unit frames or characters in the world) to cast
   on that unit. Away from a unit, the wheel keeps zooming the camera.
-- Bindings change outside combat. If casting does not work, type
-  **`/ft wheeldebug`**, scroll over a unit, and include the chat lines in a
-  bug report.
+- Bindings change outside combat. If casting does not work, include a bug
+  report (System → Troubleshooting → Copy bug report).
 
 ## Macro tips
 

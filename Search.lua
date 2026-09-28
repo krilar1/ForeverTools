@@ -30,6 +30,8 @@ local index={
     {"System","system settings","System","generic"},
     {"Welcome message","welcome login message chat","SystemGeneral","welcome"},
     {"What's new","whats new changelog updates popup","SystemGeneral","welcome"},
+    {"Totems","totem totems shaman range minimap circle reach","Totems","Spell_Nature_StoneSkinTotem"},
+    {"Move elements","move elements movers unlock drag frames position anchors","Movers","move"},
     {"First-time setup","setup wizard preset welcome start","SystemGeneral","generic"},
     {"Reset all settings","reset defaults restore clear","SystemGeneral","reset"},
     {"ForeverTools minimap button","minimap icon button","SystemMinimap","map"},
@@ -104,11 +106,11 @@ function Search:Attach(home)
     self.box=box
     box:SetSize(220,26); box:SetPoint("TOPLEFT",24,-54)
     box:SetFont(FT.bodyFont,13,""); box:SetAutoFocus(false); box:SetTextInsets(26,8,0,0)
-    FT:Panel(box)
+    FT:Panel(box); FT:Paint(box,{0.05,0.04,0.03,1},{0.29,0.24,0.15,1})
     local icon=box:CreateTexture(nil,"ARTWORK"); icon:SetSize(14,14); icon:SetPoint("LEFT",8,0)
     icon:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
-    local placeholder=FT:Label(box,"Search settings",13); placeholder:SetPoint("LEFT",26,0); placeholder:SetTextColor(.6,.55,.7)
-    self.none=FT:Label(home,"No matches",12); self.none:SetPoint("LEFT",box,"RIGHT",10,0); self.none:SetTextColor(.66,.57,.77); self.none:Hide()
+    local placeholder=FT:Label(box,"Search settings",13); placeholder:SetPoint("LEFT",26,0); placeholder:SetTextColor(.6,.55,.46)
+    self.none=FT:Label(home,"No matches",12); self.none:SetPoint("LEFT",box,"RIGHT",10,0); self.none:SetTextColor(.66,.59,.48); self.none:Hide()
     box.options=function() return self.results or {} end
     box.onSelect=function(value) self:Open(value) end
     box.menuWidth=300

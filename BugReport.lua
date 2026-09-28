@@ -10,7 +10,7 @@ function Report:Features()
     local function add(label,on) if on then out[#out+1]=label end end
     local skins=db.iconStyles or {}
     local areas={}
-    for _,key in ipairs({"actions","buffs","stances","minimap","bags","bagWindows","micro","xp","player","target","tot","focus","focustarget","gryphons"}) do if skins[key] then areas[#areas+1]=key end end
+    for _,key in ipairs({"actions","buffs","stances","minimap","bags","bagWindows","micro","xp","player","target","tot","focus","focustarget","pet","party","personal","castbar","gryphons"}) do if skins[key] then areas[#areas+1]=key end end
     if #areas>0 then out[#out+1]="skins("..table.concat(areas,",")..")" end
     local fonts={}
     for id,pref in pairs(db.fonts or {}) do if type(pref)=="table" and pref.enabled then fonts[#fonts+1]=id end end

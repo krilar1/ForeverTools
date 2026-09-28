@@ -74,7 +74,11 @@ function Leveling:ObserveXP()
     if not self.start then self:Reset() return end
     if level~=self.lastLevel then self:Reset() return end
     local delta=current-(self.lastXP or current)
-    if delta>0 then self.gained=self.gained+delta end
+    if delta>0 then
+        local first=self.gained==0
+        self.gained=self.gained+delta
+        if first and self:Settings().enabled and self.line and not self.line:IsShown() then self:Apply() end
+    end
     self.lastXP=current
 end
 -- "X dies, you gain N experience." Built from the client's own global string so
@@ -226,8 +230,8 @@ function Leveling:Create()
     line:RegisterForDrag("LeftButton")
     line.pieces={}
     line.background=FT:RoundedFill(line,0,0,0,.5)
-    FT:Panel(line)
-    line.hint=FT:Label(line,"Drag to move",12); line.hint:SetPoint("TOPLEFT",line,"BOTTOMLEFT",4,-4)
+    FT:MoverBox(line,6)
+    line.hint=FT:Label(line,"Drag to move",12); FT:Caption(line.hint,line,"below",6)
     line:SetScript("OnDragStart",function() self:BeginDrag() end)
     line:SetScript("OnDragStop",function() self:EndDrag() end)
     line:SetScript("OnMouseUp",function(_,button) if button=="LeftButton" then self:EndDrag() end end)
@@ -306,18 +310,20 @@ function Leveling:Apply()
     for _,texture in ipairs(self.line.background) do
         texture:SetVertexColor(c[1],c[2],c[3],s.backgroundAlpha); texture:SetShown(s.background and not moving)
     end
-    -- Stay shown while on; max level is checked every update instead, so a
-    -- brief wrong answer (for example while zoning) can't hide it for good.
-    self.line:SetShown(moving or s.enabled)
+    -- Shown once you've earned experience this session (nothing to show
+    -- before that, and a hidden line costs nothing). Max level is checked
+    -- every update instead, so a brief wrong answer (for example while
+    -- zoning) can't hide it for good.
+    self.line:SetShown(moving or (s.enabled and (self.gained or 0)>0))
     self:Update()
     self:HookBars()
     self:Refresh()
 end
-function Leveling:SetMoving(value)
+function Leveling:SetMoving(value,keepState)
     if InCombatLockdown() then value=false end
     if not value then self:EndDrag() end
     self.moving=value==true
-    if self.moving then self:Settings().enabled=true end
+    if self.moving and not keepState then self:Settings().enabled=true end
     self:Apply()
 end
 -- Append to Blizzard's own XP bar tooltip (which already shows XP and rested).
@@ -328,7 +334,7 @@ function Leveling:TooltipLines(owner)
     local tip=GameTooltip
     if not tip:IsShown() then tip:SetOwner(owner,"ANCHOR_TOP") end
     tip:AddLine(" ")
-    local function row(label,value) tip:AddDoubleLine(label,value,.79,.63,1,1,1,1) end
+    local function row(label,value) tip:AddDoubleLine(label,value,1,.82,0,1,1,1) end
     for _,key in ipairs(s.order) do
         if s[key] then
             if key=="perHour" then row("XP per hour",stats.perHour and short(stats.perHour) or "gathering…")
@@ -398,7 +404,7 @@ function Leveling:Open()
         FT:PageInfo(frame,"Leveling stats","Your chosen stats on a small movable line and in the XP bar tooltip. Session stats reset when you reload or level up, and the line hides at max level.\n\nBuild your layout: turn stats on or off and use the arrows to order them. Kills to level uses your recent kill experience; XP per hour starts with your first experience and settles over a few minutes.")
         self.toggle=FT:AccentButton(frame,"",492,34,"fps"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function() if self.moving then self.moving=false end; local s=self:Settings(); s.enabled=not s.enabled; self:Apply() end)
-        FT:Tooltip(self.toggle,"Leveling stats","Show your chosen stats on screen and extra lines in the XP bar tooltip.")
+        FT:Tooltip(self.toggle,"Leveling stats","Show your chosen stats on screen and extra lines in the XP bar tooltip. The stats appear once you earn experience, so nothing sits on screen before there is anything to show.")
         self.rows={}
         for _,entry in ipairs(parts) do
             local key=entry[1]

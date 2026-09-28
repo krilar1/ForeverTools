@@ -21,7 +21,7 @@ function Skins:Settings()
     self.checkedRoot=s; self.checkedAreas={}
     -- Every skin area starts off; players opt in per area (or via first-run setup).
     if type(s.actions)~="boolean" then s.actions=false end
-    for _,key in ipairs({"minimap","bags","bagWindows","micro","xp","player","target","tot","focus","focustarget"}) do
+    for _,key in ipairs({"minimap","bags","bagWindows","micro","xp","player","target","tot","focus","focustarget","pet","party","personal","castbar"}) do
         if type(s[key])~="boolean" then s[key]=false end
     end
     if type(s.stances)~="boolean" then s.stances=false end

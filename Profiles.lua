@@ -31,7 +31,7 @@ function Profiles:RefreshIndicators()
     end
     if FT.home and FT.home.profileStatus then
         FT.home.profileStatus:SetText(name and shortName("Editing: "..name,27) or "No profile")
-        FT.home.profileStatus:SetTextColor(name and .82 or .66,name and .68 or .57,name and 1 or .77)
+        FT.home.profileStatus:SetTextColor(name and .85 or .66,name and .72 or .59,name and .42 or .48)
     end
 end
 function Profiles:ShowSwitcher(owner)
@@ -58,9 +58,9 @@ function Profiles:ShowSwitcher(owner)
 end
 -- Only preferences are copied. Macro history and installed WoW macros belong to
 -- the character and are never rewritten by loading an appearance profile.
-local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey"}
+local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey","totems","movers"}
 -- Every module that must redraw after settings change (load, login, reset).
-local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey"}
+local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey","FireAlert","Totems"}
 local function copy(value)
     if type(value) ~= "table" then return value end
     local result={}; for k,v in pairs(value) do result[k]=copy(v) end; return result
@@ -389,7 +389,7 @@ function Profiles:Attach(home)
         self.emptyHint:SetPoint("TOPLEFT",10,-324)
         -- Thin dividers between the groups: pick/create, manage, transfer, new characters.
         for _,y in ipairs({-171,-223}) do
-            local line=panel:CreateTexture(nil,"ARTWORK"); line:SetColorTexture(.30,.23,.46,.6)
+            local line=panel:CreateTexture(nil,"ARTWORK"); line:SetColorTexture(.61,.51,.31,.6)
             line:SetHeight(1); line:SetPoint("TOPLEFT",14,y); line:SetPoint("TOPRIGHT",-14,y)
         end
         FT:Tooltip(self.load,"Load profile","Switch to the selected profile.")
@@ -451,7 +451,7 @@ function Profiles:AskNewCharacter()
         pick:SetPoint("TOPLEFT",24,-104); pick:SetHeight(34); pick.menuWidth=300; frame.pick=pick
         FT:Tooltip(pick,"Profile","Choose one of your saved profiles for this character.")
         local note=FT:Label(frame,"Closing keeps Blizzard's default look. You can change this any time in /ft > Profiles.",12)
-        note:SetPoint("TOPLEFT",24,-150); note:SetWidth(432); note:SetTextColor(.66,.57,.77)
+        note:SetPoint("TOPLEFT",24,-150); note:SetWidth(432); note:SetTextColor(.66,.59,.48)
         local new=FT:QuietButton(frame,"New profile",200,34,"add"); new:SetPoint("BOTTOMLEFT",24,22)
         new:SetScript("OnClick",function()
             local base=self:CharacterName(); local name,n=base,2
@@ -498,7 +498,7 @@ end)
 
 -- Settings only: saved profiles, custom macros/fonts, learned flight routes,
 -- rank knowledge and macro history are kept. A reload re-applies native UI.
-local resettable={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","chat","system","customKeybinds","lootRoll","tooltip","buffReminder","flightTimer","leveling","vendor","dispelGlow","rareAlert","threat","fireAlert","smartKey"}
+local resettable={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","chat","system","customKeybinds","lootRoll","tooltip","buffReminder","flightTimer","leveling","vendor","dispelGlow","rareAlert","threat","fireAlert","smartKey","totems","movers"}
 function Profiles:DefaultsForCharacter()
     for _,key in ipairs(resettable) do FT.db[key]=nil end
     self.active,self.selected=nil,nil
@@ -644,7 +644,7 @@ function Profiles:OfferSave()
         local skinned=FT:MeterSkin(dialog,32)
         local title=skinned and dialog:CreateFontString(nil,"OVERLAY","GameFontNormalMed1") or FT:Label(dialog,"Save changes?",18,true)
         title:SetText("Save changes?")
-        if skinned then title:SetPoint("TOPLEFT",12,-9) else title:SetPoint("TOPLEFT",22,-22);title:SetTextColor(.82,.68,1);FT:TitleBand(dialog,50) end
+        if skinned then title:SetPoint("TOPLEFT",12,-9) else title:SetPoint("TOPLEFT",22,-22);title:SetTextColor(1,.82,0);FT:TitleBand(dialog,50) end
         FT:FadeIn(dialog);FT:MakeDraggable(dialog)
         FT:AddClose(dialog,function() self:DismissSave(false) end,skinned and 2 or nil)
         local message=FT:Label(dialog,"",14);message:SetPoint("TOPLEFT",22,-62);message:SetWidth(396);dialog.message=message
@@ -880,10 +880,11 @@ function Profiles:ValidateImport(data)
     if not check(result.threat,{enabled="boolean",show="string",rows="number",collapsed="boolean",x="number",y="number",text="boolean",font="string",size="number",outline="string",background="boolean",backgroundColor="table",backgroundAlpha="number",textX="number",textY="number",width="number",height="number",locked="boolean",grip="string"}) then return nil,"Invalid threat settings." end
     local cooldowns=nil; if type(result.buffReminder)=="table" then cooldowns=result.buffReminder.cooldowns end
     if cooldowns~=nil then
-        if type(cooldowns)~="table" or not check(cooldowns,{enabled="boolean",sound="boolean",tough="boolean",pulls="boolean",defensive="boolean",chosen="table",roles="table"}) then return nil,"Invalid cooldown reminders." end
+        if type(cooldowns)~="table" or not check(cooldowns,{enabled="boolean",sound="boolean",tough="boolean",pulls="boolean",defensive="boolean",leveling="boolean",chosen="table",roles="table"}) then return nil,"Invalid cooldown reminders." end
         for k,v in pairs(cooldowns.chosen or {}) do if type(k)~="string" or type(v)~="boolean" then return nil,"Invalid cooldown reminders." end end
         for k,v in pairs(cooldowns.roles or {}) do if type(k)~="string" or (v~="offensive" and v~="defensive" and v~="off") then return nil,"Invalid cooldown reminders." end end
     end
+    if not check(result.totems,{range="boolean",opacity="number",colors="table",defaults="number"}) then return nil,"Invalid totem settings." end
     if not check(result.smartKey,{enabled="boolean",key="string",confirmed="boolean"}) then return nil,"Invalid smart key settings." end
     if not check(result.fireAlert,{sound="string",channel="string"}) then return nil,"Invalid standing-in-fire settings." end
     if not check(result.rareAlert,{enabled="boolean",sound="boolean",soundKey="string",duration="number",size="number",glow="table",x="number",y="number"}) then return nil,"Invalid rare alert settings." end
@@ -917,7 +918,7 @@ function Profiles:ValidateImport(data)
             return true
         end
         local root=result.iconStyles
-        if not skin(root) or not check(root,{actions="boolean",buffs="boolean",stances="boolean",areas="table",minimap="boolean",micro="boolean",bags="boolean",player="boolean",target="boolean",tot="boolean",focus="boolean",focustarget="boolean",xp="boolean"}) then return nil,"Invalid skin settings." end
+        if not skin(root) or not check(root,{actions="boolean",buffs="boolean",stances="boolean",areas="table",minimap="boolean",micro="boolean",bags="boolean",player="boolean",target="boolean",tot="boolean",focus="boolean",focustarget="boolean",xp="boolean",pet="boolean",party="boolean",personal="boolean",castbar="boolean"}) then return nil,"Invalid skin settings." end
         for key,pref in pairs(root.areas or {}) do if type(key)~="string" or not skin(pref) then return nil,"Invalid skin area." end end
     end
     for _,file in pairs(result.customFonts or {}) do if type(file)~="string" or #file>150 or file:find("[/\\]") then return nil,"Invalid font filename." end end

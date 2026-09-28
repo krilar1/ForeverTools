@@ -49,7 +49,7 @@ end
 local function cvar(name) return C_CVar and C_CVar.GetCVar and C_CVar.GetCVar(name) or (GetCVar and GetCVar(name)) end
 -- A short warning when the game would make the sound hard to hear.
 function Fire:VolumeWarning()
-    if cvar("Sound_EnableAllSound")=="0" then return "Game sound is off (Ctrl+S), so the warning is silent." end
+    if cvar("Sound_EnableAllSound")=="0" then return "Game sound is turned off (the game's sound on/off key), so the warning is silent." end
     local master=tonumber(cvar("Sound_MasterVolume")) or 1
     local level=master
     if self:Settings().channel=="SFX" then
@@ -84,7 +84,9 @@ events:SetScript("OnEvent",function(_,_,unit,action,_,amount,school)
     if unit~="player" or action~="WOUND" then return end
     -- If the game hides these details, do nothing rather than guess.
     if secret(amount) or secret(school) or type(amount)~="number" or amount<=0 then return end
-    if type(school)~="number" or school==0 or school==PHYSICAL then return end
+    -- Physical hits (melee, arrows) never count. Environmental damage such as
+    -- a campfire may come without a school, so that counts as well.
+    if type(school)=="number" and school==PHYSICAL then return end
     Fire:Hit(GetTime())
 end)
 function Fire:Apply()
@@ -104,7 +106,7 @@ function Fire:Refresh()
     self.channelChoice.value=s.channel; self.channelChoice.label:SetText("Loudness: "..label(channels,s.channel))
     local warn=self:VolumeWarning()
     self.volumeNote:SetText(warn or "")
-    if warn then self.volumeNote:SetTextColor(1,.62,.35) else self.volumeNote:SetTextColor(.66,.57,.77) end
+    if warn then self.volumeNote:SetTextColor(1,.62,.35) else self.volumeNote:SetTextColor(.66,.59,.48) end
 end
 function Fire:Open()
     if not self.frame then
@@ -126,7 +128,7 @@ function Fire:Open()
                 {value="Master",label="Master volume",icon="Interface\\Icons\\INV_Misc_Bell_01",tooltip="Follows only the master volume, so it stays loud even with quiet effects. Choosing it plays the sound."}}
         end,function(value) self:Settings().channel=value; self:PlaySound(); self:Refresh() end,"INV_Misc_Bell_01")
         self.channelChoice:SetPoint("TOPLEFT",266,-106)
-        FT:Tooltip(self.channelChoice,"Loudness","Addons can't set a sound's own volume, so choose which game volume it follows. Ctrl+S mutes it either way.")
+        FT:Tooltip(self.channelChoice,"Loudness","Addons can't set a sound's own volume, so choose which game volume it follows. Turning game sound off (the game's sound on/off key) mutes it either way.")
         self.volumeNote=FT:Label(frame,"",12); self.volumeNote:SetPoint("TOPLEFT",24,-148); self.volumeNote:SetWidth(472)
         FT:PageInfo(frame,"Standing in fire","A warning sound when you keep taking magic damage in a steady rhythm, like standing in fire, lava or another ground effect. It works without any setup; the choices are optional.\n\nIt warns after 3 or more magic hits within a few seconds that land evenly 0.6 to 2.3 seconds apart, and repeats at most every 4 seconds while you stay in it. It stays quiet while your target channels a spell. It can't tell ground effects from a fast spell cast on you, and it doesn't catch physical damage.")
     end

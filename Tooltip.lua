@@ -275,7 +275,7 @@ function Tip:SampleParts()
         class=(c and hex(c.r,c.g,c.b) or "|cffffffff")..tostring(readable(label) and label or "Class").."|r",
         suffix="|cffffffff(Player)|r",
         faction="|cffffffff"..tostring(readable(factionName) and factionName or "Horde").."|r",
-        target="|cffc9a0ffTarget: |cffffffffNone|r",
+        target="|cffffd100Target: |cffffffffNone|r",
     },readable(faction) and faction or "Horde"
 end
 function Tip:RenderPreview()
@@ -336,7 +336,7 @@ function Tip:Open()
         FT:PageInfo(frame,"Tooltip","Build your player tooltip on the left and watch the preview (it uses your own character; other players' tooltips follow the same layout). Turn parts on or off, order them with the arrows, and use Same line to join a part to the one above.\n\nOn the right: extras (faction icon, guild color, health bar, IDs), text sizes (0 keeps Blizzard's size) and where tooltips appear on screen.")
         local sectionIcons={Layout="INV_Misc_Note_01",Extras="INV_Misc_Book_07",["Text size"]="INV_Inscription_Tradeskill01",Position="INV_Misc_Map_01"}
         local function section(x,y,title,hint)
-            local h=FT:Label(frame,title,16,true); h:SetPoint("TOPLEFT",x,y); h:SetTextColor(.82,.68,1)
+            local h=FT:Label(frame,title,16,true); h:SetPoint("TOPLEFT",x,y); h:SetTextColor(1,.82,0)
             FT:SectionHeading(h,sectionIcons[title],300)
         end
         section(24,-66,"Layout","Turn parts on or off, order them, and use Same line to join the part above.")
@@ -369,13 +369,13 @@ function Tip:Open()
             self.rows[key]=row
         end
         local previewTop=self.layoutTop+#partKeys*40+10
-        local ph=FT:Label(frame,"Preview",16,true); ph:SetPoint("TOPLEFT",24,-previewTop); ph:SetTextColor(.82,.68,1); FT:SectionHeading(ph,"INV_Misc_Note_01",300)
+        local ph=FT:Label(frame,"Preview",16,true); ph:SetPoint("TOPLEFT",24,-previewTop); ph:SetTextColor(1,.82,0); FT:SectionHeading(ph,"INV_Misc_Note_01",300)
         local box=CreateFrame("Frame",nil,frame); box:SetPoint("TOPLEFT",24,-previewTop-30); box:SetWidth(512)
         FT:RoundedFill(box,0,0,0,.85)
         box.lines={}
         for i=1,8 do local fs=box:CreateFontString(nil,"OVERLAY"); fs:SetFont(FT.bodyFont,12,""); fs:SetJustifyH("LEFT"); fs:SetWidth(492); box.lines[i]=fs end
         self.preview=box
-        local divider=frame:CreateTexture(nil,"ARTWORK"); divider:SetColorTexture(.30,.23,.46,.6); divider:SetWidth(1)
+        local divider=frame:CreateTexture(nil,"ARTWORK"); divider:SetColorTexture(.61,.51,.31,.6); divider:SetWidth(1)
         divider:SetPoint("TOPLEFT",552,-96); divider:SetPoint("BOTTOMLEFT",552,24)
         -- Right column.
         local R=580
@@ -401,7 +401,7 @@ function Tip:Open()
         self.ids=FT:QuietButton(frame,"",512,34,"spellID"); self.ids:SetPoint("TOPLEFT",R,-220)
         self.ids:SetScript("OnClick",function() local s=FT.modules.System:Settings();s.spellID=not s.spellID;self:Refresh() end)
         FT:Tooltip(self.ids,"Show tooltip IDs","Show spell, item, quest and achievement IDs at the bottom of tooltips.")
-        local line=frame:CreateTexture(nil,"ARTWORK"); line:SetColorTexture(.30,.23,.46,.6); line:SetSize(512,1); line:SetPoint("TOPLEFT",R,-266)
+        local line=frame:CreateTexture(nil,"ARTWORK"); line:SetColorTexture(.61,.51,.31,.6); line:SetSize(512,1); line:SetPoint("TOPLEFT",R,-266)
         section(R,-278,"Text size","0 keeps Blizzard's size. The preview shows your sizes.")
         self.sizes={}
         for i,entry in ipairs({{"name","Name line"},{"details","Other lines"},{"targetSize","Target line"}}) do
@@ -425,7 +425,7 @@ function Tip:Open()
             end)
             FT:Tooltip(value,entry[2].." size","Use + and - to change the size. Click the number to go back to Blizzard's size (asks first).")
         end
-        local line2=frame:CreateTexture(nil,"ARTWORK"); line2:SetColorTexture(.30,.23,.46,.6); line2:SetSize(512,1); line2:SetPoint("TOPLEFT",R,-438)
+        local line2=frame:CreateTexture(nil,"ARTWORK"); line2:SetColorTexture(.61,.51,.31,.6); line2:SetSize(512,1); line2:SetPoint("TOPLEFT",R,-438)
         section(R,-450,"Position","Where tooltips appear on screen.")
         self.moveButton=FT:QuietButton(frame,"",512,34,"move");self.moveButton:SetPoint("TOPLEFT",R,-484)
         self.moveButton:SetScript("OnClick",function() self:SetMoving(not self.moving) end)

@@ -40,8 +40,15 @@ function Flight:CreateDisplay()
     if self.display then return end
     local display=CreateFrame("Frame","ForeverToolsFlightTimer",UIParent);self.display=display
     display:SetFrameStrata("HIGH");display:SetClampedToScreen(true)
-    display.text=FT:Label(display,"",20);display.text:SetPoint("TOP",display,"TOP",0,-8);display.text:SetJustifyH("CENTER");display.text:SetWordWrap(true)
-    display.hint=FT:Label(display,"Preview - drag to move",11);display.hint:SetPoint("TOP",display,"BOTTOM",0,-3)
+    -- One line: the countdown on the left at a fixed width (so it never
+    -- jumps as digits change), a dim dash, then the destination as its own
+    -- unit. Long names are cut short instead of wrapping.
+    display.timer=FT:Label(display,"",20);display.timer:SetPoint("LEFT",display,"LEFT",10,0);display.timer:SetJustifyH("RIGHT");display.timer:SetWordWrap(false)
+    display.dash=FT:Label(display,"-",20);display.dash:SetPoint("LEFT",display.timer,"RIGHT",10,0);display.dash:SetWordWrap(false)
+    display.text=FT:Label(display,"",16);display.text:SetPoint("LEFT",display.dash,"RIGHT",10,0);display.text:SetJustifyH("LEFT");display.text:SetWordWrap(false)
+    -- The same outline and hint as the FPS counter and leveling stats while moving.
+    FT:MoverBox(display,0)
+    display.hint=FT:Label(display,"Drag to move",12);FT:Caption(display.hint,display,"below",0)
     display:RegisterForDrag("LeftButton")
     display:SetScript("OnDragStart",function()
         if not self.preview or InCombatLockdown() then return end
@@ -50,6 +57,22 @@ function Flight:CreateDisplay()
     end)
     display:SetScript("OnDragStop",function() self:Drag();self.dragging=false end)
     display:SetScript("OnUpdate",function() self:Drag() end)
+end
+-- Sizes the one-line display around its parts. The timer keeps the width of
+-- its widest possible text so the dash and name stay put while counting.
+function Flight:Layout(timer,place,known)
+    local d=self.display;local s=self:Settings()
+    d.timer:SetText(timer);d.text:SetText(place)
+    d.timer:SetAlpha(known and 1 or .55)
+    local wide=#timer>5 and "0:00:00" or "00:00"
+    if d.measuredFor~=wide..s.size then
+        d.timer:SetText(wide);d.measuredFor=wide..s.size;d.timerWidth=math.ceil(d.timer:GetStringWidth()+2);d.timer:SetText(timer)
+    end
+    d.timer:SetWidth(d.timerWidth or s.size*3)
+    local maxName=math.max(120,math.min(360,UIParent:GetWidth()-(d.timerWidth or 0)-80))
+    d.text:SetWidth(0);local nameWidth=math.min(maxName,math.ceil(d.text:GetStringWidth()+2));d.text:SetWidth(nameWidth)
+    d:SetWidth(10+(d.timerWidth or 0)+10+d.dash:GetStringWidth()+10+nameWidth+10)
+    d:SetHeight(s.size+16)
 end
 local function read(fn,...)
     if not fn then return end
@@ -152,20 +175,17 @@ function Flight:Tick()
     end
     if flying and read(UnitIsDeadOrGhost,"player") then self:CancelLearning() end
     self.flying=flying
-    local remaining=self.preview and 165 or self.duration and math.max(0,math.ceil(self.duration-(now-(self.started or now))))
-    local text
+    local remaining=self.preview and 24 or self.duration and math.max(0,math.ceil(self.duration-(now-(self.started or now))))
+    local destination=self.preview and "Crossroads, The Barrens" or self.destination
+    local timer,place
     if remaining then
-        local destination=self.preview and "The Crossroads" or self.destination
-        local landing=type(destination)=="string" and ("Landing at "..destination) or "Landing"
-        text=remaining>0 and string.format("%s\nin %dmin %02dsec",landing,math.floor(remaining/60),remaining%60) or landing.."\nsoon"
-    elseif self.cancelled then text="Flight: arrival time unknown"
-    else text=self.route and "Flight: learning route" or "Flight: arrival time unknown" end
-    self.display.text:SetText(text)
-    local size=self:Settings().size
-    local width=math.min(UIParent:GetWidth()-20,math.max(240,math.min(360,size*15)))
-    self.display:SetWidth(width);self.display.text:SetWidth(width-20)
-    local height=self.display.text.GetStringHeight and self.display.text:GetStringHeight() or size*3
-    self.display:SetHeight(math.max(size*2.5,height)+16)
+        timer=remaining>=3600 and string.format("%d:%02d:%02d",math.floor(remaining/3600),math.floor(remaining%3600/60),remaining%60) or string.format("%d:%02d",math.floor(remaining/60),remaining%60)
+        place=type(destination)=="string" and destination or "Landing soon"
+    else
+        timer="--:--"
+        place=type(destination)=="string" and destination or ((self.route and not self.cancelled) and "Learning this route" or "Arrival time unknown")
+    end
+    self:Layout(timer,place,remaining~=nil)
     self:Position()
     self.display:SetShown(self.preview or (flying and self:Settings().enabled))
 end
@@ -184,11 +204,16 @@ function Flight:Apply()
     local s=self:Settings();local fonts=FT.modules.FontManager
     local path,label=fonts:Resolve(s)
     if not path or not fonts:ValidFont(path) then path="Fonts\\FRIZQT__.TTF";label="Friz Quadrata (fallback)" end
-    self.display.text:SetFont(path,s.size,s.outline);self.display.text:SetTextColor(unpack(s.color))
-    self.display:SetSize(math.min(360,math.max(240,s.size*15)),s.size*3+16)
+    local d=self.display;local small=math.max(10,math.floor(s.size*.78+.5))
+    d.timer:SetFont(path,s.size,s.outline);d.timer:SetTextColor(unpack(s.color))
+    d.dash:SetFont(path,small,s.outline);d.dash:SetTextColor(.62,.62,.62)
+    d.text:SetFont(path,small,s.outline);d.text:SetTextColor(.92,.92,.92)
+    d.measuredFor=nil
     -- Behind game windows; on top only while you preview and move it.
     self.display:SetFrameStrata(self.preview and "HIGH" or "LOW")
     self.display:EnableMouse(self.preview==true);self.display.hint:SetShown(self.preview==true)
+    for _,texture in ipairs(self.display.fillTextures) do texture:SetShown(self.preview==true) end
+    for _,texture in ipairs(self.display.borderTextures) do texture:SetShown(self.preview==true) end
     self:Position();self:Tick()
     if self.frame then
         self.toggle.label:SetText("Flight timer: "..(s.enabled and "On" or "Off"));FT:SetSelected(self.toggle,s.enabled)
@@ -230,7 +255,6 @@ function Flight:Open()
         local reset=FT:QuietButton(frame,"Reset position to center",392,34,"reset");reset:SetPoint("TOPLEFT",24,-310)
         reset:SetScript("OnClick",function() FT:Confirm("Return the flight timer to the screen center?",function() local s=self:Settings();s.x=.5;s.y=.5;self:Apply() end) end)
         FT:PageInfo(frame,"Flight timer","Shows where you are flying and how long until you land. Times start as Classic estimates and get more exact with each flight you finish. Changes apply right away.")
-        FT:Tooltip(self.toggle,"Flight timer","Turn the flight countdown on or off.")
         FT:Tooltip(self.previewButton,"Flight timer","Shows where you are flying and how long until you land. Drag the preview to move it. Times start as Classic estimates and get more exact with each flight you finish.")
         frame:HookScript("OnHide",function() self:Drag();self.dragging=false;self.preview=false;self:Apply() end)
     end

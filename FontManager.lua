@@ -358,7 +358,7 @@ function Fonts:WarnMissing()
     self.warned = self.warned or {}
     for _, file in ipairs(files) do self.warned[file] = true end
     local text = "Font file missing: " .. table.concat(files, ", ") .. ". Put it back in Interface\\AddOns\\ForeverTools\\Media\\Fonts and restart WoW, or choose another font in Font manager. Until then the game's own font is used."
-    print("|cffc9a0ffForeverTools:|r " .. text)
+    print("|cffffd100ForeverTools:|r " .. text)
     FT:Toast("A chosen font file is missing. Details are in chat.", 5)
 end
 function Fonts:ChooseFont(value)

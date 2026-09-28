@@ -45,7 +45,7 @@ local function cvar(name)
 end
 -- A short warning when the game would make the alert sound hard to hear.
 function Rare:VolumeWarning()
-    if cvar("Sound_EnableAllSound")=="0" then return "Game sound is off (Ctrl+S), so the alert is silent." end
+    if cvar("Sound_EnableAllSound")=="0" then return "Game sound is turned off (the game's sound on/off key), so the alert is silent." end
     local master=tonumber(cvar("Sound_MasterVolume"))
     if master and master<.25 then return string.format("Your master volume is %d%%, so the alert may be hard to hear.",math.floor(master*100+.5)) end
     return nil
@@ -212,9 +212,9 @@ events:SetScript("OnEvent",function(_,event,a,b)
     elseif event=="PLAYER_REGEN_DISABLED" then if Rare.target then Rare.target:Hide() end
     elseif event=="PLAYER_REGEN_ENABLED" then Rare:UpdateTarget() end
 end)
-function Rare:SetMoving(on)
+function Rare:SetMoving(on,text)
     self.moving=on
-    if on then self:Show("Drag me, then click Lock",true) elseif self.notice then self.notice:Hide() end
+    if on then self:Show(text or "Drag me, then click Lock",true) elseif self.notice then self.notice:Hide() end
     self:Refresh()
 end
 
@@ -243,10 +243,9 @@ function Rare:Open()
         FT:PageInfo(frame,"Rare alerts","A notice (and optional sound) when a rare appears on your minimap or nearby. Each rare alerts once. Click the notice to target the rare (out of combat), right-click it for these settings.")
         self.toggle=FT:AccentButton(frame,"",472,34,"Ability_Hunter_SniperShot"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function() local s=self:Settings(); s.enabled=not s.enabled; self:Apply() end)
-        FT:Tooltip(self.toggle,"Rare alerts","Turn rare alerts on or off.")
         self.soundToggle=FT:QuietButton(frame,"",230,32,"INV_Misc_Bell_01"); self.soundToggle:SetPoint("TOPLEFT",24,-108)
         self.soundToggle:SetScript("OnClick",function() local s=self:Settings(); s.sound=not s.sound; self:Refresh() end)
-        FT:Tooltip(self.soundToggle,"Sound","Also play a sound. It plays at your master volume, and Ctrl+S (sound on/off) mutes it.")
+        FT:Tooltip(self.soundToggle,"Sound","Also play a sound. It plays at your master volume; turning game sound off mutes it.")
         self.soundChoice=FT:Dropdown(frame,230,function()
             local list={}; for _,e in ipairs(sounds) do list[#list+1]={value=e.value,label=e.label,icon="Interface\\Icons\\INV_Misc_Bell_01",tooltip="A sound from the game itself. Choosing it plays a short preview."} end; return list
         end,function(value) self:Settings().soundKey=value; self:PlaySound(); self:Refresh() end,"INV_Misc_Bell_01")

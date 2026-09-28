@@ -50,12 +50,17 @@ function Loot:Apply()
     if InCombatLockdown() then self.deferred=true; return end
     self.deferred=nil
     if not self.anchor then
-        local a=CreateFrame("Frame","ForeverToolsLootRollAnchor",UIParent,"BackdropTemplate")
-        self.anchor=a; a:SetSize(280,54); a:SetFrameStrata("DIALOG")
-        FT:Panel(a); FT:Paint(a,{.12,.05,.2,.9},{.7,.35,1,1})
+        -- The anchor is only a point: rolls stack upward from its center.
+        local a=CreateFrame("Frame","ForeverToolsLootRollAnchor",UIParent)
+        self.anchor=a; a:SetSize(296,2); a:SetFrameStrata("DIALOG")
+        -- While moving, a box like the other movers holds a sample roll that
+        -- sits exactly where real rolls will appear.
+        local box=CreateFrame("Frame",nil,a); self.box=box
+        box:SetSize(296,84); box:SetPoint("BOTTOM",a,"CENTER",0,-10)
+        FT:MoverBox(box,0)
         -- A non-interactive sample card, not a real roll or a usable item.
-        local card=CreateFrame("Frame",nil,a); card:SetSize(280,64)
-        card:SetPoint("BOTTOM",a,"TOP",0,4); FT:Panel(card)
+        local card=CreateFrame("Frame",nil,box); card:SetSize(280,64)
+        card:SetPoint("BOTTOM",a,"CENTER",0,0); FT:Panel(card)
         FT:Paint(card,{.025,.04,.045,.98},{.12,.42,.6,1})
         local item=card:CreateTexture(nil,"ARTWORK"); item:SetSize(40,40)
         item:SetPoint("LEFT",8,3); item:SetTexture("Interface\\Icons\\INV_Belt_03")
@@ -67,19 +72,18 @@ function Loot:Apply()
         local timer=card:CreateTexture(nil,"ARTWORK"); timer:SetSize(208,5)
         timer:SetPoint("BOTTOMLEFT",8,7); timer:SetColorTexture(.65,.8,.15,1)
         self.sample=card
-        a:EnableMouse(true); a:RegisterForDrag("LeftButton")
-        local label=FT:Label(a,"Loot rolls — drag to move",14,true); label:SetPoint("CENTER",0,6)
-        local hint=FT:Label(a,"Close the addon to save and lock",11); hint:SetPoint("CENTER",0,-13)
-        a:SetScript("OnDragStart",function()
+        box:EnableMouse(true); box:RegisterForDrag("LeftButton")
+        local hint=FT:Label(box,"Drag to move",12); FT:Caption(hint,box,"below",0)
+        box:SetScript("OnDragStart",function()
             if not self.moving or InCombatLockdown() then return end
             local x,y=GetCursorPosition(); local cx,cy=a:GetCenter()
             if not cx or not cy then return end
             local scale=UIParent:GetEffectiveScale(); local ratio=a:GetEffectiveScale()/scale
             self.offsetX,self.offsetY=cx*ratio-x/scale,cy*ratio-y/scale; self.dragging=true
         end)
-        a:SetScript("OnDragStop",function() self:UpdateDrag(); self.dragging=nil end)
-        a:SetScript("OnUpdate",function() self:UpdateDrag() end)
-        a:SetScript("OnHide",function() self.dragging=nil end)
+        box:SetScript("OnDragStop",function() self:UpdateDrag(); self.dragging=nil end)
+        box:SetScript("OnUpdate",function() self:UpdateDrag() end)
+        box:SetScript("OnHide",function() self.dragging=nil end)
     end
     if GroupLootContainer and not self.hooked then
         self.hooked=true

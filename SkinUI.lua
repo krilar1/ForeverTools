@@ -163,7 +163,6 @@ function S:Open()
         local reset=FT:QuietButton(self.frame,"Reset this area",234,32,"reset"); reset:SetPoint("BOTTOMLEFT",222,30); self.reset=reset
         reset:SetScript("OnClick",function() local key=self.selected; FT:Confirm("Reset this skin area to its defaults?",function() local root=self:Settings(); root.areas[key]=nil; self:Area(key); self:Apply() end) end)
 
-        FT:Tooltip(self.thickness,"Border thickness","How thick the border is in this area.")
         FT:Tooltip(self.presetChoice,"Preset for this area","Pick a look for this area only. Dark mode gives black borders.")
         FT:Tooltip(self.allPresetChoice,"Template for all areas","Choose a template, then use the button below to apply it everywhere.")
     end

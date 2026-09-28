@@ -25,8 +25,13 @@ end
 function Marker:ActionSpell(button)
     local action=button and button.action
     if not readable(action) or type(action)~="number" or not GetActionInfo then return end
-    local ok,kind,id=pcall(GetActionInfo,action)
-    if not ok or not readable(kind) or kind~="spell" or not readable(id) or type(id)~="number" then return end
+    local ok,kind,id,subType=pcall(GetActionInfo,action)
+    if not ok or not readable(kind) or not readable(id) or type(id)~="number" then return end
+    -- A macro reports the spell it would cast right now (with the rank written
+    -- in the macro, if any), the same way the game shows its icon.
+    if kind=="macro" then
+        if not readable(subType) or subType~="spell" then return end
+    elseif kind~="spell" then return end
     local name=C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(id)
     if not readable(name) or type(name)~="string" then return end
     return name,FT.BuffRanks:SpellRank(id)
@@ -107,7 +112,7 @@ function Marker:ToggleIgnore(name)
 end
 FT:RegisterModule("RankMarker",Marker)
 local events=CreateFrame("Frame")
-for _,event in ipairs({"PLAYER_REGEN_ENABLED","PLAYER_ENTERING_WORLD","ACTIONBAR_SLOT_CHANGED","ACTIONBAR_PAGE_CHANGED","UPDATE_BONUS_ACTIONBAR","UPDATE_SHAPESHIFT_FORM","SPELLS_CHANGED","LEARNED_SPELL_IN_SKILL_LINE"}) do pcall(events.RegisterEvent,events,event) end
+for _,event in ipairs({"PLAYER_REGEN_ENABLED","PLAYER_ENTERING_WORLD","ACTIONBAR_SLOT_CHANGED","ACTIONBAR_PAGE_CHANGED","UPDATE_BONUS_ACTIONBAR","UPDATE_SHAPESHIFT_FORM","SPELLS_CHANGED","LEARNED_SPELL_IN_SKILL_LINE","UPDATE_MACROS"}) do pcall(events.RegisterEvent,events,event) end
 events:SetScript("OnEvent",function(_,event)
     if not FT.dbReady then return end
     if event=="PLAYER_REGEN_ENABLED" then

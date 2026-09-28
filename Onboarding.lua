@@ -2,7 +2,7 @@ local _,FT=...
 -- First-time setup (once per account, fresh installs only) and "What's new"
 -- (once per version, existing users only). New characters never see either.
 local Onboarding={}
-local skinAreas={"actions","buffs","stances","minimap","bags","bagWindows","micro","xp","player","target","tot","focus","focustarget"}
+local skinAreas={"actions","buffs","stances","minimap","bags","bagWindows","micro","xp","player","target","tot","focus","focustarget","pet","party","personal","castbar"}
 local presets={
     {key="minimal",label="Minimal",icon="generic",text="Blizzard's own look. Nothing is skinned or recolored; turn on single features whenever you like."},
     {key="dark",label="Dark mode",icon="skins",text="Dark borders on action bars, buffs, bags, micro menu, minimap, XP bar and unit frames. Nothing else changes."},
@@ -67,6 +67,17 @@ function Onboarding:Refresh()
         button.label:SetText(button.title..": "..(self.chosen[key] and "On" or "Off")); FT:SetSelected(button,self.chosen[key])
     end
 end
+-- Demo (/ft start): the first-time setup exactly as a new player sees it,
+-- but every button only closes it. Nothing is changed or saved.
+function Onboarding:ShowDemo()
+    if InCombatLockdown() then FT:CombatOpenRequest(); return end
+    self.demo=true; self:ShowSetup(false)
+end
+function Onboarding:EndDemo()
+    self.demo=nil
+    if self.frame then self.skipping=true; self.frame:Hide(); self.skipping=nil end
+    FT:Toast("Setup demo: nothing was changed.",3)
+end
 function Onboarding:ShowSetup(again)
     if InCombatLockdown() then FT:CombatOpenRequest(); return end
     if not self.frame then
@@ -84,7 +95,7 @@ function Onboarding:ShowSetup(again)
             self.presetButtons[preset.key]=b
         end
         self.presetText=FT:Label(frame,"",13); self.presetText:SetPoint("TOPLEFT",24,-176); self.presetText:SetWidth(512)
-        self.presetText:SetTextColor(.78,.74,.86)
+        self.presetText:SetTextColor(.85,.80,.70)
         local extraHead=FT:Label(frame,"Also turn on",15,true); extraHead:SetPoint("TOPLEFT",24,-222); FT:SectionHeading(extraHead,"INV_Misc_Note_02",380)
         self.extraButtons={}
         for i,extra in ipairs(extras) do
@@ -95,9 +106,10 @@ function Onboarding:ShowSetup(again)
             self.extraButtons[extra.key]=b
         end
         local note=FT:Label(frame,"You can change everything later in /ft.",12)
-        note:SetPoint("TOPLEFT",24,-374); note:SetWidth(512); note:SetTextColor(.66,.57,.77)
+        note:SetPoint("TOPLEFT",24,-374); note:SetWidth(512); note:SetTextColor(.66,.59,.48)
         local import=FT:QuietButton(frame,"Import profile",160,34,"profiles"); import:SetPoint("BOTTOMLEFT",24,22)
         import:SetScript("OnClick",function()
+            if self.demo then self:EndDemo(); return end
             FT.modules.Profiles:Transfer(true,function(name)
                 FT.modules.Profiles:Load(name,false,true)
                 self:Finish(true)
@@ -106,25 +118,30 @@ function Onboarding:ShowSetup(again)
         end)
         FT:Tooltip(import,"Import profile","Paste a ForeverTools export string from another computer or account. It is loaded right away.")
         local skip=FT:QuietButton(frame,"Skip",160,34,"reset"); skip:SetPoint("BOTTOM",0,22)
-        skip:SetScript("OnClick",function() self:Finish(); FT:Toast("No changes made. Open /ft any time.",3) end)
+        skip:SetScript("OnClick",function() if self.demo then self:EndDemo(); return end; self:Finish(); FT:Toast("No changes made. Open /ft any time.",3) end)
         FT:Tooltip(skip,"Skip","Keep your current settings. You can run this setup again from System > General.")
         local apply=FT:AccentButton(frame,"Apply",160,34,"confirm"); apply:SetPoint("BOTTOMRIGHT",-24,22)
         apply:SetScript("OnClick",function()
             if InCombatLockdown() then return end
+            if self.demo then self:EndDemo(); return end
             self:ApplyChoices(self.preset,self.chosen); self:Finish()
             FT:Toast("Setup applied. Open /ft any time.",3)
         end)
         -- Closing with X or Escape counts as Skip, so it never returns uninvited.
-        frame:HookScript("OnHide",function() if not self.skipping and FT.db.setupDone~=true then self:Finish() end end)
+        frame:HookScript("OnHide",function()
+            if self.demo then self.demo=nil; return end
+            if not self.skipping and FT.db.setupDone~=true then self:Finish() end
+        end)
     end
     self.again=again
+    self.frame.titleText:SetText(self.demo and "Welcome to ForeverTools (demo)" or "Welcome to ForeverTools")
     self.preset=not again and "minimal" or nil
     self.intro:SetText(again and "Pick a preset to replace your current look, or only change the extras below." or "Everything starts off, so your interface looks like Blizzard's. Pick a starting point; you can change anything later.")
     self.chosen={}
-    for _,extra in ipairs(extras) do self.chosen[extra.key]=extraValue(extra.key) end
+    for _,extra in ipairs(extras) do self.chosen[extra.key]=(not self.demo) and extraValue(extra.key) or false end
     self:Refresh()
     FT:PlaceBeside(self.frame)
-    self.frame:Show()
+    self.frame.keepAfterCombat=not again; self.frame:Show()
 end
 -- "What's new": a small card panel near the top right (below the minimap),
 -- not in the middle of the screen. Each note is an icon, a short title and
@@ -133,13 +150,13 @@ local NEWS_WIDTH, CARD_HEIGHT, CARD_GAP = 400, 50, 6
 local function newsCard(parent)
     local card = CreateFrame("Frame", nil, parent)
     card:SetSize(NEWS_WIDTH - 40, CARD_HEIGHT)
-    FT:RoundedFill(card, 0.09, 0.075, 0.13, 1)
+    FT:RoundedFill(card, 0.12,0.095,0.065, 1)
     card.icon = card:CreateTexture(nil, "ARTWORK"); card.icon:SetSize(34, 34); card.icon:SetPoint("LEFT", 8, 0)
-    card.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    card.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93); FT:RoundIcon(card.icon)
     card.title = FT:Label(card, "", 14, true); card.title:SetPoint("TOPLEFT", 52, -8); card.title:SetWidth(NEWS_WIDTH - 104)
     card.title:SetTextColor(1, 0.84, 0.45)
     card.text = FT:Label(card, "", 12); card.text:SetPoint("TOPLEFT", card.title, "BOTTOMLEFT", 0, -3); card.text:SetWidth(NEWS_WIDTH - 104)
-    card.text:SetTextColor(0.86, 0.82, 0.93)
+    card.text:SetTextColor(.88,.83,.74)
     return card
 end
 function Onboarding:ShowWhatsNew()
@@ -147,12 +164,12 @@ function Onboarding:ShowWhatsNew()
     if not entry or InCombatLockdown() then return end
     if not self.news then
         local frame=FT:Window("ForeverToolsWhatsNew","What's new",NEWS_WIDTH,300); self.news=frame
-        frame.noSavePrompt=true
+        frame.noSavePrompt=true; frame.keepAfterCombat=true
         frame.homeButton:Hide()
         frame.logo=frame:CreateTexture(nil,"ARTWORK"); frame.logo:SetSize(40,40); frame.logo:SetPoint("TOPLEFT",18,-16)
         frame.logo:SetTexture("Interface\\AddOns\\ForeverTools\\Media\\MinimapIcon.tga")
         frame.titleText:ClearAllPoints(); frame.titleText:SetPoint("TOPLEFT",66,-18)
-        frame.sub=FT:Label(frame,"",12); frame.sub:SetPoint("TOPLEFT",66,-42); frame.sub:SetTextColor(.66,.57,.77)
+        frame.sub=FT:Label(frame,"",12); frame.sub:SetPoint("TOPLEFT",66,-42); frame.sub:SetTextColor(.66,.59,.48)
         FT:SetTitleLine(frame,64)
         frame.cards={}
         local off=FT:QuietButton(frame,"Don't show again",170,30,"reset"); off:SetPoint("BOTTOMLEFT",20,18)

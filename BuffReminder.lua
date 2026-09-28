@@ -294,7 +294,9 @@ function Reminder:ApplyPosition()
     for _,badge in ipairs({self.badge,self.groupBadge}) do
         if badge.SetScale then badge:SetScale(s.size) end
         badge:ClearAllPoints()
-        badge:SetPoint("CENTER",UIParent,"BOTTOMLEFT",x,y-(badge==self.groupBadge and (self.badge:IsShown() and 42*s.size or 0) or 0))
+        -- Offsets count in the notice's own (scaled) units, so divide by its size;
+        -- otherwise a bigger size pushes the notices up and off the screen.
+        badge:SetPoint("CENTER",UIParent,"BOTTOMLEFT",x/s.size,(y-(badge==self.groupBadge and (self.badge:IsShown() and 42*s.size or 0) or 0))/s.size)
         badge.text:SetTextColor(unpack(badge==self.groupBadge and s.groupTextColor or s.textColor))
     end
 end
@@ -302,6 +304,7 @@ function Reminder:DragStart(badge)
     if not self.moving then return end
     local x,y=GetCursorPosition();local scale=UIParent:GetEffectiveScale()
     local cx,cy=badge:GetCenter();if not cx then return end
+    local size=badge:GetScale() or 1; cx,cy=cx*size,cy*size
     self.dragX,self.dragY=cx-x/scale,cy-y/scale;self.dragging=true
 end
 function Reminder:DragUpdate()
@@ -440,13 +443,13 @@ function Reminder:Refresh(cachedSpells)
             self.badge.text:SetText((entry.message or entry.name.." missing")..(#self.missing>1 and "  +"..(#self.missing-1) or ""))
         elseif self.moving or self.previewSelf then self.badge.icon:SetTexture("Interface\\Icons\\Spell_Holy_WordFortitude");self.badge.text:SetText("Self buff missing — preview")
         end
-        self.groupBadge:SetShown(self:NoticeVisible("group",self.groupMissing) or self.previewGroup)
+        self.groupBadge:SetShown(self:NoticeVisible("group",self.groupMissing) or self.previewGroup or self.moving)
         if #self.groupMissing>0 then
             self.groupCycle=math.max(1,math.min(self.groupCycle or 1,#self.groupMissing))
             local entry=self.groupMissing[self.groupCycle]
             self.groupBadge.icon:SetTexture(entry.spell.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
             self.groupBadge.text:SetText(entry.name)
-        elseif self.previewGroup then
+        elseif self.previewGroup or self.moving then
             self.groupBadge.icon:SetTexture("Interface\\Icons\\Spell_Holy_PrayerOfFortitude")
             self.groupBadge.text:SetText("Group buff missing — preview")
         end
@@ -462,7 +465,7 @@ function Reminder:Apply()
         local badge=CreateFrame("Button","ForeverToolsBuffReminder",UIParent)
         self.badge=badge;badge:SetSize(285,34);badge:SetPoint("TOP",UIParent,"TOP",0,-115)
         badge:SetFrameStrata("LOW");FT:Panel(badge);FT:MeterSkin(badge)
-        badge.icon=badge:CreateTexture(nil,"ARTWORK");badge.icon:SetSize(22,22);badge.icon:SetPoint("LEFT",8,0)
+        badge.icon=badge:CreateTexture(nil,"ARTWORK");badge.icon:SetSize(20,20);badge.icon:SetPoint("LEFT",8,0);badge.icon:SetTexCoord(.08,.92,.08,.92);FT:RoundIcon(badge.icon)
         badge.text=FT:Label(badge,"",13);badge.text:SetPoint("LEFT",badge.icon,"RIGHT",8,0);badge.text:SetWidth(242)
         badge:RegisterForClicks("LeftButtonUp","RightButtonUp")
         badge:SetScript("OnClick",function(_,button) self:ClickNotice("self",button) end)
@@ -480,7 +483,7 @@ function Reminder:Apply()
         end)
         local group=CreateFrame("Button","ForeverToolsGroupBuffReminder",UIParent);self.groupBadge=group
         group:SetSize(285,34);group:SetFrameStrata("LOW");FT:Panel(group);FT:MeterSkin(group)
-        group.icon=group:CreateTexture(nil,"ARTWORK");group.icon:SetSize(22,22);group.icon:SetPoint("LEFT",8,0)
+        group.icon=group:CreateTexture(nil,"ARTWORK");group.icon:SetSize(20,20);group.icon:SetPoint("LEFT",8,0);group.icon:SetTexCoord(.08,.92,.08,.92);FT:RoundIcon(group.icon)
         group.text=FT:Label(group,"",13);group.text:SetPoint("LEFT",group.icon,"RIGHT",8,0);group.text:SetWidth(242)
         group:RegisterForClicks("LeftButtonUp","RightButtonUp")
         group:SetScript("OnClick",function(_,button) self:ClickNotice("group",button) end)
@@ -633,15 +636,15 @@ function Reminder:Open()
             rank={"Low ranks","Catch spells cast at a lower rank than you know."},
             look={"Look and position","Preview, move and resize the notices."}}) do
             local h={}
-            h.title=FT:Label(frame,text[1],16,true); h.title:SetTextColor(.82,.68,1)
+            h.title=FT:Label(frame,text[1],16,true); h.title:SetTextColor(1,.82,0)
             FT:SectionHeading(h.title,({self="Spell_Holy_WordFortitude",group="Spell_Holy_PrayerOfFortitude",rank="INV_Misc_Book_07",look="Ability_Rogue_Sprint"})[key],300)
             h.tip=text[2]
             if key=="rank" or key=="look" then
-                h.line=frame:CreateTexture(nil,"ARTWORK"); h.line:SetColorTexture(.30,.23,.46,.6); h.line:SetSize(512,1)
+                h.line=frame:CreateTexture(nil,"ARTWORK"); h.line:SetColorTexture(.61,.51,.31,.6); h.line:SetSize(512,1)
             end
             self.sections[key]=h
         end
-        self.columnLine=frame:CreateTexture(nil,"ARTWORK"); self.columnLine:SetColorTexture(.30,.23,.46,.6); self.columnLine:SetWidth(1)
+        self.columnLine=frame:CreateTexture(nil,"ARTWORK"); self.columnLine:SetColorTexture(.61,.51,.31,.6); self.columnLine:SetWidth(1)
         self.toggle=FT:AccentButton(frame,"",512,34,"buffs");self.toggle:SetPoint("TOPLEFT",24,-96)
         self.toggle:SetScript("OnClick",function() local s=self:Settings();s.enabled=not s.enabled;self:Apply() end)
         FT:Tooltip(self.toggle,"Self-buff reminders","Shows a small notice at the top of the screen when one of your buffs is missing. Hidden in combat, on flights and while dead. It never casts anything for you.")
@@ -658,7 +661,7 @@ function Reminder:Open()
         self.rows={}
         self.kindHeads={}
         for i=1,6 do
-            local h=FT:Label(frame,"",12,true); h:SetTextColor(.66,.57,.77); FT:SectionHeading(h,nil,260,14); h:Hide(); self.kindHeads[i]=h
+            local h=FT:Label(frame,"",12,true); h:SetTextColor(.66,.59,.48); FT:SectionHeading(h,nil,260,14); h:Hide(); self.kindHeads[i]=h
         end
         for i=1,12 do
             local b=FT:QuietButton(frame,"",250,32,"welcome");b:SetPoint("TOPLEFT",24+((i-1)%2)*262,-185-math.floor((i-1)/2)*38)
@@ -690,7 +693,7 @@ function Reminder:Open()
         self.whereRows={}
         for _,field in ipairs({"selfWhere","groupWhere"}) do
             local row={buttons={}}
-            row.label=FT:Label(frame,"Show in:",13); row.label:SetTextColor(.78,.74,.86)
+            row.label=FT:Label(frame,"Show in:",13); row.label:SetTextColor(.85,.80,.70)
             for _,place in ipairs(self.places) do
                 local key=place[1]
                 local b=FT:QuietButton(frame,place[2],86,30)

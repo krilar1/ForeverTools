@@ -9,7 +9,7 @@ function Appearance:Open()
         local entries = {
             {"Font manager", "Choose fonts, sizes and outlines for each text area.", "FontManager", "fonts"},
             {"Unitframe colors", "Class-colored health bars for player, target and focus, and a dispel glow for debuffs you can remove. Party and raid class colors use Blizzard settings.", "UnitColors", "classes"},
-            {"Skins", "Built-in action-bar and buff styles with color and transparency controls.", "IconStyles", "skins"},
+            {"Skins", "Dark mode and other looks for action bars, buffs, bags, minimap, unit frames, cast bars and more, with color and transparency controls.", "IconStyles", "skins"},
             {"Chat", "Show, hide or mouseover-reveal chat buttons, the chat font and clickable links.", "Chat", "chat"},
         }
         for i, entry in ipairs(entries) do

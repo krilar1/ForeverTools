@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "0.14.7"
+FT.version = "0.15.0"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -118,9 +118,98 @@ end
 function FT:Panel(frame)
     frame.borderTextures = layer(frame, 0, -8)
     frame.fillTextures = layer(frame, 1, -7)
-    self:Paint(frame, {0.045, 0.04, 0.07, 1}, {0.30, 0.23, 0.46, 1})
+    self:Paint(frame, {0.075,0.058,0.04, 1}, {.61,.51,.31, 1})
 end
 -- A single rounded fill without the purple addon border, for dark overlays.
+-- The outline shown around an element while you move it: the same rounded
+-- panel, drawn "pad" pixels outside the frame so the text inside has room.
+function FT:MoverBox(frame, pad)
+    pad = pad or 0
+    frame.borderTextures = layer(frame, -pad, -8)
+    frame.fillTextures = layer(frame, -pad + 1, -7)
+    self:Paint(frame, {0.075, 0.058, 0.04, 1}, {0.61, 0.51, 0.31, 1})
+end
+-- Captions next to a moving element ("Drag to move", its name): placed on
+-- the preferred side, or the other side when that would leave the screen,
+-- and lined up with the right edge when the left one would run off.
+local captions, captionTicker = {}, CreateFrame("Frame")
+local function rectOf(frame, pad)
+    local top, bottom, left, right = frame:GetTop(), frame:GetBottom(), frame:GetLeft(), frame:GetRight()
+    if not top or not left then return end
+    local ratio = frame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+    pad = pad or 0
+    return {l = left * ratio - pad, r = right * ratio + pad, b = bottom * ratio - pad, t = top * ratio + pad}
+end
+local function overlaps(a, b) return a.l < b.r and b.l < a.r and a.b < b.t and b.b < a.t end
+-- All captions of one element move as a block (its name, then "Drag to
+-- move"). The block tries above/below first, then right and left, and takes
+-- the first spot that stays on screen and clear of the other elements being
+-- moved and their captions.
+local function placeAll()
+    local groups, order, any = {}, {}, false
+    for _, c in ipairs(captions) do
+        if c.text:IsVisible() and c.frame:IsVisible() then
+            any = true
+            local g = groups[c.frame]
+            if not g then g = {frame = c.frame, pad = c.pad or 0, list = {}}; groups[c.frame] = g; order[#order + 1] = g end
+            g.pad = math.max(g.pad, c.pad or 0)
+            -- Names (above) go first in the block, hints after.
+            if c.side == "above" then table.insert(g.list, 1, c); g.preferAbove = true else g.list[#g.list + 1] = c end
+        end
+    end
+    if not any then return false end
+    local W, H, gap = UIParent:GetWidth(), UIParent:GetHeight(), 4
+    local boxes, placed = {}, {}
+    for _, g in ipairs(order) do g.rect = rectOf(g.frame, g.pad); if g.rect then boxes[#boxes + 1] = g end end
+    for _, g in ipairs(boxes) do
+        local r, bw, bh = g.rect, 0, 0
+        for _, c in ipairs(g.list) do
+            local scale = c.text:GetParent():GetEffectiveScale() / UIParent:GetEffectiveScale()
+            c.w, c.h, c.scale = (c.text:GetStringWidth() or 60) * scale, (c.text:GetStringHeight() or 12) * scale, scale
+            bw = math.max(bw, c.w); bh = bh + c.h + (bh > 0 and 2 or 0)
+        end
+        local leftX = (r.l + bw <= W) and r.l or (r.r - bw)
+        local spots = {
+            above = {l = leftX, r = leftX + bw, b = r.t + gap, t = r.t + gap + bh},
+            below = {l = leftX, r = leftX + bw, t = r.b - gap, b = r.b - gap - bh},
+            right = {l = r.r + gap, r = r.r + gap + bw, t = r.t, b = r.t - bh},
+            left = {r = r.l - gap, l = r.l - gap - bw, t = r.t, b = r.t - bh},
+        }
+        local tries = g.preferAbove and {"above", "below", "right", "left"} or {"below", "above", "right", "left"}
+        local chosen
+        for _, name in ipairs(tries) do
+            local spot, ok = spots[name], true
+            if spot.l < 0 or spot.r > W or spot.b < 0 or spot.t > H then ok = false end
+            if ok then for _, other in ipairs(boxes) do if other ~= g and overlaps(spot, other.rect) then ok = false; break end end end
+            if ok then for _, other in ipairs(placed) do if overlaps(spot, other) then ok = false; break end end end
+            if ok then chosen = spot; break end
+        end
+        chosen = chosen or spots[tries[1]]
+        placed[#placed + 1] = chosen
+        local y = chosen.t
+        for _, c in ipairs(g.list) do
+            c.text:ClearAllPoints()
+            c.text:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", chosen.l / c.scale, y / c.scale)
+            y = y - c.h - 2
+        end
+    end
+    return true
+end
+captionTicker:Hide()
+captionTicker:SetScript("OnUpdate", function(ticker, elapsed)
+    ticker.elapsed = (ticker.elapsed or 0) + elapsed
+    if ticker.elapsed < 0.02 then return end
+    ticker.elapsed = 0
+    if not placeAll() then ticker:Hide() end
+end)
+function FT:Caption(text, frame, side, pad)
+    local c = {text = text, frame = frame, side = side, pad = pad}
+    captions[#captions + 1] = c
+    local function wake() if text:IsShown() then captionTicker:Show() end end
+    hooksecurefunc(text, "Show", wake); hooksecurefunc(text, "SetShown", wake)
+    if frame.HookScript then frame:HookScript("OnShow", wake) end
+    return c
+end
 function FT:RoundedFill(frame, r, g, b, a)
     local textures = layer(frame, 0, -8)
     for _, texture in ipairs(textures) do texture:SetVertexColor(r, g, b, a or 1) end
@@ -139,7 +228,7 @@ end
 function FT:TitleBand(frame, lineY)
     if frame.titleBand then return end
     lineY = lineY or 48
-    local r, g, b, a = 0.17, 0.11, 0.28, 0.9
+    local r, g, b, a = 0.30, 0.23, 0.12, 0.55
     -- Rounded top edge (the same 8 px corners as the panel), then the fade.
     local cuts = {0, 0.25, 0.75, 1}
     frame.titleBand = {}
@@ -196,6 +285,19 @@ function FT:FadeIn(frame)
     frame.fadeIn = group
     frame:HookScript("OnShow", function() group:Stop(); group:Play() end)
 end
+-- Icons get softly rounded corners (the addon's own rounded shape as a
+-- mask), the same everywhere. Safe to call more than once.
+local ROUNDED = "Interface\\AddOns\\" .. addonName .. "\\Media\\Rounded.tga"
+function FT:RoundIcon(texture)
+    if not texture or texture.roundMask or not texture.AddMaskTexture then return texture end
+    local parent = texture:GetParent()
+    if not parent or not parent.CreateMaskTexture then return texture end
+    local mask = parent:CreateMaskTexture()
+    mask:SetTexture(ROUNDED, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    mask:SetAllPoints(texture)
+    texture:AddMaskTexture(mask); texture.roundMask = mask
+    return texture
+end
 function FT:SectionHeading(label, icon, lineWidth, iconSize)
     if not label or label.ftHeading then return label end
     local parent = label:GetParent()
@@ -203,7 +305,7 @@ function FT:SectionHeading(label, icon, lineWidth, iconSize)
     iconSize = iconSize or math.floor((size or 14) + 3)
     label.ftHeading = {icon = icon, size = iconSize}
     local line = parent:CreateTexture(nil, "ARTWORK")
-    gradient(line, "HORIZONTAL", 0.42, 0.34, 0.63, 0.8, 0.42, 0.34, 0.63, 0)
+    gradient(line, "HORIZONTAL", 0.61, 0.51, 0.31, 0.8, 0.61, 0.51, 0.31, 0)
     line:SetHeight(1); line:SetWidth(lineWidth or 180)
     label.ftHeading.line = line
     local function update()
@@ -216,14 +318,25 @@ function FT:SectionHeading(label, icon, lineWidth, iconSize)
     label.SetText = function(owner, text)
         owner.ftHeading.raw = text
         local shown = text
-        if text and text ~= "" and owner.ftHeading.icon then
-            shown = "|TInterface\\Icons\\" .. owner.ftHeading.icon .. ":" .. iconSize .. ":" .. iconSize .. ":0:0:64:64:5:59:5:59|t  " .. text
+        -- The icon is a real (rounded) texture over a see-through space
+        -- in the text, so the text keeps its place.
+        local heading = owner.ftHeading
+        if text and text ~= "" and heading.icon then
+            shown = "|T" .. ROUNDED .. ":" .. iconSize .. ":" .. iconSize .. ":0:0:32:32:0:1:0:1|t  " .. text
+            if not heading.texture then
+                heading.texture = FT:RoundIcon(parent:CreateTexture(nil, "ARTWORK"))
+                heading.texture:SetSize(iconSize, iconSize); heading.texture:SetPoint("LEFT", owner, "LEFT", 0, 0)
+                heading.texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+            end
+            heading.texture:SetTexture("Interface\\Icons\\" .. heading.icon)
         end
+        if heading.texture then heading.texture:SetShown(owner:IsShown() and text ~= nil and text ~= "" and heading.icon ~= nil) end
         setText(owner, shown); update()
     end
     function label:SetHeadingIcon(newIcon) self.ftHeading.icon = newIcon; self:SetText(self.ftHeading.raw) end
-    hooksecurefunc(label, "Show", update); hooksecurefunc(label, "Hide", function() line:Hide() end)
-    if label.SetShown then hooksecurefunc(label, "SetShown", update) end
+    local function icon() local t = label.ftHeading.texture; if t then t:SetShown(label:IsShown() and (label.ftHeading.raw or "") ~= "" and label.ftHeading.icon ~= nil) end end
+    hooksecurefunc(label, "Show", function() update(); icon() end); hooksecurefunc(label, "Hide", function() line:Hide(); icon() end)
+    if label.SetShown then hooksecurefunc(label, "SetShown", function() update(); icon() end) end
     label:SetText(label:GetText())
     return label
 end
@@ -231,7 +344,7 @@ function FT:Label(parent, text, size, heading)
     local label = parent:CreateFontString(nil, "OVERLAY")
     label:SetFont(heading and self.headingFont or self.bodyFont, size or 14, "")
     label:SetText(text)
-    label:SetTextColor(0.94, 0.91, 1)
+    label:SetTextColor(0.95,0.90,0.81)
     label:SetJustifyH("LEFT")
     return label
 end
@@ -239,7 +352,7 @@ end
 local function hoverGlow(button)
     if button.glow then return button.glow end
     local glow = {}
-    local r, g, b, a, depth = 0.63, 0.45, 0.85, 0.32, 7
+    local r, g, b, a, depth = 0.79,0.64,0.35, 0.32, 7
     local sides = {
         {"TOPLEFT", "TOPRIGHT", "VERTICAL", false}, {"BOTTOMLEFT", "BOTTOMRIGHT", "VERTICAL", true},
         {"TOPLEFT", "BOTTOMLEFT", "HORIZONTAL", true}, {"TOPRIGHT", "BOTTOMRIGHT", "HORIZONTAL", false},
@@ -267,14 +380,20 @@ function FT:UpdateButton(button)
         local on = button.hover and (not button.IsEnabled or button:IsEnabled())
         for _, t in ipairs(hoverGlow(button)) do t:SetShown(on and true or false) end
     end
+    if button.outline then
+        -- A different kind of button: an action rather than a page.
+        if button.hover then self:Paint(button, {0.16, 0.12, 0.07, 1}, {1, 0.84, 0.5, 1})
+        else self:Paint(button, {0.07, 0.06, 0.08, 1}, {0.78, 0.62, 0.34, 1}) end
+        return
+    end
     if button.selected then
-        self:Paint(button, {0.30, 0.17, 0.51, 1}, {0.83, 0.62, 1, 1})
+        self:Paint(button, {0.33,0.25,0.11, 1}, {0.85,0.68,0.36, 1})
     elseif button.hover then
-        self:Paint(button, {0.18, 0.12, 0.28, 1}, {0.63, 0.45, 0.85, 1})
+        self:Paint(button, {0.17,0.13,0.09, 1}, {0.79,0.64,0.35, 1})
     elseif button.accent then
-        self:Paint(button, {0.28, 0.15, 0.48, 1}, {0.62, 0.43, 0.86, 1})
+        self:Paint(button, {0.20,0.155,0.09, 1}, {0.55,0.44,0.24, 1})
     else
-        self:Paint(button, {0.09, 0.075, 0.13, 1}, {0.28, 0.23, 0.37, 1})
+        self:Paint(button, {0.12,0.095,0.065, 1}, {0.29,0.24,0.15, 1})
     end
 end
 function FT:SetSelected(button, selected)
@@ -305,9 +424,11 @@ function FT:ButtonIcon(button, icon, size)
 
     else button.icon:SetTexture("Interface\\Icons\\" .. (self.icons[icon] or icon)) end
     button.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    FT:RoundIcon(button.icon)
     if icon == "delete" then
         button.icon:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
         button.icon:SetTexCoord(0,1,0,1)
+        if button.icon.roundMask then button.icon:RemoveMaskTexture(button.icon.roundMask); button.icon.roundMask = nil end
     end
     button.label:ClearAllPoints()
     button.label:SetPoint("LEFT", button.icon, "RIGHT", 8, 0)
@@ -317,8 +438,8 @@ end
 function FT:Tooltip(button, title, body)
     button:HookScript("OnEnter", function(owner)
         GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-        GameTooltip:SetText(title, 0.79, 0.63, 1)
-        GameTooltip:AddLine(type(body) == "function" and body() or body, 0.91, 0.88, 0.96, true)
+        GameTooltip:SetText(title, 1,.82,0)
+        GameTooltip:AddLine(type(body) == "function" and body() or body, .96,.93,.86, true)
         GameTooltip.ftAddonHelp = true
         local tooltipModule = FT.modules.Tooltip
         if tooltipModule and tooltipModule.RestoreTooltipFont then tooltipModule:RestoreTooltipFont(GameTooltip) end
@@ -388,8 +509,15 @@ function FT:QuietButton(parent, label, width, height, icon)
     self:Panel(button)
     button.label = self:Label(button, label, 14)
     button.label:SetPoint("CENTER")
-    button:SetScript("OnEnter", function(owner) owner.hover = true; FT:UpdateButton(owner) end)
-    button:SetScript("OnLeave", function(owner) owner.hover = false; FT:UpdateButton(owner) end)
+    -- Hover: gold text, then back to whatever color the label had.
+    button:SetScript("OnEnter", function(owner)
+        owner.hover = true; FT:UpdateButton(owner)
+        if owner.label and not owner.outline then owner.restColor = {owner.label:GetTextColor()}; owner.label:SetTextColor(1, 0.82, 0) end
+    end)
+    button:SetScript("OnLeave", function(owner)
+        owner.hover = false; FT:UpdateButton(owner)
+        if owner.restColor then owner.label:SetTextColor(unpack(owner.restColor)); owner.restColor = nil end
+    end)
     if icon and label~="+" and label~="-" and label~="-" then self:ButtonIcon(button, icon) end
     self:UpdateButton(button)
     return button
@@ -409,7 +537,6 @@ function FT:AddClose(frame, onClick, inset)
     close:SetSize(28, 28)
     close:SetPoint("TOPRIGHT", -(inset or 14), -(inset or 14))
     close:SetFrameLevel(frame:GetFrameLevel() + 5)
-    self:Tooltip(close, "Close", "Close this window.")
     close:SetScript("OnClick", onClick or function() frame:Hide() end)
     return close
 end
@@ -434,7 +561,7 @@ function FT:Window(name, title, width, height)
     local titleText = self:Label(frame, title, 20, true)
     frame.titleText = titleText
     titleText:SetPoint("TOPLEFT", 22, -21)
-    titleText:SetTextColor(0.82, 0.68, 1)
+    titleText:SetTextColor(1,.82,0)
     local close = self:AddClose(frame)
     self:TitleBand(frame)
     self:FadeIn(frame)
@@ -446,7 +573,6 @@ function FT:Window(name, title, width, height)
         frame.homeButton = home
         home:SetPoint("RIGHT", close, "LEFT", -8, 0)
         home:SetScript("OnClick", function() FT:OpenHome() end)
-        self:Tooltip(home, "Back", "Go back to the previous page.")
         local arrow = GetFileIDFromPath and GetFileIDFromPath("Interface\\Icons\\misc_arrowleft")
         if type(arrow) == "number" and arrow > 0 then home.icon:SetTexture(arrow) end
     end
@@ -470,40 +596,58 @@ function FT:OpenHome()
     end
     for _, module in pairs(self.modules) do if module.frame then module.frame:Hide() end end
     if not self.home then
-        self.home = self:Window("ForeverToolsHome", "ForeverTools", 440, 364)
+        self.home = self:Window("ForeverToolsHome", "ForeverTools", 540, 412)
         self.home.titleText:SetText("ForeverTools")
-        -- The addon is still in active development: a quiet amber note after the version.
-        local version = self:Label(self.home, "v" .. self.version .. "  |cffffb840- work in progress|r", 11)
-        version:SetPoint("BOTTOMLEFT", 18, 13); version:SetTextColor(0.66, 0.57, 0.77)
-        local credit = self:Label(self.home, "Made by Krilar", 11)
-        credit:SetPoint("BOTTOMRIGHT", -18, 13); credit:SetTextColor(0.66, 0.57, 0.77)
+        -- One quiet line: version and author.
+        local version = self:Label(self.home, "v" .. self.version .. "  |cff7d705c·  By Krilar|r", 11)
+        version:SetPoint("BOTTOMLEFT", 20, 13); version:SetTextColor(.66,.59,.48)
         if self.modules.Search then self.modules.Search:Attach(self.home) end
         self.home.profileStatus=self:Label(self.home, "", 12)
         self.home.profileStatus:SetPoint("TOPRIGHT", -24, -61)
-        self.home.profileStatus:SetWidth(190)
+        self.home.profileStatus:SetWidth(210)
         self.home.profileStatus:SetJustifyH("RIGHT")
-        -- Eight buttons in an even 2 x 4 grid; FPS and chat live inside
-        -- System and Appearance.
+        -- Eight buttons in two columns, each with a short line saying what's
+        -- inside, so they need no tooltips.
         local tools={
-            {"Macros","MacroForge","macros"},{"Buff reminders","BuffReminder","buffs"},
-            {"Appearance","Appearance","fonts"},{"Tooltip","Tooltip","tooltip"},
-            {"Combat","SystemCombat","Ability_Warrior_DefensiveStance","Threat meter, rare alerts and the standing-in-fire sound."},
-            {"Keybinds","SystemKeybinds","keybind","Quick keybind mode, restoring keybinds, mouse-wheel casting and the smart interact key."},
-            {"System","System","generic"},{"Profiles",nil,"profiles"},
+            {"Macros","MacroForge","macros","Ready-made class macros, editing and macro room"},
+            {"Buff reminders","BuffReminder","buffs","Self and group buffs, low ranks and cooldowns"},
+            {"Appearance","Appearance","fonts","Fonts, unit colors, skins and chat"},
+            {"Tooltip","Tooltip","tooltip","Layout, extras, text sizes and position"},
+            {"Combat","SystemCombat","Ability_Warrior_DefensiveStance","Threat meter, rare alerts, fire sound and totems"},
+            {"Keybinds","SystemKeybinds","keybind","Quick keybind, restore, wheel casting and smart key"},
+            {"System","System","generic","General, minimap, gameplay, merchant and more"},
+            {"Profiles",nil,"profiles","Save, load and share your setups"},
         }
         for i,entry in ipairs(tools) do
             local row=math.floor((i-1)/2);local column=(i-1)%2
-            local button=self:QuietButton(self.home,entry[1],190,46,entry[3])
-            self:ButtonIcon(button,entry[3],26)
-            button:SetPoint("TOPLEFT",24+column*202,-86-row*58)
+            local button=self:QuietButton(self.home,entry[1],240,52,entry[3])
+            self:ButtonIcon(button,entry[3],32)
+            -- Macros: the game's own macro window icon.
+            if entry[3]=="macros" then button.icon:SetTexture("Interface\\MacroFrame\\MacroFrame-Icon"); button.icon:SetTexCoord(0,1,0,1) end
+            button:SetPoint("TOPLEFT",24+column*252,-90-row*60)
+            -- Name, then the description on up to two lines; the pair sits
+            -- centered in the button whether the description takes one line or two.
+            button.label:ClearAllPoints(); button.label:SetWidth(240-60)
+            button.sub=self:Label(button,entry[4],11); button.sub:SetTextColor(.66,.59,.48)
+            button.sub:SetWidth(240-60); button.sub:SetJustifyH("LEFT"); button.sub:SetWordWrap(true)
+            if button.sub.SetMaxLines then button.sub:SetMaxLines(2) end
+            local subHeight=math.min(26,button.sub:GetStringHeight() or 13)
+            local top=math.floor((52-(15+2+subHeight))/2)
+            button.label:SetPoint("TOPLEFT",button,"TOPLEFT",52,-top)
+            button.sub:SetPoint("TOPLEFT",button.label,"BOTTOMLEFT",0,-2)
             if entry[2] then
                 button:SetScript("OnClick",function() FT:OpenModule(entry[2]) end)
-                self:Tooltip(button,entry[1],entry[4] or ("Open "..entry[1].." settings."))
             else
                 button:SetScript("OnClick",function() if FT.modules.Profiles then FT.modules.Profiles:TogglePanel() end end)
-                self:Tooltip(button,"Profiles","Create, load, save or delete your local profiles.")
             end
         end
+        -- Move elements: an action, not a page, so it looks different.
+        local move=self:QuietButton(self.home,"Move elements",492,32)
+        move.outline=true; self:UpdateButton(move)
+        move.label:SetTextColor(1,0.86,0.55)
+        move:SetPoint("TOPLEFT",24,-334)
+        move:SetScript("OnClick",function() if FT.modules.Movers then FT.modules.Movers:Toggle() end end)
+        self:Tooltip(move,"Move elements","Drag the FPS counter, leveling stats, flight timer, threat meter, rare alert, reminders, loot rolls and tooltip where you like, all at once. Click Done or enter combat to lock them. Its settings are on the bar that appears, and in System > On-screen info.")
     end
     if self.modules.Profiles then self.modules.Profiles:Attach(self.home) end
     self.home:Show()
@@ -519,7 +663,12 @@ function FT:CloseCombatControls()
             self.resumeModule, self.resumeAt = name, GetTime and GetTime() or 0
         end
     end
-    for frame in pairs(self.controlWindows or {}) do frame:Hide() end
+    -- Windows that wait for an answer (setup, what's new) come back after
+    -- combat; their own buttons still close them for good.
+    for frame in pairs(self.controlWindows or {}) do
+        if frame.keepAfterCombat and frame:IsShown() then self.reopenAfterCombat=self.reopenAfterCombat or {}; self.reopenAfterCombat[frame]=true end
+        frame:Hide()
+    end
     if self.home then self.home:Hide() end
     for _,module in pairs(self.modules) do
         for _,key in ipairs({"frame","transfer","panel","saveDialog","advancedPanel","previewFrame","rolePrompt"}) do
@@ -541,8 +690,11 @@ local combatClose = CreateFrame("Frame")
 combatClose:RegisterEvent("PLAYER_REGEN_DISABLED")
 combatClose:RegisterEvent("PLAYER_REGEN_ENABLED")
 combatClose:SetScript("OnEvent", function(_,event)
-    if event=="PLAYER_REGEN_DISABLED" then FT:CloseCombatControls()
-    elseif FT.openAfterCombat and not InCombatLockdown() then
+    if event=="PLAYER_REGEN_DISABLED" then FT:CloseCombatControls(); return end
+    if InCombatLockdown() then return end
+    local reopen=FT.reopenAfterCombat; FT.reopenAfterCombat=nil
+    for frame in pairs(reopen or {}) do frame:Show() end
+    if FT.openAfterCombat then
         FT.openAfterCombat=nil;FT:OpenHome()
     end
 end)
@@ -552,16 +704,15 @@ SlashCmdList.FOREVERTOOLS = function(message)
     local command = string.lower((message or ""):match("^%s*(.-)%s*$"))
     if command == "macro" or command == "macros" then FT:OpenModule("MacroForge")
     elseif command == "fps" then FT:OpenModule("QualityOfLife")
+    elseif command == "move" then if FT.modules.Movers then FT.modules.Movers:Toggle() end
     elseif command == "fonts" or command == "font" then FT:OpenModule("FontManager")
     elseif command == "colors" then FT:OpenModule("UnitColors")
     elseif command == "icons" or command == "skins" then FT:OpenModule("IconStyles")
     elseif command == "system" then FT:OpenModule("System")
     elseif command == "tooltip" or command == "tips" then FT:OpenModule("Tooltip")
     elseif command == "keybinds" then FT:OpenModule("CustomKeybinds")
-    elseif command == "wheeldebug" then FT.modules.CustomKeybinds:Debug()
-    elseif command == "probe" then FT.modules.Probe:Toggle()
     elseif command == "threat" then FT:OpenModule("Threat")
-    elseif command == "cpu" then FT.modules.Profiler:Toggle()
+    elseif command == "start" then if FT.modules.Onboarding then FT.modules.Onboarding:ShowDemo() end
     elseif command == "buffs" or command == "reminders" then FT:OpenModule("BuffReminder")
     elseif command == "chat" then FT:OpenModule("Chat")
     elseif command == "appearance" then FT:OpenModule("Appearance")
@@ -623,8 +774,8 @@ function FT:ShowChoices(owner)
                 local item = owner.item
                 if not item or not item.tooltip then return end
                 GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-                GameTooltip:SetText(item.tooltipTitle or item.label, 0.79, 0.63, 1)
-                GameTooltip:AddLine(type(item.tooltip) == "function" and item.tooltip() or item.tooltip, 0.91, 0.88, 0.96, true)
+                GameTooltip:SetText(item.tooltipTitle or item.label, 1,.82,0)
+                GameTooltip:AddLine(type(item.tooltip) == "function" and item.tooltip() or item.tooltip, .96,.93,.86, true)
                 GameTooltip:Show()
             end)
             row:HookScript("OnLeave", function() GameTooltip:Hide() end)
@@ -690,7 +841,7 @@ function FT:CopyBox(title, text, hint, tall)
         frame:SetFrameStrata("FULLSCREEN_DIALOG")
         frame.homeButton:Hide()
         frame.hint = self:Label(frame, "", 12); frame.hint:SetPoint("TOPLEFT", 24, -58); frame.hint:SetWidth(512)
-        frame.hint:SetTextColor(0.78, 0.74, 0.86)
+        frame.hint:SetTextColor(.85,.80,.70)
         frame.scroll = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
         local box = CreateFrame("EditBox", nil, frame.scroll)
         box:SetMultiLine(true); box:SetAutoFocus(false); box:SetFont(self.bodyFont, 13, "")

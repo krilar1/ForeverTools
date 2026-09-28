@@ -238,10 +238,10 @@ function B:CreateBindOverlay()
     FT:RoundedFill(overlay,.02,.015,.04,.9)
     local box=CreateFrame("Frame",nil,overlay); box:SetSize(420,150); box:SetPoint("CENTER"); FT:Panel(box)
     box.icon=box:CreateTexture(nil,"ARTWORK"); box.icon:SetSize(40,40); box.icon:SetPoint("TOP",0,-20)
-    box.icon:SetTexCoord(.07,.93,.07,.93)
+    box.icon:SetTexCoord(.07,.93,.07,.93); FT:RoundIcon(box.icon)
     box.title=FT:Label(box,"",16,true); box.title:SetPoint("TOP",box.icon,"BOTTOM",0,-10); box.title:SetWidth(390); box.title:SetJustifyH("CENTER")
     box.hint=FT:Label(box,"Scroll up or down to bind. Click or press Esc to cancel.",13); box.hint:SetPoint("TOP",box.title,"BOTTOM",0,-8)
-    box.hint:SetWidth(390); box.hint:SetJustifyH("CENTER"); box.hint:SetTextColor(.78,.74,.86)
+    box.hint:SetWidth(390); box.hint:SetJustifyH("CENTER"); box.hint:SetTextColor(.85,.80,.70)
     overlay.box=box
     overlay:SetScript("OnMouseWheel",function(_,delta)
         local spell=self.binding; self:StopBinding(); if not spell then return end
@@ -279,34 +279,6 @@ function B:RenderSpellRows()
         if spell then row.label:SetText(spell.label); row.icon:SetTexture(spell.icon) end
     end
     self.pageLabel:SetText(#spells==0 and "No matching learned spells" or (self.spellPage.." / "..self.spellPages))
-end
--- Troubleshooting only (/ft wheeldebug): prints what the wheel-casting pieces see.
--- Hooks are added only while debugging, and nothing here casts or changes bindings.
-function B:Debug()
-    self.debug=not self.debug
-    local function say(text) print("|cffc9a0ffForeverTools wheel:|r "..text) end
-    if not self.debug then say("debug off"); return end
-    local s=self:Settings()
-    local get=(C_CVar and C_CVar.GetCVar) or GetCVar
-    local _,class=UnitClass("player")
-    say("debug on ("..tostring(class)..", saved enabled="..tostring(s.enabled).."). Casting "..(s.enabled and "ON" or "OFF")..(self.unavailable and " (unavailable on this client)" or "")..
-        ", ActionButtonUseKeyDown="..tostring(get and get("ActionButtonUseKeyDown")))
-    for _,d in ipairs(directions) do
-        local spell=self:SelectedSpell(d[1]); local button=self.buttons[d[1]]
-        say(d[2]..": "..(spell and spell.label or "no spell")..(button and "" or " (no button yet: turn casting on)"))
-        if button and not button.ftDebugHooked then
-            button.ftDebugHooked=true
-            button:HookScript("OnAttributeChanged",function(owner,name,value)
-                if B.debug and name=="state-hover" then
-                    say(d[2].." state = "..tostring(value).." · "..d[3].." bound to: "..tostring(GetBindingAction and GetBindingAction(d[3],true)))
-                end
-            end)
-            button:HookScript("PreClick",function(owner,mouse,down)
-                if B.debug then say(d[2].." click received (down="..tostring(down)..", spell="..tostring(owner:GetAttribute("spell"))..", type="..tostring(owner:GetAttribute("type"))..")") end
-            end)
-        end
-    end
-    say("Now hover your player frame and a character in the world, and scroll.")
 end
 FT:RegisterModule("CustomKeybinds",B)
 local events=CreateFrame("Frame")

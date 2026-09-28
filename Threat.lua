@@ -155,7 +155,7 @@ function Threat:Meter()
     f.empty=f:CreateFontString(nil,"OVERLAY","GameFontDisableSmall"); f.empty:SetPoint("TOP",0,-44)
     -- Drag the title bar to move it (out of combat).
     f:EnableMouse(true); f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart",function(owner) if not InCombatLockdown() and not self:Settings().locked then owner:StartMoving() end end)
+    f:SetScript("OnDragStart",function(owner) if not InCombatLockdown() and (self.moverUnlock or not self:Settings().locked) then owner:StartMoving() end end)
     f:SetScript("OnDragStop",function(owner)
         owner:StopMovingOrSizing()
         local s=self:Settings()
@@ -191,7 +191,7 @@ function Threat:Meter()
     end)
     f.grip:SetScript("OnMouseDown",function(_,button)
         local s=self:Settings()
-        if button~="LeftButton" or InCombatLockdown() or s.collapsed or s.locked then return end
+        if button~="LeftButton" or InCombatLockdown() or s.collapsed or (s.locked and not self.moverUnlock) then return end
         self.sizing=true; f:StartSizing("BOTTOMRIGHT")
     end)
     f.grip:SetScript("OnMouseUp",function()
@@ -228,7 +228,7 @@ end
 function Threat:UpdateGrip()
     local f=self.meter; if not f then return end
     local s=self:Settings()
-    local usable=not s.collapsed and not s.locked
+    local usable=not s.collapsed and (self.moverUnlock or not s.locked)
     local visible=usable and (self.sizing or self.previewing or s.grip=="always" or f:IsMouseOver())
     f.grip:SetShown(usable); f.grip:SetAlpha(visible and 1 or 0)
     f.gripWatch=usable and s.grip=="hover" and not self.previewing
@@ -498,14 +498,14 @@ function Threat:Open()
         end
         fontButton("Threat meter font","threatMeter",24,"Choose the font, size and outline of the threat meter's text (opens Fonts).")
         fontButton("Damage meter font","damageMeter",276,"Choose the font, size and outline of the game's own damage meter bars (opens Fonts).")
-        self.placeNote=FT:Label(frame,"",12); self.placeNote:SetPoint("TOPLEFT",24,-228); self.placeNote:SetWidth(492); self.placeNote:SetTextColor(.66,.57,.77)
+        self.placeNote=FT:Label(frame,"",12); self.placeNote:SetPoint("TOPLEFT",24,-228); self.placeNote:SetWidth(492); self.placeNote:SetTextColor(.66,.59,.48)
 
         local heading=FT:Label(frame,"Threat % above target",15,true); heading:SetPoint("TOPLEFT",24,-278)
         FT:SectionHeading(heading,ICON,300)
         self.textToggle=FT:AccentButton(frame,"",380,34,ICON); self.textToggle:SetPoint("TOPLEFT",24,-308)
         -- A live example with your font, size, outline and background.
         self.textPreview=CreateFrame("Frame",nil,frame); self.textPreview:SetSize(100,34); self.textPreview:SetPoint("TOPLEFT",416,-308)
-        FT:Panel(self.textPreview); FT:Paint(self.textPreview,{.03,.03,.04,1},{.30,.23,.46,1})
+        FT:Panel(self.textPreview); FT:Paint(self.textPreview,{.03,.03,.04,1},{.61,.51,.31,1})
         self.textPreview.box=CreateFrame("Frame",nil,self.textPreview); self.textPreview.box:SetPoint("CENTER")
         self.textPreview.box.background=FT:RoundedFill(self.textPreview.box,0,0,0,.6)
         self.textPreview.label=self.textPreview.box:CreateFontString(nil,"OVERLAY"); self.textPreview.label:SetPoint("CENTER")

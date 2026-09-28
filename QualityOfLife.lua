@@ -103,10 +103,18 @@ function QoL:SetAlign(align)
     s.align = align
     self:Apply()
 end
-function QoL:SetMoving(value)
+-- keepState: Move elements shows the counter while moving without turning it on.
+function QoL:ResetPosition()
+    local settings = self:Settings()
+    settings.align = "left"
+    settings.anchorX, settings.anchorY = 16, UIParent:GetHeight() - 16
+    settings.anchorWidth, settings.anchorHeight = UIParent:GetWidth(), UIParent:GetHeight()
+    self:Apply()
+end
+function QoL:SetMoving(value, keepState)
     if self.moving then self:SavePosition() end
     self.moving = not not value
-    if self.moving then self:Settings().enabled = true end
+    if self.moving and not keepState then self:Settings().enabled = true end
     self:Apply()
 end
 -- The text and a tight box around it (like the leveling stats), lined up
@@ -128,9 +136,9 @@ function QoL:Apply()
         counter:SetClampedToScreen(true)
         counter:RegisterForDrag("LeftButton")
         counter.text = counter:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        FT:Panel(counter)
+        FT:MoverBox(counter, 8)
         counter.hint = FT:Label(counter, "Drag to move", 12)
-        counter.hint:SetPoint("TOPLEFT", counter, "BOTTOMLEFT", 0, -4)
+        FT:Caption(counter.hint, counter, "below", 8)
         counter:SetScript("OnDragStart", function() self:BeginDrag() end)
         counter:SetScript("OnDragStop", function() self:SavePosition() end)
         counter:SetScript("OnMouseUp", function(_, button) if button == "LeftButton" then self:SavePosition() end end)
@@ -210,13 +218,7 @@ function QoL:Open()
         self.larger:SetScript("OnClick", function() self:ChangeSize(2) end)
         local reset = FT:QuietButton(self.frame, "Reset position", 160, 32, "reset")
         reset:SetPoint("TOPRIGHT", -24, -144)
-        reset:SetScript("OnClick", function()
-            local settings = self:Settings()
-            settings.align = "left"
-            settings.anchorX, settings.anchorY = 16, UIParent:GetHeight() - 16
-            settings.anchorWidth, settings.anchorHeight = UIParent:GetWidth(), UIParent:GetHeight()
-            self:Apply()
-        end)
+        reset:SetScript("OnClick", function() self:ResetPosition() end)
         FT:Tooltip(reset, "Reset position", "Put the counter back in the top-left corner.")
         FT:Tooltip(self.toggle, "FPS counter", "Show or hide the frames-per-second counter.")
         FT:Tooltip(self.moveButton, "Move counter", "Click to unlock, drag the counter where you want it, then click again to lock it. Moving turns the counter on.")
@@ -273,7 +275,7 @@ events:SetScript("OnEvent", function(_, event, loadedAddon)
     if event == "ADDON_LOADED" and loadedAddon == addonName then initialize()
     elseif event == "PLAYER_LOGIN" then
         initialize()
-        if not welcomed and FT.db.welcome == true then print("|cffc9a0ffForeverTools v"..FT.version.." loaded:|r |cffffffff/ft|r") end
+        if not welcomed and FT.db.welcome == true then print("|cffffd100ForeverTools v"..FT.version.." loaded:|r |cffffffff/ft|r") end
         welcomed = true
     elseif event == "PLAYER_LOGOUT" and QoL.moving then QoL:SavePosition() end
     if event == "PLAYER_ENTERING_WORLD" or event == "UI_SCALE_CHANGED" or event == "DISPLAY_SIZE_CHANGED" then

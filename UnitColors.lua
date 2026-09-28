@@ -16,6 +16,7 @@ local function groupFor(unit)
     if unit=="focustarget" then return "focus" end
     if unit == "player" or unit == "target" or unit == "focus" then return unit end
 end
+local nativeAtlas = {player = "UI-HUD-UnitFrame-Player-PortraitOn-Bar-Health"}
 function Colors:Paint(bar, force)
     local info = self.tracked[bar]
     if not info or self.painting then return end
@@ -39,7 +40,27 @@ function Colors:Paint(bar, force)
     -- the default look.
     local texture = bar.GetStatusBarTexture and bar:GetStatusBarTexture()
     if info.art then self:RestoreArt(info) end
-    if texture and texture.SetDesaturated then texture:SetDesaturated(color ~= nil) end
+    -- Blizzard ships a white "-Status" copy of each health fill (same shape,
+    -- used for heal prediction and colored power bars). Tinting that one
+    -- gives the true class color, as bright as the party and raid frames.
+    -- Greying the green art (the fallback) comes out darker.
+    local status
+    if color and texture and texture.GetAtlas and texture.SetAtlas then
+        local atlas = texture:GetAtlas()
+        if issecretvalue and issecretvalue(atlas) then atlas = nil end
+        -- Art set in the frame's XML can report no atlas name (the player
+        -- frame does); use the name Blizzard gives that bar.
+        if type(atlas) ~= "string" or atlas == "" then atlas = info.native or nativeAtlas[info.group] end
+        if type(atlas) == "string" then
+            if atlas:find("%-Status$") then status = true
+            elseif C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas .. "-Status") then
+                info.native = atlas; texture:SetAtlas(atlas .. "-Status"); status = true
+            end
+        end
+    elseif not color and info.native and texture and texture.SetAtlas then
+        texture:SetAtlas(info.native); info.native = nil
+    end
+    if texture and texture.SetDesaturated then texture:SetDesaturated(color ~= nil and not status) end
     if color then bar:SetStatusBarColor(color.r, color.g, color.b)
     elseif info.colored and info.original then bar:SetStatusBarColor(unpack(info.original)) end
     for _,rim in ipairs(info.rim or {}) do rim:Hide() end
@@ -127,11 +148,11 @@ function Colors:Compact(frame)
     if name:find("Party",1,true) then group="party" end
     -- Compact party and raid frames use Blizzard's own class-color option.
 end
-function Colors:LayerPlayerLevel(decorations)
+function Colors:LayerPlayerLevel(decorations,restoreOnly)
     local content=PlayerFrame and PlayerFrame.PlayerFrameContent
     local main=content and content.PlayerFrameContentMain
     if not main then return end
-    if self.active.player then
+    if self.active.player and not restoreOnly then
         if not self.levelOverlay then
             self.levelOverlay=CreateFrame("Frame",nil,main)
             self.levelOverlay:SetAllPoints(main)
@@ -208,17 +229,13 @@ function Colors:Apply()
     -- Draw layers only order textures within one frame level. The portrait
     -- container is a sibling below the health-bar content on this client;
     -- move its native decorations above the fill instead of adding new art.
+    -- Older versions lifted the player frame's artwork above the health bar
+    -- (needed for the old plain fill). That put the frame's own shading over
+    -- the bar and made the player bar darker than the target's, so the
+    -- native layering is restored and left alone now.
     local decorations=PlayerFrame and PlayerFrame.PlayerFrameContainer
-    local bar=healthBar(PlayerFrame) or PlayerFrameHealthBar
-    if decorations and bar and decorations.GetFrameLevel and bar.GetFrameLevel then
-        if self.active.player then
-            if not self.playerArtLevel then self.playerArtLevel=decorations:GetFrameLevel() end
-            decorations:SetFrameLevel(math.max(self.playerArtLevel,bar:GetFrameLevel()+1))
-        elseif self.playerArtLevel then
-            decorations:SetFrameLevel(self.playerArtLevel); self.playerArtLevel=nil
-        end
-        self:LayerPlayerLevel(decorations)
-    end
+    if decorations and self.playerArtLevel then decorations:SetFrameLevel(self.playerArtLevel); self.playerArtLevel=nil end
+    if decorations then self:LayerPlayerLevel(decorations,true) end
     for loss in pairs(self.losses or {}) do self:PaintLoss(loss) end
     self:Refresh()
 end

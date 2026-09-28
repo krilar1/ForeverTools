@@ -2,11 +2,21 @@ local _,FT=...
 -- Short player-facing notes for the "What's new" window. Newest first.
 FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
+    {version="0.15.0",notes={
+        {icon="INV_Misc_Coin_01",title="Classic gold look",text="Dark brown and gold instead of purple, and a clearer main menu."},
+        {icon="Spell_Nature_StoneSkinTotem",title="Totem range",text="Shamans: see each totem's 30-yard reach on the minimap. Combat > Totems."},
+        {icon="Racial_Orc_BerserkerStrength",title="Leveling nudge",text="A quiet reminder to use racials and cooldowns while you level."},
+        {icon="Ability_Rogue_Sprint",title="Move elements",text="One click on the main menu to drag all your on-screen elements at once."},
+        {icon="INV_Misc_Coin_02",title="Sell white gear",text="Auto-sell can also sell plain white weapons and armor. Tools are kept."},
+        {icon="INV_Misc_ArmorKit_17",title="More skin areas",text="Pet frame, party frames, personal resources and cast bars get dark mode."},
+        {icon="Spell_Holy_WordFortitude",title="Brighter class colors",text="Player, target and focus bars in the true class color."},
+        {icon="INV_Misc_PocketWatch_01",title="Cleaner flight timer",text="One line: the countdown, then where you land."},
+    }},
     {version="0.14.7",notes={
         {icon="Ability_Warrior_DefensiveStance",title="Threat meter",text="Your group's threat, styled like and placed next to the damage meter."},
         {icon="Ability_Warrior_DefensiveStance",title="Threat % above target",text="Your threat on the target portrait, with font and background options."},
         {icon="Trade_Engineering",title="Tidier menus",text="Combat and Keybinds on the main menu, Merchant in System; help moved to tooltips and (i) icons."},
-        {icon="INV_Misc_PocketWatch_01",title="Lighter in combat",text="Much less work during, after and between fights. /ft cpu shows what runs."},
+        {icon="INV_Misc_PocketWatch_01",title="Lighter in combat",text="Much less work during, after and between fights."},
         {icon="Spell_Nature_TimeStop",title="Cooldown reminders",text="A nudge to use racials, trinkets and big cooldowns on elites and big pulls."},
         {icon="INV_Misc_Key_03",title="Smart interact key",text="One key for RestedXP quest items, targets and Interact with target."},
         {icon="Spell_Fire_Fire",title="Standing in fire",text="A warning sound when you keep taking fire-like damage. Just turn it on."},

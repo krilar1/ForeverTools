@@ -1,7 +1,7 @@
 local _,FT=...
 local S=FT.modules.IconStyles
 S.artwork={};S.bagFills={};S.targetRims={};S.bagSlots={}
-S.extraOptions={{"minimap","Minimap"},{"stances","Stance / totem bars"},{"micro","Micro menu"},{"bags","Bag bar"},{"bagWindows","Bag menu"},{"gryphons","Gryphon frame"},{"player","Player frame"},{"target","Target frame"},{"tot","Target of target"},{"focus","Focus frame"},{"focustarget","Focus target"},{"xp","XP / reputation"}}
+S.extraOptions={{"minimap","Minimap"},{"stances","Stance / totem bars"},{"micro","Micro menu"},{"bags","Bag bar"},{"bagWindows","Bag menu"},{"gryphons","Gryphon frame"},{"player","Player frame"},{"pet","Pet frame"},{"target","Target frame"},{"tot","Target of target"},{"focus","Focus frame"},{"focustarget","Focus target"},{"party","Party frames"},{"personal","Personal resources"},{"castbar","Cast bars"},{"xp","XP / reputation"}}
 function S:TintArtwork(texture,key,secondary)
     if not texture or type(texture.GetVertexColor)~="function" or type(texture.SetVertexColor)~="function" then return end
     local record=self.artwork[texture]
@@ -331,6 +331,33 @@ function S:ApplyUnitArtwork()
             if contextual then self:TintArtwork(contextual.PvpBackgroundCircle,key);self:TintArtwork(contextual.BossIcon,key) end
         end
     end
+    -- Pet frame and the default party frames (not raid-style frames).
+    self:TintArtwork(PetFrameTexture,"pet")
+    local party=PartyFrame
+    if party then for i=1,4 do local member=party["MemberFrame"..i]; if member then self:TintArtwork(member.Texture,"party"); self:TintArtwork(member.VehicleTexture,"party") end end end
+end
+-- Personal resource display: the dark frame behind each bar. Its pieces
+-- have no names, so find them once by their artwork.
+function S:ApplyPersonalArtwork()
+    local frame=PersonalResourceDisplayFrame
+    if not frame then return end
+    self.personalBars=self.personalBars or {}
+    local container=frame.HealthBarsContainer
+    for _,bar in ipairs({container and container.healthBar,frame.PowerBar,frame.AlternatePowerBar}) do
+        if bar and bar.GetRegions and not self.personalBars[bar] then
+            self.personalBars[bar]=true
+            for _,region in ipairs({bar:GetRegions()}) do
+                local atlas=region.GetAtlas and region:GetAtlas()
+                if type(atlas)=="string" and not (issecretvalue and issecretvalue(atlas)) and atlas:lower()=="ui-hud-cooldownmanager-bar-bg" then self:TintArtwork(region,"personal") end
+            end
+        end
+    end
+end
+-- Cast bars: yours, your target's and your focus's frame, text box and background.
+function S:ApplyCastbarArtwork()
+    for _,bar in ipairs({PlayerCastingBarFrame,TargetFrameSpellBar,FocusFrameSpellBar,TargetFrame and TargetFrame.spellbar,FocusFrame and FocusFrame.spellbar}) do
+        if bar then for _,field in ipairs({"Border","TextBorder","Background"}) do self:TintArtwork(bar[field],"castbar") end end
+    end
 end
 -- Totem bar: the element-colored square frames (earth/fire/water/air) on
 -- the multi-cast bar and the round borders on the player totem timers
@@ -455,6 +482,8 @@ function S:ApplyArtwork()
         end
     end
     self:ApplyUnitArtwork()
+    self:ApplyPersonalArtwork()
+    self:ApplyCastbarArtwork()
     self:ApplyXPArtwork()
     for texture,record in pairs(self.artwork) do self:PaintArtwork(texture,record) end
 end
@@ -465,13 +494,13 @@ function S:Apply()
 end
 
 local artworkEvents=CreateFrame("Frame")
-for _,event in ipairs({"PLAYER_TARGET_CHANGED","PLAYER_FOCUS_CHANGED","UNIT_TARGET","UNIT_CLASSIFICATION_CHANGED","UPDATE_EXPANSION_LEVEL","UPDATE_FACTION","BAG_UPDATE_DELAYED"}) do artworkEvents:RegisterEvent(event) end
+for _,event in ipairs({"PLAYER_TARGET_CHANGED","PLAYER_FOCUS_CHANGED","UNIT_TARGET","UNIT_CLASSIFICATION_CHANGED","UPDATE_EXPANSION_LEVEL","UPDATE_FACTION","BAG_UPDATE_DELAYED","GROUP_ROSTER_UPDATE","UNIT_PET"}) do artworkEvents:RegisterEvent(event) end
 -- Unit events for other units (party, nameplates) do not change our artwork.
 local artworkUnits={player=true,target=true,focus=true,targettarget=true,focustarget=true}
 -- Each event only redoes the art it can change, once, out of combat (the
 -- end of combat redoes everything anyway).
 artworkEvents:SetScript("OnEvent",function(_,event,unit)
-    if (event=="UNIT_TARGET" or event=="UNIT_CLASSIFICATION_CHANGED") and not artworkUnits[unit] then return end
+    if (event=="UNIT_TARGET" or event=="UNIT_CLASSIFICATION_CHANGED" or event=="UNIT_PET") and not artworkUnits[unit] then return end
     if not FT.dbReady or InCombatLockdown() then return end
     -- Open bag windows redo themselves when their items update (hooked above).
     if event=="BAG_UPDATE_DELAYED" then return
@@ -486,6 +515,6 @@ artworkEvents:SetScript("OnEvent",function(_,event,unit)
         end,.5) end
     else
         local s=S:Settings()
-        if s.player or s.target or s.tot or s.focus or s.focustarget then FT:Coalesce("unitArt",function() if not InCombatLockdown() then S:ApplyUnitArtwork() end end) end
+        if s.player or s.target or s.tot or s.focus or s.focustarget or s.pet or s.party then FT:Coalesce("unitArt",function() if not InCombatLockdown() then S:ApplyUnitArtwork() end end) end
     end
 end)
