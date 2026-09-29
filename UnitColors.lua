@@ -25,9 +25,19 @@ function Colors:Paint(bar, force)
     -- Nothing of ours on this bar and nothing to add: leave it alone.
     if not enabled and not info.colored and not info.art then return end
     local color
-    if enabled and unit and UnitIsPlayer(unit) and UnitIsConnected(unit) and not UnitIsDeadOrGhost(unit) then
-        local _, class = UnitClass(unit)
-        color = (CUSTOM_CLASS_COLORS and CUSTOM_CLASS_COLORS[class]) or (RAID_CLASS_COLORS or {})[class]
+    if enabled and unit then
+        -- The game can hide who a unit is (target of target in combat, for
+        -- example): then leave the bar exactly as it is until it can tell.
+        local secret = issecretvalue
+        local isPlayer, connected, dead = UnitIsPlayer(unit), UnitIsConnected(unit), UnitIsDeadOrGhost(unit)
+        if secret and (secret(isPlayer) or secret(connected) or secret(dead)) then return end
+        if isPlayer and connected and not dead then
+            local _, class = UnitClass(unit)
+            if secret and secret(class) then return end
+            if type(class) == "string" then
+                color = (CUSTOM_CLASS_COLORS and CUSTOM_CLASS_COLORS[class]) or (RAID_CLASS_COLORS or {})[class]
+            end
+        end
     end
     -- Same color as last time and Blizzard hasn't changed the bar since
     -- (it calls back when it does): nothing to redo.

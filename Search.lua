@@ -2,7 +2,7 @@ local _,FT=...
 -- Settings search on the /ft home window: finds pages and individual settings
 -- by name or keyword, then opens the page that holds them.
 local Search={}
-local function profiles() FT:OpenHome(); local p=FT.modules.Profiles; if p and p.panel then p.panel:Show() end end
+local function profiles() FT:OpenModule("Profiles") end
 local index={
     {"Macros","macro builder templates ranks mouseover combo","MacroForge","macros"},
     {"Buff reminders","self buff reminder missing buffs weapon enchant","BuffReminder","buffs"},
@@ -30,6 +30,8 @@ local index={
     {"System","system settings","System","generic"},
     {"Welcome message","welcome login message chat","SystemGeneral","welcome"},
     {"What's new","whats new changelog updates popup","SystemGeneral","welcome"},
+    {"Backups and restore","backup backups copy keybinds action bars spell binds restore save undo revert snapshot session history","SystemKeybinds","profiles"},
+    {"Spell binds","spell binds bind key keys role interrupt taunt dispel bindpad hidden bar","SpellBinds","keybind"},
     {"Totems","totem totems shaman range minimap circle reach","Totems","Spell_Nature_StoneSkinTotem"},
     {"Move elements","move elements movers unlock drag frames position anchors","Movers","move"},
     {"First-time setup","setup wizard preset welcome start","SystemGeneral","generic"},
@@ -46,9 +48,8 @@ local index={
     {"Auto-repair","vendor merchant repair durability guild funds","SystemMerchant","generic"},
     {"Show Lua errors","lua errors script errors","SystemTroubleshooting","errors"},
     {"Bug report","bug report error copy issue","SystemTroubleshooting","errors"},
-    {"Profiles","profile save load export import","\001profiles","profiles"},
+    {"Profiles","profile save load switch copy export import undo restore used by","\001profiles","profiles"},
     {"Quick keybind mode","kb /kb keybind keybinds bind hotkey hotkeys action bar keys quick","SystemKeybinds","keybind"},
-    {"Restore keybinds","keybind undo revert restore snapshot session history changes","SystemKeybinds","reset"},
     {"Export keybinds","keybind keybinds bindings keys export import profile action bar","\001profiles","keybind"},
     {"Rename profile","rename profile name change","\001profiles","profiles"},
     {"Icons for unlearned spells","icon unlearned spell level 1 bars question mark macro","MacroForge","macros"},

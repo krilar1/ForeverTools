@@ -158,7 +158,7 @@ function Q:Finish(save)
     if save then
         SaveBindings(GetCurrentBindingSet())
         self:RecordSession()
-        FT:Toast("Keybinds saved. Restore earlier keybinds any time in Keybinds.",4)
+        FT:Toast("Keybinds saved. Go back any time with Backups and restore in Keybinds.",4)
     else
         LoadBindings(GetCurrentBindingSet())
         FT:Toast("Changes discarded.",2)
@@ -231,7 +231,7 @@ function Q:ShowPanel()
         FT:Tooltip(discard,"Discard & exit","Leave quick keybind mode and go back to the keybinds you had before this session.")
         local save=FT:AccentButton(panel,"Save",124,34,"confirm"); save:SetPoint("BOTTOMRIGHT",-20,20)
         save:SetScript("OnClick",function() self:Finish(true) end)
-        FT:Tooltip(save,"Save & exit","Keep your new keybinds and leave quick keybind mode. You can go back later with Restore keybinds in Keybinds.")
+        FT:Tooltip(save,"Save & exit","Keep your new keybinds and leave quick keybind mode. You can go back later with Backups and restore in Keybinds.")
         panel:Hide()
     end
     self:Place()

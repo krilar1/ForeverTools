@@ -81,10 +81,11 @@ local pages={
         {"fireAlert","Standing in fire settings","Spell_Fire_Fire","A warning sound when you keep taking magic damage in a steady rhythm, like standing in fire or lava. Works without setup; choose the sound and loudness in its settings. Off by default."},
         {"totems","Totems settings","Spell_Nature_StoneSkinTotem","Shaman totem tools, starting with each totem's 30-yard reach shown on the minimap. Off by default."},
     }},
-    {key="SystemKeybinds",home=true,title="Keybinds",icon="keybind",description="Quick keybind mode, restoring earlier keybinds, mouse-wheel casting and the smart interact key.",items={
+    {key="SystemKeybinds",home=true,title="Keybinds",icon="keybind",description="Quick keybind mode, backups and restore, spell binds, mouse-wheel casting and the smart interact key.",items={
         {"quickKeybind","Quick keybind mode (/kb)","keybind","Hover any action button and press a key to bind it; Escape on a bound slot unbinds it. A snapshot of your keybinds is taken first, so you can save, revert to a snapshot or discard. You can also type /kb in chat."},
-        {"undoKeybinds","Restore keybinds","reset","Pick an earlier keybind session to go back to. Hover a session to see what it changed; choosing it puts back the keybinds you had before it. The last 10 sessions are kept on this computer."},
+        {"backups","Backups and restore","profiles","Put back earlier keybinds, action bars and spell binds, or save a copy now. The list holds your full backups (saved by you, or automatically before an import) and your last keybind sessions (keybinds only). Hover one to see what it puts back. The last 10 of each are kept on this computer."},
         {"wheelCasting","Mouse-wheel casting","mouseover","Bind a spell to scrolling up or down, cast on the unit under your mouse. Anywhere else the wheel zooms the camera."},
+        {"spellBinds","Spell binds settings","keybind","Bind spells, items and macros straight to keys without an action bar, plus role keys (interrupt, taunt, dispel…) that pick your class's spell. Off by default."},
         {"smartKey","Smart interact key settings","keybind","One key for questing: uses RestedXP's quest item or target button when the guide shows one, and Interact with target the rest of the time (always while a dialog is open). Off by default."},
     }},
     {key="SystemDisplay",title="On-screen info",icon="fps",description="FPS counter, leveling stats, the flight timer and moving on-screen elements.",items={
@@ -121,11 +122,8 @@ function System:Refresh()
         if key=="scriptErrors" then button:SetEnabled(getter~=nil) end
         if key=="guildRepair" then button:SetEnabled(values.autoRepair); button:SetAlpha(values.autoRepair and 1 or .45) end
         if key=="sellWhite" then button:SetEnabled(values.autoSell); button:SetAlpha(values.autoSell and 1 or .45) end
-        if key=="undoKeybinds" then
-            local quick=FT.modules.QuickBind; local has=quick and quick:HasUndo()
-            button:SetEnabled(has); button:SetAlpha(has and 1 or .45)
-            local n=has and #quick:History() or 0
-            button.label:SetText(has and ("Restore keybinds ("..n.." session"..(n==1 and "" or "s")..")") or "Restore keybinds (no sessions yet)")
+        if key=="backups" then
+            button.label:SetText("Backups and restore ("..FT.modules.Backups:Count()..")")
         end
         if key=="lootDefault" then
             local custom=FT.modules.LootRoll:Settings().custom==true
@@ -156,6 +154,10 @@ function System:Refresh()
         if key=="smartKey" then
             local smart=FT.modules.SmartKey
             button.label:SetText("Smart interact key: "..(smart and smart:Settings().enabled and "On" or "Off").." — settings")
+        end
+        if key=="spellBinds" then
+            local binds=FT.modules.SpellBinds
+            button.label:SetText("Spell binds: "..(binds and binds:Settings().enabled and "On" or "Off").." — settings")
         end
         if key=="totems" then
             local totems=FT.modules.Totems
@@ -191,15 +193,16 @@ function System:Click(key)
     if key=="threat" then FT:OpenModule("Threat");return end
     if key=="fireAlert" then FT:OpenModule("FireAlert");return end
     if key=="totems" then FT:OpenModule("Totems");return end
+    if key=="spellBinds" then FT:OpenModule("SpellBinds");return end
     if key=="smartKey" then FT:OpenModule("SmartKey");return end
     if key=="wheelCasting" then FT:OpenModule("CustomKeybinds");return end
     if key=="leveling" then FT:OpenModule("Leveling");return end
     if key=="movers" then FT:OpenModule("Movers");return end
     if key=="bugReport" then FT.modules.BugReport:Open();return end
     if key=="quickKeybind" then FT.modules.QuickBind:Open();return end
-    if key=="undoKeybinds" then
-        if not self.buttons.undoKeybinds then FT:OpenModule("SystemKeybinds") end
-        if self.buttons.undoKeybinds then FT.modules.QuickBind:ShowRestore(self.buttons.undoKeybinds) end
+    if key=="backups" then
+        if not self.buttons.backups then FT:OpenModule("SystemKeybinds") end
+        if self.buttons.backups then FT.modules.Backups:Show(self.buttons.backups) end
         return
     end
     if key=="setup" then FT.modules.Onboarding:ShowSetup(true);return end
@@ -256,7 +259,7 @@ local function buildPage(page)
                 b:SetPoint("TOPLEFT",24,-62-(i-1)*40); System.buttons[key]=b
                 b:SetScript("OnClick",function() System:Click(key) end)
                 -- Items that open their own page say so.
-                local opens={totems=true,fps=true,leveling=true,flightTimer=true,movers=true,rareAlert=true,threat=true,fireAlert=true,wheelCasting=true,smartKey=true}
+                local opens={spellBinds=true,totems=true,fps=true,leveling=true,flightTimer=true,movers=true,rareAlert=true,threat=true,fireAlert=true,wheelCasting=true,smartKey=true}
                 FT:Tooltip(b,entry[2],entry[4]..(opens[key] and "\n\nClick to open its settings page." or ""))
             end
             if page.key=="SystemMinimap" then FT.minimapToggle=System.buttons.minimap end

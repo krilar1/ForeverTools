@@ -9,7 +9,7 @@ local patterns={
     "https?://[%w%-%._~:/%?#%[%]@!%$&'%*%+,;=%%]+",
     "www%.[%w%-]+%.[%w%-%._~:/%?#%[%]@!%$&'%*%+,;=%%]+",
 }
-local function readable(v) return v~=nil and (not issecretvalue or not issecretvalue(v)) end
+local function readable(v) return (not issecretvalue or not issecretvalue(v)) and v~=nil end
 function Links:Enabled() return FT.dbReady and FT.modules.System:Settings().chatLinks==true end
 function Links:Store(url)
     -- Keep a bounded list; old lines simply open nothing once rotated out.

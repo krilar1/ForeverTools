@@ -4,7 +4,7 @@ local _,FT=...
 -- combat log. Settings live with the other rank options on the Buff reminders page.
 local Marker={marks={},flagged={}}
 local bars={"ActionButton","MultiBarBottomLeftButton","MultiBarBottomRightButton","MultiBarLeftButton","MultiBarRightButton","MultiBar5Button","MultiBar6Button","MultiBar7Button"}
-local function readable(v) return v~=nil and (not issecretvalue or not issecretvalue(v)) end
+local function readable(v) return (not issecretvalue or not issecretvalue(v)) and v~=nil end
 function Marker:Settings() return FT.modules.BuffReminder:Settings() end
 function Marker:Enabled() return self:Settings().rankMarker==true end
 -- Highest learned rank per spell name, from the live spellbook.
@@ -22,6 +22,16 @@ function Marker:LearnedRanks()
     end
     return best
 end
+function Marker:MacroNamesRank(action,spell)
+    local ok,macroName=pcall(GetActionText,action)
+    if not ok or not readable(macroName) or type(macroName)~="string" or macroName=="" or not GetMacroIndexByName then return false end
+    local index=GetMacroIndexByName(macroName)
+    if type(index)~="number" or index<=0 then return false end
+    local body=GetMacroBody and GetMacroBody(index)
+    if not readable(body) or type(body)~="string" then return false end
+    local escaped=spell:lower():gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])","%%%1")
+    return body:lower():find(escaped.."%s*%(%s*rank") ~= nil
+end
 function Marker:ActionSpell(button)
     local action=button and button.action
     if not readable(action) or type(action)~="number" or not GetActionInfo then return end
@@ -29,11 +39,17 @@ function Marker:ActionSpell(button)
     if not ok or not readable(kind) or not readable(id) or type(id)~="number" then return end
     -- A macro reports the spell it would cast right now (with the rank written
     -- in the macro, if any), the same way the game shows its icon.
+    local macro
     if kind=="macro" then
         if not readable(subType) or subType~="spell" then return end
+        macro=true
     elseif kind~="spell" then return end
     local name=C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(id)
     if not readable(name) or type(name)~="string" then return end
+    -- A macro only counts when it names a rank itself ("Blessing of Might(Rank 2)").
+    -- A plain spell name always casts your best rank; the game can briefly
+    -- report rank 1 for those (seen in cities), so they are never flagged.
+    if macro and not self:MacroNamesRank(action,name) then return end
     return name,FT.BuffRanks:SpellRank(id)
 end
 function Marker:Mark(button)

@@ -1,6 +1,6 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 0.15.0.**
+**Quality-of-life tools for WoW: Forever — version 0.20.0.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
 one place. Everything starts **off**, so the game looks like Blizzard's until you
@@ -46,10 +46,11 @@ the home window. Use **`/rl`** to reload the UI.
   sliders; movable, and also added to the XP bar tooltip.
 - **Totems (shamans):** each placed totem's 30-yard reach as a soft circle on
   the minimap (Combat → Totems).
-- **Move elements:** One button on the main menu unlocks every on-screen
+- **Move elements:** The move button in any window's title bar unlocks every on-screen
   element (FPS, leveling stats, flight timer, threat meter, rare alert,
   reminders, loot rolls, tooltip) to drag them all at once, with an option to
-  include elements you don't use and to reset positions. Also `/ft move`.
+  include elements you don't use and to reset positions. Also `/ft move`. The
+  window shrinks to its title bar while you move and opens again on Done.
 - **Flight countdown:** A one-line countdown next to your destination, for
   example "0:24 - Crossroads, The Barrens". Completed
   flights teach new routes and replace bundled estimates.
@@ -59,6 +60,12 @@ the home window. Use **`/rl`** to reload the UI.
 - **Cooldown reminders:** a short nudge to use a ready racial, trinket or long
   cooldown on elites, rares and big pulls, and now and then while leveling
   (Buff reminders).
+- **Spell binds:** bind spells, items and macros to keys without an action
+  bar, plus role keys (interrupt, taunt, dispel, crowd control, burst, slow…) that pick your class's spell
+  and an optional on-screen role bar (Keybinds).
+- **Action bars and backups:** export and import your action bar layout with
+  keybinds and spell binds, and keep backups you can put back any time
+  (Keybinds → Backups and restore).
 - **Smart interact key:** one key that uses RestedXP's quest item or target
   button when the guide shows one, and is Interact with target otherwise
   (Keybinds).
@@ -75,11 +82,12 @@ the home window. Use **`/rl`** to reload the UI.
   and a one-line summary (System → Merchant).
 - **Minimap:** ForeverTools button, coordinates, and an optional launcher that
   groups other addons' minimap buttons into one menu.
-- **Profiles:** Named profiles shared by the characters that use them,
-  export/import as text (optionally with all your keybinds), and a profile or
-  a fresh start on each new character.
+- **Profiles:** Named profiles shared by the characters that use them, saved
+  automatically with an Undo list, export/import as text (optionally with
+  keybinds, action bars and spell binds), and a profile or a fresh start on
+  each new character.
 - **Quick keybinds:** `/kb` binds keys by hovering a slot, with snapshots to
-  revert, save or discard, and a restore list of earlier sessions.
+  revert, save or discard; earlier sessions are in Keybinds → Backups and restore.
 - **More:** FPS counter, movable loot rolls, group-role helper, custom
   mouse-wheel casting on mouseover, a Lua-error toggle and a copyable bug report.
 - **Where things are:** Fonts, unit-frame colors, skins and chat are under
@@ -87,8 +95,8 @@ the home window. Use **`/rl`** to reload the UI.
   **System → On-screen info**. Quick keybinds, mouse-wheel casting and the
   smart interact key are under **Keybinds**, and the threat meter, rare alerts
   and standing-in-fire sound under **Combat**, both on the main menu.
-- **Menus:** every settings window has Back and a close X, with an (i) icon
-  explaining the page; pop-ups have only the X. A short What's new panel appears after each update (can be turned off
+- **Menus:** every settings window has Back, a close X, move and minimize
+  buttons, and an (i) icon explaining the page; pop-ups have only the X. A short What's new panel appears after each update (can be turned off
   in System → General).
 - **Combat-aware menus:** Settings close during combat; requesting the menu in
   combat opens it afterward.
@@ -104,21 +112,23 @@ the home window. Use **`/rl`** to reload the UI.
 
 ## Settings and profiles
 
-- Open **Profiles** from the main menu. Changes apply immediately; **Save**
-  stores them in the profile you use.
-- Profiles are shared: every character using a profile follows it. Save on one
-  character and the others get the change at their next login. A character
-  with unsaved changes of its own keeps them until you save or load there.
-- Deleting a profile sends other characters that used it back to default
-  settings at their next login.
-  **Create** starts a new profile from default settings and switches to it.
-  **Default settings** resets the selected profile and returns everything
-  ForeverTools changes to Blizzard's defaults, as if the addon was just installed.
-- **Rename** (next to Load, Save and Delete) renames the profile you chose; the
-  box starts with its current name.
-- Saving a profile also remembers where your macros sit on the action bars,
-  separately for each class. Loading or importing the profile on that class
-  offers to put them back, adding any macros you are missing (outside combat).
+- Open **Profiles** from the main menu. Every change is saved to the profile
+  you use automatically: when a settings window closes, when you switch
+  profiles, and on logout or reload. A character without a profile gets one
+  named after it on its first change.
+- Profiles are shared: every character using a profile follows it and gets
+  changes made on another character at its next login. The Profiles page shows
+  which characters use each profile.
+- **Undo** lists earlier versions of the profile, saved automatically before
+  your first change each session, before a restore and before default settings.
+- **New profile** starts from default settings, **Copy** duplicates the current
+  profile, and **Rename** and **Delete** manage it. Deleting a profile sends
+  other characters that used it back to default settings at their next login.
+- **Default settings** resets the profile and returns everything ForeverTools
+  changes to Blizzard's defaults, as if the addon was just installed.
+- Profiles also remember where your macros sit on the action bars, separately
+  for each class. Loading or importing the profile on that class offers to put
+  them back, adding any macros you are missing (outside combat).
 - A new character asks once whether to use a saved profile or start a new one.
   The profile chosen under **Profiles → New characters** (by default, the last
   one you used) is preselected. Closing the question keeps Blizzard's defaults.
@@ -146,7 +156,7 @@ the home window. Use **`/rl`** to reload the UI.
 - A snapshot of your keybinds is taken when you start. **Take snapshot** saves
   more points while you edit, and **Revert to snapshot** returns to any of them.
   Finish with **Save** or **Discard**.
-- **Restore keybinds** (Keybinds) lists your last 10 saved sessions.
+- **Backups and restore** (Keybinds) also lists your last 10 saved sessions.
   Hover one to see what it changed, such as "Action Button 1: 1 → Q"; choose it
   to put back the keybinds from before it. Only changed keys are stored, on
   this computer, and never in profile exports. Keybinds change only outside

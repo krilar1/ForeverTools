@@ -2,6 +2,14 @@ local _,FT=...
 -- Short player-facing notes for the "What's new" window. Newest first.
 FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
+    {version="0.20.0",notes={
+        {icon="INV_Misc_Key_03",title="Spell binds",text="Bind spells, items and macros to keys without an action bar. Keybinds > Spell binds."},
+        {icon="Ability_Kick",title="Role keys",text="Interrupt, taunt, heal, crowd control and more: the same key does the same job on every character."},
+        {icon="INV_Misc_Book_09",title="Profiles save by themselves",text="No more \"Save changes?\": every change goes into your profile, with Undo if you need it."},
+        {icon="INV_Misc_Note_01",title="Action bars in exports",text="Take your action bars, keybinds and spell binds to another character or computer."},
+        {icon="Spell_Nature_TimeStop",title="Backups and restore",text="Your keybinds, action bars and spell binds are backed up before an import. Put any copy back."},
+        {icon="Ability_Rogue_Sprint",title="Move from any window",text="A move button in every title bar; windows shrink while you move things."},
+    }},
     {version="0.15.0",notes={
         {icon="INV_Misc_Coin_01",title="Classic gold look",text="Dark brown and gold instead of purple, and a clearer main menu."},
         {icon="Spell_Nature_StoneSkinTotem",title="Totem range",text="Shamans: see each totem's 30-yard reach on the minimap. Combat > Totems."},

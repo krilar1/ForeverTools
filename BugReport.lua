@@ -3,7 +3,7 @@ local _,FT=...
 -- error handler, so BugSack and similar addons are unaffected) and never sends
 -- anything: the player copies the text and pastes it where they choose.
 local Report={}
-local function readable(v) return v~=nil and (not issecretvalue or not issecretvalue(v)) end
+local function readable(v) return (not issecretvalue or not issecretvalue(v)) and v~=nil end
 local function yes(value) return value and "on" or "off" end
 function Report:Features()
     local db,out=FT.db,{}

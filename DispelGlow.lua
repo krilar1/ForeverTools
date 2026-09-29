@@ -127,13 +127,14 @@ function Glow:PaintFallback(holder)
 end
 local function canAssist(unit)
     local ok,value=pcall(UnitCanAssist,"player",unit)
-    return ok and not secret(value) and value
+    return ok and not secret(value) and value and true or false
 end
 function Glow:Update(holder)
     local s=self:Settings()
     local unit=holder.unitFn and holder.unitFn()
     local show=false
-    if s.enabled and s[holder.kind] and type(unit)=="string" and not secret(unit) and UnitExists(unit) and canAssist(unit)
+    local exists=type(unit)=="string" and not secret(unit) and UnitExists(unit)
+    if s.enabled and s[holder.kind] and not secret(exists) and exists and canAssist(unit)
         and C_UnitAuras and C_UnitAuras.GetUnitAuras then
         local ok,auras=pcall(C_UnitAuras.GetUnitAuras,unit,"HARMFUL|RAID",1)
         if ok and type(auras)=="table" and #auras>0 then

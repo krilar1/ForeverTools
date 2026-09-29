@@ -63,13 +63,32 @@ end
 local function targetChanneling()
     if not UnitChannelInfo then return false end
     local ok,name=pcall(UnitChannelInfo,"target")
-    return ok and name~=nil and not secret(name)
+    return ok and not secret(name) and name~=nil
+end
+-- Out of combat nobody can be casting on you, so repeated magic damage is
+-- the world itself (campfires, lava, fire patches, which can tick slower):
+-- two hits up to about 3 seconds apart are enough there.
+local CALM_WINDOW,CALM_GAP=7,3.4
+local function fighting()
+    if InCombatLockdown() then return true end
+    local ok,value=pcall(UnitAffectingCombat,"player")
+    return ok and not secret(value) and value==true
 end
 function Fire:Hit(now)
     local hits=self.hits
     hits[#hits+1]=now
-    while hits[1] and now-hits[1]>WINDOW do table.remove(hits,1) end
+    local calm=not fighting()
+    while hits[1] and now-hits[1]>(calm and CALM_WINDOW or WINDOW) do table.remove(hits,1) end
     local n=#hits
+    if calm then
+        if n<2 then return end
+        local gap=hits[n]-hits[n-1]
+        if gap<MIN_GAP or gap>CALM_GAP then return end
+        if self.last and now-self.last<REPEAT then return end
+        self.last=now
+        self:PlaySound()
+        return
+    end
     if n<3 then return end
     local a,b=hits[n-1]-hits[n-2],hits[n]-hits[n-1]
     if a<MIN_GAP or b<MIN_GAP or a>MAX_GAP or b>MAX_GAP then return end
@@ -81,12 +100,13 @@ function Fire:Hit(now)
 end
 local events=CreateFrame("Frame")
 events:SetScript("OnEvent",function(_,_,unit,action,_,amount,school)
-    if unit~="player" or action~="WOUND" then return end
-    -- If the game hides these details, do nothing rather than guess.
-    if secret(amount) or secret(school) or type(amount)~="number" or amount<=0 then return end
-    -- Physical hits (melee, arrows) never count. Environmental damage such as
-    -- a campfire may come without a school, so that counts as well.
-    if type(school)=="number" and school==PHYSICAL then return end
+    if unit~="player" or secret(action) or action~="WOUND" then return end
+    -- Only the timing of hits matters. The game can hide the amount or the
+    -- school (for example for fire from the world, like campfires); a hidden
+    -- one still counts. Only a readable physical school (melee, arrows) or a
+    -- readable zero is skipped.
+    if not secret(amount) and type(amount)=="number" and amount<=0 then return end
+    if not secret(school) and type(school)=="number" and school==PHYSICAL then return end
     Fire:Hit(GetTime())
 end)
 function Fire:Apply()
@@ -130,7 +150,7 @@ function Fire:Open()
         self.channelChoice:SetPoint("TOPLEFT",266,-106)
         FT:Tooltip(self.channelChoice,"Loudness","Addons can't set a sound's own volume, so choose which game volume it follows. Turning game sound off (the game's sound on/off key) mutes it either way.")
         self.volumeNote=FT:Label(frame,"",12); self.volumeNote:SetPoint("TOPLEFT",24,-148); self.volumeNote:SetWidth(472)
-        FT:PageInfo(frame,"Standing in fire","A warning sound when you keep taking magic damage in a steady rhythm, like standing in fire, lava or another ground effect. It works without any setup; the choices are optional.\n\nIt warns after 3 or more magic hits within a few seconds that land evenly 0.6 to 2.3 seconds apart, and repeats at most every 4 seconds while you stay in it. It stays quiet while your target channels a spell. It can't tell ground effects from a fast spell cast on you, and it doesn't catch physical damage.")
+        FT:PageInfo(frame,"Standing in fire","A warning sound when you keep taking magic damage in a steady rhythm, like standing in fire, lava or another ground effect. It works without any setup; the choices are optional.\n\nIn combat it warns after 3 or more magic hits within a few seconds that land evenly 0.6 to 2.3 seconds apart. Out of combat (campfires, lava) two hits up to about 3 seconds apart are enough. It repeats at most every 4 seconds while you stay in it. It stays quiet while your target channels a spell. It can't tell ground effects from a fast spell cast on you, and it doesn't catch physical damage.")
     end
     self:Refresh(); self.frame:Show()
 end

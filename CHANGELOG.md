@@ -1,3 +1,23 @@
+# ForeverTools 0.20.0
+
+## New
+- **Spell binds** (Keybinds, off by default): bind spells, items and macros straight to keys, without putting them on an action bar. **Role keys** (Interrupt, Taunt, Dispel, Defensive, Heal, Movement, Crowd control, Burst, Slow) pick your class's spell for each job (click a role's icon to choose among the ones you know, like Flash of Light or Holy Light, or drag any spell onto it), so the same key does the same job on every character. Click a bind to open its own small window: set its key (Esc cancels), turn it on or off, clear it or remove it. An optional on-screen bar shows the role spells you gave a key, with short key names (like c-R) and cooldown, matches your action bar skin and font, and can't be clicked by accident while you move it. Turning the bar on while spell binds are off asks to turn them on too, and new characters are asked once whether to use your usual role keys. Spell binds sit on top of your normal key bindings and never change them: keys you don't use here keep working, and a key you clear gets its old action back.
+- **Action bars in profiles:** export and import now have three switches: **Keybinds**, **Action bars** (the spell, item or macro in every slot) and **Spell binds**. On import, action bars go back in the same slots on a character of the same class; spells not learned yet and items not in your bags are skipped and listed. Mounts, pets and similar slots are left as they are.
+- **Backups and restore** (Keybinds): one list to put things back. It holds full backups (keybinds, action bars and spell binds, saved automatically before an import changes them, and whenever you choose "Save a backup now") and your last keybind sessions (keybinds only; this replaces the separate Restore keybinds). Restoring a full backup backs up your current setup first.
+- **Profiles save by themselves:** every change goes straight into the profile you use (when a settings window closes, when you switch profiles, and on logout or reload), so the "Save changes?" question is gone. A character without a profile gets one named after it on its first change. Changes you had kept with "Not now" are moved into your profile once.
+- **Profiles page rebuilt:** switch profiles at the top and see which characters use it; New, Copy, Rename and Delete; Export and Import; **Undo** with earlier versions of the profile (saved automatically before your first change each session, before a restore and before default settings); and the profile for new characters. Importing switches you to the new profile. Keybinds start switched off on every export.
+- **Move elements from any window:** a move button in the title bar of the main menu and every settings page (it replaces the Move elements bar on the main menu). Open windows shrink to their title bar while you move things and open again when you click Done; a new minimize button does the same any time. The Move elements bar pulses gently while you're editing, and the buff reminder notices get the same outline box as the other elements.
+
+## Fixed
+- **Dungeons:** tighter checks everywhere the game can hide information inside instances (target of target, nameplates, threat, dispel glow, rare alerts, cooldown reminders, tooltips), so hidden values are skipped instead of causing errors.
+- **Class colors:** no more Lua errors (thousands at a time) on the target-of-target bar when the game hides who that unit is; the bar keeps its color until it can tell.
+- **Move elements:** turning an element on or off on its own page while moving now makes it movable (or puts it away) right away, instead of leaving it clickable and stuck.
+- **Buff and debuff borders** sit right on the icon again at every thickness (they started 2 px outside the icon, which showed a dark ring at thicker borders).
+- **Settings reverting:** settings could jump back to an older value (for example the objectives bar showing again) when the same profile was used or saved on another character.
+- **Low-rank marker:** macros that name a spell without a rank (they always cast your best rank) are no longer flagged, even when the game briefly reports rank 1 (seen in Orgrimmar).
+- **Totem range circles** stay in place when the map changes (cities, sub-zones, zone borders) and with several totems down, and move smoothly with the map instead of shivering while you walk.
+- **Standing in fire** now catches campfires and lava: out of combat, two magic hits up to about 3 seconds apart are enough (world fire can tick slower than the in-combat rule allowed), and hits where the game hides the amount or school count too.
+
 # ForeverTools 0.15.0
 
 ## New

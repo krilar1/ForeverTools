@@ -262,7 +262,7 @@ function Tip:SampleParts()
     local label,class=UnitClass("player")
     local faction,factionName=UnitFactionGroup and UnitFactionGroup("player")
     local guild=GetGuildInfo and GetGuildInfo("player")
-    local function readable(v) return v~=nil and (not issecretvalue or not issecretvalue(v)) end
+    local function readable(v) return (not issecretvalue or not issecretvalue(v)) and v~=nil end
     if not readable(name) then name="Player" end
     if not readable(guild) or guild==nil or guild=="" then guild="Guild Name" end
     local c=(CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS or {})[class]

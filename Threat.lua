@@ -262,7 +262,7 @@ end
 local sample={{"Tank","WARRIOR",100},{"You","",82},{"Healer","PRIEST",47},{"Damage","MAGE",31},{"Damage","ROGUE",12}}
 local function classColor(unit)
     local _,class=UnitClass(unit)
-    if class and not secret(class) and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class] then return RAID_CLASS_COLORS[class] end
+    if not secret(class) and type(class)=="string" and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class] then return RAID_CLASS_COLORS[class] end
 end
 function Threat:ShouldShowMeter()
     local s=self:Settings()
@@ -386,7 +386,7 @@ function Threat:UpdateText()
             if not secret(value) and yes(tanking) then value=100 end
         end
     end
-    if value==nil or (not secret(value) and value<=0) then f:Hide(); return end
+    if not secret(value) and (type(value)~="number" or value<=0) then f:Hide(); return end
     f.label:SetFormattedText("%.0f%%",value)
     -- Color by threat level when the game lets us read it; white otherwise.
     if not secret(status) and type(status)=="number" and status>0 and GetThreatStatusColor then f.label:SetTextColor(GetThreatStatusColor(status))

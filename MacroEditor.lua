@@ -338,7 +338,7 @@ function Editor:PrepareEntry(entry, body)
     self:CreateUI(); self.pendingSave = nil
     self.entry = copy(entry); self.sourceBody = body; self.templateBody = body
     self.scope = (entry.class or entry.characterOnly) and "character" or Macros.scope
-    self.entryLabel:SetText(entry.name .. " • local draft; save a profile to keep this setup")
+    self.entryLabel:SetText(entry.name .. " • local draft")
     self.rank = "max"; self.target = "standard"; self.modifier = ""; self.spellName = entry.name
     local installed, problem = self:FindInstalled()
     if installed then self.sourceBody = installed.body end

@@ -179,12 +179,12 @@ function Rare:Found(key,name)
     self:Show(name)
 end
 function Rare:Vignette(guid)
-    if not guid or secret(guid) or not C_VignetteInfo or not C_VignetteInfo.GetVignetteInfo then return end
+    if secret(guid) or not guid or not C_VignetteInfo or not C_VignetteInfo.GetVignetteInfo then return end
     local ok,info=pcall(C_VignetteInfo.GetVignetteInfo,guid)
     if not ok or type(info)~="table" then return end
     local atlas=info.atlasName
     if secret(atlas) or type(atlas)~="string" or not atlas:find("VignetteKill",1,true) then return end
-    if info.isDead then return end
+    if secret(info.isDead) or info.isDead then return end
     local name=info.name; if secret(name) then name=nil end
     self:Found("v:"..guid,name)
 end
@@ -192,7 +192,7 @@ function Rare:Nameplate(unit)
     local ok,class=pcall(UnitClassification,unit)
     if not ok or secret(class) or (class~="rare" and class~="rareelite") then return end
     local dead=UnitIsDeadOrGhost and UnitIsDeadOrGhost(unit); if secret(dead) or dead then return end
-    local guid=UnitGUID and UnitGUID(unit); if not guid or secret(guid) then return end
+    local guid=UnitGUID and UnitGUID(unit); if secret(guid) or not guid then return end
     local name=UnitName(unit); if secret(name) then name=nil end
     self:Found("u:"..guid,name)
 end

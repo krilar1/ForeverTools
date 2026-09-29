@@ -38,18 +38,39 @@ function Totems:Settings()
     end
     return s
 end
--- Where you are: the zone map and your spot on it (0-1), plus the map's size in yards.
+-- Where you are, in world yards on the continent (the same numbers on every
+-- zone, city or sub-zone map, so a totem stays put when the map changes),
+-- plus which way east and north point in those numbers.
+local function world(map,x,y)
+    if not CreateVector2D then return end
+    local continent,pos=safe(C_Map.GetWorldPosFromMapPos,map,CreateVector2D(x,y))
+    if type(continent)~="number" or not pos or not pos.GetXY then return end
+    local wx,wy=pos:GetXY()
+    if secret(wx) or secret(wy) or type(wx)~="number" or type(wy)~="number" then return end
+    return continent,wx,wy
+end
+local axes={}
 local function here()
-    if not C_Map or not C_Map.GetBestMapForUnit then return end
+    if not C_Map or not C_Map.GetBestMapForUnit or not C_Map.GetWorldPosFromMapPos then return end
     local map=safe(C_Map.GetBestMapForUnit,"player")
     if type(map)~="number" or secret(map) then return end
     local pos=safe(C_Map.GetPlayerMapPosition,map,"player")
     if not pos or not pos.GetXY then return end
     local x,y=pos:GetXY()
     if secret(x) or secret(y) or type(x)~="number" or type(y)~="number" or (x==0 and y==0) then return end
-    local w,h=safe(C_Map.GetMapWorldSize,map)
-    if type(w)~="number" or type(h)~="number" or w<=0 or h<=0 then return end
-    return map,x,y,w,h
+    local continent,wx,wy=world(map,x,y)
+    if not continent then return end
+    -- Directions never change for a map, so they're worked out once per map.
+    local d=axes[map]
+    if not d then
+        local _,ex,ey=world(map,x+.001,y); local _,nx,ny=world(map,x,y-.001)
+        if not ex or not nx then return end
+        ex,ey=ex-wx,ey-wy; nx,ny=nx-wx,ny-wy
+        local el,nl=math.sqrt(ex*ex+ey*ey),math.sqrt(nx*nx+ny*ny)
+        if el<=0 or nl<=0 then return end
+        d={ex/el,ey/el,nx/nl,ny/nl}; axes[map]=d
+    end
+    return continent,wx,wy,d[1],d[2],d[3],d[4]
 end
 Totems.placed={}
 -- The circles: one per totem slot, clipped to a round minimap.
@@ -74,10 +95,10 @@ function Totems:Layer()
     layer.arrow=layer:CreateTexture(nil,"OVERLAY")
     layer.arrow:SetTexture("Interface\\Minimap\\MinimapArrow"); layer.arrow:SetSize(32,32); layer.arrow:SetPoint("CENTER",Minimap,"CENTER",0,0)
     layer.arrow:Hide()
-    layer:SetScript("OnUpdate",function(owner,elapsed)
-        owner.elapsed=(owner.elapsed or 0)+elapsed
-        if owner.elapsed<.05 then return end
-        owner.elapsed=0; self:Draw()
+    -- Every frame while a circle is up, so it moves as smoothly as the map
+    -- (four textures; drawing less often made the circles shiver when moving).
+    layer:SetScript("OnUpdate",function()
+        self:Draw()
     end)
     self.layer=layer
     return layer
@@ -89,7 +110,7 @@ function Totems:Paint()
 end
 function Totems:Draw()
     local layer=self.layer; if not layer then return end
-    local map,x,y,w,h=here()
+    local continent,wx,wy,ex,ey,nx,ny=here()
     local radius=C_Minimap and C_Minimap.GetViewRadius and safe(C_Minimap.GetViewRadius)
     local any=false
     local rotate=GetCVar and GetCVar("rotateMinimap")=="1"
@@ -99,9 +120,10 @@ function Totems:Draw()
     for slot=1,4 do
         local t,p=layer.circles[slot],self.placed[slot]
         local shown=false
-        if p and map and p.map==map and type(radius)=="number" and radius>0 and (facing or not rotate) then
+        if p and continent and p.continent==continent and type(radius)=="number" and radius>0 and (facing or not rotate) then
             any=true
-            local east=(p.x-x)*w; local north=(y-p.y)*h
+            local dx,dy=p.x-wx,p.y-wy
+            local east=dx*ex+dy*ey; local north=dx*nx+dy*ny
             if rotate then
                 local c,s=math.cos(facing),math.sin(facing)
                 east,north=east*c+north*s,-east*s+north*c
@@ -130,8 +152,8 @@ function Totems:Update(slot)
         -- stand). One that was already up when this turned on is skipped.
         local old=self.placed[slot]
         if (not old or old.start~=start) and GetTime()-start<2 then
-            local map,x,y=here()
-            self.placed[slot]=map and {map=map,x=x,y=y,start=start} or nil
+            local continent,wx,wy=here()
+            self.placed[slot]=continent and {continent=continent,x=wx,y=wy,start=start} or nil
         end
     else self.placed[slot]=nil end
     local layer=self:Layer(); if layer then self:Paint(); layer:Show(); self:Draw() end

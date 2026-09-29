@@ -10,7 +10,7 @@ local parts={
     {"rested","Rested XP","Rested: 5,000"},
 }
 local partByKey={}; for _,entry in ipairs(parts) do partByKey[entry[1]]=entry end
-local function readable(v) return v~=nil and (not issecretvalue or not issecretvalue(v)) end
+local function readable(v) return (not issecretvalue or not issecretvalue(v)) and v~=nil end
 local function number(v,default,low,high)
     if type(v)~="number" or v~=v then return default end
     return math.max(low,math.min(high,v))

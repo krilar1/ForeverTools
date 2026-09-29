@@ -105,13 +105,15 @@ end
 Fonts:RegisterArea("general","General","Pick one font for all areas; each area keeps its own size and outline. To add your own font, put a .ttf or .otf file in ForeverTools/Media/Fonts, restart WoW, then type its file name below. Fonts from SharedMedia addons are listed too.",function() end)
 local bars = {"ActionButton", "MultiBarBottomLeftButton", "MultiBarBottomRightButton", "MultiBarRightButton",
     "MultiBarLeftButton", "MultiBar5Button", "MultiBar6Button", "MultiBar7Button", "PetActionButton", "StanceButton", "PossessButton"}
-Fonts:RegisterArea("actions", "Action bars", "Key bindings, stack counts and macro labels on Blizzard action bars.", function(list)
+Fonts:RegisterArea("actions", "Action bars", "Key bindings, stack counts and macro labels on Blizzard action bars and the spell binds bar.", function(list)
     for _, prefix in ipairs(bars) do for i=1,12 do
         local name = prefix .. i; local button = _G[name]
         for _, field in ipairs({"HotKey", "Count", "Name"}) do
             add(list, _G[name .. field]); if button then add(list, button[field]) end
         end
     end end
+    local roleBar = _G.ForeverToolsRoleBar
+    if roleBar and roleBar.buttons then for _, b in ipairs(roleBar.buttons) do add(list, b.key) end end
 end)
 Fonts:RegisterArea("cooldowns", "Cooldown numbers", "Cooldown numbers on action buttons (turn them on in the game's settings). Other cooldown addons use their own fonts.", function(list)
     for _, prefix in ipairs(bars) do for i=1,12 do

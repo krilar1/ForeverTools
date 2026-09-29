@@ -60,6 +60,12 @@ local elements={
         start=function(m) if not m.moving then m:ToggleMove() end end, stop=function(m) if m.moving then m:FinishMove() end end,
         frame=function(m) return m.box end,
         reset=function(m) m:UseDefault() end, resetTip="Loot rolls go back to where the game puts them."},
+    {key="roleBar",name="Role key bar",module="SpellBinds",open="SpellBinds",
+        used=function(m) local s=m:Settings(); return s.enabled and s.bar end,
+        start=function(m) m:SetMoving(true) end, stop=function(m) if m.moving then m:SetMoving(false) end end,
+        frame=function(m) return m.bar end,
+        reset=function(m) local s=m:Settings(); s.x,s.y=nil,nil; m:Place() end,
+        resetTip="Put the role key bar back above the middle of your action bars."},
     {key="tooltip",name="Tooltip position",module="Tooltip",open="Tooltip",
         used=function(m) local s=m:Settings(); return (s.x~=nil and s.y~=nil) or (s.position~=nil and s.position~="Default") end,
         start=function(m) m:SetMoving(true) end, stop=function(m) if m.moving then m:SetMoving(false) end end,
@@ -95,7 +101,14 @@ function Movers:Label(e,frame)
 end
 function Movers:Start()
     if InCombatLockdown() then FT:Toast("Leave combat to move elements.",3); return end
-    if FT.home then FT.home:Hide() end
+    -- Open ForeverTools windows shrink to their title bar while moving and
+    -- open again on Done.
+    self.shrunk={}
+    for frame in pairs(FT.controlWindows or {}) do
+        if frame:IsShown() and frame.minButton and frame.minButton:IsShown() and not frame.minimized then
+            FT:SetMinimized(frame,true); self.shrunk[frame]=true
+        end
+    end
     self.active=true
     local showUnused=self:Settings().showUnused
     for _,e in ipairs(elements) do
@@ -106,7 +119,12 @@ function Movers:Start()
     end
     -- Some elements build their frame a moment later (the threat meter).
     self:LabelAll(); C_Timer.After(.2,function() if self.active then self:LabelAll() end end)
-    self:Bar():Show()
+    self:Bar():Show(); self.pulse:Play()
+    -- Something turned on or off while moving (its own page is open): keep
+    -- the list of movable elements in step. Only runs while moving.
+    if self.watch then self.watch:Cancel() end
+    self.watch=C_Timer.NewTicker(.5,function() self:Sync() end)
+    FT:RefreshMoveButtons(true)
     self:Refresh()
 end
 function Movers:LabelAll()
@@ -115,15 +133,38 @@ function Movers:LabelAll()
         if m and self.running and self.running[e.key] then local frame=e.frame(m); if frame then self:Label(e,frame) end end
     end
 end
+function Movers:Sync()
+    if not self.active or InCombatLockdown() then return end
+    local showUnused=self:Settings().showUnused
+    for _,e in ipairs(elements) do
+        local m=mod(e.module)
+        if m then
+            local want=showUnused or self:Used(e)
+            local running=self.running and self.running[e.key]
+            if want and not running then
+                if pcall(e.start,m) then self.running=self.running or {}; self.running[e.key]=true; local frame=e.frame(m); if frame then self:Label(e,frame) end end
+            elseif running and not want then
+                pcall(e.stop,m); self.running[e.key]=nil
+                if self.labels[e.key] then self.labels[e.key]:Hide() end
+            end
+        end
+    end
+end
 function Movers:Stop()
     self.active=false
+    if self.watch then self.watch:Cancel(); self.watch=nil end
     for _,e in ipairs(elements) do
         local m=mod(e.module)
         if m and self.running and self.running[e.key] then pcall(e.stop,m) end
         if self.labels[e.key] then self.labels[e.key]:Hide() end
     end
     self.running=nil
-    if self.bar then self.bar:Hide() end
+    if self.bar then self.bar:Hide(); self.pulse:Stop() end
+    FT:RefreshMoveButtons(false)
+    -- New positions go into the profile right away.
+    if FT.modules.Profiles then FT.modules.Profiles:AutoSave() end
+    for frame in pairs(self.shrunk or {}) do if frame:IsShown() and frame.minimized then FT:SetMinimized(frame,false) end end
+    self.shrunk=nil
     self:Refresh()
     if FT.modules.System then FT.modules.System:Refresh() end
 end
@@ -150,6 +191,13 @@ function Movers:Bar()
     local settings=FT:QuietButton(bar,"Settings",104,30,"generic"); settings:SetPoint("RIGHT",done,"LEFT",-8,0)
     settings:SetScript("OnClick",function() FT:OpenModule("Movers") end)
     FT:Tooltip(settings,"Move elements settings","Show or hide unused elements while moving, and reset positions.")
+    -- A slow gold pulse on the border while you're moving things.
+    local glow=CreateFrame("Frame",nil,bar); glow:SetAllPoints(); FT:Panel(glow)
+    for _,t in ipairs(glow.fillTextures) do t:Hide() end
+    FT:Paint(glow,{0,0,0,0},{.95,.78,.42,1}); glow:SetAlpha(0)
+    local pulse=glow:CreateAnimationGroup(); pulse:SetLooping("BOUNCE")
+    local fade=pulse:CreateAnimation("Alpha"); fade:SetFromAlpha(0); fade:SetToAlpha(.5); fade:SetDuration(1.6); fade:SetSmoothing("IN_OUT")
+    self.pulse=pulse
     self.bar=bar
     return bar
 end
@@ -174,7 +222,7 @@ function Movers:Open()
         FT:PageInfo(frame,"Move elements","Unlock every on-screen element ForeverTools draws and drag them where you like, all at once. Click Done on the bar at the top, or enter combat, to lock them. Action bars, unit frames and other game frames move in the game's Edit Mode.")
         self.toggle=FT:AccentButton(frame,"",472,34,"move"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function() self:Toggle() end)
-        FT:Tooltip(self.toggle,"Move elements","Unlock all elements so you can drag them. The same as the Move elements button on the main menu.")
+        FT:Tooltip(self.toggle,"Move elements","Unlock all elements so you can drag them. The same as the move button in every window's title bar.")
         self.unused=FT:QuietButton(frame,"",472,32,"generic"); self.unused:SetPoint("TOPLEFT",24,-106)
         self.unused:SetScript("OnClick",function() local s=self:Settings(); s.showUnused=not s.showUnused; self:Restart(); self:Refresh() end)
         FT:Tooltip(self.unused,"Show unused elements","Also show elements you have turned off, so you can place them before using them. Off shows only what you use.")

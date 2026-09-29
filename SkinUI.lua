@@ -81,7 +81,7 @@ function S:Open()
     self.selected=self.selected or "everything"
     if not self.frame then
         self.frame=FT:Window("ForeverToolsIconStyles","ForeverTools | Skins",730,550); FT:AppearanceBack(self.frame); self.areaButtons={}
-        FT:PageInfo(self.frame,"Skins","Pick an area on the left and turn it on, then choose a look: a template, colors, transparency and border. Everything applies a template to all areas at once and holds your own saved templates. Changes apply right away; save a profile to keep this look for other characters. Hover any control for details.")
+        FT:PageInfo(self.frame,"Skins","Pick an area on the left and turn it on, then choose a look: a template, colors, transparency and border. Everything applies a template to all areas at once and holds your own saved templates. Changes apply right away and are saved to your profile. Hover any control for details.")
         local scroll=CreateFrame("ScrollFrame",nil,self.frame,"UIPanelScrollFrameTemplate"); scroll:SetPoint("TOPLEFT",20,-66); scroll:SetSize(160,420) -- scrollbar sits in the gap, clear of the settings
         local list=CreateFrame("Frame",nil,scroll); list:SetSize(156,#options*38); scroll:SetScrollChild(list)
         for i,entry in ipairs(options) do

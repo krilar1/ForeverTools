@@ -168,7 +168,7 @@ function Skins:Track(button,kind)
                 else rec.auraMask:SetTexture("Interface\\AddOns\\"..FT.name.."\\Media\\Rounded.tga","CLAMPTOBLACKADDITIVE","CLAMPTOBLACKADDITIVE") end
                 -- A little larger than the icon, so it only rounds the
                 -- corners and the icon reaches the border.
-                if hasAtlas then rec.auraMask:SetPoint("TOPLEFT",icon,"TOPLEFT",-3,3); rec.auraMask:SetPoint("BOTTOMRIGHT",icon,"BOTTOMRIGHT",3,-3)
+                if hasAtlas then rec.auraMask:SetPoint("TOPLEFT",icon,"TOPLEFT",-1,1); rec.auraMask:SetPoint("BOTTOMRIGHT",icon,"BOTTOMRIGHT",1,-1)
                 else rec.auraMask:SetAllPoints(icon) end
                 for _,edge in ipairs(rec.auraEdges) do edge:AddMaskTexture(rec.auraMask) end
                 for _,corner in ipairs(rec.auraCorners) do corner:AddMaskTexture(rec.auraMask) end
@@ -226,9 +226,11 @@ function Skins:Paint(rec)
             if rec.auraFrameExtra~=extra then
                 rec.auraFrameExtra=extra
                 rec.auraFrame:ClearAllPoints()
-                -- The frame's inner edge sits on the icon's edge.
-                rec.auraFrame:SetPoint("TOPLEFT",rec.icon,"TOPLEFT",-2-extra,2+extra)
-                rec.auraFrame:SetPoint("BOTTOMRIGHT",rec.icon,"BOTTOMRIGHT",2+extra,-2-extra)
+                -- At 1 px the frame sits right on the icon's edge (like action
+                -- buttons); each step adds 1 px outward. (It used to start 2 px
+                -- outside the icon, which left a dark ring at larger sizes.)
+                rec.auraFrame:SetPoint("TOPLEFT",rec.icon,"TOPLEFT",-extra,extra)
+                rec.auraFrame:SetPoint("BOTTOMRIGHT",rec.icon,"BOTTOMRIGHT",extra,-extra)
             end
             rec.auraFrame:SetVertexColor(r,g,b,1); rec.auraFrame:SetAlpha(s.borderOpacity)
         end
@@ -282,7 +284,13 @@ function Skins:Apply()
     if not FT.dbReady then return end
     if InCombatLockdown() then self.deferred=true; self:Refresh(); return end
     self.deferred=false; local s=self:Settings()
-    if s.actions then for _,prefix in ipairs(bars) do for i=1,12 do self:Track(_G[prefix..i],"actions") end end end
+    if s.actions then
+        for _,prefix in ipairs(bars) do for i=1,12 do self:Track(_G[prefix..i],"actions") end end
+        -- The spell binds role bar looks like your action bars.
+        local roleBar=_G.ForeverToolsRoleBar
+        if roleBar and roleBar.buttons then for _,b in ipairs(roleBar.buttons) do self:Track(b,"actions") end end
+    end
+    if FT.modules.SpellBinds then FT.modules.SpellBinds:PaintRim() end
     if s.stances then
         for _,prefix in ipairs({"StanceButton","PossessButton","TotemFrameTotem"}) do
             for i=1,12 do self:Track(_G[prefix..i],"stances") end
@@ -312,6 +320,7 @@ function Skins:ApplyPart(kind)
         self:ScanBuffs(BuffFrame,2); self:ScanBuffs(DebuffFrame,2)
     elseif kind=="actions" then
         for _,prefix in ipairs(bars) do for i=1,12 do self:Track(_G[prefix..i],"actions") end end
+        if FT.modules.SpellBinds then FT.modules.SpellBinds:PaintRim() end
     elseif kind=="stances" then
         for _,prefix in ipairs({"StanceButton","PossessButton","TotemFrameTotem"}) do
             for i=1,12 do self:Track(_G[prefix..i],"stances") end

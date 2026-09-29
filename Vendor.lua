@@ -4,7 +4,7 @@ local _,FT=...
 -- it can be bought back); repairing like the Repair button. Never in combat;
 -- one summary line.
 local Vendor={}
-local function readable(v) return v~=nil and (not issecretvalue or not issecretvalue(v)) end
+local function readable(v) return (not issecretvalue or not issecretvalue(v)) and v~=nil end
 local function call(fn,...)
     if type(fn)~="function" then return end
     local ok,a,b=pcall(fn,...)

@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "0.15.0"
+FT.version = "0.20.0"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -462,6 +462,7 @@ function FT:PageInfo(frame, title, text)
     local info = self:Info(frame, title, text)
     info:SetPoint("RIGHT", frame.homeButton or frame.closeButton, "LEFT", -8, 0)
     frame.pageInfo = info
+    self:LayoutTitle(frame)
     return info
 end
 -- The game's damage meter look for notices and dialogs: its dark header
@@ -576,12 +577,13 @@ function FT:Window(name, title, width, height)
         local arrow = GetFileIDFromPath and GetFileIDFromPath("Interface\\Icons\\misc_arrowleft")
         if type(arrow) == "number" and arrow > 0 then home.icon:SetTexture(arrow) end
     end
+    self:TitleTools(frame)
     -- The profile switcher lives only on the home window (Profiles button).
     if UISpecialFrames then table.insert(UISpecialFrames, name) end
     frame:HookScript("OnHide",function()
-        -- Only settings pages can hold unsaved changes; info windows never ask.
+        -- Closing a settings page saves its changes into the profile.
         if frame.noSavePrompt then return end
-        C_Timer.After(0,function() if FT.modules.Profiles then FT.modules.Profiles:OfferSave() end end)
+        C_Timer.After(0,function() if FT.modules.Profiles then FT.modules.Profiles:AutoSave() end end)
     end)
     frame:Hide()
     return frame
@@ -596,7 +598,7 @@ function FT:OpenHome()
     end
     for _, module in pairs(self.modules) do if module.frame then module.frame:Hide() end end
     if not self.home then
-        self.home = self:Window("ForeverToolsHome", "ForeverTools", 540, 412)
+        self.home = self:Window("ForeverToolsHome", "ForeverTools", 540, 372)
         self.home.titleText:SetText("ForeverTools")
         -- One quiet line: version and author.
         local version = self:Label(self.home, "v" .. self.version .. "  |cff7d705c·  By Krilar|r", 11)
@@ -614,7 +616,7 @@ function FT:OpenHome()
             {"Appearance","Appearance","fonts","Fonts, unit colors, skins and chat"},
             {"Tooltip","Tooltip","tooltip","Layout, extras, text sizes and position"},
             {"Combat","SystemCombat","Ability_Warrior_DefensiveStance","Threat meter, rare alerts, fire sound and totems"},
-            {"Keybinds","SystemKeybinds","keybind","Quick keybind, restore, wheel casting and smart key"},
+            {"Keybinds","SystemKeybinds","keybind","Quick keybind, spell binds, wheel casting and smart key"},
             {"System","System","generic","General, minimap, gameplay, merchant and more"},
             {"Profiles",nil,"profiles","Save, load and share your setups"},
         }
@@ -623,7 +625,9 @@ function FT:OpenHome()
             local button=self:QuietButton(self.home,entry[1],240,52,entry[3])
             self:ButtonIcon(button,entry[3],32)
             -- Macros: the game's own macro window icon.
-            if entry[3]=="macros" then button.icon:SetTexture("Interface\\MacroFrame\\MacroFrame-Icon"); button.icon:SetTexCoord(0,1,0,1) end
+            -- It is round art: use the square inside the circle, so the rounded
+            -- corners match the other buttons.
+            if entry[3]=="macros" then button.icon:SetTexture("Interface\\MacroFrame\\MacroFrame-Icon"); button.icon:SetTexCoord(.16,.84,.16,.84) end
             button:SetPoint("TOPLEFT",24+column*252,-90-row*60)
             -- Name, then the description on up to two lines; the pair sits
             -- centered in the button whether the description takes one line or two.
@@ -641,13 +645,6 @@ function FT:OpenHome()
                 button:SetScript("OnClick",function() if FT.modules.Profiles then FT.modules.Profiles:TogglePanel() end end)
             end
         end
-        -- Move elements: an action, not a page, so it looks different.
-        local move=self:QuietButton(self.home,"Move elements",492,32)
-        move.outline=true; self:UpdateButton(move)
-        move.label:SetTextColor(1,0.86,0.55)
-        move:SetPoint("TOPLEFT",24,-334)
-        move:SetScript("OnClick",function() if FT.modules.Movers then FT.modules.Movers:Toggle() end end)
-        self:Tooltip(move,"Move elements","Drag the FPS counter, leveling stats, flight timer, threat meter, rare alert, reminders, loot rolls and tooltip where you like, all at once. Click Done or enter combat to lock them. Its settings are on the bar that appears, and in System > On-screen info.")
     end
     if self.modules.Profiles then self.modules.Profiles:Attach(self.home) end
     self.home:Show()
@@ -676,8 +673,6 @@ function FT:CloseCombatControls()
         end
     end
     for _,key in ipairs({"choiceMenu","minimapMenu","toast"}) do if self[key] then self[key]:Hide() end end
-    local profiles=self.modules.Profiles
-    if profiles and profiles.prompting then profiles:DismissSave(false,true) end
     if StaticPopup_Hide then
         for key in pairs(StaticPopupDialogs or {}) do
             if type(key)=="string" and key:match("^FOREVERTOOLS_") then StaticPopup_Hide(key) end
@@ -798,6 +793,82 @@ function FT:ShowChoices(owner)
 end
 
 -- Point a subpage's Home button back to its hub, like Appearance.
+-- Title bar tools on the main menu and settings pages: Move elements (the
+-- menu stays open while you move) and minimize. Pop-ups (no Back button)
+-- don't get them. Laid out right to left each time the window opens.
+local moveTexture
+local function moveIcon()
+    if moveTexture == nil then
+        local id = GetFileIDFromPath and GetFileIDFromPath("Interface\\CURSOR\\UI-Cursor-Move")
+        moveTexture = (type(id) == "number" and id > 0) and id or false
+    end
+    return moveTexture
+end
+function FT:TitleTools(frame)
+    local move = self:QuietButton(frame, "", 28, 28)
+    move.icon = move:CreateTexture(nil, "ARTWORK"); move.icon:SetSize(20, 20); move.icon:SetPoint("CENTER")
+    local texture = moveIcon()
+    if texture then move.icon:SetTexture(texture)
+    else move.icon:SetTexture("Interface\\Icons\\" .. self.icons.move); move.icon:SetTexCoord(.07, .93, .07, .93); self:RoundIcon(move.icon) end
+    move:SetScript("OnClick", function() if FT.modules.Movers then FT.modules.Movers:Toggle() end end)
+    self:Tooltip(move, "Move elements", "Unlock all ForeverTools elements on screen and drag them where you like. This window shrinks to its title bar meanwhile and opens again when you click Done (or this button again).")
+    local min = self:QuietButton(frame, "", 28, 28)
+    -- A gold dash; minimized, a second bar turns it into a plus.
+    min.dash = min:CreateTexture(nil, "ARTWORK"); min.dash:SetColorTexture(1, .82, 0, 1); min.dash:SetSize(12, 2); min.dash:SetPoint("CENTER", 0, -4)
+    min.bar = min:CreateTexture(nil, "ARTWORK"); min.bar:SetColorTexture(1, .82, 0, 1); min.bar:SetSize(2, 12); min.bar:SetPoint("CENTER"); min.bar:Hide()
+    min:SetScript("OnClick", function() FT:SetMinimized(frame, not frame.minimized) end)
+    self:Tooltip(min, "Minimize", function() return frame.minimized and "Show the whole window again." or "Shrink this window to its title bar. Drag it anywhere." end)
+    frame.moveButton, frame.minButton = move, min
+    frame:HookScript("OnShow", function() FT:LayoutTitle(frame); FT:SetSelected(move, FT.modules.Movers and FT.modules.Movers.active) end)
+    frame:HookScript("OnHide", function() if frame.minimized then FT:SetMinimized(frame, false) end end)
+end
+function FT:LayoutTitle(frame)
+    local tools = frame.homeButton == nil or frame.homeButton:IsShown()
+    local chain = { frame.closeButton }
+    if frame.homeButton and frame.homeButton:IsShown() then chain[#chain + 1] = frame.homeButton end
+    if frame.minButton then frame.minButton:SetShown(tools); if tools then chain[#chain + 1] = frame.minButton end end
+    if frame.moveButton then frame.moveButton:SetShown(tools); if tools then chain[#chain + 1] = frame.moveButton end end
+    if frame.pageInfo then chain[#chain + 1] = frame.pageInfo end
+    for i = 2, #chain do chain[i]:ClearAllPoints(); chain[i]:SetPoint("RIGHT", chain[i - 1], "LEFT", -8, 0) end
+end
+function FT:RefreshMoveButtons(active)
+    for frame in pairs(self.controlWindows or {}) do
+        if frame.moveButton then self:SetSelected(frame.moveButton, active) end
+    end
+end
+-- Minimized: only the title bar is left (title, info, move, minimize, Back, close).
+function FT:SetMinimized(frame, on)
+    on = on == true
+    if (frame.minimized == true) == on then return end
+    if on then
+        local keep = {}
+        for _, key in ipairs({ "titleText", "closeButton", "homeButton", "moveButton", "minButton", "pageInfo" }) do
+            if frame[key] then keep[frame[key]] = true end
+        end
+        for _, key in ipairs({ "fillTextures", "borderTextures", "titleBand" }) do for _, t in ipairs(frame[key] or {}) do keep[t] = true end end
+        if frame.titleFade then frame.fadeHeight = frame.titleFade:GetHeight(); frame.titleFade:SetHeight(44) end
+        frame.hiddenForMin = {}
+        for _, list in ipairs({ { frame:GetRegions() }, { frame:GetChildren() } }) do
+            for _, obj in ipairs(list) do
+                if not keep[obj] and obj:IsShown() then obj:Hide(); frame.hiddenForMin[#frame.hiddenForMin + 1] = obj end
+            end
+        end
+        frame.fullHeight = frame:GetHeight()
+        local left, top = frame:GetLeft(), frame:GetTop()
+        if left and top then frame:ClearAllPoints(); frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top) end
+        frame:SetHeight(56)
+    else
+        if frame.fullHeight then frame:SetHeight(frame.fullHeight) end
+        if frame.titleFade and frame.fadeHeight then frame.titleFade:SetHeight(frame.fadeHeight) end
+        for _, obj in ipairs(frame.hiddenForMin or {}) do obj:Show() end
+        frame.hiddenForMin = nil
+    end
+    frame.minimized = on
+    if frame.minButton then
+        frame.minButton.dash:ClearAllPoints(); frame.minButton.dash:SetPoint("CENTER", 0, on and 0 or -4)
+        frame.minButton.bar:SetShown(on)
+    end
+end
 function FT:BackTo(frame, moduleName)
     frame.homeButton:SetScript("OnClick", function() FT:OpenModule(moduleName) end)
 end

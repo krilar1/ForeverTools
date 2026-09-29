@@ -457,6 +457,28 @@ function Reminder:Refresh(cachedSpells)
     end
     if self.frame then self:RefreshMenu(learned) end
 end
+-- While moving, the same outline box the other elements get, drawn just
+-- behind each notice (self buffs and group buffs).
+function Reminder:MoverBoxes()
+    if not self.moving and not self.boxesShown then return end
+    self.boxesShown=self.moving
+    for _,badge in ipairs({self.badge,self.groupBadge}) do
+        local box=badge.moverBox
+        if not box and self.moving then
+            box=CreateFrame("Frame",nil,UIParent); box:SetPoint("TOPLEFT",badge,"TOPLEFT"); box:SetPoint("BOTTOMRIGHT",badge,"BOTTOMRIGHT")
+            FT:MoverBox(box,6); badge.moverBox=box
+        end
+        if box then
+            box:SetFrameStrata(badge:GetFrameStrata()); box:SetFrameLevel(math.max(0,badge:GetFrameLevel()-1))
+            box:SetShown(self.moving and badge:IsShown())
+        end
+    end
+end
+local refresh=Reminder.Refresh
+function Reminder:Refresh(...)
+    refresh(self,...)
+    if self.badge then self:MoverBoxes() end
+end
 function Reminder:Apply()
     if FT.modules.RankMarker and self.markerApplied~=self:Settings().rankMarker then
         self.markerApplied=self:Settings().rankMarker; FT.modules.RankMarker:Apply()

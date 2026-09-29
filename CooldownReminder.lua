@@ -23,6 +23,7 @@ local TOUGH_DELAY,PULL_DELAY,PULL_SIZE,GAP,SHOW,DEF_GAP=2,4,3,60,6,30
 local BURST_WINDOW,BURST_SHARE=5,1/3
 local NUDGE_KILLS,NUDGE_GAP,NUDGE_DELAY=15,600,3
 local function secret(v) return issecretvalue and issecretvalue(v) or false end
+local function yes(v) return not secret(v) and v and true or false end
 local function safe(fn,...) if not fn then return end local ok,a,b,c,d=pcall(fn,...) if ok then return a,b,c,d end end
 
 -- Known cooldowns (English names, any rank). "need" says what a defensive
@@ -130,10 +131,10 @@ function CD:Trinkets()
     local list={}
     for _,slot in ipairs({13,14}) do
         local item=safe(GetInventoryItemID,"player",slot)
-        if item and not secret(item) then
+        if not secret(item) and item then
             local getSpell=C_Item and C_Item.GetItemSpell or GetItemSpell
             local spellName,spellID=safe(getSpell,item)
-            if spellName and not secret(spellName) then
+            if not secret(spellName) and spellName then
                 local name=C_Item and C_Item.GetItemNameByID and safe(C_Item.GetItemNameByID,item) or (GetItemInfo and safe(GetItemInfo,item)) or spellName
                 list[#list+1]={key="trinket:"..slot,slot=slot,spellID=spellID,name=name,icon=safe(GetInventoryItemTexture,"player",slot),trinket=true,defaultRole="offensive",need="burst"}
             end
@@ -166,7 +167,7 @@ end
 
 -- Is this fight worth a reminder?
 local function tough()
-    if not UnitExists("target") or not UnitCanAttack("player","target") then return false end
+    if not yes(safe(UnitExists,"target")) or not yes(safe(UnitCanAttack,"player","target")) then return false end
     local class=safe(UnitClassification,"target")
     if not secret(class) and (class=="elite" or class=="rare" or class=="rareelite" or class=="worldboss") then return true end
     local level,mine=safe(UnitLevel,"target"),UnitLevel("player")
@@ -178,11 +179,15 @@ local function pullSize()
     local n=0
     for _,plate in ipairs(C_NamePlate.GetNamePlates() or {}) do
         local unit=plate.namePlateUnitToken or (plate.UnitFrame and plate.UnitFrame.unit)
-        if unit and UnitCanAttack("player",unit) and not UnitIsDead(unit) then
+        if not secret(unit) and type(unit)=="string" and yes(safe(UnitCanAttack,"player",unit)) then
+            local dead=safe(UnitIsDead,unit)
+            if secret(dead) or dead then unit=nil end
+        else unit=nil end
+        if unit then
             local status=safe(UnitThreatSituation,"player",unit)
             local fighting
             if secret(status) or status==nil then fighting=safe(UnitAffectingCombat,unit) else fighting=true end
-            if fighting and not secret(fighting) then n=n+1 end
+            if yes(fighting) then n=n+1 end
         end
     end
     return n
@@ -266,19 +271,19 @@ local function debuffTypes()
         local aura=safe(C_UnitAuras.GetAuraDataByIndex,"player",i,"HARMFUL")
         if not aura then break end
         local kind=aura.dispelName
-        if kind and not secret(kind) then found[kind]=true end
+        if not secret(kind) and type(kind)=="string" then found[kind]=true end
     end
     return found
 end
 local function controlTypes()
     local found={}
     if not C_LossOfControl or not C_LossOfControl.GetActiveLossOfControlDataCount then return found end
-    local count=safe(C_LossOfControl.GetActiveLossOfControlDataCount) or 0
-    if secret(count) then return found end
+    local count=safe(C_LossOfControl.GetActiveLossOfControlDataCount)
+    if secret(count) or type(count)~="number" then return found end
     for i=1,count do
         local data=safe(C_LossOfControl.GetActiveLossOfControlData,i)
         local kind=type(data)=="table" and data.locType
-        if kind and not secret(kind) then found[kind]=true; if kind:find("FEAR",1,true) then found.FEAR=true end end
+        if not secret(kind) and type(kind)=="string" then found[kind]=true; if kind:find("FEAR",1,true) then found.FEAR=true end end
     end
     return found
 end
@@ -334,7 +339,7 @@ events:SetScript("OnEvent",function(_,event,unit,a,b,c)
         if CD.notice then CD.notice:Hide() end
     elseif event=="UNIT_COMBAT" then
         -- a=action, c=amount (readable in the open world; skipped if hidden).
-        if a~="WOUND" or secret(c) or type(c)~="number" or c<=0 or not CD.damage then return end
+        if secret(a) or a~="WOUND" or secret(c) or type(c)~="number" or c<=0 or not CD.damage then return end
         local hits=CD.damage; hits[#hits+1]={GetTime(),c}
         if #hits>40 then table.remove(hits,1) end
         FT:Coalesce("cdBurst",function() CD:CheckDefensive("burst") end,.3)
