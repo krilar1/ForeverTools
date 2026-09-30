@@ -3,7 +3,24 @@ local S=FT.modules.IconStyles
 local options={{"everything","Everything"},{"actions","Action bars"},{"buffs","Buffs / debuffs"}}
 for _,entry in ipairs(S.extraOptions) do options[#options+1]=entry end
 function S:SetOpacity(value)
-    local s=self:Area(self.selected or "actions"); s.opacity=math.max(0,math.min(1,value)); s.preset="custom"; self:Apply()
+    local s=self:Area(self.selected or "actions"); s.opacity=math.max(0,math.min(1,value)); s.preset="custom"; self:LiveApply()
+end
+-- Sliders fire many times a second while you drag. Repainting the whole UI
+-- (and looking for new buttons) each time made the game stutter, so while
+-- dragging only the chosen area's existing pieces are recolored, at most 20
+-- times a second; one full pass follows when the slider rests.
+function S:LiveApply()
+    local key=self.selected or "actions"
+    FT:Coalesce("skinLive",function()
+        if InCombatLockdown() then return end
+        for _,rec in pairs(self.records or {}) do if rec.kind==key then self:Paint(rec) end end
+        for texture,record in pairs(self.artwork or {}) do if record.key==key then self:PaintArtwork(texture,record) end end
+        for button,record in pairs(self.bagSlots or {}) do if record.key==key and self.PaintEmptyBagSlot then self:PaintEmptyBagSlot(button,record) end end
+        if key=="actions" and FT.modules.SpellBinds then FT.modules.SpellBinds:PaintRim() end
+        self:Refresh()
+    end,.05)
+    self.liveToken=(self.liveToken or 0)+1; local token=self.liveToken
+    C_Timer.After(.35,function() if self.liveToken==token and FT.dbReady then self:Apply() end end)
 end
 function S:UsePreset(value)
     local s=self:Area(self.selected or "actions")
@@ -13,13 +30,13 @@ function S:UsePreset(value)
         if value=="class" then s.opacity=0; s.shadow=false end
         if value=="dark" and self.selected=="micro" then s.hideSecondary=true end
         if value=="dark" and (self.selected=="bags" or self.selected=="bagWindows") then s.opacity=1 end
-        if value=="dark" and self.selected=="buffs" then s.thickness=3 end
+        if value=="dark" and self.selected=="buffs" then s.thickness=1 end
     end end
     self:Apply()
 end
 function S:OpenColorPicker(setting)
     local s=self:Area(self.selected or "actions"); local old={unpack(s[setting])}; local oldPreset=s.preset
-    local function change() local r,g,b=ColorPickerFrame:GetColorRGB(); s[setting]={r,g,b}; s.preset="custom"; self:Apply() end
+    local function change() local r,g,b=ColorPickerFrame:GetColorRGB(); s[setting]={r,g,b}; s.preset="custom"; self:LiveApply() end
     local function cancel() s[setting]=old; s.preset=oldPreset; self:Apply() end
     if ColorPickerFrame and ColorPickerFrame.SetupColorPickerAndShow then
         FT:TrackColorPicker();ColorPickerFrame:SetupColorPickerAndShow({r=old[1],g=old[2],b=old[3],hasOpacity=false,swatchFunc=change,cancelFunc=cancel})
@@ -36,7 +53,7 @@ function S:Refresh()
     self.allPresetChoice:SetShown(everything); self.applyAll:SetShown(everything)
     self.allPresetChoice.value=self.allPreset or "dark"
     for _,p in ipairs(self.presets) do if p.value==self.allPresetChoice.value then self.allPresetChoice.label:SetText(p.label) end end
-    for _,control in ipairs({self.toggle,self.presetChoice,self.borderButton,self.colorButton,self.borderSlider,self.borderLabel,self.opacitySlider,self.opacityLabel,self.shadow,self.thickness,self.rares,self.elites,self.microOutline,self.hideArt,self.hideSlotArt,self.slotLabel,self.slotSlider,self.slotColorButton,self.reset}) do control:SetShown(not everything) end
+    for _,control in ipairs({self.toggle,self.presetChoice,self.borderButton,self.colorButton,self.borderSlider,self.borderLabel,self.opacitySlider,self.opacityLabel,self.shadow,self.thickness,self.rares,self.elites,self.microOutline,self.hideArt,self.hideSlotArt,self.slotLabel,self.slotSlider,self.slotColorButton,self.reset,self.shadowSizeSlider,self.shadowSizeLabel,self.shadowStrengthSlider,self.shadowStrengthLabel}) do control:SetShown(not everything) end
     if everything then return end
     local s=self:Area(key)
     self.slotLabel:SetShown(key=="bagWindows");self.slotSlider:SetShown(key=="bagWindows");self.slotColorButton:SetShown(key=="bagWindows")
@@ -63,10 +80,15 @@ function S:Refresh()
     if key=="bagWindows" then self.hideSlotArt.label:SetText("Hide empty slot art: "..(s.hideSlotArt and "On" or "Off")); FT:SetSelected(self.hideSlotArt,s.hideSlotArt) end
     local icons=key=="actions" or key=="buffs" or key=="stances"
     for _,control in ipairs({self.shadow,self.thickness}) do control:SetShown(icons) end
-    for _,control in ipairs({self.opacitySlider,self.opacityLabel,self.colorButton}) do control:SetShown(icons or key=="bagWindows" or key=="bags") end
+    for _,control in ipairs({self.shadowSizeSlider,self.shadowSizeLabel,self.shadowStrengthSlider,self.shadowStrengthLabel}) do control:SetShown(icons and s.shadow) end
+    -- Buff icons fill their whole square, so a fill color behind them never shows.
+    for _,control in ipairs({self.opacitySlider,self.opacityLabel,self.colorButton}) do control:SetShown((icons and key~="buffs") or key=="bagWindows" or key=="bags") end
     self.colorButton.label:SetText(key=="bagWindows" and "Background color" or "Shading color")
     self.thickness.value=s.thickness; self.thickness.label:SetText("Border: "..s.thickness.." px")
-    self.shadow.label:SetText("Shadow outline: "..(s.shadow and "On" or "Off")); FT:SetSelected(self.shadow,s.shadow)
+    self.shadow.label:SetText("Shadow: "..(s.shadow and "On" or "Off")); FT:SetSelected(self.shadow,s.shadow)
+    self.settingSlider=true; self.shadowSizeSlider:SetValue(s.shadowSize); self.shadowStrengthSlider:SetValue(s.shadowStrength); self.settingSlider=false
+    self.shadowSizeLabel:SetText("Shadow size: "..s.shadowSize.." px")
+    self.shadowStrengthLabel:SetText("Shadow darkness: "..math.floor(s.shadowStrength*100+.5).."%")
     -- Both sliders show transparency the same way: right = more see-through.
     self.settingSlider=true; self.opacitySlider:SetValue(1-s.opacity); self.borderSlider:SetValue(1-s.borderOpacity); self.settingSlider=false
     self.opacityLabel:SetText((key=="bagWindows" and "Background transparency: " or "Fill transparency: ")..math.floor(100-s.opacity*100+.5).."%")
@@ -102,7 +124,7 @@ function S:Open()
                         area.preset=p.value;area.borderOpacity=1
                         if p.color then area.color={unpack(p.color)};area.borderColor={unpack(p.border)};area.opacity=1-p.transparency/100;area.shadow=p.shadow end
                         if p.value=="class" then area.opacity=0;area.shadow=false end
-                        if key=="buffs" then area.thickness=3 end
+                        if key=="buffs" then area.thickness=1 end
                         if p.value=="dark" and (key=="bags" or key=="bagWindows") then area.opacity=1 end
                         if key=="micro" and p.value=="dark" then area.hideSecondary=true end
                         -- Keep each unit area's rare/elite artwork preference.
@@ -133,19 +155,32 @@ function S:Open()
             if high and high.SetText then high:SetText("See-through") end
             return label,slider
         end
-        self.borderLabel,self.borderSlider=slider(-281,function(v) self:Area(self.selected).borderOpacity=1-v; self:Apply() end)
+        self.borderLabel,self.borderSlider=slider(-281,function(v) self:Area(self.selected).borderOpacity=1-v; self:LiveApply() end)
         FT:Tooltip(self.borderSlider,"Border transparency","The thin frame line around each button or icon. 0% is solid, 100% hides it. Slide right for more see-through.")
         self.opacityLabel,self.opacitySlider=slider(-321,function(v) self:SetOpacity(1-v) end)
         FT:Tooltip(self.opacitySlider,"Fill transparency",function() return (self.selected=="bagWindows" and "The background behind the bag window." or "The shading color behind each button or icon.").." 0% is solid, 100% hides it. Slide right for more see-through." end)
-        self.slotLabel,self.slotSlider=slider(-361,function(v) self:Area("bagWindows").slotOpacity=1-v;self:Apply() end)
+        self.slotLabel,self.slotSlider=slider(-361,function(v) self:Area("bagWindows").slotOpacity=1-v;self:LiveApply() end)
         FT:Tooltip(self.slotSlider,"Slot color transparency","How much of the Slot color shows in each bag slot. 0% is solid, 100% shows no color, so the bag window shows through.")
         self.slotColorButton,self.slotColorSwatch=colorButton("Slot color",222,"slotColor")
         self.slotColorButton:ClearAllPoints(); self.slotColorButton:SetPoint("TOPLEFT",222,-441)
         FT:Tooltip(self.slotColorButton,"Bag slot color","The color of the square behind each bag slot.")
         self.thickness=FT.modules.FontManager:Stepper(self.frame,234,function() local choices={}; for i=1,4 do choices[i]={value=i} end; return choices end,function(v) self:Area(self.selected).thickness=v; self:Apply() end)
         self.thickness:SetPoint("TOPLEFT",222,-361)
+        FT:Tooltip(self.thickness,"Border thickness","How thick the border is. On buffs and debuffs it's in real screen pixels, so 1 px is the thinnest line your screen can show.")
         self.shadow=FT:QuietButton(self.frame,"",234,32,"skins"); self.shadow:SetPoint("TOPLEFT",468,-361)
         self.shadow:SetScript("OnClick",function() local s=self:Area(self.selected); s.shadow=not s.shadow; self:Apply() end)
+        FT:Tooltip(self.shadow,"Shadow","A soft dark shadow around each icon that fades out. Set how far it reaches and how dark it is below.")
+        local function ends(slider,low,high)
+            local l=slider.Low or (slider.GetName and slider:GetName() and _G[slider:GetName().."Low"])
+            local h=slider.High or (slider.GetName and slider:GetName() and _G[slider:GetName().."High"])
+            if l and l.SetText then l:SetText(low) end; if h and h.SetText then h:SetText(high) end
+        end
+        self.shadowSizeLabel,self.shadowSizeSlider=slider(-401,function(v) self:Area(self.selected).shadowSize=math.floor(v+.5); self:LiveApply() end)
+        self.shadowSizeSlider:SetMinMaxValues(1,8); self.shadowSizeSlider:SetValueStep(1); ends(self.shadowSizeSlider,"Tight","Wide")
+        FT:Tooltip(self.shadowSizeSlider,"Shadow size","How far the shadow reaches past the icon, in screen pixels (1 to 8).")
+        self.shadowStrengthLabel,self.shadowStrengthSlider=slider(-441,function(v) self:Area(self.selected).shadowStrength=v; self:LiveApply() end)
+        self.shadowStrengthSlider:SetMinMaxValues(.1,1); ends(self.shadowStrengthSlider,"Light","Dark")
+        FT:Tooltip(self.shadowStrengthSlider,"Shadow darkness","How dark the shadow is next to the icon. It always fades out toward its edge.")
         for i,key in ipairs({"rares","elites"}) do
             local option=key; local b=FT:QuietButton(self.frame,"",234,32,"skins"); b:SetPoint("TOPLEFT",222+(i-1)*246,-321)
             b:SetScript("OnClick",function() local s=self:Area(self.selected); s[option]=not s[option]; self:Apply() end); self[key]=b

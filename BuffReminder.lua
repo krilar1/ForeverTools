@@ -736,7 +736,7 @@ function Reminder:Open()
         self.sizeSlider:SetMinMaxValues(.7,1.5);self.sizeSlider:SetValueStep(.05);self.sizeSlider:SetObeyStepOnDrag(true)
         self.sizeSlider:SetScript("OnValueChanged",function(_,value)
             if self.settingSize then return end
-            self:Settings().size=math.floor(value*20+.5)/20;self:Apply()
+            self:Settings().size=math.floor(value*20+.5)/20;FT:Coalesce("reminderSlider",function() self:Apply() end,.05)
         end)
         FT:Tooltip(self.sizeSlider,"Reminder size","Make the notices smaller or bigger (70% to 150%).")
         self.hideChoice=FT:Dropdown(frame,512,function()
@@ -753,7 +753,7 @@ function Reminder:Open()
             color:SetScript("OnClick",function()
                 if not ColorPickerFrame then return end
                 local s=self:Settings();local old={unpack(s[field])}
-                local function change() s[field]={ColorPickerFrame:GetColorRGB()};self:Apply() end
+                local function change() s[field]={ColorPickerFrame:GetColorRGB()};FT:Coalesce("reminderColor",function() self:Apply() end,.05) end
                 local function cancel() s[field]=old;self:Apply() end
                 if ColorPickerFrame.SetupColorPickerAndShow then FT:TrackColorPicker();ColorPickerFrame:SetupColorPickerAndShow({r=old[1],g=old[2],b=old[3],hasOpacity=false,swatchFunc=change,cancelFunc=cancel})
                 else ColorPickerFrame:SetColorRGB(unpack(old));ColorPickerFrame.func=change;ColorPickerFrame.cancelFunc=cancel;ColorPickerFrame:Show() end

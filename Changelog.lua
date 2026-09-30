@@ -2,6 +2,11 @@ local _,FT=...
 -- Short player-facing notes for the "What's new" window. Newest first.
 FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
+    {version="0.40.0",notes={
+        {icon="Spell_Holy_WordFortitude",title="Crisp buff borders",text="Buff and debuff borders in real screen pixels; 1 px is truly thin."},
+        {icon="INV_Misc_ArmorKit_17",title="Soft shadow",text="Shadows fade out now, with size and darkness sliders."},
+        {icon="INV_Misc_PocketWatch_01",title="Smoother settings",text="Sliders and color pickers no longer make the game stutter."},
+    }},
     {version="0.30.0",notes={
         {icon="Spell_Nature_StoneSkinTotem",title="Totem circles",text="Show reliably for new and replaced totems, stay up in combat and go away when a totem does."},
         {icon="Spell_Fire_Fire",title="Fire sound removed",text="Standing in fire is out for now: it also went off on damage over time."},

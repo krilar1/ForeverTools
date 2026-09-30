@@ -1014,7 +1014,7 @@ function Profiles:ValidateImport(data)
     end
     if result.iconStyles then
         local function skin(pref)
-            if type(pref)~="table" or not check(pref,{preset="string",opacity="number",shadow="boolean",thickness="number",borderOpacity="number",slotOpacity="number",slotColor="table",hideSlotArt="boolean",rares="boolean",elites="boolean",color="table",borderColor="table"}) then return false end
+            if type(pref)~="table" or not check(pref,{preset="string",opacity="number",shadow="boolean",shadowSize="number",shadowStrength="number",thickness="number",borderOpacity="number",slotOpacity="number",slotColor="table",hideSlotArt="boolean",rares="boolean",elites="boolean",color="table",borderColor="table"}) then return false end
             for _,field in ipairs({"color","borderColor"}) do
                 if pref[field] then for i=1,3 do if type(pref[field][i])~="number" or pref[field][i]<0 or pref[field][i]>1 then return false end end end
             end

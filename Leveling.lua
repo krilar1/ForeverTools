@@ -461,7 +461,7 @@ function Leveling:Open()
             if not ColorPickerFrame then return end
             local s=self:Settings(); local old={unpack(s.backgroundColor)}
             s.background=true
-            local function change() s.backgroundColor={ColorPickerFrame:GetColorRGB()}; self:Apply() end
+            local function change() s.backgroundColor={ColorPickerFrame:GetColorRGB()}; FT:Coalesce("levelingColor",function() self:Apply() end,.05) end
             local function cancel() s.backgroundColor=old; self:Apply() end
             if ColorPickerFrame.SetupColorPickerAndShow then FT:TrackColorPicker(); ColorPickerFrame:SetupColorPickerAndShow({r=old[1],g=old[2],b=old[3],hasOpacity=false,swatchFunc=change,cancelFunc=cancel})
             else ColorPickerFrame:SetColorRGB(unpack(old)); ColorPickerFrame.func=change; ColorPickerFrame.cancelFunc=cancel; ColorPickerFrame:Show() end
@@ -479,9 +479,9 @@ function Leveling:Open()
             FT:Tooltip(bar,label,tip)
             return text,bar
         end
-        self.sizeLabel,self.sizeSlider=slider("Font size",y,10,32,1,"Text size of the stats (10 to 32).",function(v) self:Settings().fontSize=math.floor(v+.5); self:Apply() end)
+        self.sizeLabel,self.sizeSlider=slider("Font size",y,10,32,1,"Text size of the stats (10 to 32).",function(v) self:Settings().fontSize=math.floor(v+.5); FT:Coalesce("levelingSlider",function() self:Apply() end,.05) end)
         y=y-38
-        self.alphaLabel,self.alphaSlider=slider("Transparency",y,0,100,5,"How see-through the background is (0% solid, 100% invisible).",function(v) self:Settings().backgroundAlpha=1-math.floor(v+.5)/100; self:Apply() end)
+        self.alphaLabel,self.alphaSlider=slider("Transparency",y,0,100,5,"How see-through the background is (0% solid, 100% invisible).",function(v) self:Settings().backgroundAlpha=1-math.floor(v+.5)/100; FT:Coalesce("levelingSlider",function() self:Apply() end,.05) end)
         frame:SetHeight(-y+32+24)
         frame:HookScript("OnHide",function() if self.moving then self:SetMoving(false) end end)
     end

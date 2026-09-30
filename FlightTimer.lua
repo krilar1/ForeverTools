@@ -241,13 +241,13 @@ function Flight:Open()
         self.sizeLabel=FT:Label(frame,"",13);self.sizeLabel:SetPoint("TOPLEFT",24,-234)
         self.slider=CreateFrame("Slider",nil,frame,"OptionsSliderTemplate");self.slider:SetSize(220,18);self.slider:SetPoint("TOPLEFT",190,-234)
         self.slider:SetMinMaxValues(10,48);self.slider:SetValueStep(1);self.slider:SetObeyStepOnDrag(true)
-        self.slider:SetScript("OnValueChanged",function(_,value) if not self.settingSize then self:Settings().size=math.floor(value+.5);self:Apply() end end)
+        self.slider:SetScript("OnValueChanged",function(_,value) if not self.settingSize then self:Settings().size=math.floor(value+.5);FT:Coalesce("flightSlider",function() self:Apply() end,.05) end end)
         local color=FT:QuietButton(frame,"Text color",392,34,"fonts");color:SetPoint("TOPLEFT",24,-270)
         self.swatch=color:CreateTexture(nil,"ARTWORK");self.swatch:SetTexture("Interface\\Buttons\\WHITE8X8");self.swatch:SetSize(18,18);self.swatch:SetPoint("RIGHT",-12,0)
         color:SetScript("OnClick",function()
             if not ColorPickerFrame then return end
             local s=self:Settings();local old={unpack(s.color)}
-            local function change() s.color={ColorPickerFrame:GetColorRGB()};self:Apply() end
+            local function change() s.color={ColorPickerFrame:GetColorRGB()};FT:Coalesce("flightColor",function() self:Apply() end,.05) end
             local function cancel() s.color=old;self:Apply() end
             if ColorPickerFrame.SetupColorPickerAndShow then FT:TrackColorPicker();ColorPickerFrame:SetupColorPickerAndShow({r=old[1],g=old[2],b=old[3],hasOpacity=false,swatchFunc=change,cancelFunc=cancel})
             else ColorPickerFrame:SetColorRGB(unpack(old));ColorPickerFrame.func=change;ColorPickerFrame.cancelFunc=cancel;ColorPickerFrame:Show() end

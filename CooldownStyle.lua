@@ -54,7 +54,7 @@ function Fonts:CooldownColorPicker()
     local s=self:Settings("cooldowns"); local old=s.numberColor; local wasEnabled=s.enabled
     local color=old or {1,1,1}
     FT:TrackColorPicker();ColorPickerFrame:SetupColorPickerAndShow({r=color[1],g=color[2],b=color[3],hasOpacity=false,
-        swatchFunc=function() local r,g,b=ColorPickerFrame:GetColorRGB(); s.numberColor={r,g,b}; s.enabled=true; update(); self:Refresh() end,
+        swatchFunc=function() local r,g,b=ColorPickerFrame:GetColorRGB(); s.numberColor={r,g,b}; s.enabled=true; FT:Coalesce("cooldownColor",function() update(); self:Refresh() end,.05) end,
         cancelFunc=function() s.numberColor=old; s.enabled=wasEnabled; update(); self:Refresh() end})
 end
 local refresh=Fonts.Refresh

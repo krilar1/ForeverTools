@@ -51,7 +51,7 @@ function Skins:Area(key)
         return s
     end
     if type(s)~="table" then
-        s={preset=root.preset,opacity=root.opacity,shadow=root.shadow,color={unpack(root.color)},borderColor={unpack(root.borderColor)},thickness=key=="buffs" and 3 or 1,borderOpacity=1,rares=false,elites=false,hideSecondary=key=="micro"}
+        s={preset=root.preset,opacity=root.opacity,shadow=root.shadow,color={unpack(root.color)},borderColor={unpack(root.borderColor)},thickness=1,borderOpacity=1,rares=false,elites=false,hideSecondary=key=="micro"}
         if key=="bags" or key=="bagWindows" then s.opacity=1 end
         if key=="gryphons" then s.preset="soft";s.color={.04,.04,.05};s.borderColor={.26,.21,.17};s.opacity=.34 end
         root.areas[key]=s
@@ -70,6 +70,15 @@ function Skins:Area(key)
         if s.preset=="dark" and (tonumber(s.thickness) or 1)<=2 then s.thickness=3 end
         s.buffBorderThreeMigration=true
     end
+    -- Buff borders are now drawn in real screen pixels (1 px is one pixel).
+    -- The old frame art looked about three times thicker, so 3 becomes 1.
+    if key=="buffs" and not s.buffPixelBorders then
+        if (tonumber(s.thickness) or 1)>=3 then s.thickness=1 end
+        s.buffPixelBorders=true
+    end
+    -- Shadow: how far it reaches (screen pixels) and how dark it is.
+    s.shadowSize=math.max(1,math.min(8,math.floor(tonumber(s.shadowSize) or 3)))
+    s.shadowStrength=math.max(.1,math.min(1,tonumber(s.shadowStrength) or .6))
     s.slotOpacity=math.max(0,math.min(1,tonumber(s.slotOpacity) or .35))
     if type(s.slotColor)~="table" then s.slotColor={.6,.63,.68} end
     for i=1,3 do s.slotColor[i]=type(s.slotColor[i])=="number" and math.max(0,math.min(1,s.slotColor[i])) or .6 end
@@ -107,10 +116,14 @@ function Skins:Track(button,kind)
         -- Anchor aura overlays to the icon only: timer/count text beneath stays clear.
         rec.fill:SetPoint("TOPLEFT",icon,"TOPLEFT"); rec.fill:SetPoint("BOTTOMRIGHT",icon,"BOTTOMRIGHT")
         rec.fill:SetTexture("Interface\\AddOns\\"..FT.name.."\\Media\\Rounded.tga")
-        rec.shadow=button:CreateTexture(nil,"BACKGROUND",nil,-8)
-        rec.shadow:SetTexture("Interface\\AddOns\\"..FT.name.."\\Media\\Rounded.tga")
-        local shadowInset=kind=="buffs" and -2 or -1
-        rec.shadow:SetPoint("TOPLEFT",icon,"TOPLEFT",shadowInset,-shadowInset); rec.shadow:SetPoint("BOTTOMRIGHT",icon,"BOTTOMRIGHT",-shadowInset,shadowInset)
+        -- A soft shadow: a few rounded layers, each a little bigger and
+        -- lighter, so it fades out instead of ending in a hard edge.
+        rec.shadows={}
+        for i=1,5 do
+            local t=button:CreateTexture(nil,"BACKGROUND",nil,-8)
+            t:SetTexture("Interface\\AddOns\\"..FT.name.."\\Media\\Rounded.tga"); t:Hide()
+            rec.shadows[i]=t
+        end
         -- Some bar buttons (e.g. Forever's totem buttons) are unnamed frames.
         local buttonName = button.GetName and button:GetName()
         rec.border = (kind == "actions" or kind=="stances") and ((button.GetNormalTexture and button:GetNormalTexture()) or button.normalTexture or (buttonName and _G[buttonName .. "NormalTexture"])) or nil
@@ -133,45 +146,27 @@ function Skins:Track(button,kind)
             border(button.DebuffBorder); border(button.Border); border(button.border); border(button.TempEnchantBorder)
             border(name and _G[name.."Border"])
             if button.Icon and button.Icon~=icon then border(button.Icon.Border); border(button.Icon.DebuffBorder); border(button.Icon.TempEnchantBorder) end
+            -- The border: four thin strips along the icon's edges, sized in
+            -- real screen pixels, rounded at the corners by the icon's mask.
             rec.auraEdges={}
             for i=1,4 do
                 local edge=button:CreateTexture(nil,"OVERLAY",nil,1)
                 edge:SetTexture("Interface\\Buttons\\WHITE8x8"); rec.auraEdges[i]=edge
             end
             local e=rec.auraEdges
-            -- Leave a two-pixel turn at each corner instead of joining
-            -- straight edge strips into a square over the rounded fill.
-            e[1]:SetPoint("TOPLEFT",icon,"TOPLEFT",2,0); e[1]:SetPoint("TOPRIGHT",icon,"TOPRIGHT",-2,0); e[1]:SetHeight(1)
-            e[2]:SetPoint("BOTTOMLEFT",icon,"BOTTOMLEFT",2,0); e[2]:SetPoint("BOTTOMRIGHT",icon,"BOTTOMRIGHT",-2,0); e[2]:SetHeight(1)
-            e[3]:SetPoint("TOPLEFT",icon,"TOPLEFT",0,-2); e[3]:SetPoint("BOTTOMLEFT",icon,"BOTTOMLEFT",0,2); e[3]:SetWidth(1)
-            e[4]:SetPoint("TOPRIGHT",icon,"TOPRIGHT",0,-2); e[4]:SetPoint("BOTTOMRIGHT",icon,"BOTTOMRIGHT",0,2); e[4]:SetWidth(1)
-            -- The shortened edge strips leave uncovered square icon pixels.
-            -- Cover those turns too, then clip the artwork and border together.
+            e[1]:SetPoint("TOPLEFT",icon,"TOPLEFT"); e[1]:SetPoint("TOPRIGHT",icon,"TOPRIGHT")
+            e[2]:SetPoint("BOTTOMLEFT",icon,"BOTTOMLEFT"); e[2]:SetPoint("BOTTOMRIGHT",icon,"BOTTOMRIGHT")
+            e[3]:SetPoint("TOPLEFT",icon,"TOPLEFT"); e[3]:SetPoint("BOTTOMLEFT",icon,"BOTTOMLEFT")
+            e[4]:SetPoint("TOPRIGHT",icon,"TOPRIGHT"); e[4]:SetPoint("BOTTOMRIGHT",icon,"BOTTOMRIGHT")
             rec.auraCorners={}
-            for _,point in ipairs({"TOPLEFT","TOPRIGHT","BOTTOMLEFT","BOTTOMRIGHT"}) do
-                local corner=button:CreateTexture(nil,"OVERLAY",nil,1)
-                corner:SetTexture("Interface\\Buttons\\WHITE8x8")
-                corner:SetSize(2,2);corner:SetPoint(point,icon,point)
-                rec.auraCorners[#rec.auraCorners+1]=corner
-            end
-            -- Same frame and soft rounded corners as the action buttons: the
-            -- game's own action-button frame art and icon mask, tinted.
-            local hasAtlas=C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("UI-HUD-ActionBar-IconFrame") and C_Texture.GetAtlasInfo("UI-HUD-ActionBar-IconFrame-Mask")
-            if hasAtlas then
-                rec.auraFrame=button:CreateTexture(nil,"OVERLAY",nil,2)
-                rec.auraFrame:SetAtlas("UI-HUD-ActionBar-IconFrame")
-                rec.auraFrame:SetPoint("CENTER",icon,"CENTER",0,0); rec.auraFrameExtra=-1
-            end
+            -- The icon's own rounded corners (the same softly rounded shape as
+            -- every ForeverTools icon), exactly the icon's size so it never
+            -- shrinks the picture.
             if button.CreateMaskTexture and icon.AddMaskTexture and icon.RemoveMaskTexture then
                 rec.auraMask=button:CreateMaskTexture()
-                if hasAtlas then rec.auraMask:SetAtlas("UI-HUD-ActionBar-IconFrame-Mask")
-                else rec.auraMask:SetTexture("Interface\\AddOns\\"..FT.name.."\\Media\\Rounded.tga","CLAMPTOBLACKADDITIVE","CLAMPTOBLACKADDITIVE") end
-                -- A little larger than the icon, so it only rounds the
-                -- corners and the icon reaches the border.
-                if hasAtlas then rec.auraMask:SetPoint("TOPLEFT",icon,"TOPLEFT",-1,1); rec.auraMask:SetPoint("BOTTOMRIGHT",icon,"BOTTOMRIGHT",1,-1)
-                else rec.auraMask:SetAllPoints(icon) end
+                rec.auraMask:SetTexture("Interface\\AddOns\\"..FT.name.."\\Media\\Rounded.tga","CLAMPTOBLACKADDITIVE","CLAMPTOBLACKADDITIVE")
+                rec.auraMask:SetAllPoints(icon)
                 for _,edge in ipairs(rec.auraEdges) do edge:AddMaskTexture(rec.auraMask) end
-                for _,corner in ipairs(rec.auraCorners) do corner:AddMaskTexture(rec.auraMask) end
             end
             button:HookScript("OnShow",function() self:Paint(rec) end)
             -- Aura buttons are pooled: Blizzard reassigns a button between buffs,
@@ -190,6 +185,32 @@ function Skins:Track(button,kind)
         self.records[button]=rec
     end
     self:Paint(rec)
+end
+-- One real screen pixel, in the button's own units.
+local function onePixel(frame)
+    local factor=PixelUtil and PixelUtil.GetPixelToUIUnitFactor and PixelUtil.GetPixelToUIUnitFactor()
+    if type(factor)~="number" or factor<=0 then
+        local _,h=GetPhysicalScreenSize and GetPhysicalScreenSize()
+        factor=(type(h)=="number" and h>0) and 768/h or 1
+    end
+    local scale=frame and frame.GetEffectiveScale and frame:GetEffectiveScale()
+    if type(scale)~="number" or scale<=0 or (issecretvalue and issecretvalue(scale)) then scale=1 end
+    return factor/scale
+end
+function Skins:PaintShadow(rec,s,on)
+    local layers=rec.shadows; if not layers then return end
+    if not on then for _,t in ipairs(layers) do t:Hide() end; rec.shadowKey=nil; return end
+    local px=onePixel(rec.button); local n=#layers
+    local key=s.shadowSize.."/"..px
+    for i,t in ipairs(layers) do
+        if rec.shadowKey~=key then
+            local out=s.shadowSize*px*i/n
+            t:ClearAllPoints(); t:SetPoint("TOPLEFT",rec.icon,"TOPLEFT",-out,out); t:SetPoint("BOTTOMRIGHT",rec.icon,"BOTTOMRIGHT",out,-out)
+        end
+        -- Inner layers overlap (dark near the icon), the outer ones fade out.
+        t:SetVertexColor(0,0,0,s.shadowStrength*1.4/n*(1-(i-1)/n)); t:Show()
+    end
+    rec.shadowKey=key
 end
 function Skins:Paint(rec)
     local s=self:Area(rec.kind)
@@ -236,18 +257,30 @@ function Skins:Paint(rec)
         end
     end
     if not s[rec.kind] or not active then
-        rec.fill:Hide(); rec.shadow:Hide()
+        rec.fill:Hide(); self:PaintShadow(rec,s,false)
         for _,edge in ipairs(rec.auraEdges or {}) do edge:Hide() end
         if rec.customBorder then rec.customBorder:Hide() end
         if rec.border and rec.border.SetVertexColor then rec.border:SetVertexColor(1,1,1,1); rec.border:SetAlpha(rec.borderAlpha or 1) end
         return
     end
+    local px=rec.auraEdges and onePixel(rec.button)
     for i,edge in ipairs(rec.auraEdges or {}) do
-        if i<=2 then edge:SetHeight(s.thickness) else edge:SetWidth(s.thickness) end
-        edge:SetVertexColor(r,g,b,s.borderOpacity); edge:SetShown(not rec.auraFrame)
+        local width=s.thickness*px
+        if i<=2 then edge:SetHeight(width)
+        else
+            -- Side strips stop where the top and bottom ones start, so the
+            -- corners aren't drawn twice (darker when see-through).
+            if rec.edgeWidth~=width then
+                local point=i==3 and "LEFT" or "RIGHT"
+                edge:ClearAllPoints(); edge:SetPoint("TOP"..point,rec.icon,"TOP"..point,0,-width); edge:SetPoint("BOTTOM"..point,rec.icon,"BOTTOM"..point,0,width)
+            end
+            edge:SetWidth(width)
+        end
+        edge:SetVertexColor(r,g,b,s.borderOpacity); edge:SetShown(not rec.auraFrame and s.borderOpacity>0)
     end
+    if px then rec.edgeWidth=s.thickness*px end
     rec.fill:SetVertexColor(s.color[1],s.color[2],s.color[3],s.opacity); rec.fill:Show()
-    rec.shadow:SetVertexColor(0,0,0,s.shadow and (rec.kind=="buffs" and .55 or math.min(.55,s.opacity+.12)) or 0); rec.shadow:SetShown(s.shadow)
+    self:PaintShadow(rec,s,s.shadow)
     -- Tint Blizzard's existing action-button border itself. No second outline is
     -- layered over the button, so the original corner art and spacing remain.
     if rec.border and rec.border.SetVertexColor then

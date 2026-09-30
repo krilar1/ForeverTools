@@ -1,3 +1,13 @@
+# ForeverTools 0.40.0
+
+## Changed
+- **Buff and debuff borders** (Appearance → Skins → Buffs / debuffs) are drawn in real screen pixels: 1 px is now a true one-pixel line instead of thick frame art, and 2 to 4 px step up evenly. The icon keeps its full size (before, the rounded frame shrank it and the fill color showed as an extra dark ring). Existing 3 px buff borders become 1 px once.
+- **Shadow** (buffs, action bars, stance bars) is now soft and fades out, with new **Shadow size** (1 to 8 px) and **Shadow darkness** sliders.
+- Buffs / debuffs no longer show the fill color and fill transparency settings, since buff icons cover them completely.
+
+## Fixed
+- **Smoother sliders:** dragging a slider in Skins (for example Buffs / debuffs transparency) no longer makes the game stutter or spike the CPU. While you drag, only that area is recolored; the full update runs once when you let go. Size and transparency sliders for buff reminders, leveling stats, the threat % and the flight timer update at most 20 times a second too, and so do color pickers while you drag the color wheel (skins, reminders, leveling stats, threat %, flight timer, cooldown numbers). Dispel glow checks each unit at most ten times a second in busy groups.
+
 # ForeverTools 0.30.0
 
 ## Removed

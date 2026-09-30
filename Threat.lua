@@ -527,7 +527,7 @@ function Threat:Open()
             FT:Tooltip(bar,title,tip)
             return text,bar
         end
-        self.sizeLabel,self.sizeSlider=slider(-398,8,32,1,"Font size","Text size of the threat % (8 to 32).",function(v) self:Settings().size=math.floor(v+.5); self:Apply() end)
+        self.sizeLabel,self.sizeSlider=slider(-398,8,32,1,"Font size","Text size of the threat % (8 to 32).",function(v) self:Settings().size=math.floor(v+.5); FT:Coalesce("threatSlider",function() self:Apply() end,.05) end)
         self.bgToggle=FT:QuietButton(frame,"",240,32,"skins"); self.bgToggle:SetPoint("TOPLEFT",24,-432)
         self.bgToggle:SetScript("OnClick",function() local s=self:Settings(); s.background=not s.background; self:Apply() end)
         FT:Tooltip(self.bgToggle,"Background","A rounded background behind the threat %.")
@@ -540,12 +540,12 @@ function Threat:Open()
             s.background=true
             FT:TrackColorPicker()
             ColorPickerFrame:SetupColorPickerAndShow({r=old[1],g=old[2],b=old[3],hasOpacity=false,
-                swatchFunc=function() s.backgroundColor={ColorPickerFrame:GetColorRGB()}; self:Apply() end,
+                swatchFunc=function() s.backgroundColor={ColorPickerFrame:GetColorRGB()}; FT:Coalesce("threatColor",function() self:Apply() end,.05) end,
                 cancelFunc=function() s.backgroundColor=old; self:Apply() end})
             self:Apply()
         end)
         FT:Tooltip(self.bgColor,"Background color","Choose the background color. Choosing a color turns the background on.")
-        self.alphaLabel,self.alphaSlider=slider(-478,0,100,5,"Transparency","How see-through the background is (0% solid, 100% invisible).",function(v) self:Settings().backgroundAlpha=1-math.floor(v+.5)/100; self:Apply() end)
+        self.alphaLabel,self.alphaSlider=slider(-478,0,100,5,"Transparency","How see-through the background is (0% solid, 100% invisible).",function(v) self:Settings().backgroundAlpha=1-math.floor(v+.5)/100; FT:Coalesce("threatSlider",function() self:Apply() end,.05) end)
         self.moveText=FT:QuietButton(frame,"",240,32,"move"); self.moveText:SetPoint("TOPLEFT",24,-512)
         self.moveText:SetScript("OnClick",function() self:SetMovingText(not self.movingText) end)
         FT:Tooltip(self.moveText,"Move threat %","Target something, click to unlock, drag the number, then click again to lock it. It stays attached to the target frame.")
