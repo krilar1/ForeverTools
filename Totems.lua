@@ -143,34 +143,102 @@ function Totems:Draw()
     layer:SetShown(keep)
     return any
 end
-function Totems:Update(slot)
+-- Totems you just cast, with where you stood: {name=, time=, continent=, x=, y=}.
+-- The game reports a new totem a moment after the cast, sometimes before its
+-- slot shows the new totem; the cast tells us where it went down.
+Totems.casts={}
+local function isTotemSpell(name) return type(name)=="string" and name:find("Totem",1,true) and not name:find("Totemic",1,true) end
+function Totems:NoteCast(name)
+    local continent,wx,wy=here()
+    table.insert(self.casts,1,{name=name:lower(),time=GetTime(),continent=continent,x=wx,y=wy})
+    while #self.casts>6 do table.remove(self.casts) end
+    -- Look again shortly: the slot can update a moment after the cast.
+    for _,delay in ipairs({.1,.5,1.5}) do C_Timer.After(delay,function() if next(self.casts) then self:Scan() end end) end
+end
+-- The cast that put this totem down: same name if possible, else the newest
+-- unused one from the last few seconds.
+-- Which element (slot) a totem spell belongs to, by name.
+local elementOf={}
+for slot,list in ipairs({
+    {"searing","fire nova","magma","flametongue","frost resistance","totem of wrath"},
+    {"stoneskin","earthbind","stoneclaw","strength of earth","tremor","earth elemental"},
+    {"healing stream","mana spring","poison cleansing","disease cleansing","fire resistance","mana tide"},
+    {"grounding","nature resistance","windfury","grace of air","windwall","tranquil air","wrath of air","sentry"}}) do
+    for _,n in ipairs(list) do elementOf[n]=slot end
+end
+local function slotOf(spell) for n,slot in pairs(elementOf) do if spell:find(n,1,true) then return slot end end end
+function Totems:MatchCast(name,slot)
+    local now=GetTime(); local lower=type(name)=="string" and name:lower() or ""
+    local fallback
+    for i,c in ipairs(self.casts) do
+        -- Hidden details: only a cast known to be for this element counts.
+        if slot then
+            if not c.used and now-c.time<3 and slotOf(c.name)==slot then c.used=true; return c end
+        elseif not c.used and now-c.time<3 then
+            if lower~="" and (lower:find(c.name,1,true) or c.name:find(lower,1,true)) then c.used=true; return c end
+            fallback=fallback or c
+        end
+    end
+    if slot then return end
+    if fallback then fallback.used=true end
+    return fallback
+end
+function Totems:Update(slot,noDraw,changed)
     if type(slot)~="number" or slot<1 or slot>4 then return end
     local have,name,start,duration=safe(GetTotemInfo,slot)
-    if secret(have) or secret(start) or secret(duration) then self.placed[slot]=nil
+    if secret(have) or secret(start) or secret(duration) or secret(name) then
+        -- In combat the game can hide totem details. Keep what we drew, and
+        -- place a totem you just cast by its element (known from its name).
+        local cast=self:MatchCast(nil,slot)
+        if cast and cast.continent then self.placed[slot]={continent=cast.continent,x=cast.x,y=cast.y,name=cast.name,hidden=true}
+        elseif changed then
+            -- The game says this slot changed and you didn't just cast a totem
+            -- for it: it was clicked away, destroyed or ran out.
+            self.placed[slot]=nil
+        end
     elseif have and type(start)=="number" and type(duration)=="number" and duration>0 and type(name)=="string" and name~="" then
-        -- Only a totem placed just now: we know where it is (where you
-        -- stand). One that was already up when this turned on is skipped.
         local old=self.placed[slot]
-        if (not old or old.start~=start) and GetTime()-start<2 then
-            local continent,wx,wy=here()
-            self.placed[slot]=continent and {continent=continent,x=wx,y=wy,start=start} or nil
+        -- Placed while the game hid the details: now we can read them, keep
+        -- the spot if it's the same totem.
+        if old and old.hidden and type(old.name)=="string" and name:lower():find(old.name,1,true) then old.start,old.name,old.hidden=start,name,nil; old=self.placed[slot] end
+        -- A different totem than the one we drew (or none drawn yet).
+        if not old or old.start~=start or old.name~=name then
+            local cast=self:MatchCast(name)
+            if cast and cast.continent then
+                self.placed[slot]={continent=cast.continent,x=cast.x,y=cast.y,start=start,name=name}
+            elseif GetTime()-start<2 then
+                local continent,wx,wy=here()
+                self.placed[slot]=continent and {continent=continent,x=wx,y=wy,start=start,name=name} or nil
+            else
+                -- Up since before we were watching: we don't know where it is.
+                self.placed[slot]=nil
+            end
         end
     else self.placed[slot]=nil end
+    if noDraw then return end
+    local layer=self:Layer(); if layer then self:Paint(); layer:Show(); self:Draw() end
+end
+-- All four slots at once: the event's slot number isn't always the one that
+-- changed (replacing a totem can report only the old one).
+function Totems:Scan(changed)
+    if secret(changed) then changed=nil end
+    for slot=1,4 do self:Update(slot,true,slot==changed) end
     local layer=self:Layer(); if layer then self:Paint(); layer:Show(); self:Draw() end
 end
 local events=CreateFrame("Frame")
 events:SetScript("OnEvent",function(_,event,a,_,spellID)
-    if event=="PLAYER_TOTEM_UPDATE" then Totems:Update(a)
+    if event=="PLAYER_TOTEM_UPDATE" then Totems:Scan(a)
     elseif event=="UNIT_SPELLCAST_SUCCEEDED" then
-        -- Totemic Projection moves your totems to a spot we can't see.
         if secret(spellID) or type(spellID)~="number" then return end
         local name=C_Spell and C_Spell.GetSpellName and safe(C_Spell.GetSpellName,spellID) or (GetSpellInfo and safe(GetSpellInfo,spellID))
-        if type(name)=="string" and not secret(name) and name:lower()=="totemic projection" then
+        if type(name)~="string" or secret(name) then return end
+        -- Totemic Projection moves your totems to a spot we can't see.
+        if name:lower()=="totemic projection" then
             Totems.placed={}; if Totems.layer then Totems:Draw() end
-        end
+        elseif isTotemSpell(name) then Totems:NoteCast(name) end
     elseif event=="PLAYER_ENTERING_WORLD" then
         -- A new zone or loading screen: earlier spots may be on another map.
-        for slot=1,4 do if Totems.placed[slot] then Totems:Update(slot) end end
+        Totems:Scan()
     end
 end)
 function Totems:Apply()

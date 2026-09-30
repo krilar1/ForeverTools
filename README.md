@@ -1,6 +1,6 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 0.20.0.**
+**Quality-of-life tools for WoW: Forever — version 0.30.0.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
 one place. Everything starts **off**, so the game looks like Blizzard's until you
@@ -69,8 +69,6 @@ the home window. Use **`/rl`** to reload the UI.
 - **Smart interact key:** one key that uses RestedXP's quest item or target
   button when the guide shows one, and is Interact with target otherwise
   (Keybinds).
-- **Standing in fire:** a warning sound when you keep taking magic damage in
-  a steady rhythm, like fire or lava on the ground (Combat).
 - **Rare alerts:** a glowing notice and optional sound when a rare appears.
   Click it to target the rare, out of combat (Combat).
 - **Quest objectives:** keep the objective tracker collapsed or open after
@@ -94,7 +92,7 @@ the home window. Use **`/rl`** to reload the UI.
   **Appearance**. FPS counter, leveling stats and flight countdown are under
   **System → On-screen info**. Quick keybinds, mouse-wheel casting and the
   smart interact key are under **Keybinds**, and the threat meter, rare alerts
-  and standing-in-fire sound under **Combat**, both on the main menu.
+  and totems under **Combat**, both on the main menu.
 - **Menus:** every settings window has Back, a close X, move and minimize
   buttons, and an (i) icon explaining the page; pop-ups have only the X. A short What's new panel appears after each update (can be turned off
   in System → General).

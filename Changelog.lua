@@ -2,6 +2,10 @@ local _,FT=...
 -- Short player-facing notes for the "What's new" window. Newest first.
 FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
+    {version="0.30.0",notes={
+        {icon="Spell_Nature_StoneSkinTotem",title="Totem circles",text="Show reliably for new and replaced totems, stay up in combat and go away when a totem does."},
+        {icon="Spell_Fire_Fire",title="Fire sound removed",text="Standing in fire is out for now: it also went off on damage over time."},
+    }},
     {version="0.20.0",notes={
         {icon="INV_Misc_Key_03",title="Spell binds",text="Bind spells, items and macros to keys without an action bar. Keybinds > Spell binds."},
         {icon="Ability_Kick",title="Role keys",text="Interrupt, taunt, heal, crowd control and more: the same key does the same job on every character."},

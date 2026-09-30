@@ -45,7 +45,6 @@ function System:Apply()
         SetCVar("minimapShowPlayerCoords",s.coordinates and "1" or "0")
     end
     FT:UpdateMinimap(); if FT.modules.MinimapIcons then FT.modules.MinimapIcons:Apply() end
-    if FT.modules.FireAlert then FT.modules.FireAlert:Apply() end
     self:Refresh()
 end
 -- System is a small hub with four subpages, so no single page lists
@@ -75,10 +74,9 @@ local pages={
         {"autoRepair","Auto-repair","generic","Repair all your gear when you visit a merchant who can repair."},
         {"guildRepair","Use guild funds for repairs first","party","When auto-repair runs, use guild bank repair money if your guild allows it, otherwise your own gold."},
     }},
-    {key="SystemCombat",home=true,title="Combat",icon="Ability_Warrior_DefensiveStance",description="Threat meter, rare alerts, the standing-in-fire sound and totems.",items={
+    {key="SystemCombat",home=true,title="Combat",icon="Ability_Warrior_DefensiveStance",description="Threat meter, rare alerts and totems.",items={
         {"threat","Threat meter settings","Ability_Warrior_DefensiveStance","A threat meter next to the damage meter, and your threat % above your target. Off by default."},
         {"rareAlert","Rare alerts settings","Ability_Hunter_SniperShot","A notice with a soft glow (and optional sound) when a rare appears on your minimap or nearby. Off by default."},
-        {"fireAlert","Standing in fire settings","Spell_Fire_Fire","A warning sound when you keep taking magic damage in a steady rhythm, like standing in fire or lava. Works without setup; choose the sound and loudness in its settings. Off by default."},
         {"totems","Totems settings","Spell_Nature_StoneSkinTotem","Shaman totem tools, starting with each totem's 30-yard reach shown on the minimap. Off by default."},
     }},
     {key="SystemKeybinds",home=true,title="Keybinds",icon="keybind",description="Quick keybind mode, backups and restore, spell binds, mouse-wheel casting and the smart interact key.",items={
@@ -108,7 +106,7 @@ function System:Values()
     if coords==nil then coords=not getter or getter("minimapShowPlayerCoords")=="1" end
     return {welcome=FT.db.welcome==true,whatsNew=s.hideWhatsNew~=true,minimap=FT.db.minimapEnabled~=false,coordinates=coords,
         minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=getter and getter("scriptErrors")=="1",
-        autoRole=s.autoRole==true,fastLoot=s.fastLoot==true,fireAlert=s.fireAlert==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true}
+        autoRole=s.autoRole==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true}
 end
 function System:Refresh()
     if not self.buttons then return end
@@ -163,9 +161,6 @@ function System:Refresh()
             local totems=FT.modules.Totems
             button.label:SetText("Totems: "..(totems and totems:Settings().range and "On" or "Off").." — settings")
         end
-        if key=="fireAlert" then
-            button.label:SetText("Standing in fire: "..(values.fireAlert and "On" or "Off").." — settings")
-        end
         if key=="wheelCasting" then
             local wheel=FT.modules.CustomKeybinds
             button.label:SetText("Mouse-wheel casting: "..(wheel and wheel:Settings().enabled and "On" or "Off").." — settings")
@@ -191,7 +186,6 @@ function System:Click(key)
     if key=="fps" then FT:OpenModule("QualityOfLife");return end
     if key=="rareAlert" then FT:OpenModule("RareAlert");return end
     if key=="threat" then FT:OpenModule("Threat");return end
-    if key=="fireAlert" then FT:OpenModule("FireAlert");return end
     if key=="totems" then FT:OpenModule("Totems");return end
     if key=="spellBinds" then FT:OpenModule("SpellBinds");return end
     if key=="smartKey" then FT:OpenModule("SmartKey");return end
@@ -259,7 +253,7 @@ local function buildPage(page)
                 b:SetPoint("TOPLEFT",24,-62-(i-1)*40); System.buttons[key]=b
                 b:SetScript("OnClick",function() System:Click(key) end)
                 -- Items that open their own page say so.
-                local opens={spellBinds=true,totems=true,fps=true,leveling=true,flightTimer=true,movers=true,rareAlert=true,threat=true,fireAlert=true,wheelCasting=true,smartKey=true}
+                local opens={spellBinds=true,totems=true,fps=true,leveling=true,flightTimer=true,movers=true,rareAlert=true,threat=true,wheelCasting=true,smartKey=true}
                 FT:Tooltip(b,entry[2],entry[4]..(opens[key] and "\n\nClick to open its settings page." or ""))
             end
             if page.key=="SystemMinimap" then FT.minimapToggle=System.buttons.minimap end

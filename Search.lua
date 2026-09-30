@@ -61,7 +61,6 @@ local index={
     {"Merchant","merchant vendor sell repair","SystemMerchant","generic"},
     {"Damage meter font","damage meter font text size outline dps","FontManager","fonts"},
     {"Combat","combat alerts threat rare fire","SystemCombat","classes"},
-    {"Standing in fire sound","standing in fire bad ground lava aoe warning sound gtfo volume","FireAlert","classes"},
     {"Smart interact key","interact target key restedxp rxp quest item keybind one key","SmartKey","keybind"},
     {"Cooldown reminders","cooldown racial trinket reminder use elite rare pull blood fury berserking","CooldownReminder","buffs"},
     {"Leveling stats line up","leveling xp align left right center edge move","Leveling","fps"},

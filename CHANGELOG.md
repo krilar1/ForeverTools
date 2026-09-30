@@ -1,3 +1,12 @@
+# ForeverTools 0.30.0
+
+## Removed
+- **Standing in fire sound** is taken out for now: it also went off on damage over time (bleeds, poisons), not only fire on the ground. It may come back once it can tell them apart.
+
+## Fixed
+- **Totem range circles** show up reliably: a new totem, one replacing another of the same element, and several dropped in a row each get their circle where you stood when you cast it. A totem ForeverTools can't place (already down before) no longer keeps an old circle. In combat, when the game hides totem details, circles stay up, totems you drop mid-fight get theirs too, and a totem you click away, that dies or runs out loses its circle.
+- **First-time setup** now also shows for players who had another addon called "ForeverTools" installed before (it uses the same folder); its leftover settings are ignored.
+
 # ForeverTools 0.20.0
 
 ## New

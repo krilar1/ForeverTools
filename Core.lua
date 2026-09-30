@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "0.20.0"
+FT.version = "0.30.0"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -11,6 +11,19 @@ function FT:InitializeDB()
     if self.dbReady then return end
     -- A fresh install has no saved table (or an empty one) under either name.
     local function empty(t) return type(t) ~= "table" or next(t) == nil end
+    -- Other addons named "ForeverTools" use the same folder and saved-settings
+    -- name. Their leftovers (none of our keys) mean a fresh start for us, so
+    -- first-time setup still shows; their old values are not carried over.
+    local function foreign(t)
+        if type(t) ~= "table" or next(t) == nil or t.schema ~= nil then return false end
+        for _, key in ipairs({"profiles", "system", "iconStyles", "fonts", "fps", "setupDone", "lastSeenVersion",
+            "minimapEnabled", "welcome", "buffReminder", "tooltip", "chat", "customMacros", "unitColors"}) do
+            if t[key] ~= nil then return false end
+        end
+        return true
+    end
+    if foreign(ForeverToolsDB) then ForeverToolsDB = nil end
+    if foreign(KrilarToolsDB) then KrilarToolsDB = nil end
     self.freshInstall = empty(ForeverToolsDB) and empty(KrilarToolsDB)
     self.db = type(ForeverToolsDB) == "table" and ForeverToolsDB
         or (type(KrilarToolsDB) == "table" and KrilarToolsDB or {})
@@ -615,7 +628,7 @@ function FT:OpenHome()
             {"Buff reminders","BuffReminder","buffs","Self and group buffs, low ranks and cooldowns"},
             {"Appearance","Appearance","fonts","Fonts, unit colors, skins and chat"},
             {"Tooltip","Tooltip","tooltip","Layout, extras, text sizes and position"},
-            {"Combat","SystemCombat","Ability_Warrior_DefensiveStance","Threat meter, rare alerts, fire sound and totems"},
+            {"Combat","SystemCombat","Ability_Warrior_DefensiveStance","Threat meter, rare alerts and totems"},
             {"Keybinds","SystemKeybinds","keybind","Quick keybind, spell binds, wheel casting and smart key"},
             {"System","System","generic","General, minimap, gameplay, merchant and more"},
             {"Profiles",nil,"profiles","Save, load and share your setups"},
