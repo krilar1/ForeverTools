@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "0.40.0"
+FT.version = "0.50.0"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -355,7 +355,11 @@ function FT:SectionHeading(label, icon, lineWidth, iconSize)
 end
 function FT:Label(parent, text, size, heading)
     local label = parent:CreateFontString(nil, "OVERLAY")
-    label:SetFont(heading and self.headingFont or self.bodyFont, size or 14, "")
+    -- If the addon's font file can't be read (for example the folder was
+    -- replaced while the game runs), fall back to the game's own font: a
+    -- label without a font errors on every text change.
+    local okFont = label:SetFont(heading and self.headingFont or self.bodyFont, size or 14, "")
+    if okFont == false or not label:GetFont() then label:SetFont("Fonts\\FRIZQT__.TTF", size or 14, "") end
     label:SetText(text)
     label:SetTextColor(0.95,0.90,0.81)
     label:SetJustifyH("LEFT")
@@ -447,6 +451,27 @@ function FT:ButtonIcon(button, icon, size)
     button.label:SetPoint("LEFT", button.icon, "RIGHT", 8, 0)
     button.label:SetPoint("RIGHT", button, "RIGHT", -8, 0)
     button.label:SetJustifyH("LEFT")
+end
+-- A gold plus in place of a button's icon: "add this here".
+function FT:PlusIcon(button)
+    local icon = button.icon; if not icon then return end
+    icon:SetTexture(nil); icon:SetAlpha(0)
+    local across = button:CreateTexture(nil, "ARTWORK"); across:SetColorTexture(1, .82, 0, 1); across:SetSize(12, 2); across:SetPoint("CENTER", icon, "CENTER")
+    local up = button:CreateTexture(nil, "ARTWORK"); up:SetColorTexture(1, .82, 0, 1); up:SetSize(2, 12); up:SetPoint("CENTER", icon, "CENTER")
+    button.plus = {across, up}
+end
+-- A small cog centred on a square button: "more options".
+local gearTexture
+function FT:GearIcon(button)
+    if gearTexture == nil then
+        local id = GetFileIDFromPath and GetFileIDFromPath("Interface\\Buttons\\UI-OptionsButton")
+        gearTexture = (type(id) == "number" and id > 0) and id or false
+    end
+    local icon = button:CreateTexture(nil, "ARTWORK"); icon:SetSize(16, 16); icon:SetPoint("CENTER")
+    if gearTexture then icon:SetTexture(gearTexture)
+    else icon:SetTexture("Interface\\Icons\\" .. self.icons.generic); icon:SetTexCoord(.07, .93, .07, .93); icon:SetSize(20, 20); self:RoundIcon(icon) end
+    button.gear = icon
+    if button.label then button.label:Hide() end
 end
 function FT:Tooltip(button, title, body)
     button:HookScript("OnEnter", function(owner)
@@ -881,6 +906,170 @@ function FT:SetMinimized(frame, on)
         frame.minButton.dash:ClearAllPoints(); frame.minButton.dash:SetPoint("CENTER", 0, on and 0 or -4)
         frame.minButton.bar:SetShown(on)
     end
+end
+-- A scroll frame's bar only shows while there is something to scroll.
+-- A typing line for a multi-line text box: a gold line that blinks where
+-- the text cursor is, and a click in the text puts the cursor there. The box
+-- gets no cursor of its own from the game here, so both are done by hand:
+-- the box's text is laid out again with a hidden measuring text to turn a
+-- click into a place in the text and back. Call after the box's own scripts
+-- are set (it only hooks). "inset" is the box's text inset.
+function FT:TextCaret(box, inset)
+    inset = inset or 6
+    local caret = box:CreateTexture(nil, "OVERLAY"); caret:SetTexture("Interface\\Buttons\\WHITE8x8")
+    caret:SetSize(2, 17); caret:SetVertexColor(1, .82, 0, 1); caret:SetPoint("TOPLEFT", box, "TOPLEFT", inset, -inset); caret:Hide()
+    local measure = box:CreateFontString(nil, "OVERLAY"); measure:Hide()
+    if measure.SetWordWrap then measure:SetWordWrap(false) end
+    local state = {moved = 0}
+    local function width(text)
+        local font, size, flags = box:GetFont()
+        if not font then return 0 end
+        if state.font ~= font or state.size ~= size or state.flags ~= flags then
+            state.font, state.size, state.flags = font, size, flags
+            measure:SetFont(font, size, flags or ""); state.lines = nil; state.lineHeight = nil
+        end
+        measure:SetText(text)
+        local w = measure.GetUnboundedStringWidth and measure:GetUnboundedStringWidth()
+        if type(w) ~= "number" then w = measure:GetStringWidth() end
+        return type(w) == "number" and w or 0
+    end
+    local function lineHeight()
+        if state.cursorHeight then return state.cursorHeight end
+        if not state.lineHeight then
+            width("Ag"); local one = measure:GetStringHeight()
+            if measure.SetWordWrap then measure:SetWordWrap(true) end
+            measure:SetText("Ag\nAg"); local two = measure:GetStringHeight()
+            if measure.SetWordWrap then measure:SetWordWrap(false) end
+            local h = type(one) == "number" and type(two) == "number" and two - one or 0
+            state.lineHeight = h > 4 and h or (tonumber(state.size) or 14) + 3
+        end
+        return state.lineHeight
+    end
+    -- Byte positions where a character ends (text can hold multi-byte letters).
+    local function ends(text)
+        local list = {}
+        for i = 1, #text do
+            local nextByte = text:byte(i + 1)
+            if not nextByte or nextByte < 128 or nextByte >= 192 then list[#list + 1] = i end
+        end
+        return list
+    end
+    -- The text as the box shows it: one entry per line on screen, with the
+    -- position in the whole text where that line starts.
+    local function lines()
+        local text = box:GetText() or ""
+        local limit = (box:GetWidth() or 0) - inset * 2
+        width("")
+        if state.lines and state.text == text and state.limit == limit then return state.lines end
+        local out, start = {}, 0
+        for logical in (text .. "\n"):gmatch("(.-)\n") do
+            local rest, offset = logical, start
+            while limit > 20 and width(rest) > limit do
+                -- The longest piece that fits, ending after a space when there is one.
+                local stops = ends(rest); local low, high = 1, #stops
+                while low < high do
+                    local middle = math.floor((low + high + 1) / 2)
+                    if width(rest:sub(1, stops[middle])) <= limit then low = middle else high = middle - 1 end
+                end
+                local cut = stops[low] or #rest
+                local space = rest:sub(1, cut):match(".*() ")
+                if space and space > 1 then cut = space end
+                if cut >= #rest then break end
+                out[#out + 1] = {start = offset, text = rest:sub(1, cut)}
+                rest = rest:sub(cut + 1); offset = offset + cut
+            end
+            out[#out + 1] = {start = offset, text = rest}
+            start = start + #logical + 1
+        end
+        state.lines, state.text, state.limit = out, text, limit
+        return out
+    end
+    local function place(x, y, height)
+        caret:ClearAllPoints(); caret:SetPoint("TOPLEFT", box, "TOPLEFT", x + inset, -(y + inset))
+        caret:SetHeight(math.max(13, height or lineHeight()))
+        if state.x ~= x or state.y ~= y then state.x, state.y = x, y; state.moved = GetTime() end
+    end
+    -- Where a position in the text is on screen (from the top left of the text).
+    local function locate(index)
+        local list = lines(); local row = 1
+        for i = 1, #list do if list[i].start <= index then row = i else break end end
+        local line = list[row]
+        local within = math.max(0, math.min(#line.text, index - line.start))
+        return width(line.text:sub(1, within)), (row - 1) * lineHeight()
+    end
+    -- The position in the text nearest to a point on screen.
+    local function indexAt(x, y)
+        local list = lines()
+        local row = math.max(1, math.min(#list, math.floor(y / lineHeight()) + 1))
+        local line = list[row]
+        local best, distance = 0, math.abs(x)
+        for _, stop in ipairs(ends(line.text)) do
+            local d = math.abs(width(line.text:sub(1, stop)) - x)
+            if d < distance then best, distance = stop, d end
+        end
+        -- The space a wrapped line ends with belongs before the break.
+        if best == #line.text and list[row + 1] and list[row + 1].start == line.start + #line.text and best > 0 then best = best - 1 end
+        return line.start + best
+    end
+    local function follow()
+        local index = box:GetCursorPosition()
+        if type(index) ~= "number" or index == state.index then return end
+        state.index = index
+        local x, y = locate(index); place(x, y)
+    end
+    -- The game tells us where the cursor is when it moves it itself.
+    box:HookScript("OnCursorChanged", function(_, x, y, _, height)
+        if type(x) ~= "number" or type(y) ~= "number" then return end
+        if type(height) == "number" and height > 4 then state.cursorHeight = height end
+        local index = box:GetCursorPosition(); if type(index) == "number" then state.index = index end
+        place(x, -y, height)
+    end)
+    box:HookScript("OnTextChanged", function() state.lines = nil end)
+    -- Blink like a normal text cursor; solid for a moment after it moves.
+    local driver = CreateFrame("Frame", nil, box); driver:Hide()
+    driver:SetScript("OnUpdate", function()
+        follow()
+        caret:SetAlpha(((GetTime() - state.moved) % 1.06) < .56 and 1 or 0)
+    end)
+    box:HookScript("OnEditFocusGained", function() state.moved = GetTime(); caret:SetAlpha(1); caret:Show(); driver:Show() end)
+    box:HookScript("OnEditFocusLost", function() caret:Hide(); driver:Hide(); state.before = nil; state.index = nil end)
+    box:HookScript("OnHide", function() caret:Hide(); driver:Hide() end)
+    -- A click in the text: if the game did not move the cursor there, we do.
+    box:EnableMouse(true)
+    box:HookScript("OnMouseDown", function() state.before = state.index end)
+    box:HookScript("OnMouseUp", function(_, button)
+        if button and button ~= "LeftButton" then return end
+        local now = box:GetCursorPosition()
+        if state.before ~= nil and now ~= state.before then return end
+        local left, top, scale = box:GetLeft(), box:GetTop(), box:GetEffectiveScale()
+        if type(left) ~= "number" or type(top) ~= "number" or type(scale) ~= "number" or scale <= 0 then return end
+        local cx, cy = GetCursorPosition()
+        if type(cx) ~= "number" or type(cy) ~= "number" then return end
+        local index = indexAt(cx / scale - left - inset, top - cy / scale - inset)
+        if box.HasFocus and not box:HasFocus() then box:SetFocus() end
+        box:SetCursorPosition(index)
+        state.index = index
+        local x, y = locate(index); place(x, y); state.moved = GetTime()
+    end)
+    box.ftCaret = {texture = caret, locate = locate, indexAt = indexAt, lines = lines, state = state, driver = driver}
+    return caret
+end
+-- onChange(needed), if given, runs when the bar appears or goes, so the
+-- content can use the full width while there is no bar.
+function FT:AutoHideScrollBar(scroll, onChange)
+    local bar = scroll and (scroll.ScrollBar or (scroll.GetName and scroll:GetName() and _G[scroll:GetName() .. "ScrollBar"]))
+    if not bar then return end
+    local last
+    local function update(_, _, yRange)
+        if yRange == nil and scroll.GetVerticalScrollRange then yRange = scroll:GetVerticalScrollRange() end
+        local needed = type(yRange) == "number" and yRange > 1
+        bar:SetShown(needed)
+        if not needed and scroll.SetVerticalScroll then scroll:SetVerticalScroll(0) end
+        if onChange and last ~= needed then last = needed; onChange(needed) end
+    end
+    scroll:HookScript("OnScrollRangeChanged", update)
+    scroll:HookScript("OnShow", function() update() end)
+    update()
 end
 function FT:BackTo(frame, moduleName)
     frame.homeButton:SetScript("OnClick", function() FT:OpenModule(moduleName) end)

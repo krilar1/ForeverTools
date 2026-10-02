@@ -1,6 +1,17 @@
 local _,FT=...
 local B={buttons={}}
 local directions={{"up","Scroll up","MOUSEWHEELUP"},{"down","Scroll down","MOUSEWHEELDOWN"}}
+-- Dispels by spellbook name, with the debuff type each one removes. true means
+-- "whatever the game says this character can remove" (spells that cover
+-- several types). A dispel on the wheel is only cast when there is something
+-- for it to remove; see B:DispelBlocked.
+local DISPELS={
+    ["Cure Poison"]="Poison",["Abolish Poison"]="Poison",
+    ["Cure Disease"]="Disease",["Abolish Disease"]="Disease",
+    ["Remove Curse"]="Curse",["Remove Lesser Curse"]="Curse",
+    ["Dispel Magic"]="Magic",
+    ["Cleanse"]=true,["Purify"]=true,["Cleanse Spirit"]=true,["Remove Corruption"]=true,
+}
 function B:Settings()
     if type(FT.db.customKeybinds)~="table" then FT.db.customKeybinds={} end
     local _,class=UnitClass("player")
@@ -106,18 +117,20 @@ function B:Apply()
     local s=self:Settings()
     if self.unavailable or not s.enabled then
         for _,button in pairs(self.buttons) do
-            button:SetAttribute("_onstate-hover",nil)
+            button:SetAttribute("_onattributechanged",nil)
             if UnregisterStateDriver then UnregisterStateDriver(button,"hover") end
             if ClearOverrideBindings then ClearOverrideBindings(button) end
             button:SetAttribute("type",nil)
             button:SetAttribute("state-hover",nil)
+            button.dispel=false
         end
+        self:WatchNpcs()
         self:Refresh(); return
     end
     for _,d in ipairs(directions) do
         local key=d[1]; local button=self.buttons[key]
         if not button then
-            button=CreateFrame("Button","ForeverToolsWheel"..key,UIParent,"SecureActionButtonTemplate,SecureHandlerStateTemplate")
+            button=CreateFrame("Button","ForeverToolsWheel"..key,UIParent,"SecureActionButtonTemplate,SecureHandlerAttributeTemplate")
             button:RegisterForClicks("AnyDown","AnyUp")
             button:SetAttribute("unit","mouseover")
             -- A wheel "press" is instant: act on the down event whatever the
@@ -126,14 +139,23 @@ function B:Apply()
             button:SetAttribute("wheel",d[3])
             self.buttons[key]=button
         end
-        button:SetAttribute("_onstate-hover",nil)
+        button:SetAttribute("_onattributechanged",nil)
         UnregisterStateDriver(button,"hover")
         ClearOverrideBindings(button)
         button:SetAttribute("type",nil)
         button:SetAttribute("state-hover",nil)
-        button:SetAttribute("_onstate-hover",[[
+        button.npcBlock=false; button:SetAttribute("npcblock",false)
+        -- Runs when the unit under the mouse changes kind ("state-hover":
+        -- friendly, hostile or none) and when the friendly cast is held back
+        -- ("npcblock": a friendly NPC or totem, or a dispel with nothing to
+        -- remove). The wheel is bound only while there is something to cast
+        -- on; otherwise it zooms the camera.
+        button:SetAttribute("_onattributechanged",[[
+                if name~="state-hover" and name~="npcblock" then return end
                 self:ClearBindings()
-                local spell=newstate and self:GetAttribute(newstate)
+                local state=self:GetAttribute("state-hover")
+                local spell=state and self:GetAttribute(state)
+                if state=="friendly" and self:GetAttribute("npcblock") then spell=nil end
                 self:SetAttribute("type",nil)
                 if spell and spell~="" then
                     self:SetAttribute("type","spell")
@@ -155,14 +177,137 @@ function B:Apply()
         local harm=relation(harmful)
         -- A dual-purpose spell works on either relation; WoW validates targets.
         button:SetAttribute("friendly",spell and (help or not harm) and spell.value or nil)
+        button.dispel=spell and (help or not harm) and DISPELS[spell.name] or false
         button:SetAttribute("hostile",spell and (harm or not help) and spell.value or nil)
         if s.enabled then RegisterStateDriver(button,"hover","[@mouseover,help,nodead] friendly; [@mouseover,harm,nodead] hostile; none") end
     end
+    self:WatchNpcs()
     self:Refresh()
+end
+-- What the wheel never casts on, so scrolling over it zooms the camera:
+--  * totems and other summoned helpers (always; a player's pet is not one);
+--  * friendly NPCs such as vendors and quest givers, unless "Cast on
+--    friendly NPCs" is on.
+-- Players and pets are never skipped. The game only lets this change out of
+-- combat, so it is lifted for a fight: in combat the wheel casts as before.
+local function hidden(v) return issecretvalue and issecretvalue(v) or false end
+-- A real pet: yours, a group member's or another player's. When the game
+-- hides the answer, treat it as a pet (never block by mistake).
+function B:IsPet(unit)
+    local kind=UnitCreatureType and UnitCreatureType(unit)
+    if not hidden(kind) and kind=="Totem" then return false end
+    local mine=UnitIsUnit and UnitIsUnit(unit,"pet")
+    if hidden(mine) or mine then return true end
+    local other=UnitIsOtherPlayersPet and UnitIsOtherPlayersPet(unit)
+    if hidden(other) or other then return true end
+    for _,check in ipairs({UnitPlayerOrPetInParty or false,UnitPlayerOrPetInRaid or false}) do
+        if check then local grouped=check(unit); if hidden(grouped) or grouped then return true end end
+    end
+    return false
+end
+function B:NpcUnderMouse()
+    if not UnitExists or not UnitIsPlayer then return false end
+    local exists=UnitExists("mouseover")
+    if hidden(exists) or not exists then return false end
+    local player=UnitIsPlayer("mouseover")
+    if hidden(player) or player then return false end
+    local friend=UnitCanAssist and UnitCanAssist("player","mouseover")
+    if hidden(friend) or not friend then return false end
+    local controlled=UnitPlayerControlled and UnitPlayerControlled("mouseover")
+    if hidden(controlled) then return false end
+    -- Summoned by a player: pets stay, totems and the like are skipped.
+    if controlled then return not self:IsPet("mouseover") end
+    return self:Settings().npcs~=true
+end
+-- Is the mouse on a character in the world, rather than on a unit frame?
+local function overWorld()
+    if not WorldFrame then return false end
+    if GetMouseFoci then
+        local ok,foci=pcall(GetMouseFoci)
+        return ok and type(foci)=="table" and foci[1]==WorldFrame
+    end
+    return GetMouseFocus~=nil and GetMouseFocus()==WorldFrame
+end
+-- Does the unit have a debuff this dispel removes? nil when the game does
+-- not say. "HARMFUL|RAID" is the game's own "debuffs you can remove" filter,
+-- the same one the dispel glow uses.
+function B:Removable(unit,kind)
+    if not C_UnitAuras or not C_UnitAuras.GetUnitAuras then return nil end
+    local ok,auras=pcall(C_UnitAuras.GetUnitAuras,unit,"HARMFUL|RAID",kind==true and 1 or nil)
+    if not ok or hidden(auras) or type(auras)~="table" then return nil end
+    if kind==true then return #auras>0 end
+    for _,aura in ipairs(auras) do
+        if hidden(aura) or type(aura)~="table" then return true end
+        local name=aura.dispelName
+        if hidden(name) or name==kind then return true end
+    end
+    return false
+end
+-- A dispel on the wheel is held back when the friendly unit under the mouse
+-- has nothing it removes, and on a player's character in the world, where a
+-- scroll is nearly always meant for the camera. Unit frames always work.
+-- Anything the game hides counts as "cast as usual".
+function B:DispelBlocked(kind)
+    local exists=UnitExists and UnitExists("mouseover")
+    if hidden(exists) or not exists then return false end
+    local friend=UnitCanAssist and UnitCanAssist("player","mouseover")
+    if hidden(friend) or not friend then return false end
+    local player=UnitIsPlayer and UnitIsPlayer("mouseover")
+    if not hidden(player) and player and overWorld() then return true end
+    return self:Removable("mouseover",kind)==false
+end
+local auraEvents=CreateFrame("Frame")
+-- Debuffs come and go while the mouse rests on a unit; listen only then.
+function B:WatchAuras(on)
+    on=on==true
+    if on==(self.auraWatch==true) then return end
+    self.auraWatch=on
+    if on then auraEvents:RegisterEvent("UNIT_AURA") else auraEvents:UnregisterEvent("UNIT_AURA") end
+end
+auraEvents:SetScript("OnEvent",function(_,_,unit)
+    if not FT.dbReady or InCombatLockdown() then return end
+    local exists=UnitExists("mouseover")
+    if hidden(exists) or not exists then B:WatchAuras(false); return end
+    if hidden(unit) or type(unit)~="string" then return end
+    local same=UnitIsUnit and UnitIsUnit(unit,"mouseover")
+    if hidden(same) or same then FT:Coalesce("wheel:auras",function() B:UpdateBlocks() end,0) end
+end)
+-- Works out, per wheel direction, whether the friendly cast is held back.
+-- lift: entering combat, clear every block while it can still be changed.
+function B:UpdateBlocks(lift)
+    if InCombatLockdown() and not lift then return end
+    local npc=not lift and self:NpcUnderMouse() or false
+    local dispels
+    for _,button in pairs(self.buttons) do
+        local blocked=npc
+        if button.dispel and not lift then
+            dispels=true
+            if not blocked then blocked=self:DispelBlocked(button.dispel) end
+        end
+        if button.npcBlock~=blocked then button.npcBlock=blocked; button:SetAttribute("npcblock",blocked) end
+    end
+    local exists=dispels and UnitExists and UnitExists("mouseover")
+    self:WatchAuras(not hidden(exists) and exists and true or false)
+end
+local npcEvents=CreateFrame("Frame")
+npcEvents:SetScript("OnEvent",function(_,event)
+    if not FT.dbReady then return end
+    B:UpdateBlocks(event=="PLAYER_REGEN_DISABLED")
+end)
+function B:WatchNpcs()
+    local s=self:Settings()
+    if s.enabled and not self.unavailable then
+        for _,event in ipairs({"UPDATE_MOUSEOVER_UNIT","PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED"}) do npcEvents:RegisterEvent(event) end
+        self:UpdateBlocks()
+    else
+        npcEvents:UnregisterAllEvents(); self:UpdateBlocks(true)
+    end
 end
 function B:Refresh()
     if not self.frame then return end
     local s=self:Settings()
+    self.npcToggle.label:SetText("Cast on friendly NPCs: "..(s.npcs==true and "On" or "Off")); FT:SetSelected(self.npcToggle,s.npcs==true)
+    self.npcToggle:SetAlpha(s.enabled and not self.unavailable and 1 or .5)
     self.toggle.label:SetText(self.unavailable and "Mouse-wheel casting: Unavailable" or ("Mouse-wheel casting: "..(s.enabled and "On" or "Off")))
     self.toggle:SetEnabled(not self.unavailable); FT:SetSelected(self.toggle,s.enabled and not self.unavailable)
     local list=self:LearnedSpells()
@@ -179,8 +324,13 @@ function B:Open()
     if not self.frame then
         self.frame=FT:Window("ForeverToolsCustomKeybinds","ForeverTools | Mouse-wheel casting",640,680); self.pickers={}
         FT:BackTo(self.frame,"SystemKeybinds")
-        self.toggle=FT:AccentButton(self.frame,"",592,34,"mouseover"); self.toggle:SetPoint("TOPLEFT",24,-62)
+        self.toggle=FT:AccentButton(self.frame,"",292,34,"mouseover"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function() local s=self:Settings(); s.enabled=not s.enabled; self:Apply() end)
+        self.npcToggle=FT:QuietButton(self.frame,"",292,34,"character"); self.npcToggle:SetPoint("TOPLEFT",324,-62)
+        self.npcToggle.icon:SetTexture("Interface\\Icons\\INV_Misc_Coin_02")
+        self.npcToggle:SetScript("OnClick",function() local s=self:Settings(); s.npcs=not (s.npcs==true); self:Apply() end)
+        FT:Tooltip(self.npcToggle,"Cast on friendly NPCs","Off (the default): scrolling over a vendor, quest giver or other friendly NPC zooms the camera as usual, so you don't cast on them by accident. Players, their pets and enemies are not affected. Totems and other summoned helpers are always skipped, whatever this is set to. In combat the wheel casts on all of them, because the game does not allow this to change during a fight. On: friendly NPCs are cast on like players.")
+        for _,b in ipairs({self.toggle,self.npcToggle}) do if b.label.SetWordWrap then b.label:SetWordWrap(false) end end
         self.search=CreateFrame("EditBox",nil,self.frame,"InputBoxTemplate")
         self.search:SetSize(580,28); self.search:SetPoint("TOPLEFT",30,-306)
         self.search:SetFont(FT.bodyFont,14,""); self.search:SetAutoFocus(false)
@@ -199,7 +349,7 @@ function B:Open()
             local picker=FT:Dropdown(self.frame,592,function() return self:SpellOptions() end,function(id) self:SelectSpell(key,id) end,"mouseover")
             picker:SetPoint("TOPLEFT",24,-142-(i-1)*80); picker:SetHeight(34)
             self.pickers[key]=picker
-            FT:Tooltip(picker,d[2],"Pick a spell you have learned. It is cast on the unit under your mouse, friend or enemy as the spell allows. Choose None to scroll normally again.")
+            FT:Tooltip(picker,d[2],"Pick a spell you have learned. It is cast on the unit under your mouse, friend or enemy as the spell allows. A dispel is only cast when there is something to remove. Choose None to scroll normally again.")
         end
         self.status=FT:Label(self.frame,"",13); self.status:SetPoint("TOPLEFT",24,-594); self.status:SetSize(592,42)
         self.spellRows={}
@@ -218,7 +368,7 @@ function B:Open()
         prev:SetScript("OnClick",function() self:TurnPage(-1) end)
         next:SetScript("OnClick",function() self:TurnPage(1) end)
         self.pageLabel=FT:Label(self.frame,"",12); self.pageLabel:SetPoint("TOP",0,-570)
-        FT:PageInfo(self.frame,"Mouse-wheel casting","Bind a spell to scrolling up or down. Scroll over a unit frame or a character in the world to cast it on them. Anywhere else, the wheel zooms the camera as usual.\n\nPick a spell in the Scroll up / Scroll down menus, or click a spell in the list, then scroll up or down to bind it.")
+        FT:PageInfo(self.frame,"Mouse-wheel casting","Bind a spell to scrolling up or down. Scroll over a unit frame or a character in the world to cast it on them. Anywhere else, the wheel zooms the camera as usual. Friendly NPCs such as vendors and quest givers are skipped unless you turn on Cast on friendly NPCs; totems are always skipped, pets never.\n\nDispels (Cure Poison, Remove Curse, Cleanse and the like) are only cast when the unit has something they remove, and never on a player's character in the world: scroll over their unit frame instead. With nothing to remove, the wheel zooms the camera.\n\nThese checks work out of combat. In a fight the game does not allow the wheel to change, so it casts on whatever is under the mouse.\n\nPick a spell in the Scroll up / Scroll down menus, or click a spell in the list, then scroll up or down to bind it.")
         FT:Tooltip(self.toggle,"Enable mouse-wheel casting","Turn mouse-wheel casting on or off. Off gives the wheel back to the camera. Each scroll casts once.")
     end
     self:Refresh(); self.frame:Show()

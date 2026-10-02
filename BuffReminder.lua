@@ -54,6 +54,8 @@ function Reminder:Settings()
     end
     if type(s.selected)~="table" then s.selected={} end
     if type(s.specSelected)~="table" then s.specSelected={} end
+    -- Buffs with a look of their own: [buff name or "weapon:main"/"weapon:off"]={mode=,size=,...}
+    if type(s.styles)~="table" then s.styles={} end
     return s
 end
 function Reminder:Class()
@@ -358,7 +360,7 @@ function Reminder:ClickNotice(key,button)
     if button=="RightButton" then
         if not InCombatLockdown() then FT:OpenModule("BuffReminder") end
     elseif not self.moving then
-        if key=="self" then self.previewSelf=nil else self.previewGroup=nil end
+        if key=="self" then self.previewSelf=nil elseif key=="group" then self.previewGroup=nil end
         if self.notices and self.notices[key] then self.notices[key].dismissed=true end
         self:Refresh(self.learnedCache)
     end
@@ -377,6 +379,7 @@ function Reminder:Refresh(cachedSpells)
         self.wasSuppressed=true
         self.missing={}
         if self.badge then self.badge:Hide();self.groupBadge:Hide() end
+        self:HideCustom()
         -- Notices pause on flights, while dead or in combat, but the settings
         -- page must still lay itself out, or it opens empty and jumbled.
         if self.frame then self:RefreshMenu(cachedSpells or self.learnedCache) end
@@ -391,6 +394,7 @@ function Reminder:Refresh(cachedSpells)
     local currentSpec=self:CurrentSpec()
     self.missing={}
     self.groupMissing={}
+    local styleKeys={}
     local selfHere=self:ShowsHere("selfWhere")
     if s.enabled and not InCombatLockdown() then
         for _,entry in ipairs(selfHere and self:Available(learned) or {}) do
@@ -398,7 +402,7 @@ function Reminder:Refresh(cachedSpells)
             if entry.group=="stance" then missing=self:StanceStatus()==false
             else missing=self:HasAura(entry.name)==false and self:FamilyPresent(entry.group)==false end
             if self:Enabled(entry,currentSpec,learned) and missing then
-                self.missing[#self.missing+1]=entry
+                self.missing[#self.missing+1]=entry; styleKeys[entry]=entry.name
             end
         end
         if s.groupEnabled and self:ShowsHere("groupWhere") then
@@ -427,21 +431,38 @@ function Reminder:Refresh(cachedSpells)
                 end
                 if name and learned[name] and self:WeaponMissing(slot) then
                     local hand=slot=="main" and "main hand" or "off hand"
-                    self.missing[#self.missing+1]={name="Weapon buff ("..hand..")",message="Weapon buff missing ("..hand..")",spell=learned[name]}
+                    local weapon={name="Weapon buff ("..hand..")",message="Weapon buff missing ("..hand..")",spell=learned[name]}
+                    self.missing[#self.missing+1]=weapon; styleKeys[weapon]="weapon:"..slot
                 end
             end
         end
         if selfHere then for _,warning in ipairs(FT.BuffRanks:Warnings(learned,s)) do self.missing[#self.missing+1]=warning end end
         FT.BuffRanks:ObserveWeapons()
     end
+    -- Buffs with their own look leave the shared notice and get their own.
+    local custom={}
+    if next(s.styles) then
+        local shared={}
+        for _,entry in ipairs(self.missing) do
+            local key=styleKeys[entry]
+            if key and self:Style(key) then custom[key]=entry else shared[#shared+1]=entry end
+        end
+        self.missing=shared
+    end
     if self.badge then
-        self.badge:SetShown(self:NoticeVisible("self",self.missing) or self.moving or self.previewSelf)
+        -- The look panel is open on a buff that uses the shared notice: show
+        -- that notice as its sample (a buff with its own look shows its own).
+        local sampleName,sampleIcon
+        if self.styleKey and not self:Style(self.styleKey) then sampleName,sampleIcon=self:StyleInfo(self.styleKey) end
+        self.badge:SetShown(self:NoticeVisible("self",self.missing) or self.moving or self.previewSelf or sampleName~=nil)
         if #self.missing>0 then
             self.cycle=math.max(1,math.min(self.cycle,#self.missing))
             local entry=self.missing[self.cycle]
             self.badge.icon:SetTexture(entry.spell.icon or 134400)
             self.badge.text:SetText((entry.message or entry.name.." missing")..(#self.missing>1 and "  +"..(#self.missing-1) or ""))
-        elseif self.moving or self.previewSelf then self.badge.icon:SetTexture("Interface\\Icons\\Spell_Holy_WordFortitude");self.badge.text:SetText("Self buff missing — preview")
+        elseif sampleName then
+            self.badge.icon:SetTexture(sampleIcon or 134400);self.badge.text:SetText(sampleName.." missing — preview")
+        elseif self.moving or self.previewSelf then self.badge.icon:SetTexture("Interface\\Icons\\Spell_Holy_WordFortitude");self.badge.text:SetText(next(s.styles) and "Shared notice (buffs without their own look) — preview" or "Self buff missing — preview")
         end
         self.groupBadge:SetShown(self:NoticeVisible("group",self.groupMissing) or self.previewGroup or self.moving)
         if #self.groupMissing>0 then
@@ -454,6 +475,8 @@ function Reminder:Refresh(cachedSpells)
             self.groupBadge.text:SetText("Group buff missing — preview")
         end
         self:ApplyPosition()
+        -- After the shared notices: own notices without a place of their own line up under them.
+        self:ShowCustom(custom)
     end
     if self.frame then self:RefreshMenu(learned) end
 end
@@ -462,7 +485,9 @@ end
 function Reminder:MoverBoxes()
     if not self.moving and not self.boxesShown then return end
     self.boxesShown=self.moving
-    for _,badge in ipairs({self.badge,self.groupBadge}) do
+    local badges={self.badge,self.groupBadge}
+    for _,notice in pairs(self.custom or {}) do badges[#badges+1]=notice end
+    for _,badge in ipairs(badges) do
         local box=badge.moverBox
         if not box and self.moving then
             box=CreateFrame("Frame",nil,UIParent); box:SetPoint("TOPLEFT",badge,"TOPLEFT"); box:SetPoint("BOTTOMRIGHT",badge,"BOTTOMRIGHT")
@@ -515,6 +540,322 @@ function Reminder:Apply()
     end
     self:Refresh()
 end
+-- Per-buff notice styles ---------------------------------------------------
+-- A buff can leave the shared notice and get one of its own: a bar (the
+-- usual look), an icon with text, or just an icon, with its own size, color,
+-- outline, transparency and place on screen. Like every notice, these only
+-- show out of combat, when the game lets addons read your buffs.
+local styleModes={bar=true,both=true,icon=true}
+local outlineNames={[""]="None",OUTLINE="Thin",THICKOUTLINE="Thick"}
+local checkedStyles=setmetatable({},{__mode="k"})
+local function unit(v,fallback) v=tonumber(v); if not v or v~=v then return fallback end; return math.max(0,math.min(1,v)) end
+-- The buff's own look, or nil when it uses the shared notice. Every value is
+-- checked when first read, so an imported or hand-edited style can't break a notice.
+function Reminder:Style(key)
+    local st=self:Settings().styles[key]
+    if type(st)~="table" or not styleModes[st.mode] then return nil end
+    if checkedStyles[st] then return st end
+    local size=tonumber(st.size); st.size=(size and size==size) and math.max(.5,math.min(3,size)) or 1
+    st.alpha=math.max(.2,unit(st.alpha,1))
+    if type(st.color)~="table" then st.color={1,1,1} end
+    for i=1,3 do st.color[i]=unit(st.color[i],1) end
+    if type(st.borderColor)~="table" then st.borderColor={0,0,0} end
+    for i=1,3 do st.borderColor[i]=unit(st.borderColor[i],0) end
+    if not outlineNames[st.outline] then st.outline="" end
+    if type(st.border)~="boolean" then st.border=st.mode~="bar" end
+    if type(st.pulse)~="boolean" then st.pulse=false end
+    for _,field in ipairs({"x","y","screenWidth","screenHeight"}) do if type(st[field])~="number" or st[field]~=st[field] then st[field]=nil end end
+    checkedStyles[st]=true
+    return st
+end
+-- Name and icon for a style's sample notice; nil when this character can't have that buff.
+function Reminder:StyleInfo(key)
+    local learned=self.learnedCache or {}
+    local slot=type(key)=="string" and key:match("^weapon:(%a+)$")
+    if slot then
+        if self:Class()~="Shaman" then return nil end
+        local name=self:Settings()[slot.."Enchant"]
+        if not name or name=="" then for _,candidate in ipairs(enchants) do if learned[candidate] then name=candidate; break end end end
+        return "Weapon buff ("..(slot=="main" and "main hand" or "off hand")..")",name and learned[name] and learned[name].icon or "Interface\\Icons\\Spell_Nature_RockBiter"
+    end
+    if learned[key] then return key,learned[key].icon end
+end
+function Reminder:StyleChanged()
+    self.styleStamp=(self.styleStamp or 0)+1
+    self:Refresh(self.learnedCache)
+    self:RefreshStyle()
+end
+function Reminder:HideCustom()
+    for _,notice in pairs(self.custom or {}) do notice:Hide() end
+end
+function Reminder:CustomNotice(key)
+    self.custom=self.custom or {}
+    local notice=self.custom[key]
+    if notice then return notice end
+    notice=CreateFrame("Button",nil,UIParent); notice:SetFrameStrata("LOW"); notice:SetSize(285,34)
+    notice.key=key
+    -- The bar look lives on its own layer so the icon looks can drop it.
+    notice.bar=CreateFrame("Frame",nil,notice); notice.bar:SetAllPoints(notice)
+    if notice.bar.SetFrameLevel then notice.bar:SetFrameLevel(math.max(0,(notice:GetFrameLevel() or 1)-1)) end
+    FT:Panel(notice.bar); FT:MeterSkin(notice.bar)
+    notice.border=notice:CreateTexture(nil,"BORDER"); notice.border:SetTexture("Interface\\AddOns\\"..FT.name.."\\Media\\Rounded.tga")
+    notice.icon=notice:CreateTexture(nil,"ARTWORK"); notice.icon:SetTexCoord(.08,.92,.08,.92); FT:RoundIcon(notice.icon)
+    notice.border:SetPoint("TOPLEFT",notice.icon,"TOPLEFT",-2,2); notice.border:SetPoint("BOTTOMRIGHT",notice.icon,"BOTTOMRIGHT",2,-2)
+    notice.text=FT:Label(notice,"",13); notice.text:SetJustifyH("LEFT")
+    if notice.text.SetWordWrap then notice.text:SetWordWrap(false) end
+    notice.pulse=notice:CreateAnimationGroup(); notice.pulse:SetLooping("BOUNCE")
+    notice.fade=notice.pulse:CreateAnimation("Alpha"); notice.fade:SetDuration(.7); notice.fade:SetSmoothing("IN_OUT")
+    notice:RegisterForClicks("LeftButtonUp","RightButtonUp")
+    notice:SetScript("OnClick",function(_,button)
+        -- While you are styling or moving it, a click must not dismiss it.
+        if button~="RightButton" and (self.moving or self.styleKey==key) then return end
+        self:ClickNotice("style:"..key,button)
+    end)
+    notice:SetMovable(true); notice:SetClampedToScreen(true); notice:RegisterForDrag("LeftButton")
+    notice:SetScript("OnDragStart",function(owner)
+        if not (self.moving or self.styleKey==key) or InCombatLockdown() then return end
+        owner.dragging=true; owner:StartMoving()
+    end)
+    notice:SetScript("OnDragStop",function(owner)
+        if not owner.dragging then return end
+        owner:StopMovingOrSizing(); owner.dragging=false
+        if owner.SetUserPlaced then owner:SetUserPlaced(false) end
+        local st=self:Style(key); local cx,cy=owner:GetCenter()
+        if st and cx and cy then
+            local scale=owner:GetScale() or 1
+            st.x,st.y=cx*scale,cy*scale; st.screenWidth,st.screenHeight=UIParent:GetWidth(),UIParent:GetHeight()
+        end
+        owner.placedAt=nil; self:Refresh(self.learnedCache)
+    end)
+    FT:Tooltip(notice,"Missing buff",function() return (notice.message or "Buff missing").."\n"..self:HideHint() end)
+    notice:Hide()
+    self.custom[key]=notice
+    return notice
+end
+-- Size, pieces and colors for a look. Runs only when the look changed.
+function Reminder:LayoutCustom(notice,st)
+    local icon,text=notice.icon,notice.text
+    icon:ClearAllPoints(); text:ClearAllPoints()
+    if st.mode=="icon" then
+        notice:SetSize(40,40); icon:SetSize(40,40); icon:SetPoint("CENTER")
+        text:Hide()
+    elseif st.mode=="both" then
+        notice:SetSize(264,36); icon:SetSize(36,36); icon:SetPoint("LEFT",0,0)
+        text:SetPoint("LEFT",icon,"RIGHT",8,0); text:SetWidth(220); text:Show()
+    else
+        notice:SetSize(285,34); icon:SetSize(20,20); icon:SetPoint("LEFT",8,0)
+        text:SetPoint("LEFT",icon,"RIGHT",8,0); text:SetWidth(242); text:Show()
+    end
+    notice.bar:SetShown(st.mode=="bar")
+    local font=text:GetFont()
+    local size=st.mode=="both" and 15 or 13
+    local okFont=text:SetFont(font or FT.bodyFont,size,st.outline)
+    if okFont==false or not text:GetFont() then text:SetFont("Fonts\\FRIZQT__.TTF",size,st.outline) end
+    text:SetTextColor(st.color[1],st.color[2],st.color[3])
+    notice.border:SetVertexColor(st.borderColor[1],st.borderColor[2],st.borderColor[3],1); notice.border:SetShown(st.border)
+    notice:SetScale(st.size); notice:SetAlpha(st.alpha)
+    -- A gentle fade down and back, from the look's own transparency.
+    notice.fade:SetFromAlpha(st.alpha); notice.fade:SetToAlpha(st.alpha*.35)
+    if st.pulse then if not notice.pulse:IsPlaying() then notice.pulse:Play() end
+    elseif notice.pulse:IsPlaying() then notice.pulse:Stop() end
+    notice.placedAt=nil
+end
+-- Where it sits: where you dragged it, or (flowX, flowY) in the column
+-- that starts at the shared notice's own spot.
+function Reminder:PlaceCustom(notice,st,flowX,flowY)
+    if notice.dragging==true then return end
+    local w,h=UIParent:GetWidth(),UIParent:GetHeight()
+    local x=st.x and st.x*(st.screenWidth and w/st.screenWidth or 1)
+    local y=st.y and st.y*(st.screenHeight and h/st.screenHeight or 1)
+    if not x or not y then x,y=flowX,flowY end
+    x=math.max(20,math.min(w-20,x)); y=math.max(20,math.min(h-20,y))
+    local stamp=x..":"..y..":"..st.size
+    if notice.placedAt==stamp then return end
+    notice.placedAt=stamp
+    notice:ClearAllPoints(); notice:SetPoint("CENTER",UIParent,"BOTTOMLEFT",x/st.size,y/st.size)
+end
+function Reminder:ShowCustom(custom)
+    local s=self:Settings()
+    if not next(s.styles) and not self.custom then return end
+    local want={}
+    for key in pairs(s.styles) do
+        local entry=custom[key]
+        -- The same hide-after timer and dismissal as the shared notice, per buff.
+        if self:NoticeVisible("style:"..key,entry and {entry} or {}) then want[key]=entry end
+    end
+    -- Samples: every buff with its own look while moving or previewing, and
+    -- the one being edited while its look panel is open.
+    if self.moving or self.previewSelf then for key in pairs(s.styles) do if want[key]==nil and self:Style(key) and self:StyleInfo(key) then want[key]=false end end end
+    local editing=self.styleKey
+    if editing and want[editing]==nil and self:Style(editing) then want[editing]=false end
+    for key,notice in pairs(self.custom or {}) do if want[key]==nil then notice:Hide() end end
+    if not next(want) then return end
+    -- Notices you have not dragged anywhere take the shared notice's spot,
+    -- or line up under the shared notices when those are showing, so giving
+    -- a buff its own look never makes it jump somewhere else.
+    local keys={}
+    for key in pairs(want) do keys[#keys+1]=key end
+    table.sort(keys)
+    local w,h=UIParent:GetWidth(),UIParent:GetHeight()
+    local baseX=s.x and s.x*(s.screenWidth and w/s.screenWidth or 1) or w*.5
+    local top=(s.y and s.y*(s.screenHeight and h/s.screenHeight or 1) or h-115)+17*s.size
+    local used=0
+    if self.badge:IsShown() then used=used+42*s.size end
+    if self.groupBadge:IsShown() then used=used+42*s.size end
+    for _,key in ipairs(keys) do
+        local entry=want[key]
+        local st=self:Style(key)
+        if st then
+            local notice=self:CustomNotice(key)
+            local message,icon
+            if entry then message=entry.message or (entry.name.." missing"); icon=entry.spell and entry.spell.icon
+            else local name,sample=self:StyleInfo(key); message=(name or key).." missing"; icon=sample end
+            notice.message=message
+            notice.icon:SetTexture(icon or 134400)
+            if notice.shownText~=message then notice.shownText=message; notice.text:SetText(message) end
+            if notice.styleRef~=st or notice.styleStamp~=self.styleStamp then
+                notice.styleRef=st; notice.styleStamp=self.styleStamp; self:LayoutCustom(notice,st)
+            end
+            local height=(st.mode=="icon" and 40 or st.mode=="both" and 36 or 34)*st.size
+            if st.x and st.y then self:PlaceCustom(notice,st)
+            else self:PlaceCustom(notice,st,baseX,top-used-height/2); used=used+height+8 end
+            notice:Show()
+        end
+    end
+end
+-- The small panel beside the page where one buff's look is set.
+local modeChoices={{"default","Default (shared notice)","Default"},{"bar","Bar"},{"both","Icon and text"},{"icon","Icon only"}}
+function Reminder:OpenStyle(key,title)
+    if not self.frame then return end
+    if not self.stylePanel then
+        local frame=self.frame
+        local panel=CreateFrame("Frame",nil,frame); self.stylePanel=panel
+        panel:SetSize(300,436); panel:SetFrameStrata("DIALOG"); panel:SetFrameLevel(frame:GetFrameLevel()+20); panel:SetClampedToScreen(true)
+        FT:MakeDraggable(panel,frame); FT:Panel(panel); panel:Hide()
+        FT:AddClose(panel,nil,8)
+        panel.title=FT:Label(panel,"",16,true); panel.title:SetPoint("TOPLEFT",16,-14); panel.title:SetWidth(236); panel.title:SetJustifyH("LEFT"); panel.title:SetTextColor(1,.82,0)
+        if panel.title.SetWordWrap then panel.title:SetWordWrap(false) end
+        panel.hint=FT:Label(panel,"",11); panel.hint:SetPoint("TOPLEFT",16,-40); panel.hint:SetWidth(268); panel.hint:SetJustifyH("LEFT"); panel.hint:SetTextColor(.66,.59,.48)
+        local icon="Interface\\Icons\\"..FT.icons.skins
+        local function current() return self.styleKey and self:Style(self.styleKey) end
+        local function change(fn) local st=current(); if st then fn(st); self:StyleChanged() end end
+        panel.mode=FT:Dropdown(panel,268,function()
+            local list={}; for _,c in ipairs(modeChoices) do list[#list+1]={value=c[1],label=c[2],icon=icon} end; return list
+        end,function(value)
+            local key=self.styleKey; if not key then return end
+            local styles=self:Settings().styles
+            if value=="default" then styles[key]=nil
+            else
+                -- A new look starts as a copy of the shared notice: same size and text color.
+                if type(styles[key])~="table" then
+                    local shared=self:Settings()
+                    styles[key]={size=shared.size,color={shared.textColor[1],shared.textColor[2],shared.textColor[3]}}
+                end
+                styles[key].mode=value; checkedStyles[styles[key]]=nil
+                -- Icon looks start with a border, the bar without.
+                if styles[key].border==nil then styles[key].border=value~="bar" end
+            end
+            self:StyleChanged()
+        end,"skins")
+        panel.mode:SetPoint("TOPLEFT",16,-78); panel.mode.menuWidth=268
+        if panel.mode.label.SetWordWrap then panel.mode.label:SetWordWrap(false) end
+        FT:Tooltip(panel.mode,"Look","Default keeps this buff in the shared notice. Bar is the same look as a notice of its own. Icon and text, or Icon only, show the buff's icon without the bar.")
+        local function slider(label,top,low,high,step,lowText,highText,tip,apply)
+            local text=FT:Label(panel,"",13); text:SetPoint("TOPLEFT",16,-top)
+            local control=CreateFrame("Slider",nil,panel,"OptionsSliderTemplate"); control:SetSize(268,18); control:SetPoint("TOPLEFT",16,-top-20)
+            control:SetMinMaxValues(low,high); control:SetValueStep(step); control:SetObeyStepOnDrag(true)
+            local l=control.Low or (control.GetName and control:GetName() and _G[control:GetName().."Low"])
+            local h=control.High or (control.GetName and control:GetName() and _G[control:GetName().."High"])
+            if l and l.SetText then l:SetText(lowText) end
+            if h and h.SetText then h:SetText(highText) end
+            control:SetScript("OnValueChanged",function(_,value)
+                if self.settingStyle then return end
+                local st=current(); if not st then return end
+                apply(st,value); self:RefreshStyle()
+                -- The notice itself follows at most 20 times a second while dragging.
+                FT:Coalesce("reminderStyle",function() self.styleStamp=(self.styleStamp or 0)+1; self:Refresh(self.learnedCache) end,.05)
+            end)
+            FT:Tooltip(control,label,tip)
+            return text,control
+        end
+        panel.sizeText,panel.size=slider("Size",120,.5,3,.05,"50%","300%","Make this buff's notice smaller or bigger.",function(st,v) st.size=math.floor(v*20+.5)/20 end)
+        panel.alphaText,panel.alpha=slider("Transparency",182,0,.8,.05,"Solid","See-through","How see-through this notice is.",function(st,v) st.alpha=1-math.floor(v*20+.5)/20 end)
+        local function colorButton(label,top,x,width,field,tip)
+            local b=FT:QuietButton(panel,label,width,30,"fonts"); b:SetPoint("TOPLEFT",x,-top)
+            if b.label.SetWordWrap then b.label:SetWordWrap(false) end
+            b.swatch=b:CreateTexture(nil,"ARTWORK"); b.swatch:SetTexture("Interface\\Buttons\\WHITE8X8"); b.swatch:SetSize(16,16); b.swatch:SetPoint("RIGHT",-10,0)
+            b:SetScript("OnClick",function()
+                local st=current(); if not st or not ColorPickerFrame then return end
+                local old={unpack(st[field])}
+                local function set(r,g,bl) st[field]={r,g,bl}; self:RefreshStyle(); FT:Coalesce("reminderStyle",function() self.styleStamp=(self.styleStamp or 0)+1; self:Refresh(self.learnedCache) end,.05) end
+                local function pick() set(ColorPickerFrame:GetColorRGB()) end
+                local function cancel() set(old[1],old[2],old[3]) end
+                if ColorPickerFrame.SetupColorPickerAndShow then FT:TrackColorPicker(); ColorPickerFrame:SetupColorPickerAndShow({r=old[1],g=old[2],b=old[3],hasOpacity=false,swatchFunc=pick,cancelFunc=cancel})
+                else ColorPickerFrame:SetColorRGB(unpack(old)); ColorPickerFrame.func=pick; ColorPickerFrame.cancelFunc=cancel; ColorPickerFrame:Show() end
+            end)
+            FT:Tooltip(b,label,tip)
+            return b
+        end
+        panel.color=colorButton("Text color",246,16,268,"color","The color of this notice's text.")
+        panel.outline=FT:Dropdown(panel,268,function()
+            return {{value="",label="Text outline: None",icon=icon},{value="OUTLINE",label="Text outline: Thin",icon=icon},{value="THICKOUTLINE",label="Text outline: Thick",icon=icon}}
+        end,function(value) change(function(st) st.outline=value end) end,"fonts")
+        panel.outline:SetPoint("TOPLEFT",16,-284); panel.outline.menuWidth=268
+        if panel.outline.label.SetWordWrap then panel.outline.label:SetWordWrap(false) end
+        FT:Tooltip(panel.outline,"Text outline","A dark edge around the text, so it stays readable over bright ground.")
+        panel.border=FT:QuietButton(panel,"",130,30); panel.border:SetPoint("TOPLEFT",16,-320)
+        panel.border:SetScript("OnClick",function() change(function(st) st.border=not st.border end) end)
+        FT:Tooltip(panel.border,"Icon border","A thin rounded border around the icon.")
+        panel.borderColor=colorButton("Border",320,154,130,"borderColor","The color of the icon's border.")
+        panel.pulse=FT:QuietButton(panel,"",130,30); panel.pulse:SetPoint("TOPLEFT",16,-356)
+        panel.pulse:SetScript("OnClick",function() change(function(st) st.pulse=not st.pulse end) end)
+        FT:Tooltip(panel.pulse,"Gentle pulse","Let the notice slowly fade down and back so it catches the eye.")
+        panel.reset=FT:QuietButton(panel,"Reset position",130,30); panel.reset:SetPoint("TOPLEFT",154,-356)
+        panel.reset:SetScript("OnClick",function() change(function(st) st.x,st.y,st.screenWidth,st.screenHeight=nil,nil,nil,nil end) end)
+        FT:Tooltip(panel.reset,"Reset position","Forget where you dragged this notice: it goes back to the shared notice's spot (below the shared notices when they are showing).")
+        for _,b in ipairs({panel.border,panel.pulse,panel.reset}) do if b.label.SetWordWrap then b.label:SetWordWrap(false) end end
+        panel.note=FT:Label(panel,"",11); panel.note:SetPoint("TOPLEFT",16,-398); panel.note:SetWidth(268); panel.note:SetJustifyH("LEFT"); panel.note:SetTextColor(.66,.59,.48)
+        panel.styled={panel.sizeText,panel.size,panel.alphaText,panel.alpha,panel.color,panel.outline,panel.border,panel.borderColor,panel.pulse,panel.reset}
+        panel:HookScript("OnHide",function() if self.styleKey then self.styleKey=nil; self:Refresh(self.learnedCache) end end)
+        frame:HookScript("OnHide",function() panel:Hide() end)
+    end
+    local panel=self.stylePanel
+    -- Clicking the same gear again closes the panel.
+    if panel:IsShown() and self.styleKey==key then panel:Hide(); return end
+    self.styleKey=key; panel.name=title or key
+    panel:ClearAllPoints()
+    local right=self.frame.GetRight and self.frame:GetRight(); local screen=UIParent.GetWidth and UIParent:GetWidth()
+    if type(right)=="number" and type(screen)=="number" and screen-right<310 then panel:SetPoint("TOPRIGHT",self.frame,"TOPLEFT",-8,-132)
+    else panel:SetPoint("TOPLEFT",self.frame,"TOPRIGHT",8,-132) end
+    panel:Show()
+    self:Refresh(self.learnedCache)
+    self:RefreshStyle()
+end
+function Reminder:RefreshStyle()
+    local panel=self.stylePanel
+    if not panel or not self.styleKey then return end
+    local st=self:Style(self.styleKey)
+    panel.title:SetText(panel.name or self.styleKey)
+    local mode=st and st.mode or "default"
+    panel.mode.value=mode
+    for _,c in ipairs(modeChoices) do if c[1]==mode then panel.mode.label:SetText("Look: "..(c[3] or c[2])) end end
+    panel.hint:SetText(st and "This buff has a notice of its own. The sample is on screen now: drag it to place it." or "This buff uses the shared notice, shown now as a sample.")
+    -- Everything below belongs to a look of its own.
+    for _,control in ipairs(panel.styled) do
+        control:SetAlpha(st and 1 or .4)
+        if control.SetEnabled then control:SetEnabled(st~=nil) elseif control.EnableMouse and control.SetValue then control:EnableMouse(st~=nil) end
+    end
+    local size,alpha=st and st.size or 1,st and st.alpha or 1
+    self.settingStyle=true; panel.size:SetValue(size); panel.alpha:SetValue(1-alpha); self.settingStyle=false
+    panel.sizeText:SetText("Size: "..math.floor(size*100+.5).."%")
+    panel.alphaText:SetText("Transparency: "..math.floor((1-alpha)*100+.5).."%")
+    local color,border=st and st.color or {1,1,1},st and st.borderColor or {0,0,0}
+    panel.color.swatch:SetVertexColor(color[1],color[2],color[3]); panel.borderColor.swatch:SetVertexColor(border[1],border[2],border[3])
+    panel.outline.value=st and st.outline or ""; panel.outline.label:SetText("Text outline: "..outlineNames[st and st.outline or ""])
+    panel.border.label:SetText("Icon border: "..(st and st.border and "On" or "Off")); FT:SetSelected(panel.border,st~=nil and st.border)
+    panel.pulse.label:SetText("Pulse: "..(st and st.pulse and "On" or "Off")); FT:SetSelected(panel.pulse,st~=nil and st.pulse)
+    panel.note:SetText(st and (st.mode=="icon" and "Icon only: hover it to read which buff is missing." or "") or "Pick a look above to give this buff a notice of its own.")
+end
 local kindOrder={"group","blessing","aura","armor","self"}
 local kindLabels={group="Group buffs",blessing="Blessings",aura="Auras & stances",armor="Armor",self="Self buffs"}
 local kindIcons={group="Spell_Holy_PrayerOfFortitude",blessing="Spell_Holy_FistOfJustice",aura="Spell_Holy_DevotionAura",armor="Spell_Frost_FrostArmor02",self="Spell_Holy_WordFortitude"}
@@ -539,19 +880,18 @@ function Reminder:SortByKind(list)
 end
 function Reminder:RefreshMenu(learned)
     local s=self:Settings();learned=learned or self:Learned()
-    self.toggle.label:SetText("Self-buff reminders: "..(s.enabled and "On" or "Off"));FT:SetSelected(self.toggle,s.enabled)
+    self.toggle.label:SetText("Self reminders: "..(s.enabled and "On" or "Off"));FT:SetSelected(self.toggle,s.enabled)
     self.groupToggle.label:SetText("Group reminders: "..(s.groupEnabled and "On" or "Off"));FT:SetSelected(self.groupToggle,s.groupEnabled)
     for field,row in pairs(self.whereRows) do
         local active=field=="selfWhere" and s.enabled or field=="groupWhere" and s.groupEnabled
         for key,button in pairs(row.buttons) do FT:SetSelected(button,s[field][key]); button:SetAlpha(active and 1 or .5) end
-        row.label:SetAlpha(active and 1 or .5)
     end
     self.rankToggle.label:SetText("Low-rank alerts: "..(s.lowRank and "On" or "Off"));FT:SetSelected(self.rankToggle,s.lowRank)
     self.rankOneToggle.label:SetText("Ignore rank 1: "..(s.ignoreRankOne and "On" or "Off"));FT:SetSelected(self.rankOneToggle,s.ignoreRankOne)
-    self.markerToggle.label:SetText("Mark on action bars: "..(s.rankMarker and "On" or "Off"));FT:SetSelected(self.markerToggle,s.rankMarker)
+    self.markerToggle.label:SetText("Marker on bars: "..(s.rankMarker and "On" or "Off"));FT:SetSelected(self.markerToggle,s.rankMarker)
     local ignoredCount=0;for _ in pairs(type(s.ignoredRanks)=="table" and s.ignoredRanks or {}) do ignoredCount=ignoredCount+1 end
     self.exceptions.label:SetText("Exceptions"..(ignoredCount>0 and (" ("..ignoredCount..")") or ""))
-    self.moveButton.label:SetText(self.moving and "Moving reminders — click to lock" or "Move reminders")
+    self.moveButton.label:SetText(self.moving and "Lock" or "Move")
     FT:SetSelected(self.moveButton,self.moving)
     FT:SetSelected(self.selfPreview,self.previewSelf)
     FT:SetSelected(self.groupPreview,self.previewGroup)
@@ -568,126 +908,176 @@ function Reminder:RefreshMenu(learned)
     for _,spec in ipairs(specs) do if spec.value==editSpec then icon=spec.icon;break end end
     self.specChoice.icon:SetTexture(icon)
     local available=self:SortByKind(self:Available(learned,editSpec))
+    local watched=0
     for i,button in ipairs(self.rows) do
-        local entry=available[i];button.entry=entry;button:SetShown(entry~=nil)
+        local entry=available[i];button.entry=entry
         if entry then
             local enabled=self:Enabled(entry,editSpec,learned)
+            if enabled then watched=watched+1 end
             button.label:SetText(entry.name..": "..(enabled and "On" or "Off"));FT:SetSelected(button,enabled)
             button.icon:SetTexture(entry.spell.icon or 134400)
+            FT:SetSelected(button.gear,self:Style(entry.name)~=nil)
         end
     end
     local weapon=self:Class()=="Shaman"
     for _,slot in ipairs({"main","off"}) do
-        local dropdown=self[slot.."Dropdown"];dropdown:SetShown(weapon)
+        local dropdown=self[slot.."Dropdown"]
         if weapon then
             local name=s[slot.."Enchant"]
             if slot=="main" and name==nil then for _,candidate in ipairs(enchants) do if learned[candidate] then name=candidate;break end end end
             dropdown.value=name or "";dropdown.label:SetText((slot=="main" and "Main hand: " or "Off hand: ")..(name or "Off"))
+            FT:SetSelected(dropdown.gear,self:Style("weapon:"..slot)~=nil)
+            if name and name~="" then watched=watched+1 end
         end
     end
-    self.empty:SetShown(#available==0 and not weapon)
-    -- Two columns: the left is the place to start (your own buffs); the right
-    -- holds the optional extras. Each section has a heading and a short hint.
-    local function place(control,x,top) control:ClearAllPoints();control:SetPoint("TOPLEFT",self.frame,"TOPLEFT",x,-top) end
-    local L,R=24,580
-    local function section(key,x,top) local h=self.sections[key]; place(h.title,x,top); if h.line then place(h.line,x,top-12) end; return top+32 end
-    local y=section("self",L,66)
-    place(self.toggle,L,y);y=y+46
-    place(self.specChoice,L,y);y=y+40
-    -- Buffs grouped under small headings (Blessings, Auras & stances, ...),
-    -- two per row inside each group.
+    -- Left: one row per section with its state. Right: only the chosen section.
+    local cd=FT.modules.CooldownReminder
+    local hide=s.hideAfter
+    local status={
+        self=(s.enabled and "On" or "Off").." · "..watched.." watched for "..editSpec,
+        group=s.groupEnabled and "On" or "Off",
+        rank="Alerts "..(s.lowRank and "on" or "off").." · bar marker "..(s.rankMarker and "on" or "off"),
+        look=math.floor(s.size*100+.5).."% · "..(hide==0 and "never hides" or "hides after "..(hide>=60 and (hide/60).." min" or hide.." s")),
+        cooldown=(cd and cd:Settings().enabled and "On" or "Off").." · opens its own page",
+    }
+    local pane=self.pane or "self"
+    for key,button in pairs(self.paneButtons) do button.meta:SetText(status[key] or ""); FT:SetSelected(button,key==pane) end
+    for _,control in ipairs(self.paneControls) do control:Hide() end
     for _,h in ipairs(self.kindHeads) do h:Hide() end
-    for _,button in ipairs(self.rows) do button:ClearAllPoints() end
-    local index,headUsed=1,0
-    for _,kind in ipairs(kindOrder) do
-        local first=index
-        while available[index] and kindOf(available[index])==kind do index=index+1 end
-        local count=index-first
-        if count>0 then
-            headUsed=headUsed+1
-            local h=self.kindHeads[headUsed]; h.ftHeading.icon=kindIcons[kind]; h:SetText(kindLabels[kind]); place(h,L,y); h:Show(); y=y+18
-            for n=0,count-1 do place(self.rows[first+n],L+(n%2)*262,y+math.floor(n/2)*38) end
-            y=y+math.ceil(count/2)*38+6
+    local info=self.paneInfo[pane]
+    self.paneTitle.ftHeading.icon=info.icon; self.paneTitle:SetText(info.title); self.paneTitle:Show()
+    self.paneHint:SetText(info.hint); self.paneHint:Show()
+    local X,TOP,W=290,132,442
+    local function place(control,x,top) control:ClearAllPoints();control:SetPoint("TOPLEFT",self.frame,"TOPLEFT",x,-top);control:Show() end
+    place(self.paneTitle,X,TOP+14); place(self.paneHint,X,TOP+40)
+    local y=TOP+68
+    if pane=="self" then
+        place(self.specChoice,X,y);y=y+40
+        -- Buffs grouped under small headings (Blessings, Auras & stances, ...),
+        -- two per row inside each group.
+        local index,headUsed=1,0
+        for _,kind in ipairs(kindOrder) do
+            local first=index
+            while available[index] and kindOf(available[index])==kind do index=index+1 end
+            local count=index-first
+            if count>0 then
+                headUsed=headUsed+1
+                local h=self.kindHeads[headUsed]; h.ftHeading.icon=kindIcons[kind]; h:SetText(kindLabels[kind]); place(h,X,y); y=y+18
+                for n=0,count-1 do place(self.rows[first+n],X+(n%2)*227,y+math.floor(n/2)*38) end
+                y=y+math.ceil(count/2)*38+6
+            end
         end
-    end
-    if #available==0 and not weapon then place(self.empty,L,y+4); y=y+30 end
-    if weapon then
+        if #available==0 and not weapon then place(self.empty,X,y+4); y=y+30 end
+        if weapon then
+            headUsed=headUsed+1
+            local h=self.kindHeads[headUsed]; h.ftHeading.icon="INV_Sword_04"; h:SetText("Weapon buffs"); place(h,X,y); y=y+18
+            place(self.mainDropdown,X,y);place(self.offDropdown,X,y+38)
+            place(self.mainDropdown.gear,X+414,y);place(self.offDropdown.gear,X+414,y+38);y=y+80
+        end
         headUsed=headUsed+1
-        local h=self.kindHeads[headUsed]; h.ftHeading.icon="INV_Sword_04"; h:SetText("Weapon buffs"); place(h,L,y); h:Show(); y=y+18
-        place(self.mainDropdown,L,y);place(self.offDropdown,L,y+38);y=y+80
+        local h=self.kindHeads[headUsed]; h.ftHeading.icon=nil; h:SetText("Show in"); place(h,X,y); y=y+18
+        self:PlaceWhere("selfWhere",X,y);y=y+40
+        place(self.selfColorButton,X,y);y=y+34
+    elseif pane=="group" then
+        local h=self.kindHeads[1]; h.ftHeading.icon=nil; h:SetText("Show in"); place(h,X,y); y=y+18
+        self:PlaceWhere("groupWhere",X,y);y=y+40
+        place(self.groupColorButton,X,y);y=y+40
+        place(self.groupPreview,X,y);y=y+32
+    elseif pane=="rank" then
+        place(self.rankToggle,X,y);place(self.rankOneToggle,X+227,y);y=y+38
+        place(self.markerToggle,X,y);place(self.exceptions,X+227,y);y=y+32
+    elseif pane=="look" then
+        place(self.sizeValue,X,y+3);place(self.sizeSlider,X+124,y);y=y+36
+        place(self.hideChoice,X,y);y=y+40
+        place(self.resetPosition,X,y);y=y+30
     end
-    place(self.whereRows.selfWhere.label,L,y+9);self:PlaceWhere("selfWhere",L,y);y=y+40
-    place(self.selfColorButton,L,y);y=y+40
-    if self.cooldownButton then
-        local cd=FT.modules.CooldownReminder
-        self.cooldownButton.label:SetText("Cooldown reminders: "..(cd and cd:Settings().enabled and "On" or "Off").." — settings")
-        place(self.cooldownButton,L,y);y=y+40
+    -- One size for every section (room for the longest buff list), so the
+    -- window never grows or shrinks as you click around.
+    local bottom=math.max(TOP+416,y+14)
+    if self.paneBottom~=bottom then
+        self.paneBottom=bottom
+        self.detail:SetHeight(bottom-TOP)
+        self.frame:SetHeight(bottom+24)
     end
-    local left=y
-    y=section("group",R,66)
-    place(self.groupToggle,R,y);y=y+42
-    place(self.whereRows.groupWhere.label,R,y+9);self:PlaceWhere("groupWhere",R,y);y=y+40
-    place(self.groupColorButton,R,y);y=y+56
-    y=section("rank",R,y)
-    place(self.rankToggle,R,y);place(self.rankOneToggle,R+262,y);y=y+38
-    place(self.markerToggle,R,y);place(self.exceptions,R+262,y);y=y+54
-    y=section("look",R,y)
-    place(self.selfPreview,R,y);place(self.groupPreview,R+262,y);y=y+40
-    place(self.moveButton,R,y);y=y+42
-    place(self.sizeValue,R,y);place(self.sizeSlider,R+162,y);y=y+34
-    place(self.hideChoice,R,y);y=y+40
-    place(self.resetPosition,R,y);y=y+30
-    local bottom=math.max(left,y)
-    self.columnLine:ClearAllPoints()
-    self.columnLine:SetPoint("TOPLEFT",self.frame,"TOPLEFT",552,-96); self.columnLine:SetPoint("BOTTOMLEFT",self.frame,"TOPLEFT",552,-bottom)
-    self.frame:SetHeight(bottom+30)
 end
 function Reminder:PlaceWhere(field,x0,top)
-    local x=x0+68
+    local x=x0
     for _,place in ipairs(self.places) do
         local b=self.whereRows[field].buttons[place[1]]
-        b:ClearAllPoints(); b:SetPoint("TOPLEFT",self.frame,"TOPLEFT",x,-top); x=x+89
+        b:ClearAllPoints(); b:SetPoint("TOPLEFT",self.frame,"TOPLEFT",x,-top); b:Show(); x=x+90
     end
 end
 function Reminder:Open()
     if not self.frame then
-        local frame=FT:Window("ForeverToolsBuffReminders","Buff reminders",1116,640);self.frame=frame
-        self.sections={}
-        for key,text in pairs({self={"Your buffs","Turn on, then choose the buffs to watch for each talent tree."},
-            group={"Group buffs","A notice when group members are missing your group buffs."},
-            rank={"Low ranks","Catch spells cast at a lower rank than you know."},
-            look={"Look and position","Preview, move and resize the notices."}}) do
-            local h={}
-            h.title=FT:Label(frame,text[1],16,true); h.title:SetTextColor(1,.82,0)
-            FT:SectionHeading(h.title,({self="Spell_Holy_WordFortitude",group="Spell_Holy_PrayerOfFortitude",rank="INV_Misc_Book_07",look="Ability_Rogue_Sprint"})[key],300)
-            h.tip=text[2]
-            if key=="rank" or key=="look" then
-                h.line=frame:CreateTexture(nil,"ARTWORK"); h.line:SetColorTexture(.61,.51,.31,.6); h.line:SetSize(512,1)
-            end
-            self.sections[key]=h
+        local frame=FT:Window("ForeverToolsBuffReminders","Buff reminders",772,572);self.frame=frame
+        -- Top row: the switches and tools you reach for most.
+        local top=CreateFrame("Frame",nil,frame); top:SetSize(724,58); top:SetPoint("TOPLEFT",24,-62); FT:Panel(top); self.topBar=top
+        -- Right side: the chosen section's options.
+        local detail=CreateFrame("Frame",nil,frame); detail:SetSize(474,416); detail:SetPoint("TOPLEFT",274,-132); FT:Panel(detail); self.detail=detail
+        self.paneControls={}
+        local function pane(control) self.paneControls[#self.paneControls+1]=control; return control end
+        self.paneInfo={
+            self={title="Your buffs",icon="Spell_Holy_WordFortitude",hint="Pick buffs for each talent tree. The gear gives a buff its own look."},
+            group={title="Group buffs",icon="Spell_Holy_PrayerOfFortitude",hint="A notice when group members are missing your group buffs."},
+            rank={title="Low ranks",icon="INV_Misc_Book_07",hint="Catch spells cast at a lower rank than you know."},
+            look={title="Look and position",icon="Ability_Rogue_Sprint",hint="Size and timing. Preview and Move are in the top row."},
+        }
+        self.paneTitle=FT:Label(detail,"",16,true); self.paneTitle:SetTextColor(1,.82,0); FT:SectionHeading(self.paneTitle,"Spell_Holy_WordFortitude",260)
+        self.paneHint=FT:Label(detail,"",12); self.paneHint:SetTextColor(.66,.59,.48); self.paneHint:SetWidth(442); self.paneHint:SetJustifyH("LEFT")
+        if self.paneHint.SetWordWrap then self.paneHint:SetWordWrap(false) end
+        -- Left side: the sections, each with its current state.
+        self.paneButtons={}
+        for i,entry in ipairs({{"self","Your buffs","Spell_Holy_WordFortitude"},{"group","Group buffs","Spell_Holy_PrayerOfFortitude"},{"rank","Low ranks","INV_Misc_Book_07"},{"look","Look and position","Ability_Rogue_Sprint"},{"cooldown","Cooldown reminders","Spell_Nature_TimeStop"}}) do
+            local key=entry[1]
+            local b=FT:QuietButton(frame,"",236,48); b.label:Hide()
+            b:SetPoint("TOPLEFT",24,-132-(i-1)*52)
+            b.icon=b:CreateTexture(nil,"ARTWORK"); b.icon:SetSize(28,28); b.icon:SetPoint("LEFT",10,0); b.icon:SetTexture("Interface\\Icons\\"..entry[3]); b.icon:SetTexCoord(.07,.93,.07,.93); FT:RoundIcon(b.icon)
+            b.title=FT:Label(b,entry[2],14); b.title:SetPoint("TOPLEFT",48,-8)
+            b.meta=FT:Label(b,"",11); b.meta:SetPoint("TOPLEFT",48,-27); b.meta:SetWidth(180); b.meta:SetJustifyH("LEFT"); b.meta:SetTextColor(.72,.66,.55)
+            if b.meta.SetWordWrap then b.meta:SetWordWrap(false) end
+            b:SetScript("OnClick",function()
+                if key=="cooldown" then FT:OpenModule("CooldownReminder"); return end
+                self.pane=key; self:RefreshMenu()
+            end)
+            FT:Tooltip(b,entry[2],key=="cooldown" and "A short notice to use a ready racial, trinket or long cooldown on tough targets and big pulls. Off by default. Click to open its settings page."
+                or self.paneInfo[key].hint.." Click to show these options on the right.")
+            self.paneButtons[key]=b
         end
-        self.columnLine=frame:CreateTexture(nil,"ARTWORK"); self.columnLine:SetColorTexture(.61,.51,.31,.6); self.columnLine:SetWidth(1)
-        self.toggle=FT:AccentButton(frame,"",512,34,"buffs");self.toggle:SetPoint("TOPLEFT",24,-96)
+        self.toggle=FT:AccentButton(top,"",196,34,"buffs");self.toggle:SetPoint("LEFT",14,0)
         self.toggle:SetScript("OnClick",function() local s=self:Settings();s.enabled=not s.enabled;self:Apply() end)
         FT:Tooltip(self.toggle,"Self-buff reminders","Shows a small notice at the top of the screen when one of your buffs is missing. Hidden in combat, on flights and while dead. It never casts anything for you.")
-        self.specChoice=FT:Dropdown(frame,512,function() return self:SpecChoices() end,function(value)
+        self.groupToggle=FT:QuietButton(top,"",196,34,"party");self.groupToggle:SetPoint("LEFT",self.toggle,"RIGHT",8,0)
+        self.groupToggle:SetScript("OnClick",function() local s=self:Settings();s.groupEnabled=not s.groupEnabled;self:Apply() end)
+        FT:Tooltip(self.groupToggle,"Group reminders","Shows a notice when someone in your group is missing one of your group buffs. Choose where it shows under Group buffs. Hidden in combat.")
+        self.moveButton=FT:QuietButton(top,"",100,34,"move");self.moveButton:SetPoint("RIGHT",-14,0)
+        self.moveButton:SetScript("OnClick",function() self:SetMoving(not self.moving) end)
+        FT:Tooltip(self.moveButton,"Move reminders","Click to unlock, drag the notice where you want it, then click again to lock it.")
+        self.selfPreview=FT:QuietButton(top,"Preview",112,34,"buffs");self.selfPreview:SetPoint("RIGHT",self.moveButton,"LEFT",-8,0)
+        self.selfPreview:SetScript("OnClick",function() self.previewSelf=not self.previewSelf;FT:SetSelected(self.selfPreview,self.previewSelf);self:Apply() end)
+        FT:Tooltip(self.selfPreview,"Preview self reminders","Show sample notices so you can see how they look: the shared notice, and one for each buff you gave a look of its own. The group notice has its own preview under Group buffs.")
+        for _,b in ipairs({self.toggle,self.groupToggle,self.moveButton,self.selfPreview}) do if b.label.SetWordWrap then b.label:SetWordWrap(false) end end
+        self.specChoice=pane(FT:Dropdown(detail,442,function() return self:SpecChoices() end,function(value)
             self.editSpec=value
             -- Before any talent points are spent, the picked tree becomes your tree.
             local spent=0; for _,spec in ipairs(self:TalentSpecs()) do spent=spent+spec.points end
             if spent==0 then local s=self:Settings(); s.chosenSpec=type(s.chosenSpec)=="table" and s.chosenSpec or {}; s.chosenSpec[self:Class()]=value; self:Apply() end
             self:RefreshMenu()
-        end,"classes")
+        end,"classes"))
         self.specChoice.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-        self.specChoice:SetPoint("TOPLEFT",24,-145)
         FT:Tooltip(self.specChoice,"Buffs for each talent tree","Pick which buffs to watch for each talent tree. The addon follows the tree you have spent the most points in. Before you have talent points, the tree you pick here is used.")
         self.rows={}
         self.kindHeads={}
-        for i=1,6 do
-            local h=FT:Label(frame,"",12,true); h:SetTextColor(.66,.59,.48); FT:SectionHeading(h,nil,260,14); h:Hide(); self.kindHeads[i]=h
+        for i=1,7 do
+            local h=FT:Label(detail,"",12,true); h:SetTextColor(.66,.59,.48); FT:SectionHeading(h,nil,260,14); h:Hide(); self.kindHeads[i]=h
         end
         for i=1,12 do
-            local b=FT:QuietButton(frame,"",250,32,"welcome");b:SetPoint("TOPLEFT",24+((i-1)%2)*262,-185-math.floor((i-1)/2)*38)
-            b.label:SetFont(FT.font or "Fonts\\FRIZQT__.TTF",12,"")
+            local b=pane(FT:QuietButton(detail,"",215,32,"welcome"))
+            b.label:SetFont(FT.font or "Fonts\\FRIZQT__.TTF",12,""); if b.label.SetWordWrap then b.label:SetWordWrap(false) end
+            b.label:ClearAllPoints(); b.label:SetPoint("LEFT",b.icon,"RIGHT",8,0); b.label:SetPoint("RIGHT",b,"RIGHT",-32,0)
+            -- The gear gives this buff a notice look of its own.
+            b.gear=FT:QuietButton(b,"",24,24); b.gear:SetPoint("RIGHT",-4,0); FT:GearIcon(b.gear)
+            b.gear:SetScript("OnClick",function() if b.entry then self:OpenStyle(b.entry.name,b.entry.name) end end)
+            FT:Tooltip(b.gear,"Notice look","Give this buff a notice of its own: a bar, an icon with text or just an icon, with its own size, color and place on screen. Lit when it has one.")
             b:SetScript("OnClick",function()
                 local entry=b.entry;if not entry then return end
                 local spec=self.editSpec or self:CurrentSpec();local selection=self:Selection(spec)
@@ -701,52 +1091,49 @@ function Reminder:Open()
             FT:Tooltip(b,"Choose a self buff","Click to watch this buff. Only spells you have learned are listed. Buffs that can't be active together, like two auras, turn each other off.")
             self.rows[i]=b
         end
-        self.empty=FT:Label(frame,"No supported self buffs learned yet.",13);self.empty:SetPoint("TOPLEFT",24,-195)
-        for i,slot in ipairs({"main","off"}) do
-            local dropdown=FT:Dropdown(frame,512,function()
+        self.empty=pane(FT:Label(detail,"No supported self buffs learned yet.",13))
+        for _,slot in ipairs({"main","off"}) do
+            local dropdown=pane(FT:Dropdown(detail,410,function()
                 local list={{value="",label="Off"}};local learned=self:Learned()
                 for _,name in ipairs(enchants) do if learned[name] then list[#list+1]={value=name,label=name,icon=learned[name].icon} end end
                 return list
-            end,function(value) self:Settings()[slot.."Enchant"]=value;self:Apply() end,"welcome")
-            dropdown:SetPoint("TOPLEFT",24,-405-(i-1)*42);self[slot.."Dropdown"]=dropdown
+            end,function(value) self:Settings()[slot.."Enchant"]=value;self:Apply() end,"welcome"))
+            self[slot.."Dropdown"]=dropdown
+            dropdown.gear=pane(FT:QuietButton(detail,"",28,28)); FT:GearIcon(dropdown.gear)
+            dropdown.gear:SetScript("OnClick",function() self:OpenStyle("weapon:"..slot,slot=="main" and "Main-hand weapon buff" or "Off-hand weapon buff") end)
+            FT:Tooltip(dropdown.gear,"Notice look","Give this weapon buff a notice of its own: a bar, an icon with text or just an icon, with its own size, color and place on screen. Lit when it has one.")
             FT:Tooltip(dropdown,"Weapon enchant reminder","Pick the weapon buff to watch for this hand. Any weapon buff counts. Empty hands and shields are ignored.")
         end
         -- "Show in" rows: pick every place a notice may appear (multiple choice).
         self.whereRows={}
         for _,field in ipairs({"selfWhere","groupWhere"}) do
             local row={buttons={}}
-            row.label=FT:Label(frame,"Show in:",13); row.label:SetTextColor(.85,.80,.70)
             for _,place in ipairs(self.places) do
                 local key=place[1]
-                local b=FT:QuietButton(frame,place[2],86,30)
+                local b=pane(FT:QuietButton(detail,place[2],82,30))
+                b.label:SetFont(FT.font or "Fonts\\FRIZQT__.TTF",12,""); if b.label.SetWordWrap then b.label:SetWordWrap(false) end
                 b:SetScript("OnClick",function() local s=self:Settings(); s[field][key]=not s[field][key]; self:Apply() end)
                 FT:Tooltip(b,place[2],(field=="selfWhere" and "Show self-buff notices here. " or "Show group-buff notices here (only while in a group). ")..place[3].." Pick as many places as you like.")
                 row.buttons[key]=b
             end
             self.whereRows[field]=row
         end
-        self.groupToggle=FT:QuietButton(frame,"",512,34,"party");self.groupToggle:SetPoint("TOPLEFT",24,-488)
-        self.groupToggle:SetScript("OnClick",function() local s=self:Settings();s.groupEnabled=not s.groupEnabled;self:Apply() end)
-        FT:Tooltip(self.groupToggle,"Group reminders","Shows a notice when someone in your group is missing one of your group buffs. Choose where it shows below. Hidden in combat.")
-        self.moveButton=FT:QuietButton(frame,"",512,34,"move");self.moveButton:SetPoint("TOPLEFT",24,-528)
-        self.moveButton:SetScript("OnClick",function() self:SetMoving(not self.moving) end)
-        FT:Tooltip(self.moveButton,"Move reminders","Click to unlock, drag the notice where you want it, then click again to lock it.")
-        self.sizeValue=FT:Label(frame,"",14);self.sizeValue:SetPoint("TOPLEFT",24,-574);self.sizeValue:SetWidth(120)
-        self.sizeSlider=CreateFrame("Slider",nil,frame,"OptionsSliderTemplate");self.sizeSlider:SetSize(345,18);self.sizeSlider:SetPoint("TOPLEFT",186,-571)
+        self.sizeValue=pane(FT:Label(detail,"",14));self.sizeValue:SetWidth(120);self.sizeValue:SetJustifyH("LEFT")
+        self.sizeSlider=pane(CreateFrame("Slider",nil,detail,"OptionsSliderTemplate"));self.sizeSlider:SetSize(318,18)
         self.sizeSlider:SetMinMaxValues(.7,1.5);self.sizeSlider:SetValueStep(.05);self.sizeSlider:SetObeyStepOnDrag(true)
         self.sizeSlider:SetScript("OnValueChanged",function(_,value)
             if self.settingSize then return end
             self:Settings().size=math.floor(value*20+.5)/20;FT:Coalesce("reminderSlider",function() self:Apply() end,.05)
         end)
         FT:Tooltip(self.sizeSlider,"Reminder size","Make the notices smaller or bigger (70% to 150%).")
-        self.hideChoice=FT:Dropdown(frame,512,function()
+        self.hideChoice=pane(FT:Dropdown(detail,442,function()
             local list={};for _,c in ipairs(hideChoices) do list[#list+1]={value=c[1],label=c[2],icon="Interface\\Icons\\INV_Misc_PocketWatch_01"} end;return list
-        end,function(value) self:Settings().hideAfter=value;self.notices=nil;self:Apply() end,"fps")
-        self.hideChoice:SetHeight(32); self.hideChoice.menuWidth=512
+        end,function(value) self:Settings().hideAfter=value;self.notices=nil;self:Apply() end,"fps"))
+        self.hideChoice:SetHeight(32); self.hideChoice.menuWidth=442
         FT:Tooltip(self.hideChoice,"Hide notice after","How long a notice stays before it hides by itself. It shows again when another buff goes missing. Never: it stays until the buff is back or you click it.")
-        for i,entry in ipairs({{"textColor","Self text color"},{"groupTextColor","Group text color"}}) do
+        for _,entry in ipairs({{"textColor","Self text color"},{"groupTextColor","Group text color"}}) do
             local field,label=entry[1],entry[2]
-            local color=FT:QuietButton(frame,label,250,34,"fonts");color:SetPoint("TOPLEFT",24+(i-1)*262,-611)
+            local color=pane(FT:QuietButton(detail,label,442,32,"fonts"))
             if field=="textColor" then self.selfColorButton=color else self.groupColorButton=color end
             local swatch=color:CreateTexture(nil,"ARTWORK");swatch:SetTexture("Interface\\Buttons\\WHITE8X8");swatch:SetSize(18,18);swatch:SetPoint("RIGHT",-12,0)
             if field=="textColor" then self.colorSwatch=swatch else self.groupColorSwatch=swatch end
@@ -760,38 +1147,33 @@ function Reminder:Open()
             end)
             FT:Tooltip(color,label,"Choose the text color for this reminder notice.")
         end
-        self.rankToggle=FT:QuietButton(frame,"",250,32,"INV_Misc_Book_07");self.rankToggle:SetPoint("TOPLEFT",24,-653)
+        self.rankToggle=pane(FT:QuietButton(detail,"",215,32,"INV_Misc_Book_07"))
         self.rankToggle:SetScript("OnClick",function() local s=self:Settings();s.lowRank=not s.lowRank;self:Apply() end)
         FT:Tooltip(self.rankToggle,"Low-rank alerts","Warns when you cast a buff at a lower rank than you know. Visit a trainer once so the addon knows which ranks you can learn.")
-        self.rankOneToggle=FT:QuietButton(frame,"",250,32,"INV_Misc_Book_11");self.rankOneToggle:SetPoint("LEFT",self.rankToggle,"RIGHT",12,0)
+        self.rankOneToggle=pane(FT:QuietButton(detail,"",215,32,"INV_Misc_Book_11"))
         self.rankOneToggle:SetScript("OnClick",function() local s=self:Settings();s.ignoreRankOne=not s.ignoreRankOne;self:Apply() end)
         FT:Tooltip(self.rankOneToggle,"Ignore rank 1","Never warn about rank 1 spells, for example cheap heals you use on purpose.")
-        self.markerToggle=FT:QuietButton(frame,"",250,32,"INV_Misc_Note_02")
+        self.markerToggle=pane(FT:QuietButton(detail,"",215,32,"INV_Misc_Note_02"))
         self.markerToggle:SetScript("OnClick",function() local s=self:Settings();s.rankMarker=not s.rankMarker;self:Apply() end)
         FT:Tooltip(self.markerToggle,"Low-rank marker on action bars","Adds a small amber corner to action buttons that use a lower rank than you know. Hover the button to see your best rank. Macros are not checked.")
-        self.exceptions=FT:Dropdown(frame,250,function() return FT.modules.RankMarker:ExceptionChoices() end,function(value) FT.modules.RankMarker:ToggleIgnore(value) end,"INV_Misc_Note_03")
-        self.exceptions.menuWidth=340
+        self.exceptions=pane(FT:Dropdown(detail,215,function() return FT.modules.RankMarker:ExceptionChoices() end,function(value) FT.modules.RankMarker:ToggleIgnore(value) end,"INV_Misc_Note_03"))
+        self.exceptions:SetHeight(32); self.exceptions.menuWidth=340
         FT:Tooltip(self.exceptions,"Low-rank exceptions","Pick spells you downrank on purpose. They get no marker and no alert. Pick one again to take it off the list.")
-        local resetPosition=FT:QuietButton(frame,"Reset reminder position",512,30,"reset");resetPosition:SetPoint("TOPLEFT",24,-695);self.resetPosition=resetPosition
+        for _,b in ipairs({self.rankToggle,self.rankOneToggle,self.markerToggle,self.exceptions}) do if b.label.SetWordWrap then b.label:SetWordWrap(false) end end
+        local resetPosition=pane(FT:QuietButton(detail,"Reset reminder position",442,30,"reset"));self.resetPosition=resetPosition
         resetPosition:SetScript("OnClick",function()
             local s=self:Settings();s.x=nil;s.y=nil;s.screenWidth=nil;s.screenHeight=nil;self:Apply()
         end)
         FT:Tooltip(resetPosition,"Reset position","Move the notices back to the top center of the screen.")
-        for i,entry in ipairs({{"previewSelf","Preview self reminder","selfPreview"},{"previewGroup","Preview group reminder","groupPreview"}}) do
-            local key=entry[1]
-            local button=FT:QuietButton(frame,entry[2],250,32,key=="previewGroup" and "party" or "buffs");self[entry[3]]=button
-            button:SetScript("OnClick",function() self[key]=not self[key];FT:SetSelected(button,self[key]);self:Apply() end)
-            FT:Tooltip(button,entry[2],"Show a sample notice so you can see how it looks.")
-        end
+        self.groupPreview=pane(FT:QuietButton(detail,"Preview group reminder",442,32,"party"))
+        self.groupPreview:SetScript("OnClick",function() self.previewGroup=not self.previewGroup;FT:SetSelected(self.groupPreview,self.previewGroup);self:Apply() end)
+        FT:Tooltip(self.groupPreview,"Preview group reminder","Show a sample group notice so you can see how it looks.")
         frame:HookScript("OnHide",function()
             self.previewSelf=nil;self.previewGroup=nil
             FT:SetSelected(self.selfPreview,false);FT:SetSelected(self.groupPreview,false)
             self:SetMoving(false)
         end)
-        self.cooldownButton=FT:QuietButton(frame,"Cooldown reminders — settings",512,32,"Spell_Nature_TimeStop")
-        self.cooldownButton:SetScript("OnClick",function() FT:OpenModule("CooldownReminder") end)
-        FT:Tooltip(self.cooldownButton,"Cooldown reminders","A short notice to use a ready racial, trinket or long cooldown on tough targets and big pulls. Off by default.")
-        FT:PageInfo(frame,"Buff reminders","Start on the left: turn reminders on and choose the buffs to watch for each talent tree. Everything on the right is optional: group buffs (a notice when group members miss your group buffs), low ranks (spells cast at a lower rank than you know), and how the notices look.\n\nA small notice appears when one is missing. Notices hide in combat, on flights and while dead. Left-click a notice to dismiss it, right-click it for settings.")
+        FT:PageInfo(frame,"Buff reminders","The top row turns self and group reminders on, previews a notice and lets you move it. Pick a section on the left (each shows its current state) and its options appear on the right: your buffs for each talent tree, group buffs, low ranks, and the look of the notices. Cooldown reminders open their own page.\n\nA small notice appears when a buff is missing. Notices hide in combat, on flights and while dead. Left-click a notice to dismiss it, right-click it for settings.")
     end
     self.editSpec=self:CurrentSpec()
     self:Apply();self.frame:Show()
@@ -817,7 +1199,7 @@ events:SetScript("OnEvent",function(_,event,unit,castGUID,spellID)
         return
     end
     if event=="UNIT_AURA" and (not safe(unit) or type(unit)~="string" or (unit~="player" and not unit:match("^party%d+$") and not unit:match("^raid%d+$"))) then return end
-    if event=="PLAYER_REGEN_DISABLED" then if Reminder.badge then Reminder.badge:Hide();Reminder.groupBadge:Hide() end;return end
+    if event=="PLAYER_REGEN_DISABLED" then if Reminder.badge then Reminder.badge:Hide();Reminder.groupBadge:Hide() end;Reminder:HideCustom();return end
     -- Notices are paused in combat, so skip the work and check once afterwards.
     if InCombatLockdown() and event~="PLAYER_REGEN_ENABLED" then Reminder.pendingCombat=true; return end
     -- Aura changes come in bursts (many per second in a raid): check at most

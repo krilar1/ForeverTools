@@ -57,7 +57,7 @@ end
 -- the character and are never rewritten by loading an appearance profile.
 local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey","totems","movers"}
 -- Every module that must redraw after settings change (load, login, reset).
-local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey","Totems"}
+local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey","Totems","DruidMana"}
 local function copy(value)
     if type(value) ~= "table" then return value end
     local result={}; for k,v in pairs(value) do result[k]=copy(v) end; return result
@@ -606,7 +606,7 @@ local function restoreGameOptions()
     local get=(C_CVar and C_CVar.GetCVarDefault) or GetCVarDefault
     local set=(C_CVar and C_CVar.SetCVar) or SetCVar
     if not get or not set then return end
-    for _,name in ipairs({"scriptErrors","minimapShowPlayerCoords"}) do
+    for _,name in ipairs({"scriptErrors","minimapShowPlayerCoords","ffxDeath"}) do
         local ok,value=pcall(get,name)
         if ok and type(value)=="string" then pcall(set,name,value) end
     end
@@ -958,10 +958,14 @@ function Profiles:ValidateImport(data)
         if pref.numberColor then for i=1,3 do local v=pref.numberColor[i]; if type(v)~="number" or v<0 or v>1 then return nil,"Invalid font color." end end end
     end
     for _,pref in pairs(result.customKeybinds or {}) do
-        if type(pref)~="table" or not check(pref,{enabled="boolean",up="table",down="table"}) then return nil,"Invalid bindings." end
+        if type(pref)~="table" or not check(pref,{enabled="boolean",up="table",down="table",npcs="boolean"}) then return nil,"Invalid bindings." end
         for _,dir in ipairs({"up","down"}) do if not check(pref[dir],{spellID="number",friendly="string",hostile="string"}) then return nil,"Invalid spell." end end
     end
-    if not check(result.dispelGlow,{enabled="boolean",player="boolean",target="boolean",focus="boolean",party="boolean",raid="boolean",strength="string",pulse="boolean"}) then return nil,"Invalid dispel glow settings." end
+    if not check(result.dispelGlow,{enabled="boolean",player="boolean",target="boolean",focus="boolean",party="boolean",raid="boolean",strength="string",pulse="boolean",colors="table"}) then return nil,"Invalid dispel glow settings." end
+    for name,color in pairs(result.dispelGlow and result.dispelGlow.colors or {}) do
+        if type(name)~="string" or type(color)~="table" then return nil,"Invalid dispel glow color." end
+        for i=1,3 do local v=color[i]; if type(v)~="number" or v<0 or v>1 then return nil,"Invalid dispel glow color." end end
+    end
     if result.dispelGlow and result.dispelGlow.strength and not FT.modules.DispelGlow.strengths[result.dispelGlow.strength] then return nil,"Invalid glow strength." end
     for class,layout in pairs(result.actionMacros or {}) do
         if type(class)~="string" or type(layout)~="table" then return nil,"Invalid macro placements." end
@@ -973,7 +977,14 @@ function Profiles:ValidateImport(data)
         end
     end
     for _,v in pairs(result.chat or {}) do if v~="show" and v~="hide" and v~="hover" then return nil,"Invalid chat mode." end end
-    for _,key in ipairs({"unitColors","system"}) do for _,v in pairs(result[key] or {}) do if type(v)~="boolean" then return nil,"Invalid toggle." end end end
+    local objectiveModes={collapsed=true,open=true,hidden=true}
+    for _,key in ipairs({"unitColors","system"}) do
+        for name,v in pairs(result[key] or {}) do
+            -- Quest objectives is the one choice (not a switch) stored with the system toggles.
+            if key=="system" and name=="objectives" then if not objectiveModes[v] then return nil,"Invalid quest objectives setting." end
+            elseif type(v)~="boolean" then return nil,"Invalid toggle." end
+        end
+    end
     if not check(result.tooltip,{guildFactionColor="boolean",guildFactionIcon="boolean",target="boolean",guild="boolean",healthBar="boolean",position="string",order="string",offsetX="number",offsetY="number",x="number",y="number",screenWidth="number",screenHeight="number",name="number",details="number",targetSize="number",layout="table",factionIcon="string",guildIconPosition="string"}) then return nil,"Invalid tooltip settings." end
     if result.tooltip and result.tooltip.factionIcon and not FT.modules.Tooltip.iconPlaces[result.tooltip.factionIcon] then return nil,"Invalid faction icon place." end
     for _,entry in ipairs(result.tooltip and result.tooltip.layout or {}) do
@@ -987,11 +998,15 @@ function Profiles:ValidateImport(data)
         for k,v in pairs(cooldowns.chosen or {}) do if type(k)~="string" or type(v)~="boolean" then return nil,"Invalid cooldown reminders." end end
         for k,v in pairs(cooldowns.roles or {}) do if type(k)~="string" or (v~="offensive" and v~="defensive" and v~="off") then return nil,"Invalid cooldown reminders." end end
     end
-    if not check(result.totems,{range="boolean",opacity="number",colors="table",defaults="number"}) then return nil,"Invalid totem settings." end
+    if not check(result.totems,{range="boolean",opacity="number",colors="table",defaults="number",leftBehind="boolean",leftRange="number"}) then return nil,"Invalid totem settings." end
     if not check(result.smartKey,{enabled="boolean",key="string",confirmed="boolean"}) then return nil,"Invalid smart key settings." end
     if not check(result.fireAlert,{sound="string",channel="string"}) then return nil,"Invalid standing-in-fire settings." end
     if not check(result.rareAlert,{enabled="boolean",sound="boolean",soundKey="string",duration="number",size="number",glow="table",x="number",y="number"}) then return nil,"Invalid rare alert settings." end
-    if not check(result.buffReminder,{enabled="boolean",selected="table",mainEnchant="string",offEnchant="string",rankMarker="boolean",ignoredRanks="table",selfWhere="table",groupWhere="table",chosenSpec="table",hideAfter="number"}) then return nil,"Invalid buff reminders." end
+    if not check(result.buffReminder,{enabled="boolean",selected="table",mainEnchant="string",offEnchant="string",rankMarker="boolean",ignoredRanks="table",selfWhere="table",groupWhere="table",chosenSpec="table",hideAfter="number",styles="table"}) then return nil,"Invalid buff reminders." end
+    -- Per-buff notice looks: a table per buff name; each value is checked again when it is used.
+    for name,style in pairs(result.buffReminder and result.buffReminder.styles or {}) do
+        if type(name)~="string" or #name>60 or type(style)~="table" or type(style.mode)~="string" then return nil,"Invalid buff notice look." end
+    end
     for class,tree in pairs(result.buffReminder and result.buffReminder.chosenSpec or {}) do
         if type(class)~="string" or type(tree)~="string" then return nil,"Invalid talent tree choice." end
     end
@@ -1021,7 +1036,7 @@ function Profiles:ValidateImport(data)
             return true
         end
         local root=result.iconStyles
-        if not skin(root) or not check(root,{actions="boolean",buffs="boolean",stances="boolean",areas="table",minimap="boolean",micro="boolean",bags="boolean",player="boolean",target="boolean",tot="boolean",focus="boolean",focustarget="boolean",xp="boolean",pet="boolean",party="boolean",personal="boolean",castbar="boolean"}) then return nil,"Invalid skin settings." end
+        if not skin(root) or not check(root,{actions="boolean",buffs="boolean",stances="boolean",areas="table",minimap="boolean",micro="boolean",bags="boolean",player="boolean",target="boolean",tot="boolean",focus="boolean",focustarget="boolean",xp="boolean",pet="boolean",party="boolean",personal="boolean",castbar="boolean",swing="boolean"}) then return nil,"Invalid skin settings." end
         for key,pref in pairs(root.areas or {}) do if type(key)~="string" or not skin(pref) then return nil,"Invalid skin area." end end
     end
     for _,file in pairs(result.customFonts or {}) do if type(file)~="string" or #file>150 or file:find("[/\\]") then return nil,"Invalid font filename." end end

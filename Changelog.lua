@@ -2,6 +2,16 @@ local _,FT=...
 -- Short player-facing notes for the "What's new" window. Newest first.
 FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
+    {version="0.50.0",notes={
+        {icon="Spell_Holy_WordFortitude",title="Buff notice looks",text="Give a buff its own notice: bar, icon and text, or icon only. Buff reminders > the gear on a buff."},
+        {icon="Spell_Fire_SearingTotem",title="Totem left behind",text="Shamans: a totem's icon pulses red when you walk away from it. Combat > Totems."},
+        {icon="Ability_Racial_BearForm",title="Druid mana bar",text="See your mana in bear and cat form, under your rage or energy. Appearance > Unitframe colors."},
+        {icon="Spell_Holy_DispelMagic",title="Softer dispel glow",text="A glow around the whole frame, with a color you choose for each debuff type."},
+        {icon="INV_Misc_Key_03",title="Smarter wheel casting",text="Skips vendors, quest givers and totems. Dispels only cast when there is something to remove."},
+        {icon="INV_Misc_Book_09",title="Buff reminders, rebuilt",text="Sections on the left, one steady window, Preview and Move at the top."},
+        {icon="INV_Misc_Note_01",title="Tidier macros",text="Hide or delete from the list, a simpler panel and a typing line in the text box."},
+        {icon="Trade_Engineering",title="And more",text="Death glow switch, swing timer skin, smarter white gear selling, cooldown reminders that show in fights."},
+    }},
     {version="0.40.0",notes={
         {icon="Spell_Holy_WordFortitude",title="Crisp buff borders",text="Buff and debuff borders in real screen pixels; 1 px is truly thin."},
         {icon="INV_Misc_ArmorKit_17",title="Soft shadow",text="Shadows fade out now, with size and darkness sliders."},

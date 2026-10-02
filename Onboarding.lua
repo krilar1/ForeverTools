@@ -2,7 +2,7 @@ local _,FT=...
 -- First-time setup (once per account, fresh installs only) and "What's new"
 -- (once per version, existing users only). New characters never see either.
 local Onboarding={}
-local skinAreas={"actions","buffs","stances","minimap","bags","bagWindows","micro","xp","player","target","tot","focus","focustarget","pet","party","personal","castbar"}
+local skinAreas={"actions","buffs","stances","minimap","bags","bagWindows","micro","xp","player","target","tot","focus","focustarget","pet","party","personal","castbar","swing"}
 local presets={
     {key="minimal",label="Minimal",icon="generic",text="Blizzard's own look. Nothing is skinned or recolored; turn on single features whenever you like."},
     {key="dark",label="Dark mode",icon="skins",text="Dark borders on action bars, buffs, bags, micro menu, minimap, XP bar and unit frames. Nothing else changes."},

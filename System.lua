@@ -61,23 +61,24 @@ local pages={
         {"coordinates","Minimap coordinates","map","Show or hide Forever's built-in coordinates below the minimap."},
         {"minimapIcons","Group minimap buttons","map","Put other addons' minimap buttons into one small menu. Click its icon to open it. A few buttons may stay on the minimap. Do not use it together with another button-collector addon."},
     }},
-    {key="SystemGameplay",title="Gameplay",icon="classes",description="Group role, faster looting, loot-roll position and quest objectives.",items={
+    {key="SystemGameplay",title="Gameplay",icon="classes",description="Group role, faster looting, loot-roll position, quest objectives and the death glow.",items={
         {"autoRole","Set role when joining a group","classes","When you join a group, set your role (tank, healer or damage) from your talents. Changing it yourself always wins. Feral druids are asked once."},
         {"fastLoot","Faster looting","generic","Loot everything the moment a corpse is opened, instead of waiting for each slot. Works when auto loot is on (the Auto Loot game option, or holding the auto-loot key). Items that ask before binding still ask."},
         {"lootMove","Move loot rolls","move","Show a sample loot-roll window you can drag. Click again to lock it. Until you move it, loot rolls appear where Blizzard puts them."},
         {"lootDefault","Use Blizzard's loot-roll position","reset","Forget your moved position and let the game place loot rolls again."},
         {"objectives","Quest objectives","INV_Misc_Note_01","Choose: Default (the game's own behavior), Collapsed on login, Open on login, or Hidden. Collapsed and Open are applied when you log in or reload; opening or closing it yourself is kept until then. Hidden keeps the tracker off the screen."},
+        {"deathGlow","Death glow","Spell_Holy_Resurrection","The glowing, washed-out screen effect while you are dead or a ghost. On is the game's default; Off keeps the world in its normal look. This switch shows and changes the game's own setting (the same as typing /console ffxDeath 0 or 1), so it applies to all your characters, and it already reads Off if you turned the glow off with that command before."},
     }},
     {key="SystemMerchant",title="Merchant",icon="INV_Misc_Coin_02",description="Selling grey (and optionally white) items and repairing when you visit a merchant.",items={
         {"autoSell","Auto-sell grey items","generic","Sell all grey (junk) items when you open a merchant. They go to the Buyback tab like items you sell yourself (it keeps the last 12)."},
-        {"sellWhite","Also sell white gear","generic","When auto-sell runs, also sell white (common) weapons and armor. Never sold: profession tools (mining pick, skinning knife, hammer, spanners, fishing poles), shirts, tabards, bags, rings, necklaces, trinkets, food, drink, reagents, ammo and trade goods. Sold items can be bought back (the last 12)."},
+        {"sellWhite","Also sell white gear","generic","When auto-sell runs, also sell white (common) weapons and armor you have no use for. Kept: gear for an empty slot, gear in an equipment set and, up to level 20, anything better than what you wear in that slot. After level 20 white gear is rarely worth wearing, so it is sold. Never sold: potions, food, drink, reagents, ammo, trade goods, quest items, profession tools, fishing poles, shirts, tabards, bags, rings, necklaces and trinkets. The chat line names the white gear that was sold; it can be bought back (the last 12)."},
         {"autoRepair","Auto-repair","generic","Repair all your gear when you visit a merchant who can repair."},
         {"guildRepair","Use guild funds for repairs first","party","When auto-repair runs, use guild bank repair money if your guild allows it, otherwise your own gold."},
     }},
     {key="SystemCombat",home=true,title="Combat",icon="Ability_Warrior_DefensiveStance",description="Threat meter, rare alerts and totems.",items={
         {"threat","Threat meter settings","Ability_Warrior_DefensiveStance","A threat meter next to the damage meter, and your threat % above your target. Off by default."},
         {"rareAlert","Rare alerts settings","Ability_Hunter_SniperShot","A notice with a soft glow (and optional sound) when a rare appears on your minimap or nearby. Off by default."},
-        {"totems","Totems settings","Spell_Nature_StoneSkinTotem","Shaman totem tools, starting with each totem's 30-yard reach shown on the minimap. Off by default."},
+        {"totems","Totems settings","Spell_Nature_StoneSkinTotem","Shaman totem tools: each totem's 30-yard reach on the minimap, and a warning on the totem's icon when you leave it behind. Off by default."},
     }},
     {key="SystemKeybinds",home=true,title="Keybinds",icon="keybind",description="Quick keybind mode, backups and restore, spell binds, mouse-wheel casting and the smart interact key.",items={
         {"quickKeybind","Quick keybind mode (/kb)","keybind","Hover any action button and press a key to bind it; Escape on a bound slot unbinds it. A snapshot of your keybinds is taken first, so you can save, revert to a snapshot or discard. You can also type /kb in chat."},
@@ -98,26 +99,36 @@ local pages={
     }},
 }
 System.pages=pages
-local toggles={fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,sellWhite=true,scriptErrors=true}
+local toggles={fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,sellWhite=true,scriptErrors=true,deathGlow=true}
+-- Switches that are the game's own settings: read and written directly,
+-- never stored by ForeverTools. "Unavailable" when the game has no such setting.
+local gameOptions={scriptErrors="scriptErrors",deathGlow="ffxDeath"}
+local function gameOption(name)
+    local getter=(C_CVar and C_CVar.GetCVar) or GetCVar
+    if not getter then return nil end
+    local ok,value=pcall(getter,name)
+    if ok and type(value)=="string" then return value end
+end
+System.gameOptions=gameOptions
 function System:Values()
     local s=self:Settings()
     local getter=(C_CVar and C_CVar.GetCVar) or GetCVar
     local coords=s.coordinates
     if coords==nil then coords=not getter or getter("minimapShowPlayerCoords")=="1" end
     return {welcome=FT.db.welcome==true,whatsNew=s.hideWhatsNew~=true,minimap=FT.db.minimapEnabled~=false,coordinates=coords,
-        minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=getter and getter("scriptErrors")=="1",
+        minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=gameOption("scriptErrors")=="1",deathGlow=gameOption("ffxDeath")~="0",
         autoRole=s.autoRole==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true}
 end
 function System:Refresh()
     if not self.buttons then return end
     local values=self:Values()
-    local getter=(C_CVar and C_CVar.GetCVar) or GetCVar
     for key,button in pairs(self.buttons) do
         if toggles[key] then
-            button.label:SetText(button.title..": "..(key=="scriptErrors" and not getter and "Unavailable" or (values[key] and "On" or "Off")))
+            local missing=gameOptions[key] and gameOption(gameOptions[key])==nil
+            button.label:SetText(button.title..": "..(missing and "Unavailable" or (values[key] and "On" or "Off")))
             FT:SetSelected(button,values[key])
+            if gameOptions[key] then button:SetEnabled(not missing); button:SetAlpha(missing and .45 or 1) end
         end
-        if key=="scriptErrors" then button:SetEnabled(getter~=nil) end
         if key=="guildRepair" then button:SetEnabled(values.autoRepair); button:SetAlpha(values.autoRepair and 1 or .45) end
         if key=="sellWhite" then button:SetEnabled(values.autoSell); button:SetAlpha(values.autoSell and 1 or .45) end
         if key=="backups" then
@@ -159,7 +170,8 @@ function System:Refresh()
         end
         if key=="totems" then
             local totems=FT.modules.Totems
-            button.label:SetText("Totems: "..(totems and totems:Settings().range and "On" or "Off").." — settings")
+            local ts=totems and totems:Settings()
+            button.label:SetText("Totems: "..(ts and (ts.range or ts.leftBehind) and "On" or "Off").." — settings")
         end
         if key=="wheelCasting" then
             local wheel=FT.modules.CustomKeybinds
@@ -222,10 +234,12 @@ function System:Click(key)
         FT:ShowChoices(button); return
     end
     if key=="lootDefault" then FT.modules.LootRoll:UseDefault(); self:Refresh(); return end
-    if key=="scriptErrors" then
-        local get=(C_CVar and C_CVar.GetCVar) or GetCVar
+    if gameOptions[key] then
+        local name=gameOptions[key]
         local set=(C_CVar and C_CVar.SetCVar) or SetCVar
-        if get and set then set("scriptErrors",get("scriptErrors")=="1" and "0" or "1") end
+        local now=gameOption(name)
+        -- Anything but "0" counts as on, the way the game reads it.
+        if set and now~=nil then pcall(set,name,now~="0" and "0" or "1") end
         self:Refresh();return
     end
     local s=self:Settings()
@@ -484,6 +498,36 @@ function System:TargetPlayerDisplay(tip,comparison)
     label:SetAlpha(youAlpha);label:Show()
     line:SetAlpha(nameAlpha);tip.ftTargetAlphaLine=line
 end
+-- The beta's "Press F6 to submit an issue" line (and the gap above it) is
+-- added at the bottom of unit tooltips. Our Target line belongs with the
+-- unit's own lines, so move it above that footer.
+function System:RaiseTargetLine(tip)
+    local index=tip.ftTargetLine; if not index or index<3 then return end
+    local prefix=tip:GetName() or "GameTooltip"
+    local function left(i) return _G[prefix.."TextLeft"..i] end
+    local footer
+    for i=index-1,2,-1 do
+        local line=left(i); local text=line and line:GetText()
+        if text~=nil and not usable(text) then return end
+        if type(text)=="string" and text:lower():find("to submit an issue",1,true) then footer=i; break end
+    end
+    if not footer then return end
+    -- Take the empty spacer line above the footer with it.
+    local above=left(footer-1); local aboveText=above and above:GetText()
+    if footer>2 and usable(aboveText) and (aboveText==nil or aboveText=="" or aboveText==" ") then footer=footer-1 end
+    -- Shift the lines from the footer down by one and put Target in its place.
+    local target=left(index); if not target then return end
+    local text=target:GetText(); if not usable(text) then return end
+    local r,g,b=target:GetTextColor()
+    for i=index,footer+1,-1 do
+        local to,from=left(i),left(i-1)
+        local t=from:GetText(); if t~=nil and not usable(t) then return end
+        local fr,fg,fb=from:GetTextColor()
+        to:SetText(t or " "); to:SetTextColor(fr,fg,fb)
+    end
+    local line=left(footer); line:SetText(text); line:SetTextColor(r,g,b)
+    tip.ftTargetLine=footer
+end
 function System:TooltipTarget(tip)
     self:ClearTargetPlayerDisplay(tip)
     self:TooltipClass(tip)
@@ -509,6 +553,7 @@ function System:TooltipTarget(tip)
         if not left then
             tip:AddLine("Target: Unavailable",1,.82,0)
             tip.ftTargetLine=tip:NumLines()
+            self:RaiseTargetLine(tip)
             left=_G[prefix.."TextLeft"..tip.ftTargetLine]
         end
         local right=_G[prefix.."TextRight"..tip.ftTargetLine]
@@ -528,7 +573,7 @@ function System:TooltipTarget(tip)
         local right=_G[(tip:GetName() or "GameTooltip").."TextRight"..tip.ftTargetLine]
         if right then right:SetText("") end
         line:SetText("Target: "..colored)
-    else tip:AddLine("Target: "..colored,1,.82,0); tip.ftTargetLine=tip.NumLines and tip:NumLines() end
+    else tip:AddLine("Target: "..colored,1,.82,0); tip.ftTargetLine=tip.NumLines and tip:NumLines(); self:RaiseTargetLine(tip) end
     FT.modules.Tooltip:ApplyTooltip(tip)
     self:TargetPlayerDisplay(tip,comparison)
 end

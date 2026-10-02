@@ -10,9 +10,9 @@ local _,FT=...
 --     seconds), or an effect the spell removes (Stoneform: poison/disease;
 --     Will of the Forsaken: fear/charm/sleep; Escape Artist: roots; curse
 --     breakers: curses). Each at most once per 30 seconds.
---   Leveling fallback: after about 15 kills without using a ready offensive
+--   Leveling fallback: after about 8 kills without using a ready offensive
 --     cooldown, the next fight gets a quiet nudge (no sound), at most once
---     every 10 minutes. Kills are counted from the XP-gain message.
+--     every 5 minutes. Kills are counted from the XP-gain message.
 --   Off: never reminded.
 -- Known spells get their role automatically; anything else starts Off and
 -- you can set it. Work happens only in combat, on events, and only for roles
@@ -21,7 +21,7 @@ local _,FT=...
 local CD={}
 local TOUGH_DELAY,PULL_DELAY,PULL_SIZE,GAP,SHOW,DEF_GAP=2,4,3,60,6,30
 local BURST_WINDOW,BURST_SHARE=5,1/3
-local NUDGE_KILLS,NUDGE_GAP,NUDGE_DELAY=15,600,3
+local NUDGE_KILLS,NUDGE_GAP,NUDGE_DELAY=8,300,3
 local function secret(v) return issecretvalue and issecretvalue(v) or false end
 local function yes(v) return not secret(v) and v and true or false end
 local function safe(fn,...) if not fn then return end local ok,a,b,c,d=pcall(fn,...) if ok then return a,b,c,d end end
@@ -83,12 +83,16 @@ local function minutes(text)
     n=text:match("([%d%.]+)%s*[Hh]our") ; if n then return tonumber(n)*3600 end
     n=text:match("([%d%.]+)%s*[Ss]ec") ; if n and text:lower():find("cooldown",1,true) then return tonumber(n) end
 end
--- Cooldowns never change for a spell ID, so each is read only once.
-local known={}
+-- Cooldowns never change for a spell ID, so each is read only once. A spell
+-- that shows no cooldown gets a few more tries first: right after login the
+-- game may not have its data yet, and a racial must not be missed for good.
+local baseCooldown,tries={},{}
 function CD:BaseCooldown(id)
-    if known[id]~=nil then return known[id] or nil end
-    known[id]=self:ReadCooldown(id) or false
-    return known[id] or nil
+    if baseCooldown[id]~=nil then return baseCooldown[id] or nil end
+    local seconds=self:ReadCooldown(id)
+    if seconds then baseCooldown[id]=seconds; return seconds end
+    tries[id]=(tries[id] or 0)+1
+    if tries[id]>=3 then baseCooldown[id]=false end
 end
 function CD:ReadCooldown(id)
     if GetSpellBaseCooldown then
@@ -124,7 +128,8 @@ function CD:Candidates()
         if a.racial~=b.racial then return a.racial end
         return a.name<b.name
     end)
-    self.cache=list
+    -- An empty spellbook usually means it has not loaded yet: look again next time.
+    if ok and type(spells)=="table" and #spells>0 then self.cache=list end
     return list
 end
 function CD:Trinkets()
@@ -149,10 +154,13 @@ local function ready(start,duration)
     if type(start)~="number" or type(duration)~="number" then return nil end
     return start==0 or duration<=1.5 or start+duration-GetTime()<=0
 end
-function CD:Ready(entry)
+-- What the game says: true, false, or nil when it hides cooldowns (it does
+-- in combat) or has no answer.
+function CD:GameReady(entry)
     if entry.trinket then
         local start,duration,enabled=safe(GetInventoryItemCooldown,"player",entry.slot)
-        if secret(enabled) or enabled==0 then return false end
+        if secret(enabled) then return nil end
+        if enabled==0 then return false end
         return ready(start,duration)
     end
     if C_Spell and C_Spell.GetSpellCooldown then
@@ -164,15 +172,65 @@ function CD:Ready(entry)
         return ready(start,duration)
     end
 end
+-- Our own record of when each cooldown is ready again: read from the game
+-- whenever it answers (out of combat), and set from your own casts in a
+-- fight. Without it a hidden cooldown could never be called ready.
+CD.readyAt={}
+function CD:Ready(entry)
+    local answer=self:GameReady(entry)
+    if answer~=nil then return answer end
+    local at=self.readyAt[entry.key]
+    return not at or GetTime()>=at
+end
+function CD:Sample()
+    local now=GetTime()
+    local function note(entry)
+        if self:Role(entry)=="off" then return end
+        local answer=self:GameReady(entry)
+        if answer==true then self.readyAt[entry.key]=nil
+        elseif answer==false then
+            -- On cooldown: remember when it ends, if the game says so.
+            local start,duration
+            if entry.trinket then start,duration=safe(GetInventoryItemCooldown,"player",entry.slot)
+            elseif C_Spell and C_Spell.GetSpellCooldown then local info=safe(C_Spell.GetSpellCooldown,entry.id); if type(info)=="table" then start,duration=info.startTime,info.duration end
+            elseif GetSpellCooldown then start,duration=safe(GetSpellCooldown,entry.id) end
+            if not secret(start) and not secret(duration) and type(start)=="number" and type(duration)=="number" and start>0 then self.readyAt[entry.key]=start+duration
+            elseif not self.readyAt[entry.key] then self.readyAt[entry.key]=now+(entry.cooldown or 120) end
+        end
+    end
+    for _,entry in ipairs(self:Trinkets()) do note(entry) end
+    for _,entry in ipairs(self:Candidates()) do note(entry) end
+end
+-- You used it (seen from your own cast): on cooldown from now.
+function CD:Used(entry)
+    local length=entry.cooldown
+    if not length and entry.spellID then length=self:BaseCooldown(entry.spellID) end
+    self.readyAt[entry.key]=GetTime()+(length or 120)
+end
 
--- Is this fight worth a reminder?
-local function tough()
-    if not yes(safe(UnitExists,"target")) or not yes(safe(UnitCanAttack,"player","target")) then return false end
+-- Is this fight worth a reminder? true or false, or nil when the game hides
+-- the target's details (then the last answer for this target is used).
+local function toughNow()
+    local exists=safe(UnitExists,"target")
+    if secret(exists) then return nil end
+    if not exists then return false end
+    local attack=safe(UnitCanAttack,"player","target")
+    if secret(attack) then return nil end
+    if not attack then return false end
     local class=safe(UnitClassification,"target")
     if not secret(class) and (class=="elite" or class=="rare" or class=="rareelite" or class=="worldboss") then return true end
     local level,mine=safe(UnitLevel,"target"),UnitLevel("player")
-    if secret(level) or type(level)~="number" then return false end
+    if secret(level) or secret(class) or type(level)~="number" then return nil end
     return level==-1 or level>=mine+3
+end
+function CD:NoteTarget()
+    -- A new target: the old answer no longer applies.
+    self.targetTough=toughNow()
+end
+local function tough()
+    local answer=toughNow()
+    if answer==nil then answer=CD.targetTough end
+    return answer==true
 end
 local function pullSize()
     if not C_NamePlate or not C_NamePlate.GetNamePlates then return 0 end
@@ -324,6 +382,9 @@ events:SetScript("OnEvent",function(_,event,unit,a,b,c)
     if not FT.dbReady then return end
     if event=="PLAYER_REGEN_DISABLED" then
         CD.fight={}; CD.damage={}
+        -- Last look before the game may hide things for the fight.
+        CD:Sample()
+        local answer=toughNow(); if answer~=nil then CD.targetTough=answer end
         events:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED","player")
         local s=CD:Settings()
         if s.defensive and #CD:Defensives()>0 then
@@ -333,8 +394,16 @@ events:SetScript("OnEvent",function(_,event,unit,a,b,c)
         C_Timer.After(TOUGH_DELAY,function() CD:Check("tough") end)
         C_Timer.After(PULL_DELAY,function() CD:Check("pull") end)
         C_Timer.After(NUDGE_DELAY,function() CD:Check("leveling") end)
+    elseif event=="PLAYER_TARGET_CHANGED" then
+        CD:NoteTarget()
+    elseif event=="SPELL_UPDATE_COOLDOWN" or event=="PLAYER_ENTERING_WORLD" then
+        -- Out of combat the game tells us the real state; once a second is plenty.
+        if not InCombatLockdown() then FT:Coalesce("cdSample",function() if not InCombatLockdown() then CD:Sample() end end,1) end
+    elseif event=="SPELLS_CHANGED" then
+        if not InCombatLockdown() then FT:Coalesce("cdSpells",function() CD.cache=nil; if CD.frame and CD.frame:IsShown() then CD:Refresh() end end,1) end
     elseif event=="PLAYER_REGEN_ENABLED" then
         CD.fight=nil; CD.damage=nil
+        FT:Coalesce("cdSample",function() if not InCombatLockdown() then CD:Sample() end end,1)
         for _,e in ipairs({"UNIT_SPELLCAST_SUCCEEDED","UNIT_COMBAT","UNIT_AURA","LOSS_OF_CONTROL_ADDED"}) do events:UnregisterEvent(e) end
         if CD.notice then CD.notice:Hide() end
     elseif event=="UNIT_COMBAT" then
@@ -351,8 +420,13 @@ events:SetScript("OnEvent",function(_,event,unit,a,b,c)
         -- You used one of your offensive cooldowns: no reminder this fight.
         local spellID=b
         if not CD.fight or secret(spellID) or type(spellID)~="number" then return end
-        for _,entry in ipairs(CD:Candidates()) do if entry.id==spellID and CD:Chosen(entry) then CD.fight.used=true; CD.kills=0; if CD.notice then CD.notice:Hide() end return end end
-        for _,entry in ipairs(CD:Trinkets()) do if entry.spellID==spellID and CD:Chosen(entry) then CD.fight.used=true; CD.kills=0; if CD.notice then CD.notice:Hide() end return end end
+        local function used(entry)
+            -- Every cooldown you use is on cooldown from now, whatever its role.
+            CD:Used(entry)
+            if CD:Chosen(entry) then CD.fight.used=true; CD.kills=0; if CD.notice then CD.notice:Hide() end end
+        end
+        for _,entry in ipairs(CD:Candidates()) do if entry.id==spellID then used(entry); return end end
+        for _,entry in ipairs(CD:Trinkets()) do if entry.spellID==spellID then used(entry); return end end
     elseif event=="CHAT_MSG_COMBAT_XP_GAIN" then
         -- One kill ("X dies, you gain N experience"); quest XP doesn't count.
         if secret(unit) or type(unit)~="string" then return end
@@ -367,7 +441,7 @@ end)
 function CD:Apply()
     if not FT.dbReady then return end
     if self:Settings().enabled then
-        for _,event in ipairs({"PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","LEARNED_SPELL_IN_SKILL_LINE","PLAYER_LEVEL_UP","PLAYER_TALENT_UPDATE"}) do pcall(events.RegisterEvent,events,event) end
+        for _,event in ipairs({"PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","LEARNED_SPELL_IN_SKILL_LINE","PLAYER_LEVEL_UP","PLAYER_TALENT_UPDATE","PLAYER_TARGET_CHANGED","SPELL_UPDATE_COOLDOWN","PLAYER_ENTERING_WORLD","SPELLS_CHANGED"}) do pcall(events.RegisterEvent,events,event) end
         if self:Settings().leveling then pcall(events.RegisterEvent,events,"CHAT_MSG_COMBAT_XP_GAIN") else events:UnregisterEvent("CHAT_MSG_COMBAT_XP_GAIN") end
     else events:UnregisterAllEvents(); self.fight=nil; if self.notice then self.notice:Hide() end end
     self:Refresh()
@@ -407,7 +481,8 @@ function CD:Refresh()
                 local e=row.entry; if not e then return "" end
                 local role=self:Role(e)
                 local when=role=="offensive" and "Reminded on tough targets and big pulls, once per fight." or role=="defensive" and ("Reminded "..needLabel(e.need)..", at most every 30 seconds.") or "Never reminded."
-                return e.name..(e.trinket and " (trinket)" or e.racial and " (racial)" or "").."\n"..when.."\n\nClick to change it: Offensive, then Defensive, then Off."
+                local state=self:Ready(e) and "Ready now." or "On cooldown now."
+                return e.name..(e.trinket and " (trinket)" or e.racial and " (racial)" or "").."\n"..when.."\n"..state.."\n\nClick to change it: Offensive, then Defensive, then Off."
             end)
             self.rows[i]=row
         end
@@ -444,7 +519,7 @@ function CD:Open()
         FT:Tooltip(self.soundToggle,"Sound","Also play a soft chime with the notice (effects volume).")
         self.levelToggle=FT:QuietButton(frame,"",472,32,"fps"); self.levelToggle:SetPoint("TOPLEFT",24,-186)
         self.levelToggle:SetScript("OnClick",function() local s=self:Settings(); s.leveling=not s.leveling; self:Apply() end)
-        FT:Tooltip(self.levelToggle,"Remind while leveling","Leveling fights are rarely tough enough for the other reminders. After about 15 kills without using a ready offensive cooldown, the next fight gets a quiet nudge: a slightly see-through notice, no sound, at most once every 10 minutes. Using one of your offensive cooldowns starts the count over.")
+        FT:Tooltip(self.levelToggle,"Remind while leveling","Leveling fights are rarely tough enough for the other reminders. After about 8 kills without using a ready offensive cooldown, the next fight gets a quiet nudge: a slightly see-through notice, no sound, at most once every 5 minutes. Using one of your offensive cooldowns starts the count over.")
         local preview=FT:QuietButton(frame,"Preview",472,32,"buffs"); preview:SetPoint("TOPLEFT",24,-226)
         preview:SetScript("OnClick",function()
             local list={}
@@ -462,6 +537,8 @@ function CD:Open()
         self.list=CreateFrame("Frame",nil,scroll); self.list:SetSize(440,1); scroll:SetScrollChild(self.list)
         self.empty=FT:Label(box,"No on-use trinkets or long cooldowns found yet.",13); self.empty:SetPoint("CENTER")
     end
+    -- Read the spellbook again: a cooldown missed earlier shows up now.
+    if not InCombatLockdown() then self.cache=nil end
     self:Refresh(); self.frame:Show()
 end
 FT:RegisterModule("CooldownReminder",CD)

@@ -1,8 +1,9 @@
 local _,FT=...
--- Totems (shamans; off by default). For now one feature: a soft circle on
--- the minimap for each totem you place, showing its 30-yard reach, so you
--- can see when you're about to leave it or need a new one. More totem
--- tools will live on this page later.
+-- Totems (shamans; off by default). Two tools:
+--  * a soft circle on the minimap for each totem you place, showing its
+--    30-yard reach, so you can see when you're about to leave it;
+--  * a left-behind warning: the totem's own icon under the player frame
+--    pulses red once you are farther from it than a distance you choose.
 --
 -- The game doesn't say where a totem stands, so the spot is your own map
 -- position at the moment you place it. After Totemic Projection moves your
@@ -20,6 +21,8 @@ function Totems:Settings()
     if type(FT.db.totems)~="table" then FT.db.totems={} end
     local s=FT.db.totems
     if type(s.range)~="boolean" then s.range=false end
+    if type(s.leftBehind)~="boolean" then s.leftBehind=false end
+    s.leftRange=math.max(20,math.min(60,tonumber(s.leftRange) or 30))
     if type(s.opacity)~="number" or s.opacity~=s.opacity then s.opacity=.85 end
     -- Earlier test defaults (softer, older earth color) move to the new ones
     -- unless they were changed.
@@ -73,6 +76,19 @@ local function here()
     return continent,wx,wy,d[1],d[2],d[3],d[4]
 end
 Totems.placed={}
+-- Every totem standing right now, with or without a known spot:
+-- [slot]={start=,name=,moved=}. "moved" is how many yards you have run since
+-- it went down where the game gives no position (nil when we can't tell).
+Totems.up={}
+Totems.warned={}
+-- In a fight the game can hide a slot's details. veiled[slot] marks those
+-- slots; maybe[slot] is a slot that changed right after a cast the game
+-- would not name (decided once Blizzard has redrawn its totem icons).
+Totems.veiled={}
+Totems.maybe={}
+local active={}
+-- Counters for the bug report: which of these paths this client really takes.
+local seen={hidden=0,casts=0,hiddenCasts=0,guessed=0,dropped=0}
 -- The circles: one per totem slot, clipped to a round minimap.
 function Totems:Layer()
     if self.layer or not Minimap then return self.layer end
@@ -167,21 +183,34 @@ for slot,list in ipairs({
     for _,n in ipairs(list) do elementOf[n]=slot end
 end
 local function slotOf(spell) for n,slot in pairs(elementOf) do if spell:find(n,1,true) then return slot end end end
-function Totems:MatchCast(name,slot)
+function Totems:MatchCast(name,slot,changed)
     local now=GetTime(); local lower=type(name)=="string" and name:lower() or ""
     local fallback
     for i,c in ipairs(self.casts) do
-        -- Hidden details: only a cast known to be for this element counts.
+        -- Hidden details: a cast known to be for this element counts. A totem
+        -- whose element we don't know counts only for the slot the game says
+        -- just changed.
         if slot then
-            if not c.used and now-c.time<3 and slotOf(c.name)==slot then c.used=true; return c end
+            if not c.used and now-c.time<3 then
+                local element=slotOf(c.name)
+                if element==slot then c.used=true; return c end
+                if changed and not element then fallback=fallback or c end
+            end
         elseif not c.used and now-c.time<3 then
             if lower~="" and (lower:find(c.name,1,true) or c.name:find(lower,1,true)) then c.used=true; return c end
             fallback=fallback or c
         end
     end
-    if slot then return end
     if fallback then fallback.used=true end
     return fallback
+end
+-- Is this record, made while the game hid the details, the totem the game
+-- now describes? Same name, and it went down when the record was made (so a
+-- record that went stale during a fight is never taken for a newer totem).
+local function sameTotem(rec,name,start)
+    if not rec or not rec.hidden then return false end
+    if rec.castAt and math.abs(start-rec.castAt)>3 then return false end
+    return type(rec.name)~="string" or name:lower():find(rec.name,1,true)~=nil
 end
 function Totems:Update(slot,noDraw,changed)
     if type(slot)~="number" or slot<1 or slot>4 then return end
@@ -189,18 +218,32 @@ function Totems:Update(slot,noDraw,changed)
     if secret(have) or secret(start) or secret(duration) or secret(name) then
         -- In combat the game can hide totem details. Keep what we drew, and
         -- place a totem you just cast by its element (known from its name).
-        local cast=self:MatchCast(nil,slot)
-        if cast and cast.continent then self.placed[slot]={continent=cast.continent,x=cast.x,y=cast.y,name=cast.name,hidden=true}
+        self.veiled[slot]=true; seen.hidden=seen.hidden+1
+        local cast=self:MatchCast(nil,slot,changed)
+        if cast then
+            -- A new totem always replaces what we knew about the slot, also
+            -- when we could not tell where you stood.
+            self.placed[slot]=cast.continent and {continent=cast.continent,x=cast.x,y=cast.y,name=cast.name,hidden=true,castAt=cast.time} or nil
+            self.up[slot]={moved=0,name=cast.name,hidden=true,castAt=cast.time}
         elseif changed then
-            -- The game says this slot changed and you didn't just cast a totem
-            -- for it: it was clicked away, destroyed or ran out.
-            self.placed[slot]=nil
+            -- The game says this slot changed and we saw no totem cast for
+            -- it: it was clicked away, destroyed or ran out...
+            self.placed[slot]=nil; self.up[slot]=nil
+            -- ...unless you just cast something the game would not name.
+            local at=self.hiddenCast
+            if at and GetTime()-at<1.5 then self.maybe[slot]=at end
         end
     elseif have and type(start)=="number" and type(duration)=="number" and duration>0 and type(name)=="string" and name~="" then
+        self.veiled[slot]=nil
+        local up=self.up[slot]
+        if sameTotem(up,name,start) then up.start,up.name,up.hidden=start,name,nil end
+        -- A new totem in this slot: the yards-run count starts over. One that
+        -- was up before we were watching has no count.
+        if not up or up.start~=start or up.name~=name then self.up[slot]={start=start,name=name,moved=(GetTime()-start<3) and 0 or nil} end
         local old=self.placed[slot]
         -- Placed while the game hid the details: now we can read them, keep
         -- the spot if it's the same totem.
-        if old and old.hidden and type(old.name)=="string" and name:lower():find(old.name,1,true) then old.start,old.name,old.hidden=start,name,nil; old=self.placed[slot] end
+        if sameTotem(old,name,start) then old.start,old.name,old.hidden=start,name,nil end
         -- A different totem than the one we drew (or none drawn yet).
         if not old or old.start~=start or old.name~=name then
             local cast=self:MatchCast(name)
@@ -214,28 +257,190 @@ function Totems:Update(slot,noDraw,changed)
                 self.placed[slot]=nil
             end
         end
-    else self.placed[slot]=nil end
+    else self.veiled[slot]=nil; self.placed[slot]=nil; self.up[slot]=nil end
     if noDraw then return end
-    local layer=self:Layer(); if layer then self:Paint(); layer:Show(); self:Draw() end
+    self:Show()
+end
+-- Draw the circles (if that tool is on) and bring the warning up to date.
+function Totems:Show()
+    if self:Settings().range then
+        local layer=self:Layer(); if layer then self:Paint(); layer:Show(); self:Draw() end
+    end
+    self:Watch()
 end
 -- All four slots at once: the event's slot number isn't always the one that
 -- changed (replacing a totem can report only the old one).
 function Totems:Scan(changed)
+    -- A look-again timer can fire after both tools were turned off.
+    if not self.tracking then return end
     if secret(changed) then changed=nil end
     for slot=1,4 do self:Update(slot,true,slot==changed) end
-    local layer=self:Layer(); if layer then self:Paint(); layer:Show(); self:Draw() end
+    self:Show()
+    -- Blizzard redraws its totem icons on the same event; compare on the
+    -- next frame, when they are up to date whichever of us ran first.
+    FT:Coalesce("totemSync",function() self:Sync() end,0)
+end
+-- Blizzard's own totem icons say which slots hold a totem, also in a fight.
+-- Called right after Blizzard redraws them. For slots whose details are
+-- hidden: no icon means the totem is gone (forget it), and an icon in a slot
+-- that changed right after an unnamed cast is a totem you just placed, here.
+-- Blizzard also hands its icons out again on every redraw, so the pulse is
+-- repainted each time or it would stay on an icon that now shows another totem.
+function Totems:Sync()
+    if not self.tracking then return end
+    local frame=TotemFrame
+    local changed=false
+    if frame and frame.GetChildren and frame.IsEventRegistered and frame:IsEventRegistered("PLAYER_TOTEM_UPDATE")==true then
+        for slot=1,4 do active[slot]=nil end
+        for _,button in ipairs({frame:GetChildren()}) do
+            local slot=button.slot
+            if not secret(slot) and type(slot)=="number" and button:IsShown()==true then active[slot]=true end
+        end
+        local now=GetTime()
+        for slot=1,4 do
+            if self.veiled[slot] then
+                local rec=self.up[slot] or self.placed[slot]
+                if not active[slot] then
+                    -- A totem cast a moment ago may not have its icon yet.
+                    if rec and not (rec.castAt and now-rec.castAt<1.2) then
+                        self.up[slot]=nil; self.placed[slot]=nil; changed=true; seen.dropped=seen.dropped+1
+                    end
+                elseif self.maybe[slot] and not rec then
+                    local at=self.maybe[slot]
+                    local continent,wx,wy=here()
+                    self.up[slot]={moved=0,hidden=true,castAt=at}
+                    self.placed[slot]=continent and {continent=continent,x=wx,y=wy,hidden=true,castAt=at} or nil
+                    changed=true; seen.guessed=seen.guessed+1
+                end
+            end
+            self.maybe[slot]=nil
+        end
+    end
+    if changed then self:Show() end
+    self:PaintWarnings()
+end
+-- One line for the bug report (our own numbers only, nothing hidden).
+function Totems:Report()
+    local parts={}
+    for slot=1,4 do
+        local up,p=self.up[slot],self.placed[slot]
+        if up or p then
+            parts[#parts+1]=slot..":"..((up and up.hidden or p and p.hidden) and "hidden" or "known")..(p and "+spot" or "")..(self.warned[slot] and "+warn" or "")
+        end
+    end
+    return "Totems: "..(#parts>0 and table.concat(parts," ") or "none up").." · hidden reads "..seen.hidden..", totem casts "..seen.casts..", unnamed casts "..seen.hiddenCasts..", guessed "..seen.guessed..", dropped "..seen.dropped
+end
+
+-- Left-behind warning. Checked five times a second, and only while a totem
+-- is standing; nothing runs otherwise.
+local watcher=CreateFrame("Frame"); watcher:Hide()
+local waited=0
+watcher:SetScript("OnUpdate",function(_,dt)
+    waited=waited+dt
+    if waited<.2 then return end
+    local elapsed=waited; waited=0
+    Totems:Check(elapsed)
+end)
+function Totems:Watch()
+    local on=self:Settings().leftBehind==true and next(self.up)~=nil
+    watcher:SetShown(on)
+    if on then self:Check(0)
+    elseif next(self.warned) then self.warned={}; self:PaintWarnings() end
+    -- Blizzard moves its totem icons around on the same event: look again
+    -- on the next frame so the pulse sits on the right icon.
+    if on or self.ringsUsed then FT:Coalesce("totemWarning",function() self:PaintWarnings() end,0) end
+end
+function Totems:Check(elapsed)
+    local limit=self:Settings().leftRange
+    local continent,wx,wy=here()
+    -- Where the game gives no position (dungeons, raids) the distance is a
+    -- guess: the yards you have run since the totem went down, counted out
+    -- of combat only (in a fight you mostly move around your totems).
+    local run=0
+    if not continent and elapsed>0 and not InCombatLockdown() then
+        local speed=safe(GetUnitSpeed,"player")
+        if not secret(speed) and type(speed)=="number" then run=speed*math.min(elapsed,1) end
+    end
+    local changed=false
+    for slot=1,4 do
+        local up,warn=self.up[slot],false
+        if up then
+            local p=self.placed[slot]
+            -- The spot must be this totem's own, never an earlier totem's.
+            if p and (p.start~=up.start or (up.start==nil and p.castAt~=up.castAt)) then p=nil end
+            if continent and p and p.continent==continent then
+                local dx,dy=p.x-wx,p.y-wy
+                warn=dx*dx+dy*dy>limit*limit
+            elseif not continent and up.moved then
+                up.moved=up.moved+run; warn=up.moved>limit
+            end
+        end
+        if (self.warned[slot]==true)~=warn then self.warned[slot]=warn or nil; changed=true end
+    end
+    if changed then self:PaintWarnings() end
+end
+-- The pulse: a red copy of the icon's ring, on top of Blizzard's own, fading
+-- in and out. The ring underneath (and its skin color) is never changed.
+local rings=setmetatable({},{__mode="k"})
+local RING="UI-HUD-UnitFrame-TotemFrame"
+local function ringFor(button)
+    local holder=rings[button]
+    if holder then return holder end
+    holder=CreateFrame("Frame",nil,button)
+    holder:SetAllPoints(button.Border or button)
+    if holder.SetFrameLevel and button.GetFrameLevel then holder:SetFrameLevel((button:GetFrameLevel() or 0)+3) end
+    local art=C_Texture and C_Texture.GetAtlasInfo and safe(C_Texture.GetAtlasInfo,RING)
+    for i=1,2 do
+        local t=holder:CreateTexture(nil,"OVERLAY",nil,5+i)
+        if art then t:SetAtlas(RING) else t:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder") end
+        t:SetAllPoints(holder); if t.SetDesaturated then t:SetDesaturated(true) end
+        t:SetVertexColor(1,.1,.06,i==1 and 1 or .7)
+        -- The second layer adds light, so the red stays bright on a dark ring.
+        if i==2 then t:SetBlendMode("ADD") end
+    end
+    local pulse=holder:CreateAnimationGroup(); pulse:SetLooping("BOUNCE")
+    local fade=pulse:CreateAnimation("Alpha"); fade:SetFromAlpha(0); fade:SetToAlpha(1); fade:SetDuration(.55); fade:SetSmoothing("IN_OUT")
+    holder.pulse=pulse; holder:Hide()
+    rings[button]=holder
+    return holder
+end
+function Totems:PaintWarnings()
+    local frame=TotemFrame
+    if not frame or not frame.GetChildren then return end
+    local any=false
+    for _,button in ipairs({frame:GetChildren()}) do
+        local slot=button.slot
+        local on=not secret(slot) and type(slot)=="number" and self.warned[slot]==true and button:IsShown()==true
+        local holder=rings[button]
+        if on and not holder then holder=ringFor(button) end
+        if holder then
+            holder:SetShown(on)
+            if on then any=true; if not holder.pulse:IsPlaying() then holder.pulse:Play() end
+            elseif holder.pulse:IsPlaying() then holder.pulse:Stop() end
+        end
+    end
+    self.ringsUsed=any
 end
 local events=CreateFrame("Frame")
 events:SetScript("OnEvent",function(_,event,a,_,spellID)
     if event=="PLAYER_TOTEM_UPDATE" then Totems:Scan(a)
+    elseif event=="PLAYER_REGEN_ENABLED" then
+        -- The fight is over: details are readable again, so check every slot
+        -- against the game (now, and once more in case they lag a moment).
+        Totems:Scan(); C_Timer.After(1,function() Totems:Scan() end)
     elseif event=="UNIT_SPELLCAST_SUCCEEDED" then
-        if secret(spellID) or type(spellID)~="number" then return end
+        if secret(spellID) or type(spellID)~="number" then
+            -- The game won't say what you cast; remember only that you did.
+            if secret(spellID) then Totems.hiddenCast=GetTime(); seen.hiddenCasts=seen.hiddenCasts+1 end
+            return
+        end
         local name=C_Spell and C_Spell.GetSpellName and safe(C_Spell.GetSpellName,spellID) or (GetSpellInfo and safe(GetSpellInfo,spellID))
         if type(name)~="string" or secret(name) then return end
         -- Totemic Projection moves your totems to a spot we can't see.
         if name:lower()=="totemic projection" then
             Totems.placed={}; if Totems.layer then Totems:Draw() end
-        elseif isTotemSpell(name) then Totems:NoteCast(name) end
+            for _,up in pairs(Totems.up) do up.moved=nil end
+        elseif isTotemSpell(name) then seen.casts=seen.casts+1; Totems:NoteCast(name) end
     elseif event=="PLAYER_ENTERING_WORLD" then
         -- A new zone or loading screen: earlier spots may be on another map.
         Totems:Scan()
@@ -243,13 +448,22 @@ events:SetScript("OnEvent",function(_,event,a,_,spellID)
 end)
 function Totems:Apply()
     if not FT.dbReady then return end
-    if self:Settings().range and isShaman() then
-        events:RegisterEvent("PLAYER_TOTEM_UPDATE"); events:RegisterEvent("PLAYER_ENTERING_WORLD")
+    local s=self:Settings()
+    self.tracking=(s.range or s.leftBehind) and isShaman() or false
+    if self.tracking then
+        events:RegisterEvent("PLAYER_TOTEM_UPDATE"); events:RegisterEvent("PLAYER_ENTERING_WORLD"); events:RegisterEvent("PLAYER_REGEN_ENABLED")
+        -- Follow Blizzard's totem icons: every redraw can move them around.
+        if not self.hooked and hooksecurefunc and TotemFrame and type(TotemFrame.Update)=="function" then
+            self.hooked=true
+            hooksecurefunc(TotemFrame,"Update",function() Totems:Sync() end)
+        end
         events:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED","player")
-        self:Paint()
+        if s.range then self:Paint() elseif self.layer then self.layer:Hide() end
+        self:Scan()
     else
-        events:UnregisterAllEvents(); self.placed={}
+        events:UnregisterAllEvents(); self.placed={}; self.up={}; self.veiled={}; self.maybe={}
         if self.layer then self.layer:Hide() end
+        self:Watch()
     end
     self:Refresh()
 end
@@ -263,6 +477,10 @@ function Totems:Refresh()
     for _,e in ipairs(elements) do local b=self.colorButtons[e.key]; b.swatch:SetVertexColor(unpack(s.colors[e.key])); b:SetAlpha(s.range and 1 or .5) end
     self.settingSlider=true; self.slider:SetValue(1-s.opacity); self.settingSlider=false
     self.opacityLabel:SetText("Circle transparency: "..math.floor(100-s.opacity*100+.5).."%")
+    self.leftToggle.label:SetText("Left-behind warning: "..(s.leftBehind and "On" or "Off")); FT:SetSelected(self.leftToggle,s.leftBehind)
+    self.settingSlider=true; self.leftSlider:SetValue(s.leftRange); self.settingSlider=false
+    self.leftLabel:SetText("Warn beyond: "..s.leftRange.." yards")
+    self.leftLabel:SetAlpha(s.leftBehind and 1 or .5); self.leftSlider:SetAlpha(s.leftBehind and 1 or .5)
 end
 function Totems:PickColor(key)
     local c=self:Settings().colors[key]; local old={c[1],c[2],c[3]}
@@ -275,9 +493,9 @@ function Totems:PickColor(key)
 end
 function Totems:Open()
     if not self.frame then
-        local frame=FT:Window("ForeverToolsTotems","Totems",520,284); self.frame=frame
+        local frame=FT:Window("ForeverToolsTotems","Totems",520,372); self.frame=frame
         FT:BackTo(frame,"SystemCombat")
-        FT:PageInfo(frame,"Totems","Tools for shamans' totems. More are on the way.")
+        FT:PageInfo(frame,"Totems","Tools for shamans' totems.\n\nTotem range on minimap: a circle for each totem's 30-yard reach.\n\nLeft-behind warning: the totem's own icon under your player frame pulses red once you are farther from it than the distance you set, so a forgotten totem doesn't pull for you. Right-click the icon to remove the totem. Outdoors the distance is measured from where you placed it. In dungeons and raids the game hides your position, so it is a guess: the yards you have run out of combat since you placed it. That can warn a little early if you run back and forth.")
         self.toggle=FT:AccentButton(frame,"",472,34,"Spell_Nature_StoneSkinTotem"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function() local s=self:Settings(); s.range=not s.range; self:Apply() end)
         FT:Tooltip(self.toggle,"Totem range on minimap","A circle on the minimap in each totem's element color, showing its 30-yard reach, so you can see when you're leaving it or need a new one. The spot is where you stood when you placed it. After Totemic Projection the circles hide until you place again, and in dungeons and raids the game hides your position, so nothing is drawn there.")
@@ -301,7 +519,23 @@ function Totems:Open()
         slider:SetScript("OnValueChanged",function(_,v) if self.settingSlider then return end; self:Settings().opacity=1-v; self:Paint(); self:Refresh() end)
         FT:Tooltip(slider,"Circle transparency","How see-through the circles are. Slide right for more see-through.")
         self.slider=slider
-        self.note=FT:Label(frame,"",12); self.note:SetPoint("TOPLEFT",24,-236); self.note:SetWidth(472); self.note:SetTextColor(.66,.59,.48)
+        self.leftToggle=FT:AccentButton(frame,"",472,34,"Spell_Fire_SearingTotem"); self.leftToggle:SetPoint("TOPLEFT",24,-236)
+        self.leftToggle:SetScript("OnClick",function() local s=self:Settings(); s.leftBehind=not s.leftBehind; self:Apply() end)
+        FT:Tooltip(self.leftToggle,"Left-behind warning","The totem's icon under your player frame pulses red when you are farther from the totem than the distance below, so you don't leave one behind to pull by accident. Right-click the icon to remove the totem. In dungeons and raids the distance is a guess (yards run out of combat since you placed it).")
+        self.leftLabel=FT:Label(frame,"",13); self.leftLabel:SetPoint("TOPLEFT",24,-289)
+        local range=CreateFrame("Slider",nil,frame,"OptionsSliderTemplate"); range:SetSize(240,18); range:SetPoint("TOPLEFT",256,-286)
+        range:SetMinMaxValues(20,60); range:SetValueStep(5); range:SetObeyStepOnDrag(true)
+        local rlow=range.Low or (range.GetName and range:GetName() and _G[range:GetName().."Low"])
+        local rhigh=range.High or (range.GetName and range:GetName() and _G[range:GetName().."High"])
+        if rlow and rlow.SetText then rlow:SetText("20") end
+        if rhigh and rhigh.SetText then rhigh:SetText("60") end
+        range:SetScript("OnValueChanged",function(_,v)
+            if self.settingSlider then return end
+            self:Settings().leftRange=math.floor(v/5+.5)*5; self:Refresh()
+        end)
+        FT:Tooltip(range,"Warning distance","How far you can go from a totem before its icon starts to pulse. Buff totems reach 30 yards.")
+        self.leftSlider=range
+        self.note=FT:Label(frame,"",12); self.note:SetPoint("TOPLEFT",24,-326); self.note:SetWidth(472); self.note:SetTextColor(.66,.59,.48)
     end
     self:Refresh(); self.frame:Show()
 end

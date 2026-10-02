@@ -54,7 +54,12 @@ local elements={
         used=function(m) local s=m:Settings(); local cd=mod("CooldownReminder"); return s.enabled==true or s.groupEnabled==true or (cd and cd:Settings().enabled==true) or false end,
         start=function(m) m:SetMoving(true) end, stop=function(m) if m.moving then m:SetMoving(false) end end,
         frame=function(m) return m.badge end,
-        reset=function(m) local s=m:Settings(); s.x,s.y,s.screenWidth,s.screenHeight=nil,nil,nil,nil; m:Apply() end},
+        reset=function(m)
+            local s=m:Settings(); s.x,s.y,s.screenWidth,s.screenHeight=nil,nil,nil,nil
+            -- Buffs with their own notice go back to their default spots too.
+            for _,st in pairs(type(s.styles)=="table" and s.styles or {}) do if type(st)=="table" then st.x,st.y,st.screenWidth,st.screenHeight=nil,nil,nil,nil end end
+            m.styleStamp=(m.styleStamp or 0)+1; m:Apply()
+        end},
     {key="loot",name="Loot rolls",module="LootRoll",open="SystemGameplay",
         used=function() return true end,
         start=function(m) if not m.moving then m:ToggleMove() end end, stop=function(m) if m.moving then m:FinishMove() end end,

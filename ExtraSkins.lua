@@ -1,7 +1,7 @@
 local _,FT=...
 local S=FT.modules.IconStyles
 S.artwork={};S.bagFills={};S.targetRims={};S.bagSlots={}
-S.extraOptions={{"minimap","Minimap"},{"stances","Stance / totem bars"},{"micro","Micro menu"},{"bags","Bag bar"},{"bagWindows","Bag menu"},{"gryphons","Gryphon frame"},{"player","Player frame"},{"pet","Pet frame"},{"target","Target frame"},{"tot","Target of target"},{"focus","Focus frame"},{"focustarget","Focus target"},{"party","Party frames"},{"personal","Personal resources"},{"castbar","Cast bars"},{"xp","XP / reputation"}}
+S.extraOptions={{"minimap","Minimap"},{"stances","Stance / totem bars"},{"micro","Micro menu"},{"bags","Bag bar"},{"bagWindows","Bag menu"},{"gryphons","Gryphon frame"},{"player","Player frame"},{"pet","Pet frame"},{"target","Target frame"},{"tot","Target of target"},{"focus","Focus frame"},{"focustarget","Focus target"},{"party","Party frames"},{"personal","Personal resources"},{"castbar","Cast bars"},{"swing","Swing timers"},{"xp","XP / reputation"}}
 function S:TintArtwork(texture,key,secondary)
     if not texture or type(texture.GetVertexColor)~="function" or type(texture.SetVertexColor)~="function" then return end
     local record=self.artwork[texture]
@@ -359,6 +359,15 @@ function S:ApplyCastbarArtwork()
         if bar then for _,field in ipairs({"Border","TextBorder","Background"}) do self:TintArtwork(bar[field],"castbar") end end
     end
 end
+-- Forever's weapon swing timers (main hand, off hand, ranged): the frame
+-- around each bar and the backing behind it. The moving fill, the marker
+-- and the text keep their own colors.
+function S:ApplySwingArtwork()
+    for _,name in ipairs({"SwingTimerMainHandFrame","SwingTimerOffHandFrame","SwingTimerRangedFrame"}) do
+        local bar=_G[name]
+        if bar then self:TintArtwork(bar.Border,"swing"); self:TintArtwork(bar.Background,"swing") end
+    end
+end
 -- Totem bar: the element-colored square frames (earth/fire/water/air) on
 -- the multi-cast bar and the round borders on the player totem timers
 -- follow the Stance / totem area color, like other stance-bar borders.
@@ -484,6 +493,7 @@ function S:ApplyArtwork()
     self:ApplyUnitArtwork()
     self:ApplyPersonalArtwork()
     self:ApplyCastbarArtwork()
+    self:ApplySwingArtwork()
     self:ApplyXPArtwork()
     for texture,record in pairs(self.artwork) do self:PaintArtwork(texture,record) end
 end

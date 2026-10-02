@@ -258,14 +258,11 @@ function Editor:CreateUI()
     self.code = CreateFrame("EditBox", nil, scroll); self.code:SetMultiLine(true); self.code:SetAutoFocus(false)
     self.code:SetFont(FT.bodyFont, 15, ""); self.code:SetSize(520, 224); self.code:SetTextInsets(8,8,8,8); FT:Panel(self.code)
     scroll:SetScrollChild(self.code)
-    self.caret = self.code:CreateTexture(nil, "OVERLAY"); self.caret:SetTexture("Interface\\Buttons\\WHITE8x8")
-    self.caret:SetSize(2, 18); self.caret:SetVertexColor(1,.82,0, 1); self.caret:Hide()
+    FT:AutoHideScrollBar(scroll)
     self.code:SetScript("OnCursorChanged", function(_, x, y, width, height)
         local top = -y; local offset = scroll:GetVerticalScroll()
         if top < offset then scroll:SetVerticalScroll(math.max(0, top))
         elseif top + height > offset + scroll:GetHeight() then scroll:SetVerticalScroll(top + height - scroll:GetHeight()) end
-        self.caret:ClearAllPoints(); self.caret:SetPoint("TOPLEFT", self.code, "TOPLEFT", x + 8, y - 8)
-        self.caret:SetHeight(math.max(16, height or 18))
     end)
     self.code:SetScript("OnTextChanged", function(box)
         self.count:SetText(#box:GetText() .. " / 255 bytes")
@@ -277,15 +274,8 @@ function Editor:CreateUI()
         end
     end)
     self.code:SetScript("OnEditFocusLost", function() FT:FlushMacroRevision(self.entry) end)
-    self.code:HookScript("OnEditFocusGained", function()
-        self.caret:Show(); self.caret.elapsed = 0
-        self.code:SetScript("OnUpdate", function(_, elapsed)
-            local caret=self.caret
-            caret.elapsed = (caret.elapsed or 0) + elapsed
-            caret:SetAlpha(0.35 + 0.65 * math.abs(math.sin(caret.elapsed * 4)))
-        end)
-    end)
-    self.code:HookScript("OnEditFocusLost", function() self.caret:Hide(); self.code:SetScript("OnUpdate", nil) end)
+    -- The same typing line and click-to-place as the Macros window.
+    self.caret = FT:TextCaret(self.code, 8)
     self.code:SetScript("OnEscapePressed", function(box) box:ClearFocus() end)
     self.count = FT:Label(frame, "", 12); self.count:SetPoint("TOPLEFT", 24, -480)
     self.message = FT:Label(frame, "", 13); self.message:SetPoint("BOTTOMLEFT", 24, 24); self.message:SetWidth(850)

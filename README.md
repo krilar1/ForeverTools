@@ -1,6 +1,6 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 0.40.0.**
+**Quality-of-life tools for WoW: Forever — version 0.50.0.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
 one place. Everything starts **off**, so the game looks like Blizzard's until you
@@ -14,8 +14,8 @@ the home window. Use **`/rl`** to reload the UI.
 
 - **Skins and dark mode:** Style action bars, buffs and debuffs, bags, micro
   menu, minimap, XP/reputation bars, stance and totem bars, gryphons, unit
-  frames (player, pet, target, focus, party), the personal resource display
-  and cast bars. Choose a preset for all areas or adjust each area separately, with
+  frames (player, pet, target, focus, party), the personal resource display,
+  cast bars and swing timers. Choose a preset for all areas or adjust each area separately, with
   border, fill and transparency controls and separate rare/elite switches.
   Save your own looks as skin templates and switch between them.
 - **Fonts and cooldowns:** Adjust supported fonts, sizes, outlines and colors,
@@ -23,9 +23,9 @@ the home window. Use **`/rl`** to reload the UI.
 - **Unit-frame colors:** Class-colored health bars for player, target,
   target-of-target, focus and focus-target frames. Party colors link to
   Blizzard's Edit Mode settings.
-- **Dispel glow:** A colored outline around player, target, focus, party or
-  raid-style frames while they have a debuff you can remove. Only dispels you
-  have learned count; no icons are added.
+- **Dispel glow:** A soft glow around player, target, focus, party or raid
+  frames while they have a debuff you can remove, in a color per debuff type
+  that you can change. Only dispels you have learned count; no icons are added.
 - **Tooltips:** Build your own player tooltip: turn name, guild, level, race,
   class, faction and target on or off, order them and choose which share a
   line, with a live preview. Also text sizes, position, faction icon, health
@@ -39,13 +39,15 @@ the home window. Use **`/rl`** to reload the UI.
 - **Buff reminders:** Self and group buff notices with talent-based choices,
   weapon enchants, low-rank alerts and an optional low-rank marker on action
   bars, with per-spell exceptions. Choose where notices appear and how long
-  they stay.
+  they stay. Any buff can get a notice look of its own (bar, icon and text, or
+  icon only) with its own size, colors and place on screen.
 - **Leveling stats:** XP per hour, time to level, kills to level, XP progress and
   rested XP. Pick which to show and their order, one per line or on a single
   line, with an optional rounded background; font size and transparency
   sliders; movable, and also added to the XP bar tooltip.
 - **Totems (shamans):** each placed totem's 30-yard reach as a soft circle on
-  the minimap (Combat → Totems).
+  the minimap, and a left-behind warning that pulses the totem's icon red when
+  you move too far from it (Combat → Totems).
 - **Move elements:** The move button in any window's title bar unlocks every on-screen
   element (FPS, leveling stats, flight timer, threat meter, rare alert,
   reminders, loot rolls, tooltip) to drag them all at once, with an option to
@@ -73,6 +75,11 @@ the home window. Use **`/rl`** to reload the UI.
   Click it to target the rare, out of combat (Combat).
 - **Quest objectives:** keep the objective tracker collapsed or open after
   login and reload, or hide it altogether (System → Gameplay).
+- **Death glow:** turn off the glowing screen effect while dead or a ghost
+  (System → Gameplay; the game's own ffxDeath setting).
+- **Druid mana bar:** your mana as a third bar on the player frame while in
+  bear, cat or another form, in the game's own frame art (Appearance →
+  Unitframe colors). Off by default.
 - **Faster looting:** With auto loot on, take everything the moment a corpse
   opens. Off by default.
 - **Merchant helpers:** Optional auto-sell of grey items, and optionally white
@@ -167,6 +174,15 @@ the home window. Use **`/rl`** to reload the UI.
   cancels; scrolling over the list without clicking only pages it.
 - Scroll while hovering a unit (unit frames or characters in the world) to cast
   on that unit. Away from a unit, the wheel keeps zooming the camera.
+- Friendly NPCs (vendors, quest givers) are skipped, so zooming while you talk
+  to one never casts on it. **Cast on friendly NPCs** on the page turns that
+  off. Totems are always skipped; pets never. In combat the wheel casts on
+  friendly NPCs and totems too.
+- A dispel on the wheel (Cure Poison, Remove Curse, Cleanse and the like) is
+  only cast when the unit has a debuff it removes, and never on a player's
+  character in the world: scroll over their unit frame instead. Otherwise the
+  wheel zooms the camera. This works out of combat; in a fight the wheel
+  casts as usual.
 - Bindings change outside combat. If casting does not work, include a bug
   report (System → Troubleshooting → Copy bug report).
 
@@ -174,18 +190,21 @@ the home window. Use **`/rl`** to reload the UI.
 
 - Use **New macro** to add a custom entry to Generic or your class list.
 - For a combination macro, open **Macros → Generic → 1-shot combo**. Add learned
-  spells, then use Advanced for equipment-slot or other supported lines.
+  spells with the row at the top, then use the gear button in front of the macro
+  name for equipment-slot or other supported lines.
 - **Add all class macros** adds spells you know first, then by learn level, and
   skips utility spells such as teleports and tracking (add those one by one).
-  **Delete macros** removes either the ForeverTools macros you have not changed
+  **Delete character macros** removes either the ForeverTools macros you have not changed
   or every Character macro; both ask twice.
 - If Add all does not fit, a **Make room** window lists your Character macros
   and the new ones. Tick what to delete and what to add; the slot counter turns
   green when it fits.
-- Hide macros you never use with the small X on their row. Hidden macros are
-  never added by Add all; the **Hidden** filter shows them so you can bring them
-  back.
-- **Unlearned icons** (in the Add all row) gives macros for spells you have not
+- Each row has two small buttons: hide, and **X** to delete. Both move the
+  macro to **Hidden**, where you can bring it back; hidden and deleted macros
+  are never added by Add all. Your own macros can be deleted for good from
+  Hidden.
+- **Default** (beside the macro name) only shows when you changed the text.
+- **Icons** (in the top row) gives macros for spells you have not
   learned yet their icon, so bars can be set up from level 1. Add all again to
   give macros you already added their icon.
 - **Mouseover** in the Add all row is the default for every macro and is
@@ -197,7 +216,7 @@ the home window. Use **`/rl`** to reload the UI.
 - Melee abilities start auto attack. Stealth openers (Cheap Shot, Ambush,
   Garrote) and effects that damage would break (Gouge, Sap, Blind) do not.
   Stealth and Prowl only enter stealth.
-- Choose **General** or **Character** as the destination before adding a macro.
+- Choose **General** or **Character** with **Save to** in the top row before adding a macro.
   The game determines whether space is available.
 - Macros still require your input and obey normal casting rules. Off-global-
   cooldown abilities may work alongside another spell; global-cooldown spells
