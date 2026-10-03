@@ -119,7 +119,7 @@ function S:PaintArtwork(texture,record)
     local allowed=not special or (not ((rare or classification=="rare" or classification=="rareelite") and not s.rares)
         and not ((elite or classification=="elite" or classification=="worldboss" or classification=="rareelite") and not s.elites))
     local active=s[record.key] and allowed
-    if texture.SetDesaturated and (record.key=="micro" or record.key=="bags" or record.key=="bagWindows" or record.key=="gryphons") then texture:SetDesaturated(active or record.desaturated or false) end
+    if texture.SetDesaturated and (record.desaturate or record.key=="micro" or record.key=="bags" or record.key=="bagWindows" or record.key=="gryphons") then texture:SetDesaturated(active or record.desaturated or false) end
     if active and (record.bagSlotBorder or (record.hideDecoration and (record.key=="bagWindows" and s.hideSlotArt or record.key~="bagWindows" and s.hideArt))) then
         texture:SetVertexColor(1,1,1,0)
     elseif record.background then
@@ -402,11 +402,38 @@ function S:ApplyXPArtwork()
         xpDecorations(_G[name],2)
     end
 end
+-- The day/night icon on the minimap: its ring follows the Minimap area, the
+-- sun or moon inside keeps its colors. Blizzard gives the ring no name, so it
+-- is found by its art, or else as the frame's texture that isn't the Background.
+local DIEL_RING="UI-HUD-Minimap-Frame-Cycle"
+function S:DielRing()
+    if self.dielRing then return self.dielRing end
+    local frame=MinimapCluster and MinimapCluster.DielFrame
+    if not frame or not frame.GetRegions then return end
+    local other
+    for _,region in ipairs({frame:GetRegions()}) do
+        if region~=frame.Background and type(region.GetVertexColor)=="function" then
+            local atlas=region.GetAtlas and region:GetAtlas()
+            if issecretvalue and issecretvalue(atlas) then atlas=nil end
+            if type(atlas)=="string" and atlas:lower()==DIEL_RING:lower() then self.dielRing=region; return region end
+            other=other or region
+        end
+    end
+    self.dielRing=other
+    return other
+end
 function S:ApplyArtwork()
     self:ApplyBagWindows();self:ApplyGryphons()
     self:ApplyTotemArtwork()
     self:TintArtwork(MinimapCompassTexture,"minimap"); self:TintArtwork(MinimapCompassTextureUnderlay,"minimap"); self:TintArtwork(MinimapBorder,"minimap")
     if MinimapCluster then self:ArtworkFrame(MinimapCluster.BorderTop,"minimap") end
+    -- The ring is gold: grey it first so it takes the area's color cleanly.
+    local ring=self:DielRing()
+    if ring then
+        self:TintArtwork(ring,"minimap")
+        local record=self.artwork[ring]
+        if record and not record.desaturate then record.desaturate=true; self:PaintArtwork(ring,record) end
+    end
     self:ArtworkFrame(MicroMenu,"micro",true); self:ArtworkFrame(BagsBar,"bags",true); self:ArtworkFrame(MainMenuBarBackpackButton,"bags")
     -- The long bar behind the micro buttons is a region on MicroMenu in some
     -- client builds, rather than one of its named border fields.

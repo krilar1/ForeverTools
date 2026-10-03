@@ -7,7 +7,10 @@ function Profiles:Remember(name)
     FT.db.profileCharacters=FT.db.profileCharacters or {}
     local guid=self:Character()
     if guid then FT.db.profileCharacters[guid]=name or false end
-    if name then FT.db.lastProfile=name end
+    if name then
+        FT.db.lastProfile=name; self:Answered()
+        if guid and type(FT.db.profileClean)=="table" then FT.db.profileClean[guid]=nil end
+    end
     self.active=name
     self:RefreshIndicators()
 end
@@ -57,7 +60,7 @@ end
 -- the character and are never rewritten by loading an appearance profile.
 local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey","totems","movers"}
 -- Every module that must redraw after settings change (load, login, reset).
-local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey","Totems","DruidMana"}
+local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey","Totems","DruidMana","SellMarks"}
 local function copy(value)
     if type(value) ~= "table" then return value end
     local result={}; for k,v in pairs(value) do result[k]=copy(v) end; return result
@@ -215,6 +218,30 @@ function Profiles:CaptureActionMacros()
     end
     if type(FT.db.actionMacros)~="table" then FT.db.actionMacros={} end
     FT.db.actionMacros[class]=count>0 and layout or nil
+end
+-- For the bug report: which macros are saved with the action bars, per class
+-- (the settings in use, and the profile in use). Names only.
+function Profiles:PlacementReport()
+    local function describe(all)
+        local parts={}
+        for class,layout in pairs(type(all)=="table" and all or {}) do
+            if type(class)=="string" and type(layout)=="table" then
+                local count,names,seen=0,{},{}
+                for _,entry in pairs(layout) do
+                    count=count+1
+                    local name=type(entry)=="table" and type(entry.name)=="string" and entry.name:match("%S") and entry.name or nil
+                    if name and not seen[name] and #names<4 then seen[name]=true; names[#names+1]=name end
+                end
+                parts[#parts+1]=class.." "..count..(#names>0 and (" ["..table.concat(names,", ").."]") or "")
+            end
+        end
+        table.sort(parts)
+        return #parts>0 and table.concat(parts,"; ") or "none"
+    end
+    local line="Macros saved with action bars: in use "..describe(FT.db.actionMacros)
+    local profile=self.active and self:Store()[self.active]
+    if type(profile)=="table" then line=line.." · profile "..describe(profile.actionMacros) end
+    return line
 end
 function Profiles:FindMacro(entry)
     local global,character=GetNumMacros()
@@ -479,6 +506,8 @@ function Profiles:WelcomeCharacter()
         -- The profile this character used was deleted on another character.
         FT.db.profileResets[guid]=nil
         self:DefaultsForCharacter()
+        FT.db.profileClean=type(FT.db.profileClean)=="table" and FT.db.profileClean or {}
+        FT.db.profileClean[guid]=true; FT.db.liveOwner=guid
         FT:Toast("Your profile was deleted on another character. Default settings are used.",5)
         return
     end
@@ -514,11 +543,59 @@ function Profiles:WelcomeCharacter()
         end
         FT:UpdateMinimap()
     elseif previous==nil then
-        -- A new character: ask once whether to use a saved profile or start a
-        -- new one. Closing the question keeps Blizzard's defaults.
+        -- A new character: ask whether to use a saved profile or start a new
+        -- one. Closing the question keeps Blizzard's defaults.
+        local others=false
+        for other in pairs(FT.db.profileCharacters) do if other~=guid then others=true; break end end
         FT.db.profileCharacters[guid]=false
-        if self:NewCharacterProfile() or self:AnyProfile() then C_Timer.After(3,function() self:AskNewCharacter() end) end
+        if self:NewCharacterProfile() or self:AnyProfile() then
+            -- Settings are saved for the whole account, so what is in use
+            -- right now is the look of the character played before.
+            if others then self:StartClean(guid) end
+            FT.db.profileAsk=type(FT.db.profileAsk)=="table" and FT.db.profileAsk or {}
+            FT.db.profileAsk[guid]=true
+            C_Timer.After(3,function() self:AskNewCharacter() end)
+        end
+    elseif previous==false then
+        -- No profile. A character that started clean stays on Blizzard's
+        -- defaults until it gets a profile, whoever was played before it.
+        if type(FT.db.profileClean)=="table" and FT.db.profileClean[guid] and FT.db.liveOwner~=guid then self:StartClean(guid) end
+        if type(FT.db.profileAsk)=="table" and FT.db.profileAsk[guid] then
+            -- The question never got an answer (a reload closed it): ask again.
+            if self:NewCharacterProfile() or self:AnyProfile() then C_Timer.After(3,function() self:AskNewCharacter() end)
+            else FT.db.profileAsk[guid]=nil end
+        end
     end
+    -- Whose settings are in use from here on.
+    FT.db.liveOwner=guid
+end
+-- Put this character on Blizzard's defaults and remember that it has no look
+-- of its own, so it never picks up another character's settings later.
+function Profiles:StartClean(guid)
+    self:KeepForOthers(guid)
+    self:DefaultsForCharacter()
+    FT.db.profileClean=type(FT.db.profileClean)=="table" and FT.db.profileClean or {}
+    FT.db.profileClean[guid]=true
+end
+-- Before a character is put on defaults: older characters that have no
+-- profile (and so only ever had the settings in use) get those settings as
+-- their own working copy, restored (and saved as a profile named after them)
+-- the next time they log in. Nobody loses a look because a new character
+-- was made.
+function Profiles:KeepForOthers(guid)
+    local store=self:Store(); local snapshot
+    local clean=type(FT.db.profileClean)=="table" and FT.db.profileClean or {}
+    for other,profile in pairs(FT.db.profileCharacters or {}) do
+        if other~=guid and not clean[other] and not (type(profile)=="string" and type(store[profile])=="table") then
+            FT.db.profileDrafts=type(FT.db.profileDrafts)=="table" and FT.db.profileDrafts or {}
+            if FT.db.profileDrafts[other]==nil then snapshot=snapshot or self:Snapshot(); FT.db.profileDrafts[other]=copy(snapshot) end
+        end
+    end
+end
+-- The new-character question was answered (a choice, or closed by the player).
+function Profiles:Answered()
+    local guid=self:Character()
+    if guid and type(FT.db.profileAsk)=="table" then FT.db.profileAsk[guid]=nil end
 end
 function Profiles:AnyProfile()
     for name,profile in pairs(self:Store()) do if type(name)=="string" and type(profile)=="table" then return name end end
@@ -537,6 +614,10 @@ function Profiles:AskNewCharacter()
     if not self.newCharacterFrame then
         local frame=FT:Window("ForeverToolsNewCharacter","New character",480,262); self.newCharacterFrame=frame
         frame.noSavePrompt=true
+        -- A fight only puts the question away for a moment; it comes back
+        -- afterwards and counts as answered only when you close it yourself.
+        frame.keepAfterCombat=true
+        frame:HookScript("OnHide",function() if not FT.hidingForCombat and not InCombatLockdown() then self:Answered() end end)
         frame:SetFrameStrata("FULLSCREEN_DIALOG"); frame.homeButton:Hide()
         local text=FT:Label(frame,"",14); text:SetPoint("TOPLEFT",24,-60); text:SetWidth(432); frame.text=text
         local pick=FT:Dropdown(frame,432,function() return self:ProfileList() end,function(name) frame.choice=name; frame.pick.value=name; frame.pick.label:SetText(name) end,"profiles")
@@ -581,7 +662,13 @@ events:SetScript("OnEvent",function(_,event)
     if not FT.dbReady then return end
     if event=="PLAYER_REGEN_ENABLED" then
         if Profiles.askAfterCombat then C_Timer.After(1,function() Profiles:AskNewCharacter() end) end
-    elseif event=="PLAYER_LOGIN" then C_Timer.After(0,function() Profiles:TrimBackups(); Profiles:WelcomeCharacter(); Profiles:Checkpoint(); FT.profilesReady=true; if FT.modules.MinimapIcons then FT.modules.MinimapIcons:Apply() end end)
+    elseif event=="PLAYER_LOGIN" then C_Timer.After(0,function()
+        -- Each step runs even if an earlier one fails (the error is still
+        -- reported), so one problem can't leave a character without its profile.
+        local function step(name) local ok,err=pcall(Profiles[name],Profiles); if not ok and geterrorhandler then geterrorhandler()(err) end end
+        step("TrimBackups"); step("WelcomeCharacter"); step("Checkpoint")
+        FT.profilesReady=true; if FT.modules.MinimapIcons then FT.modules.MinimapIcons:Apply() end
+    end)
     elseif event=="PLAYER_LOGOUT" then
         if Profiles.resetting then return end
         Profiles:AutoSave(true)
@@ -1002,7 +1089,11 @@ function Profiles:ValidateImport(data)
     if not check(result.smartKey,{enabled="boolean",key="string",confirmed="boolean"}) then return nil,"Invalid smart key settings." end
     if not check(result.fireAlert,{sound="string",channel="string"}) then return nil,"Invalid standing-in-fire settings." end
     if not check(result.rareAlert,{enabled="boolean",sound="boolean",soundKey="string",duration="number",size="number",glow="table",x="number",y="number"}) then return nil,"Invalid rare alert settings." end
-    if not check(result.buffReminder,{enabled="boolean",selected="table",mainEnchant="string",offEnchant="string",rankMarker="boolean",ignoredRanks="table",selfWhere="table",groupWhere="table",chosenSpec="table",hideAfter="number",styles="table"}) then return nil,"Invalid buff reminders." end
+    if not check(result.buffReminder,{enabled="boolean",selected="table",mainEnchant="string",offEnchant="string",rankMarker="boolean",ignoredRanks="table",selfWhere="table",groupWhere="table",chosenSpec="table",hideAfter="number",styles="table",food="boolean",foodWhen="string",combat="table"}) then return nil,"Invalid buff reminders." end
+    for name,on in pairs(result.buffReminder and result.buffReminder.combat or {}) do
+        if type(name)~="string" or #name>80 or on~=true then return nil,"Invalid combat reminder." end
+    end
+    if result.buffReminder and result.buffReminder.foodWhen~=nil and result.buffReminder.foodWhen~="leveling" and result.buffReminder.foodWhen~="always" then return nil,"Invalid food reminder." end
     -- Per-buff notice looks: a table per buff name; each value is checked again when it is used.
     for name,style in pairs(result.buffReminder and result.buffReminder.styles or {}) do
         if type(name)~="string" or #name>60 or type(style)~="table" or type(style.mode)~="string" then return nil,"Invalid buff notice look." end

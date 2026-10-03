@@ -1,3 +1,30 @@
+# ForeverTools 0.60.0 (2026-10-03)
+
+## New
+- **Equip an item in a macro** (Macros → the gear button on a macro → Equip an item): pick a gear slot, then an item for it, and the macro gets an equip line (`/equipslot`), for example to swap weapons with the spell it casts. The list shows what you wear in that slot now and soulbound items in your bags that fit it. One item per slot, and as many slots as you like in one macro; pick **None** to take a line out. Works in built-in macros and your own. All gear slots are offered, weapons first: in a fight the game only swaps weapons.
+- **Always-sell marks** (System → Merchant → Always-sell marks, off by default): mark the items you always want to sell. Choose a **mark key**, hover an item in your bags and press it: the item gets a small coin and a tooltip line, and every item of that kind is sold when you open a merchant. Press the key on it again to unmark.
+  - Nothing is bound for you: you pick the key, and it never takes that key away from what it already does.
+  - **Marks are for:** All characters, or This character (each list is kept when you switch).
+  - **Marked items** lists everything you have marked, with a button to remove each one.
+  - Works with or without Auto-sell grey items. Items without a sell price can't be marked.
+  - The marks stay on your account: they are not part of profiles and are never exported.
+- **Buff reminders in combat** (Buff reminders → Your buffs → the gear on a buff → **Also remind in combat**, off by default): notices normally hide while you fight. With this on, that one buff's notice also shows during a fight, which is the only time a warrior has the rage for Battle Shout. Set it per buff; everything else stays quiet in combat. In a fight the game can hide your buffs: then ForeverTools goes by when it saw you cast the buff and how long it lasts, so a buff that is removed early can be missed until the fight ends.
+- **Food buff reminder** (Buff reminders → Your buffs → Food, off by default): a notice when you don't have a food buff (Well Fed). In WoW: Forever, Well Fed also gives 5% more experience from kills. Works for every class. **Remind: While leveling** stops it at max level; **Always** keeps it going. It follows the same rules as your other buff notices (Show in, hide timer, click to dismiss), and the gear gives it a look of its own: bar, icon and text, or icon only.
+
+## Changed
+- **Auto-sell sells at most 12 items per merchant visit** (greys, white gear and marked items together), so everything it sold can be bought back from the Buyback tab. If you carry more, the rest is sold the next time you open a merchant.
+- **Auto-sell is silent:** it no longer writes what it sold to chat. Everything it sold is in the merchant's Buyback tab. Repairs still get their one chat line.
+- **Macro text box:** drag across text to select it, and double-click a row to select the whole row with its line break, ready to delete or type over. A single click still just places the typing line.
+- **Minimap skin** (Appearance → Skins → Minimap) now also covers the ring around the day/night icon, so in dark mode it goes dark with the rest of the minimap. The sun and moon inside keep their colors.
+- **Buff reminders** window is a little taller to make room for the Food row. It still keeps one size in every section.
+- **Bug report** also lists which macros are saved with your action bars, per class.
+
+## Fixed
+- **New characters** no longer start with the look of the character you played before (for example its dark mode) while showing "No profile". A new character now starts from Blizzard's defaults and is asked which profile to use. Closing the question keeps the defaults, also the next time you log in.
+- **The new-character question** could be lost: entering a fight closed it for good. It now comes back after the fight, and it is asked again at the next login if a reload closed it before you answered.
+- Older characters that never had a profile keep the look they had: it is saved as a profile named after them the next time they log in.
+- **Your own macros** got a note icon in the game's macro window when **Icons** (icons for unlearned spells) was on. They now get the automatic icon like every other macro, so the game shows the spell's icon. For a macro you already added, select it in the Macros window and click **Add selected macro** once more.
+
 # ForeverTools 0.50.0 (2026-10-03)
 
 ## New

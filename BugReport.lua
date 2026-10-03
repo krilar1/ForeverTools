@@ -26,7 +26,7 @@ function Report:Features()
     add("buffReminders",db.buffReminder and db.buffReminder.enabled); add("groupReminders",db.buffReminder and db.buffReminder.groupEnabled)
     add("lowRankAlerts",db.buffReminder and db.buffReminder.lowRank); add("rankMarker",db.buffReminder and db.buffReminder.rankMarker)
     add("groupMinimapButtons",s.minimapIcons); add("tooltipIDs",s.spellID); add("autoRole",s.autoRole)
-    add("autoSell",s.autoSell); add("autoRepair",s.autoRepair); add("chatLinks",s.chatLinks)
+    add("autoSell",s.autoSell); add("sellMarks",s.sellMarked); add("autoRepair",s.autoRepair); add("chatLinks",s.chatLinks)
     local tip=db.tooltip or {}
     add("tooltipTarget",tip.target); add("tooltipGuild",tip.guild)
     local keybinds=false
@@ -71,6 +71,11 @@ function Report:Text()
     local totems=FT.modules and FT.modules.Totems
     if totems and totems.tracking and totems.Report then
         local ok,line=pcall(totems.Report,totems)
+        if ok and type(line)=="string" then table.insert(lines,7,line) end
+    end
+    local profiles=FT.modules and FT.modules.Profiles
+    if profiles and profiles.PlacementReport then
+        local ok,line=pcall(profiles.PlacementReport,profiles)
         if ok and type(line)=="string" then table.insert(lines,7,line) end
     end
     local errors=self:Errors(5)

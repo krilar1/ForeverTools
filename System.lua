@@ -69,9 +69,10 @@ local pages={
         {"objectives","Quest objectives","INV_Misc_Note_01","Choose: Default (the game's own behavior), Collapsed on login, Open on login, or Hidden. Collapsed and Open are applied when you log in or reload; opening or closing it yourself is kept until then. Hidden keeps the tracker off the screen."},
         {"deathGlow","Death glow","Spell_Holy_Resurrection","The glowing, washed-out screen effect while you are dead or a ghost. On is the game's default; Off keeps the world in its normal look. This switch shows and changes the game's own setting (the same as typing /console ffxDeath 0 or 1), so it applies to all your characters, and it already reads Off if you turned the glow off with that command before."},
     }},
-    {key="SystemMerchant",title="Merchant",icon="INV_Misc_Coin_02",description="Selling grey (and optionally white) items and repairing when you visit a merchant.",items={
-        {"autoSell","Auto-sell grey items","generic","Sell all grey (junk) items when you open a merchant. They go to the Buyback tab like items you sell yourself (it keeps the last 12)."},
-        {"sellWhite","Also sell white gear","generic","When auto-sell runs, also sell white (common) weapons and armor you have no use for. Kept: gear for an empty slot, gear in an equipment set and, up to level 20, anything better than what you wear in that slot. After level 20 white gear is rarely worth wearing, so it is sold. Never sold: potions, food, drink, reagents, ammo, trade goods, quest items, profession tools, fishing poles, shirts, tabards, bags, rings, necklaces and trinkets. The chat line names the white gear that was sold; it can be bought back (the last 12)."},
+    {key="SystemMerchant",title="Merchant",icon="INV_Misc_Coin_02",description="Selling grey, white and marked items and repairing when you visit a merchant.",items={
+        {"autoSell","Auto-sell grey items","generic","Sell grey (junk) items when you open a merchant, at most 12 per visit so every one can be bought back from the Buyback tab. If you carry more, the rest is sold the next time you open a merchant."},
+        {"sellWhite","Also sell white gear","generic","When auto-sell runs, also sell white (common) weapons and armor you have no use for. Kept: gear for an empty slot, gear in an equipment set and, up to level 20, anything better than what you wear in that slot. After level 20 white gear is rarely worth wearing, so it is sold. Never sold: potions, food, drink, reagents, ammo, trade goods, quest items, profession tools, fishing poles, shirts, tabards, bags, rings, necklaces and trinkets. Sold gear can be bought back from the Buyback tab."},
+        {"sellMarks","Always-sell marks","INV_Misc_Coin_01","Mark items in your bags with a key of your choice; marked items are sold whenever you open a merchant. Off by default. Click to open its settings page."},
         {"autoRepair","Auto-repair","generic","Repair all your gear when you visit a merchant who can repair."},
         {"guildRepair","Use guild funds for repairs first","party","When auto-repair runs, use guild bank repair money if your guild allows it, otherwise your own gold."},
     }},
@@ -160,6 +161,10 @@ function System:Refresh()
             local threat=FT.modules.Threat; local t=threat and threat:Settings()
             button.label:SetText("Threat meter: "..(t and (t.enabled or t.text) and "On" or "Off").." — settings")
         end
+        if key=="sellMarks" then
+            local marks=FT.modules.SellMarks
+            button.label:SetText("Always-sell marks: "..(marks and marks:On() and ("On ("..marks:Count()..")") or "Off").." — settings")
+        end
         if key=="smartKey" then
             local smart=FT.modules.SmartKey
             button.label:SetText("Smart interact key: "..(smart and smart:Settings().enabled and "On" or "Off").." — settings")
@@ -201,6 +206,7 @@ function System:Click(key)
     if key=="totems" then FT:OpenModule("Totems");return end
     if key=="spellBinds" then FT:OpenModule("SpellBinds");return end
     if key=="smartKey" then FT:OpenModule("SmartKey");return end
+    if key=="sellMarks" then FT:OpenModule("SellMarks");return end
     if key=="wheelCasting" then FT:OpenModule("CustomKeybinds");return end
     if key=="leveling" then FT:OpenModule("Leveling");return end
     if key=="movers" then FT:OpenModule("Movers");return end

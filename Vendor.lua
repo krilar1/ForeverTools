@@ -2,7 +2,7 @@ local _,FT=...
 -- Merchant helpers (each opt-in, off by default): sell grey items and repair
 -- when a merchant opens. Selling works like right-clicking each grey item (so
 -- it can be bought back); repairing like the Repair button. Never in combat;
--- one summary line.
+-- selling is silent, a repair gets one chat line.
 local Vendor={}
 local function readable(v) return (not issecretvalue or not issecretvalue(v)) and v~=nil end
 local function call(fn,...)
@@ -116,13 +116,22 @@ local function whiteGear(link,itemID)
     if possibleUpgrade(link,equipLoc,classID,subclassID) then return false end
     return true
 end
+-- Why this bag item is sold: "marked" (your always-sell marks), "grey" or
+-- "white" (auto-sell), or false to keep it.
 function Vendor:Sellable(info)
-    if type(info)~="table" or info.hasNoValue or info.isLocked or not readable(info.quality) then return false end
+    if type(info)~="table" or info.hasNoValue or info.isLocked then return false end
+    local s=self:Settings()
+    local marks=FT.modules.SellMarks
+    if s.sellMarked==true and marks and readable(info.itemID) and marks:Has(info.itemID) then return "marked" end
+    if not s.autoSell or not readable(info.quality) then return false end
     local poor=Enum and Enum.ItemQuality and Enum.ItemQuality.Poor or 0
-    if info.quality==poor then return true end
-    if self:Settings().sellWhite and info.quality==1 and readable(info.hyperlink) then return whiteGear(info.hyperlink,readable(info.itemID) and info.itemID or nil) end
+    if info.quality==poor then return "grey" end
+    if s.sellWhite and info.quality==1 and readable(info.hyperlink) and whiteGear(info.hyperlink,readable(info.itemID) and info.itemID or nil) then return "white" end
     return false
 end
+-- At most this many items are sold per merchant visit: the Buyback tab keeps
+-- the last 12, so everything sold for you can always be bought back.
+Vendor.LIMIT=12
 -- Poor-quality items (and white gear, if chosen) in the bags, with their total vendor value.
 function Vendor:Junk()
     local items,value={},0
@@ -131,23 +140,32 @@ function Vendor:Junk()
     for bag=0,(NUM_BAG_SLOTS or 4) do
         for slot=1,(call(C_Container.GetContainerNumSlots,bag) or 0) do
             local info=call(C_Container.GetContainerItemInfo,bag,slot)
-            if self:Sellable(info) then
+            local why=self:Sellable(info)
+            if why then
                 local price=0
                 local get=C_Item and C_Item.GetItemInfo or GetItemInfo
                 if get and readable(info.hyperlink) then
                     local ok,_,_,_,_,_,_,_,_,_,_,sell=pcall(get,info.hyperlink)
                     if ok and readable(sell) and type(sell)=="number" then price=sell end
                 end
-                items[#items+1]={bag=bag,slot=slot,link=readable(info.quality) and info.quality==1 and info.hyperlink or nil}
-                value=value+price*(readable(info.stackCount) and info.stackCount or 1)
+                local worth=price*(readable(info.stackCount) and info.stackCount or 1)
+                items[#items+1]={bag=bag,slot=slot,why=why,value=worth,link=why~="grey" and readable(info.hyperlink) and info.hyperlink or nil}
+                value=value+worth
             end
         end
     end
     return items,value
 end
 function Vendor:Sell()
-    local items,value=self:Junk()
-    if #items==0 then return end
+    local all=self:Junk()
+    if #all==0 then return end
+    -- Only the first 12 this visit; the rest waits for the next one.
+    local items,value,greys={},0,0
+    for i=1,math.min(#all,self.LIMIT) do
+        items[i]=all[i]; value=value+all[i].value
+        if all[i].why=="grey" then greys=greys+1 end
+    end
+    local waiting=#all-#items
     -- Sold one at a time like a right-click, so every item lands in the
     -- merchant's Buyback tab. (The game's Sell All Junk skips buyback.)
     -- Buyback keeps the last 12 items, as usual.
@@ -165,11 +183,7 @@ function Vendor:Sell()
         C_Timer.After(.15,step)
     end
     step()
-    -- Name the white gear that went, so anything you wanted back is easy to
-    -- spot and buy back.
-    local white={}
-    for _,item in ipairs(items) do if item.link then white[#white+1]=item.link end end
-    return #items,value,white
+    return #items,value,waiting,greys
 end
 function Vendor:Repair()
     if not call(CanMerchantRepair) then return end
@@ -188,18 +202,12 @@ function Vendor:Repair()
 end
 function Vendor:OnMerchant()
     local s=self:Settings()
-    if (not s.autoSell and not s.autoRepair) or InCombatLockdown() then return end
+    local selling=s.autoSell or s.sellMarked==true
+    if (not selling and not s.autoRepair) or InCombatLockdown() then return end
     local parts={}
-    if s.autoSell then
-        local count,value,white=self:Sell()
-        if count then
-            parts[#parts+1]="Sold "..count..(s.sellWhite and " item" or " grey item")..(count==1 and "" or "s")..(value>0 and (" for "..money(value)) or "")
-            if white and #white>0 then
-                local shown={}; for i=1,math.min(#white,6) do shown[i]=white[i] end
-                parts[#parts+1]="White gear: "..table.concat(shown," ")..(#white>6 and (" +"..(#white-6)) or "")
-            end
-        end
-    end
+    -- Selling is silent: nothing is written to chat. What was sold is in the
+    -- merchant's Buyback tab.
+    if selling then self:Sell() end
     if s.autoRepair then
         local cost,source,short=self:Repair()
         if cost then parts[#parts+1]="Repaired for "..money(cost)..(source=="guild" and " (guild funds)" or "")

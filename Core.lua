@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "0.50.0"
+FT.version = "0.60.0"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -700,10 +700,13 @@ function FT:CloseCombatControls()
     end
     -- Windows that wait for an answer (setup, what's new) come back after
     -- combat; their own buttons still close them for good.
+    -- hidingForCombat lets a window tell "closed by the fight" from "closed by you".
+    self.hidingForCombat=true
     for frame in pairs(self.controlWindows or {}) do
         if frame.keepAfterCombat and frame:IsShown() then self.reopenAfterCombat=self.reopenAfterCombat or {}; self.reopenAfterCombat[frame]=true end
         frame:Hide()
     end
+    self.hidingForCombat=nil
     if self.home then self.home:Hide() end
     for _,module in pairs(self.modules) do
         for _,key in ipairs({"frame","transfer","panel","saveDialog","advancedPanel","previewFrame","rolePrompt"}) do
@@ -909,7 +912,8 @@ function FT:SetMinimized(frame, on)
 end
 -- A scroll frame's bar only shows while there is something to scroll.
 -- A typing line for a multi-line text box: a gold line that blinks where
--- the text cursor is, and a click in the text puts the cursor there. The box
+-- the text cursor is; a click in the text puts the cursor there, dragging
+-- selects text and a double-click selects a row. The box
 -- gets no cursor of its own from the game here, so both are done by hand:
 -- the box's text is laid out again with a hidden measuring text to turn a
 -- click into a place in the text and back. Call after the box's own scripts
@@ -1034,24 +1038,77 @@ function FT:TextCaret(box, inset)
     box:HookScript("OnEditFocusGained", function() state.moved = GetTime(); caret:SetAlpha(1); caret:Show(); driver:Show() end)
     box:HookScript("OnEditFocusLost", function() caret:Hide(); driver:Hide(); state.before = nil; state.index = nil end)
     box:HookScript("OnHide", function() caret:Hide(); driver:Hide() end)
-    -- A click in the text: if the game did not move the cursor there, we do.
+    -- The mouse in the text. A click puts the cursor there (if the game did
+    -- not), dragging selects from where you pressed to where you are, and a
+    -- double-click selects the whole row with its line break, ready to delete.
     box:EnableMouse(true)
-    box:HookScript("OnMouseDown", function() state.before = state.index end)
-    box:HookScript("OnMouseUp", function(_, button)
-        if button and button ~= "LeftButton" then return end
-        local now = box:GetCursorPosition()
-        if state.before ~= nil and now ~= state.before then return end
+    local function pointIndex()
         local left, top, scale = box:GetLeft(), box:GetTop(), box:GetEffectiveScale()
         if type(left) ~= "number" or type(top) ~= "number" or type(scale) ~= "number" or scale <= 0 then return end
         local cx, cy = GetCursorPosition()
         if type(cx) ~= "number" or type(cy) ~= "number" then return end
-        local index = indexAt(cx / scale - left - inset, top - cy / scale - inset)
-        if box.HasFocus and not box:HasFocus() then box:SetFocus() end
+        return indexAt(cx / scale - left - inset, top - cy / scale - inset)
+    end
+    local function setCursor(index)
         box:SetCursorPosition(index)
         state.index = index
         local x, y = locate(index); place(x, y); state.moved = GetTime()
+    end
+    local function highlight(from, to)
+        if from > to then from, to = to, from end
+        state.selected = to > from
+        if box.HighlightText then box:HighlightText(from, to) end
+    end
+    local function rowAt(index)
+        local text = box:GetText() or ""
+        local from = math.max(0, math.min(#text, index))
+        while from > 0 and text:sub(from, from) ~= "\n" do from = from - 1 end
+        local to = text:find("\n", index + 1, true)
+        if to then return from, to end
+        -- The last row has no break after it: take the one before it.
+        return from > 0 and from - 1 or 0, #text
+    end
+    local drag = CreateFrame("Frame", nil, box); drag:Hide()
+    drag:SetScript("OnUpdate", function()
+        if not state.anchor or (IsMouseButtonDown and not IsMouseButtonDown("LeftButton")) then drag:Hide(); return end
+        local index = pointIndex()
+        if not index or index == state.dragIndex then return end
+        state.dragIndex = index
+        setCursor(index); highlight(state.anchor, index)
     end)
-    box.ftCaret = {texture = caret, locate = locate, indexAt = indexAt, lines = lines, state = state, driver = driver}
+    box:HookScript("OnMouseDown", function(_, button)
+        state.before = state.index
+        if button and button ~= "LeftButton" then return end
+        local index = pointIndex()
+        if not index then return end
+        local now = GetTime()
+        if state.lastDown and now - state.lastDown < .4 and state.lastIndex and math.abs(state.lastIndex - index) <= 1 then
+            local from, to = rowAt(index)
+            if box.HasFocus and not box:HasFocus() then box:SetFocus() end
+            setCursor(to); highlight(from, to)
+            state.anchor, state.rowSelected, state.lastDown = nil, true, nil
+            return
+        end
+        state.lastDown, state.lastIndex = now, index
+        state.anchor, state.dragIndex, state.rowSelected = index, index, nil
+        drag:Show()
+    end)
+    box:HookScript("OnMouseUp", function(_, button)
+        drag:Hide()
+        if button and button ~= "LeftButton" then return end
+        local anchor = state.anchor; state.anchor = nil
+        if state.rowSelected then state.rowSelected = nil; return end
+        local index = pointIndex()
+        if not index then return end
+        if box.HasFocus and not box:HasFocus() then box:SetFocus() end
+        if anchor and index ~= anchor then setCursor(index); highlight(anchor, index); return end
+        -- A plain click: nothing stays selected.
+        if state.selected then highlight(0, 0) end
+        local now = box:GetCursorPosition()
+        if state.before ~= nil and now ~= state.before then return end
+        setCursor(index)
+    end)
+    box.ftCaret = {texture = caret, locate = locate, indexAt = indexAt, lines = lines, state = state, driver = driver, drag = drag, rowAt = rowAt}
     return caret
 end
 -- onChange(needed), if given, runs when the bar appears or goes, so the

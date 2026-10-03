@@ -428,15 +428,29 @@ end
 -- spells, or the template), so bars can be set up from level 1.
 function MacroForge:MacroIcon(entry)
     if KT.db.macroUnlearnedIcons ~= true or not entry.class then return 134400 end
+    -- Your own macros are named by you, not after a spell: the spell is the
+    -- one the macro text shows or casts first.
+    local spellName = entry.name
+    local custom = entry.kind == "custom" or entry.category == "custom"
+    if custom then
+        local text = "\n" .. (self:BuildMacro(entry) or "")
+        spellName = text:match("\n#showtooltip[ \t]+([^\n]+)") or text:match("\n/cast[ \t]+([^\n]+)") or text:match("\n/use[ \t]+([^\n]+)")
+        if spellName then spellName = spellName:gsub("^%b[]%s*", ""):gsub("%s*%(.-%)%s*$", ""):gsub("%s+$", "") end
+        if not spellName or spellName == "" then return 134400 end
+    end
     local book = KT.modules.CustomKeybinds
     local ok, spells = pcall(book.LearnedSpells, book)
     if ok and type(spells) == "table" then
-        for _, spell in ipairs(spells) do if spell.name == entry.name then return 134400 end end
+        local wanted = spellName:lower()
+        for _, spell in ipairs(spells) do if type(spell.name) == "string" and spell.name:lower() == wanted then return 134400 end end
     end
     -- One spellbook scan per spellbook change, not one per macro.
     if self.futureFor ~= spells or not self.futureIcons then self:LearnLevels(); self.futureFor = spells end
-    local future = self.futureIcons and self.futureIcons[entry.name]
+    local future = self.futureIcons and self.futureIcons[spellName]
     if type(future) == "number" then return future end
+    -- A placeholder (the note icon of your own macros) is never used as the
+    -- macro's icon: the question mark lets the game show the spell's icon.
+    if custom then return 134400 end
     return iconFile(entry.icon) or 134400
 end
 -- Level each spell is learned at, from your own spellbook (it also lists
@@ -908,6 +922,113 @@ function MacroForge:RefreshQuickButtons()
     for _,entry in ipairs(self.quickButtons) do
         KT:SetSelected(entry.button,body:find("\n"..entry.line.."\n",1,true)~=nil)
     end
+    self:RefreshEquip()
+end
+-- Equip lines: "/equipslot <slot> <item name>" puts a chosen item in a gear
+-- slot, for example a weapon swap that goes with the macro's spell.
+-- Which slots an item fits, by the game's own equip-location names.
+local EQUIP_FITS={
+    INVTYPE_HEAD={1},INVTYPE_NECK={2},INVTYPE_SHOULDER={3},INVTYPE_BODY={4},INVTYPE_CHEST={5},INVTYPE_ROBE={5},
+    INVTYPE_WAIST={6},INVTYPE_LEGS={7},INVTYPE_FEET={8},INVTYPE_WRIST={9},INVTYPE_HAND={10},
+    INVTYPE_FINGER={11,12},INVTYPE_TRINKET={13,14},INVTYPE_CLOAK={15},
+    INVTYPE_WEAPON={16,17},INVTYPE_WEAPONMAINHAND={16},INVTYPE_2HWEAPON={16},
+    INVTYPE_WEAPONOFFHAND={17},INVTYPE_SHIELD={17},INVTYPE_HOLDABLE={17},
+    -- Ranged weapons sit in the ranged slot where the game has one, else in the main hand.
+    INVTYPE_RANGED={18,16},INVTYPE_RANGEDRIGHT={18,16},INVTYPE_THROWN={18},INVTYPE_RELIC={18},
+    INVTYPE_TABARD={19},
+}
+-- Weapons first: those are the swaps the game also allows in a fight.
+MacroForge.equipSlots={{16,"Main hand"},{17,"Off hand"},{18,"Ranged"},{13,"Trinket 1"},{14,"Trinket 2"},{11,"Ring 1"},{12,"Ring 2"},
+    {1,"Head"},{2,"Neck"},{3,"Shoulders"},{15,"Back"},{5,"Chest"},{4,"Shirt"},{19,"Tabard"},{9,"Wrist"},{10,"Hands"},{6,"Waist"},{7,"Legs"},{8,"Feet"}}
+local function plain(v) return (not issecretvalue or not issecretvalue(v)) and v~=nil end
+local function linkName(link)
+    if not plain(link) or type(link)~="string" then return end
+    return link:match("%[(.-)%]")
+end
+local function fits(item,slot)
+    local instant=(C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    if not instant or item==nil then return false end
+    local ok,_,_,_,equipLoc=pcall(instant,item)
+    if not ok or not plain(equipLoc) then return false end
+    for _,candidate in ipairs(EQUIP_FITS[equipLoc] or {}) do if candidate==slot then return true end end
+    return false
+end
+-- The item this macro equips in a slot, read from its text (nil if none).
+function MacroForge:EquipLine(slot,text)
+    text=text or (self.preview and self.preview:GetText()) or ""
+    for row in (text.."\n"):gmatch("(.-)\n") do
+        local number,name=row:match("^/equipslot%s+(%d+)%s+(.-)%s*$")
+        if tonumber(number)==slot and name~="" then return (name:gsub('^"(.*)"$',"%1")) end
+    end
+end
+-- What can go in this slot: what you wear there now, then soulbound items in
+-- your bags that fit it. Read when the menu opens, never while playing.
+function MacroForge:EquipChoices(slot)
+    local list={{value="",label="None (remove from macro)",icon="Interface\\Icons\\INV_Misc_QuestionMark"}}
+    local seen={}
+    local function add(name,icon,suffix)
+        if type(name)~="string" or name=="" or seen[name] then return end
+        seen[name]=true
+        list[#list+1]={value=name,label=name..(suffix or ""),icon=plain(icon) and icon or nil}
+    end
+    if GetInventoryItemLink then
+        local ok,link=pcall(GetInventoryItemLink,"player",slot)
+        if ok then
+            local icon; if GetInventoryItemTexture then local okIcon,texture=pcall(GetInventoryItemTexture,"player",slot); if okIcon then icon=texture end end
+            add(linkName(link),icon," (equipped)")
+        end
+    end
+    if C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemInfo then
+        for bag=0,(NUM_BAG_SLOTS or 4) do
+            local okCount,count=pcall(C_Container.GetContainerNumSlots,bag)
+            for index=1,(okCount and plain(count) and type(count)=="number" and count or 0) do
+                local ok,info=pcall(C_Container.GetContainerItemInfo,bag,index)
+                if ok and type(info)=="table" and plain(info.isBound) and info.isBound and plain(info.itemID) and fits(info.itemID,slot) then
+                    add((plain(info.itemName) and type(info.itemName)=="string" and info.itemName) or linkName(info.hyperlink),info.iconFileID)
+                end
+            end
+        end
+    end
+    -- An item the macro names that you no longer carry stays in the list.
+    local current=self:EquipLine(slot)
+    if current and not seen[current] then add(current,nil," (not in your bags)") end
+    return list
+end
+-- Set, replace or remove (name "" or nil) the equip line for a slot. Equip
+-- lines sit right under the # lines, so the swap comes before the cast.
+function MacroForge:SetEquipLine(slot,name)
+    if not self.selectedMacro or not self.preview then return end
+    local old=self.preview:GetText() or ""
+    local head,equips,rest={},{},{}
+    for row in (old.."\n"):gmatch("(.-)\n") do
+        local number=row:match("^/equipslot%s+(%d+)%s")
+        if number then
+            if tonumber(number)~=slot then equips[#equips+1]=row end
+        elseif row:sub(1,1)=="#" and #rest==0 and #equips==0 then head[#head+1]=row
+        else rest[#rest+1]=row end
+    end
+    if type(name)=="string" and name~="" then equips[#equips+1]="/equipslot "..slot.." "..name end
+    local rows={}
+    for _,group in ipairs({head,equips,rest}) do for _,row in ipairs(group) do rows[#rows+1]=row end end
+    while #rows>0 and rows[#rows]=="" do table.remove(rows) end
+    local body=table.concat(rows,"\n")
+    if #body>255 then self:Status("Too long for a WoW macro (255 bytes).",true); return end
+    if body==old then return end
+    self.preview:SetText(body)
+    KT:StoreMacroBody(self.selectedMacro, body)
+    self:RefreshQuickButtons(); self:UpdateDefaultButton()
+    if type(name)=="string" and name~="" then self:Status("This macro now equips "..name..".") end
+end
+function MacroForge:RefreshEquip()
+    if not self.equipSlot or not self.equipItem then return end
+    local slot=self.equipSlotValue or 16
+    local label="Slot"
+    for _,entry in ipairs(self.equipSlots) do if entry[1]==slot then label=entry[2] end end
+    -- Slots this macro already equips are marked in the slot list.
+    self.equipSlot.value=slot; self.equipSlot.label:SetText(label)
+    local current=self:EquipLine(slot)
+    self.equipItem.value=current or ""
+    self.equipItem.label:SetText(current or "Choose an item")
 end
 function MacroForge:RenderHistory()
     if not self.historyPanel or not self.selectedMacro then return end
@@ -1289,7 +1410,24 @@ function MacroForge:CreateUI()
         self.quickButtons[#self.quickButtons+1]={button=button,line=line}
         self.slotButtons[i]={button=button,slot=slot}
     end
-    self.advancedPanel:SetHeight(114+math.ceil(#slots/3)*34+8)
+    -- Equip an item: pick a slot, then an item for it.
+    local equipTop=114+math.ceil(#slots/3)*34+8
+    local equipTitle=KT:Label(self.advancedPanel,"Equip an item",13,true);equipTitle:SetPoint("TOPLEFT",12,-equipTop);equipTitle:SetTextColor(1,.82,0)
+    self.equipSlot=KT:Dropdown(self.advancedPanel,142,function()
+        local list={}
+        for _,entry in ipairs(self.equipSlots) do
+            local used=self:EquipLine(entry[1])
+            list[#list+1]={value=entry[1],label=entry[2]..(used and " *" or ""),tooltipTitle=entry[2],tooltip=used and ("This macro equips "..used.." here.") or nil}
+        end
+        return list
+    end,function(value) self.equipSlotValue=value; self:RefreshEquip() end,"generic")
+    self.equipSlot:SetPoint("TOPLEFT",12,-equipTop-22)
+    KT:Tooltip(self.equipSlot,"Slot","The gear slot to put an item in. Slots this macro already equips are marked with *. In a fight the game only swaps weapons; other slots change out of combat.")
+    self.equipItem=KT:Dropdown(self.advancedPanel,290,function() return self:EquipChoices(self.equipSlotValue or 16) end,function(value) self:SetEquipLine(self.equipSlotValue or 16,value) end,"generic")
+    self.equipItem:SetPoint("TOPLEFT",160,-equipTop-22); self.equipItem.menuWidth=290
+    if self.equipItem.label.SetWordWrap then self.equipItem.label:SetWordWrap(false) end
+    KT:Tooltip(self.equipItem,"Item to equip","Adds an equip line to the macro, for example to swap weapons with the spell. Lists what you wear in this slot now and soulbound items in your bags that fit it. Pick None to remove the line. One item per slot; pick another slot to add more.")
+    self.advancedPanel:SetHeight(equipTop+22+28+12)
     -- Show what is equipped right now each time the panel opens.
     self.advancedPanel:HookScript("OnShow",function()
         for _,entry in ipairs(self.slotButtons) do entry.button.icon:SetTexture(slotIcon(entry.slot)) end

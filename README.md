@@ -1,6 +1,6 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 0.50.0.**
+**Quality-of-life tools for WoW: Forever — version 0.60.0.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
 one place. Everything starts **off**, so the game looks like Blizzard's until you
@@ -36,11 +36,17 @@ the home window. Use **`/rl`** to reload the UI.
   mouseover support; and build custom macros with spell and equipment actions.
   Add all fits your macro tab (Make room), hides macros you never use, and can
   give unlearned spells their icon so bars can be set up from level 1.
+  A macro can also equip items (a weapon swap, for example): pick a slot and an
+  item you wear or carry.
 - **Buff reminders:** Self and group buff notices with talent-based choices,
   weapon enchants, low-rank alerts and an optional low-rank marker on action
   bars, with per-spell exceptions. Choose where notices appear and how long
   they stay. Any buff can get a notice look of its own (bar, icon and text, or
   icon only) with its own size, colors and place on screen.
+  A food buff reminder (Well Fed gives 5% more experience from kills in
+  Forever) works for every class, while leveling or always.
+  Notices hide in combat, except for buffs you set to also remind in combat
+  (Battle Shout, for example).
 - **Leveling stats:** XP per hour, time to level, kills to level, XP progress and
   rested XP. Pick which to show and their order, one per line or on a single
   line, with an optional rounded background; font size and transparency
@@ -82,9 +88,11 @@ the home window. Use **`/rl`** to reload the UI.
   Unitframe colors). Off by default.
 - **Faster looting:** With auto loot on, take everything the moment a corpse
   opens. Off by default.
-- **Merchant helpers:** Optional auto-sell of grey items, and optionally white
-  weapons and armor (they can be bought back, as usual the last 12) and auto-repair, with guild funds if allowed,
-  and a one-line summary (System → Merchant).
+- **Merchant helpers:** Optional auto-sell of grey items, optionally white
+  weapons and armor, and items you mark yourself with a key of your choice
+  (always-sell marks). At most 12 items are sold per visit, so all of them can
+  be bought back. Selling is silent; auto-repair (with guild funds if allowed)
+  reports its cost in one chat line (System → Merchant).
 - **Minimap:** ForeverTools button, coordinates, and an optional launcher that
   groups other addons' minimap buttons into one menu.
 - **Profiles:** Named profiles shared by the characters that use them, saved
@@ -134,9 +142,10 @@ the home window. Use **`/rl`** to reload the UI.
 - Profiles also remember where your macros sit on the action bars, separately
   for each class. Loading or importing the profile on that class offers to put
   them back, adding any macros you are missing (outside combat).
-- A new character asks once whether to use a saved profile or start a new one.
-  The profile chosen under **Profiles → New characters** (by default, the last
-  one you used) is preselected. Closing the question keeps Blizzard's defaults.
+- A new character starts from Blizzard's defaults and asks whether to use a
+  saved profile or start a new one. The profile chosen under **Profiles → New
+  characters** (by default, the last one you used) is preselected. Closing the
+  question keeps Blizzard's defaults; a fight or a reload only postpones it.
 - **Include keybinds** on the export window adds all your key bindings to the
   string. When you import a string with keybinds, **Apply keybinds** replaces
   your current bindings with them (outside combat).

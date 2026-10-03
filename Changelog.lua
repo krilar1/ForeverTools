@@ -2,6 +2,15 @@ local _,FT=...
 -- Short player-facing notes for the "What's new" window. Newest first.
 FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
+    {version="0.60.0",notes={
+        {icon="INV_Sword_04",title="Equip items in macros",text="Add a weapon or gear swap to any macro. Macros > the gear on a macro > Equip an item."},
+        {icon="INV_Misc_Coin_01",title="Always-sell marks",text="Mark bag items with a key you choose; they are sold at merchants. System > Merchant."},
+        {icon="Ability_Warrior_BattleShout",title="Buff reminders in combat",text="Let a buff like Battle Shout keep reminding you during a fight. Buff reminders > the gear on a buff."},
+        {icon="Spell_Misc_Food",title="Food buff reminder",text="A notice when Well Fed is missing: it gives 5% more XP from kills. Buff reminders > Food."},
+        {icon="INV_Misc_Book_09",title="New characters start clean",text="No borrowed dark mode: a new character starts from defaults and asks which profile to use."},
+        {icon="INV_Misc_Coin_02",title="12 sales per visit",text="Auto-sell stops at 12 items and no longer writes to chat. Everything sold can be bought back."},
+        {icon="INV_Misc_ArmorKit_17",title="Day/night icon",text="Its ring now follows the Minimap skin, so dark mode covers it too."},
+    }},
     {version="0.50.0",notes={
         {icon="Spell_Holy_WordFortitude",title="Buff notice looks",text="Give a buff its own notice: bar, icon and text, or icon only. Buff reminders > the gear on a buff."},
         {icon="Spell_Fire_SearingTotem",title="Totem left behind",text="Shamans: a totem's icon pulses red when you walk away from it. Combat > Totems."},
