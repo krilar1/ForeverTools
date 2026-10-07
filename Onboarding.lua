@@ -4,16 +4,16 @@ local _,FT=...
 local Onboarding={}
 local skinAreas={"actions","buffs","stances","minimap","bags","bagWindows","micro","xp","player","target","tot","focus","focustarget","pet","party","personal","castbar","swing"}
 local presets={
-    {key="minimal",label="Minimal",icon="generic",text="Blizzard's own look. Nothing is skinned or recolored; turn on single features whenever you like."},
+    {key="minimal",label="Minimal",icon="INV_Misc_Note_02",text="Blizzard's own look. Nothing is skinned or recolored; turn on single features whenever you like."},
     {key="dark",label="Dark mode",icon="skins",text="Dark borders on action bars, buffs, bags, micro menu, minimap, XP bar and unit frames. Nothing else changes."},
     {key="full",label="Full",icon="classes",text="Dark mode plus class-colored health bars, the FPS counter, the flight timer and target and guild lines in player tooltips."},
 }
 local extras={
-    {key="rankMarker",label="Low-rank marker",icon="buffs",text="A small amber corner on action buttons that use a lower rank than you know."},
-    {key="leveling",label="Leveling stats",icon="fps",text="XP per hour, time to level and kills to level in a small line at the top left."},
+    {key="rankMarker",label="Low-rank marker",icon="INV_Misc_Book_07",text="A small amber corner on action buttons that use a lower rank than you know."},
+    {key="leveling",label="Leveling stats",icon="Spell_ChargePositive",text="XP per hour, time to level and kills to level in a small line at the top left."},
     {key="reminders",label="Buff reminders",icon="buffs",text="A quiet notice when one of your own buffs is missing."},
-    {key="autoSell",label="Auto-sell grey items",icon="generic",text="Sell junk automatically when you open a merchant."},
-    {key="autoRepair",label="Auto-repair",icon="generic",text="Repair automatically at merchants who can repair."},
+    {key="autoSell",label="Auto-sell grey items",icon="INV_Misc_Coin_05",text="Sell junk automatically when you open a merchant."},
+    {key="autoRepair",label="Auto-repair",icon="Trade_BlackSmithing",text="Repair automatically at merchants who can repair."},
     {key="chatLinks",label="Clickable chat links",icon="chat",text="Web addresses in chat open a copy box when clicked."},
 }
 local function extraValue(key)
@@ -68,7 +68,8 @@ function Onboarding:Refresh()
     end
 end
 -- Demo (/ft start): the first-time setup exactly as a new player sees it,
--- but every button only closes it. Nothing is changed or saved.
+-- but every button only closes it. Nothing is changed or saved. The real
+-- one is /ft setup (the same as System > General > Run first-time setup again).
 function Onboarding:ShowDemo()
     if InCombatLockdown() then FT:CombatOpenRequest(); return end
     self.demo=true; self:ShowSetup(false)
@@ -107,7 +108,7 @@ function Onboarding:ShowSetup(again)
         end
         local note=FT:Label(frame,"You can change everything later in /ft.",12)
         note:SetPoint("TOPLEFT",24,-374); note:SetWidth(512); note:SetTextColor(.66,.59,.48)
-        local import=FT:QuietButton(frame,"Import profile",160,34,"profiles"); import:SetPoint("BOTTOMLEFT",24,22)
+        local import=FT:QuietButton(frame,"Import profile",160,34,"INV_Misc_Note_03"); import:SetPoint("BOTTOMLEFT",24,22)
         import:SetScript("OnClick",function()
             if self.demo then self:EndDemo(); return end
             FT.modules.Profiles:Transfer(true,function(name)
@@ -117,7 +118,7 @@ function Onboarding:ShowSetup(again)
             end)
         end)
         FT:Tooltip(import,"Import profile","Paste a ForeverTools export string from another computer or account. It is loaded right away.")
-        local skip=FT:QuietButton(frame,"Skip",160,34,"reset"); skip:SetPoint("BOTTOM",0,22)
+        local skip=FT:QuietButton(frame,"Skip",160,34); skip:SetPoint("BOTTOM",0,22)
         skip:SetScript("OnClick",function() if self.demo then self:EndDemo(); return end; self:Finish(); FT:Toast("No changes made. Open /ft any time.",3) end)
         FT:Tooltip(skip,"Skip","Keep your current settings. You can run this setup again from System > General.")
         local apply=FT:AccentButton(frame,"Apply",160,34,"confirm"); apply:SetPoint("BOTTOMRIGHT",-24,22)
@@ -146,16 +147,16 @@ end
 -- "What's new": a small card panel near the top right (below the minimap),
 -- not in the middle of the screen. Each note is an icon, a short title and
 -- one short line. Older plain-text notes still work.
-local NEWS_WIDTH, CARD_HEIGHT, CARD_GAP = 400, 50, 6
+local NEWS_WIDTH, CARD_HEIGHT, CARD_GAP = 340, 40, 5
 local function newsCard(parent)
     local card = CreateFrame("Frame", nil, parent)
     card:SetSize(NEWS_WIDTH - 40, CARD_HEIGHT)
     FT:RoundedFill(card, 0.12,0.095,0.065, 1)
-    card.icon = card:CreateTexture(nil, "ARTWORK"); card.icon:SetSize(34, 34); card.icon:SetPoint("LEFT", 8, 0)
+    card.icon = card:CreateTexture(nil, "ARTWORK"); card.icon:SetSize(26, 26); card.icon:SetPoint("LEFT", 8, 0)
     card.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93); FT:RoundIcon(card.icon)
-    card.title = FT:Label(card, "", 14, true); card.title:SetPoint("TOPLEFT", 52, -8); card.title:SetWidth(NEWS_WIDTH - 104)
+    card.title = FT:Label(card, "", 13, true); card.title:SetPoint("TOPLEFT", 42, -6); card.title:SetWidth(NEWS_WIDTH - 92)
     card.title:SetTextColor(1, 0.84, 0.45)
-    card.text = FT:Label(card, "", 12); card.text:SetPoint("TOPLEFT", card.title, "BOTTOMLEFT", 0, -3); card.text:SetWidth(NEWS_WIDTH - 104)
+    card.text = FT:Label(card, "", 11); card.text:SetPoint("TOPLEFT", card.title, "BOTTOMLEFT", 0, -2); card.text:SetWidth(NEWS_WIDTH - 92)
     card.text:SetTextColor(.88,.83,.74)
     return card
 end
@@ -163,26 +164,29 @@ function Onboarding:ShowWhatsNew()
     local entry=FT.changelog and FT.changelog[1]
     if not entry or InCombatLockdown() then return end
     if not self.news then
-        local frame=FT:Window("ForeverToolsWhatsNew","What's new",NEWS_WIDTH,300); self.news=frame
+        local frame=FT:Window("ForeverToolsWhatsNew","What's new",NEWS_WIDTH,300); self.news=frame; frame.ignorePlacement=true
         frame.noSavePrompt=true; frame.keepAfterCombat=true
         frame.homeButton:Hide()
-        frame.logo=frame:CreateTexture(nil,"ARTWORK"); frame.logo:SetSize(40,40); frame.logo:SetPoint("TOPLEFT",18,-16)
+        frame.logo=frame:CreateTexture(nil,"ARTWORK"); frame.logo:SetSize(32,32); frame.logo:SetPoint("TOPLEFT",18,-13)
         frame.logo:SetTexture("Interface\\AddOns\\ForeverTools\\Media\\MinimapIcon.tga")
-        frame.titleText:ClearAllPoints(); frame.titleText:SetPoint("TOPLEFT",66,-18)
-        frame.sub=FT:Label(frame,"",12); frame.sub:SetPoint("TOPLEFT",66,-42); frame.sub:SetTextColor(.66,.59,.48)
-        FT:SetTitleLine(frame,64)
+        frame.titleText:ClearAllPoints(); frame.titleText:SetPoint("TOPLEFT",58,-13)
+        if frame.titleText.SetFont and frame.titleText.GetFont then local font,_,flags=frame.titleText:GetFont(); if font then frame.titleText:SetFont(font,17,flags) end end
+        frame.sub=FT:Label(frame,"",11); frame.sub:SetPoint("TOPLEFT",58,-33); frame.sub:SetTextColor(.66,.59,.48)
+        FT:SetTitleLine(frame,54)
         frame.cards={}
-        local off=FT:QuietButton(frame,"Don't show again",170,30,"reset"); off:SetPoint("BOTTOMLEFT",20,18)
+        -- No icon: the text needs the whole button to stay on one line.
+        local off=FT:QuietButton(frame,"Don't show again",170,26); off:SetPoint("BOTTOMLEFT",20,14)
+        off.label:SetWidth(162); off.label:SetJustifyH("CENTER"); if off.label.SetWordWrap then off.label:SetWordWrap(false) end
         off:SetScript("OnClick",function() FT.modules.System:Settings().hideWhatsNew=true; frame:Hide(); FT:Toast("Turn it back on in System > General.",3) end)
         FT:Tooltip(off,"Don't show again","Stop showing this after updates. You can still open it from System > General.")
-        local close=FT:AccentButton(frame,"Got it",120,30,"confirm"); close:SetPoint("BOTTOMRIGHT",-20,18)
+        local close=FT:AccentButton(frame,"Got it",110,26,"confirm"); close:SetPoint("BOTTOMRIGHT",-20,14)
         close:SetScript("OnClick",function() frame:Hide() end)
     end
     local frame=self.news
     frame.titleText:SetText("What's new")
     frame.sub:SetText("ForeverTools v"..entry.version)
     for _,card in ipairs(frame.cards) do card:Hide() end
-    local y=-74
+    local y=-62
     for index,note in ipairs(entry.notes) do
         local card=frame.cards[index] or newsCard(frame); frame.cards[index]=card
         local icon,title,text
@@ -191,14 +195,14 @@ function Onboarding:ShowWhatsNew()
         card.icon:SetTexture("Interface\\Icons\\"..(icon or "INV_Misc_Note_01"))
         card.title:SetText(title or ""); card.title:SetShown(title~=nil)
         card.text:ClearAllPoints()
-        if title then card.text:SetPoint("TOPLEFT",card.title,"BOTTOMLEFT",0,-3) else card.text:SetPoint("LEFT",52,0) end
+        if title then card.text:SetPoint("TOPLEFT",card.title,"BOTTOMLEFT",0,-2) else card.text:SetPoint("LEFT",42,0) end
         card.text:SetText(text or "")
-        local height=math.max(CARD_HEIGHT,(title and 29 or 16)+(card.text:GetStringHeight() or 14))
+        local height=math.max(CARD_HEIGHT,(title and 25 or 14)+(card.text:GetStringHeight() or 12))
         card:SetHeight(height)
         card:ClearAllPoints(); card:SetPoint("TOPLEFT",20,y); card:Show()
         y=y-height-CARD_GAP
     end
-    frame:SetHeight(-y+62)
+    frame:SetHeight(-y+50)
     -- Near the top right, below the minimap and clear of the screen corner.
     frame:ClearAllPoints(); frame:SetPoint("TOPRIGHT",UIParent,"TOPRIGHT",-240,-190)
     frame:Show()

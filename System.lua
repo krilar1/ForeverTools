@@ -47,60 +47,51 @@ function System:Apply()
     FT:UpdateMinimap(); if FT.modules.MinimapIcons then FT.modules.MinimapIcons:Apply() end
     self:Refresh()
 end
--- System is a small hub with four subpages, so no single page lists
--- every switch. Each subpage is its own module for FT:OpenModule and search.
+-- The switch lists. Each is a page of its group (see Hubs.lua): General and
+-- Loot and merchant under System, Minimap and Quests and loot rolls under
+-- On-screen info, Group role and Death glow under Combat, Keybind tools under
+-- Keybinds. Each page is its own module for FT:OpenModule and search.
 local pages={
-    {key="SystemGeneral",title="General",icon="general",description="Welcome message, what's new, first-time setup and resetting settings.",items={
+    {key="SystemGeneral",title="General",hint="Messages at login, first-time setup, resetting, and help when something breaks.",items={
         {"welcome","Welcome message","welcome","Print a short \"ForeverTools loaded\" line in chat when you log in."},
-        {"whatsNew","What's new after updates","welcome","After an update, show a short summary of changes once. Turn off to never show it."},
-        {"setup","Run first-time setup again","generic","Open the welcome setup to pick a starting preset. Your current settings stay until you apply one."},
-        {"reset","Reset all settings","reset","Return every ForeverTools setting to its default (all off) and reload. Saved profiles, custom macros and learned flight times are kept."},
+        {"hiddenUIHint","Show key when interface is hidden","INV_Misc_Eye_01","When you hide the interface (ALT-Z by default), show for a few seconds which key brings it back. The line fades by itself, steps aside for a screenshot and returns a couple of seconds later, and does not show during cutscenes."},
+        {"whatsNew","What's new after updates","INV_Misc_Note_05","After an update, show a short summary of what changed, once. Turn off to never show it."},
+        {"setup","Run first-time setup again","INV_Misc_Book_09","Open the welcome setup to pick a starting look. Your current settings stay until you apply one."},
+        {"reset","Reset all settings","reset","Return every ForeverTools setting to its default (all off) and reload. Saved profiles, custom macros and learned flight times are kept. Asks first."},
+        {"scriptErrors","Show Lua errors","errors","Show or hide the game's Lua error pop-ups. Hiding them does not fix the errors. This is the game's own setting."},
+        {"bugReport","Copy bug report","INV_Misc_Note_04","Opens a box with your addon version, game build, enabled features and recent ForeverTools errors, ready to copy. Nothing is sent anywhere."},
     }},
-    {key="SystemMinimap",title="Minimap",icon="map",description="The ForeverTools button, coordinates and grouping other addons' buttons.",items={
-        {"minimap","ForeverTools minimap button","map","Show or hide the ForeverTools button on the minimap. You can always open settings with /ft."},
-        {"coordinates","Minimap coordinates","map","Show or hide Forever's built-in coordinates below the minimap."},
-        {"minimapIcons","Group minimap buttons","map","Put other addons' minimap buttons into one small menu. Click its icon to open it. A few buttons may stay on the minimap. Do not use it together with another button-collector addon."},
+    {key="SystemMinimap",title="Minimap",hint="The ForeverTools button, coordinates, and tidying other addons' buttons.",items={
+        {"minimap","ForeverTools minimap button","map","Show or hide the ForeverTools button on the minimap. You can always open the settings with /ft."},
+        {"coordinates","Minimap coordinates","INV_Misc_Spyglass_02","Show or hide the game's own coordinates below the minimap."},
+        {"minimapIcons","Group minimap buttons","INV_Misc_Bag_08","Put other addons' minimap buttons into one small menu. Click its icon to open it. A few buttons may stay on the minimap. Do not use it together with another addon that collects minimap buttons."},
+        {"minimapIconsVertical","Grouped buttons","INV_Misc_Bag_08","How the grouped buttons are laid out in their menu. Horizontal: side by side, a new row after 6. Vertical: one below the other, a new column after 6. Click to switch. Needs Group minimap buttons on."},
     }},
-    {key="SystemGameplay",title="Gameplay",icon="classes",description="Group role, faster looting, loot-roll position, quest objectives and the death glow.",items={
-        {"autoRole","Set role when joining a group","classes","When you join a group, set your role (tank, healer or damage) from your talents. Changing it yourself always wins. Feral druids are asked once."},
-        {"fastLoot","Faster looting","generic","Loot everything the moment a corpse is opened, instead of waiting for each slot. Works when auto loot is on (the Auto Loot game option, or holding the auto-loot key). Items that ask before binding still ask."},
-        {"lootMove","Move loot rolls","move","Show a sample loot-roll window you can drag. Click again to lock it. Until you move it, loot rolls appear where Blizzard puts them."},
-        {"lootDefault","Use Blizzard's loot-roll position","reset","Forget your moved position and let the game place loot rolls again."},
-        {"objectives","Quest objectives","INV_Misc_Note_01","Choose: Default (the game's own behavior), Collapsed on login, Open on login, or Hidden. Collapsed and Open are applied when you log in or reload; opening or closing it yourself is kept until then. Hidden keeps the tracker off the screen."},
-        {"deathGlow","Death glow","Spell_Holy_Resurrection","The glowing, washed-out screen effect while you are dead or a ghost. On is the game's default; Off keeps the world in its normal look. This switch shows and changes the game's own setting (the same as typing /console ffxDeath 0 or 1), so it applies to all your characters, and it already reads Off if you turned the glow off with that command before."},
+    {key="SystemGameplay",title="Group role",hint="Your role when you join a group.",items={
+        {"autoRole","Set role when joining a group","Ability_Warrior_DefensiveStance","When you join a group, set your role (tank, healer or damage) from your talents. Changing it yourself always wins. Feral druids are asked once."},
     }},
-    {key="SystemMerchant",title="Merchant",icon="INV_Misc_Coin_02",description="Selling grey, white and marked items and repairing when you visit a merchant.",items={
-        {"autoSell","Auto-sell grey items","generic","Sell grey (junk) items when you open a merchant, at most 12 per visit so every one can be bought back from the Buyback tab. If you carry more, the rest is sold the next time you open a merchant."},
-        {"sellWhite","Also sell white gear","generic","When auto-sell runs, also sell white (common) weapons and armor you have no use for. Kept: gear for an empty slot, gear in an equipment set and, up to level 20, anything better than what you wear in that slot. After level 20 white gear is rarely worth wearing, so it is sold. Never sold: potions, food, drink, reagents, ammo, trade goods, quest items, profession tools, fishing poles, shirts, tabards, bags, rings, necklaces and trinkets. Sold gear can be bought back from the Buyback tab."},
-        {"sellMarks","Always-sell marks","INV_Misc_Coin_01","Mark items in your bags with a key of your choice; marked items are sold whenever you open a merchant. Off by default. Click to open its settings page."},
-        {"autoRepair","Auto-repair","generic","Repair all your gear when you visit a merchant who can repair."},
-        {"guildRepair","Use guild funds for repairs first","party","When auto-repair runs, use guild bank repair money if your guild allows it, otherwise your own gold."},
+    {key="SystemDeath",title="Death glow",hint="How the screen looks while you are dead or a ghost.",items={
+        {"deathGlow","Death glow","Spell_Holy_Resurrection","The glowing, washed-out screen while you are dead or a ghost. On is the game's default; Off keeps the world looking normal. This is the game's own setting (the same as /console ffxDeath 0 or 1), so it applies to all your characters."},
     }},
-    {key="SystemCombat",home=true,title="Combat",icon="Ability_Warrior_DefensiveStance",description="Threat meter, rare alerts and totems.",items={
-        {"threat","Threat meter settings","Ability_Warrior_DefensiveStance","A threat meter next to the damage meter, and your threat % above your target. Off by default."},
-        {"rareAlert","Rare alerts settings","Ability_Hunter_SniperShot","A notice with a soft glow (and optional sound) when a rare appears on your minimap or nearby. Off by default."},
-        {"totems","Totems settings","Spell_Nature_StoneSkinTotem","Shaman totem tools: each totem's 30-yard reach on the minimap, and a warning on the totem's icon when you leave it behind. Off by default."},
+    {key="SystemQuests",title="Quests and loot rolls",hint="The quest tracker at login, and where loot-roll windows appear.",items={
+        {"objectives","Quest objectives","INV_Misc_Note_01","How the quest tracker starts when you log in or reload: Default (the game decides), Collapsed, Open, or Hidden. Opening or closing it yourself is kept until the next login. Hidden keeps it off the screen."},
+        {"lootMove","Move loot rolls","move","Show a sample loot-roll window you can drag. Click again to lock it. Until you move it, loot rolls appear where the game puts them."},
+        {"lootDefault","Use the game's loot-roll position","reset","Forget your moved position and let the game place loot rolls again."},
     }},
-    {key="SystemKeybinds",home=true,title="Keybinds",icon="keybind",description="Quick keybind mode, backups and restore, spell binds, mouse-wheel casting and the smart interact key.",items={
-        {"quickKeybind","Quick keybind mode (/kb)","keybind","Hover any action button and press a key to bind it; Escape on a bound slot unbinds it. A snapshot of your keybinds is taken first, so you can save, revert to a snapshot or discard. You can also type /kb in chat."},
-        {"backups","Backups and restore","profiles","Put back earlier keybinds, action bars and spell binds, or save a copy now. The list holds your full backups (saved by you, or automatically before an import) and your last keybind sessions (keybinds only). Hover one to see what it puts back. The last 10 of each are kept on this computer."},
-        {"wheelCasting","Mouse-wheel casting","mouseover","Bind a spell to scrolling up or down, cast on the unit under your mouse. Anywhere else the wheel zooms the camera."},
-        {"spellBinds","Spell binds settings","keybind","Bind spells, items and macros straight to keys without an action bar, plus role keys (interrupt, taunt, dispel…) that pick your class's spell. Off by default."},
-        {"smartKey","Smart interact key settings","keybind","One key for questing: uses RestedXP's quest item or target button when the guide shows one, and Interact with target the rest of the time (always while a dialog is open). Off by default."},
+    {key="SystemMerchant",title="Loot and merchant",hint="Looting faster, and selling and repairing when you visit a merchant.",items={
+        {"fastLoot","Faster looting","INV_Misc_Bag_10","Loot everything the moment a corpse is opened, instead of waiting for each slot. Works when auto loot is on (the game's Auto Loot option, or holding the auto-loot key). Items that ask before binding still ask."},
+        {"autoSell","Auto-sell grey items","INV_Misc_Coin_05","Sell grey (junk) items when you open a merchant, at most 12 per visit so every one can be bought back. If you carry more, the rest is sold next time."},
+        {"sellWhite","Also sell white gear","INV_Misc_Coin_03","When auto-sell runs, also sell white weapons and armor you have no use for. Kept: gear for an empty slot, gear in an equipment set and, up to level 20, anything better than what you wear. Never sold: potions, food, reagents, ammo, trade goods, quest items, tools, shirts, tabards, bags, rings, necklaces and trinkets. Sold gear can be bought back."},
+        {"autoRepair","Auto-repair","Trade_BlackSmithing","Repair all your gear when you visit a merchant who can repair."},
+        {"guildRepair","Use guild funds for repairs first","INV_Shirt_GuildTabard_01","When auto-repair runs, use guild bank repair money if your guild allows it, otherwise your own gold."},
     }},
-    {key="SystemDisplay",title="On-screen info",icon="fps",description="FPS counter, leveling stats, the flight timer and moving on-screen elements.",items={
-        {"fps","FPS counter settings","fps","Show a small, movable frames-per-second counter."},
-        {"leveling","Leveling stats settings","fps","XP per hour, time to level, kills to level and more, on a small movable line and in the XP bar tooltip."},
-        {"flightTimer","Flight timer settings","fps","Turn the flight countdown on or off, preview and move it, and change its font, size, outline and color."},
-        {"movers","Move elements settings","move","Move all on-screen elements at once, choose whether unused ones show while moving, and reset positions."},
-    }},
-    {key="SystemTroubleshooting",title="Troubleshooting",icon="errors",description="Lua error display and a copyable bug report.",items={
-        {"scriptErrors","Show Lua errors","errors","Show or hide Lua error popups. Hiding them does not fix the errors."},
-        {"bugReport","Copy bug report","errors","Show your addon version, game build, enabled features and recent ForeverTools errors in a box you can copy. Nothing is sent automatically."},
+    {key="SystemKeybinds",title="Keybind tools",hint="Bind action buttons by hovering them, and put earlier keybinds back.",items={
+        {"quickKeybind","Quick keybind mode (/kb)","keybind","Hover any action button and press a key to bind it. Escape on a bound button unbinds it. Your keybinds are copied first, so you can save, go back or discard. You can also type /kb."},
+        {"backups","Backups and restore","profiles","Put back earlier keybinds, action bars and spell binds, or save a copy now. The list holds your full backups (saved by you, or automatically before an import) and your last keybind sessions. Hover one to see what it puts back. The last 10 of each are kept on this computer."},
     }},
 }
 System.pages=pages
-local toggles={fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,sellWhite=true,scriptErrors=true,deathGlow=true}
+local toggles={hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,sellWhite=true,scriptErrors=true,deathGlow=true}
 -- Switches that are the game's own settings: read and written directly,
 -- never stored by ForeverTools. "Unavailable" when the game has no such setting.
 local gameOptions={scriptErrors="scriptErrors",deathGlow="ffxDeath"}
@@ -118,7 +109,7 @@ function System:Values()
     if coords==nil then coords=not getter or getter("minimapShowPlayerCoords")=="1" end
     return {welcome=FT.db.welcome==true,whatsNew=s.hideWhatsNew~=true,minimap=FT.db.minimapEnabled~=false,coordinates=coords,
         minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=gameOption("scriptErrors")=="1",deathGlow=gameOption("ffxDeath")~="0",
-        autoRole=s.autoRole==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true}
+        hiddenUIHint=s.hiddenUIHint==true,autoRole=s.autoRole==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true}
 end
 function System:Refresh()
     if not self.buttons then return end
@@ -129,6 +120,11 @@ function System:Refresh()
             button.label:SetText(button.title..": "..(missing and "Unavailable" or (values[key] and "On" or "Off")))
             FT:SetSelected(button,values[key])
             if gameOptions[key] then button:SetEnabled(not missing); button:SetAlpha(missing and .45 or 1) end
+        end
+        if key=="minimapIconsVertical" then
+            local vertical=self:Settings().minimapIconsVertical==true
+            button.label:SetText("Grouped buttons: "..(vertical and "Vertical" or "Horizontal"))
+            button:SetEnabled(values.minimapIcons); button:SetAlpha(values.minimapIcons and 1 or .45)
         end
         if key=="guildRepair" then button:SetEnabled(values.autoRepair); button:SetAlpha(values.autoRepair and 1 or .45) end
         if key=="sellWhite" then button:SetEnabled(values.autoSell); button:SetAlpha(values.autoSell and 1 or .45) end
@@ -196,9 +192,17 @@ function System:Refresh()
             end
         end
     end
+    -- The sidebar of an open switch page shows the new state too.
+    if FT.RefreshDock then
+        for _,page in ipairs(pages) do
+            local module=FT.modules[page.key]
+            if module and module.frame and module.frame:IsShown() then FT:RefreshDock(module.frame) end
+        end
+    end
 end
 function System:Click(key)
     if key=="minimapIcons" then FT.modules.MinimapIcons:Toggle();return end
+    if key=="minimapIconsVertical" then FT.modules.MinimapIcons:ToggleVertical();return end
     if key=="flightTimer" then FT:OpenModule("FlightTimer");return end
     if key=="fps" then FT:OpenModule("QualityOfLife");return end
     if key=="rareAlert" then FT:OpenModule("RareAlert");return end
@@ -262,42 +266,33 @@ local function buildPage(page)
     local module={}
     function module:Open()
         if not self.frame then
-            local height=62+#page.items*40+22
-            -- Combat and Keybinds are on the main menu; the rest live in System.
-            self.frame=FT:Window("ForeverTools"..page.key,page.home and ("ForeverTools | "..page.title) or ("ForeverTools | System | "..page.title),500,height)
-            if page.home then self.frame.homeButton:SetScript("OnClick",function() FT:OpenHome() end) else FT:BackTo(self.frame,"System") end
-            if page.key=="SystemGameplay" then self.frame:HookScript("OnHide",function() FT.modules.LootRoll:FinishMove() end) end
+            local height=62+34+#page.items*40+22
+            -- As wide as the other pages of its group.
+            local hub=FT.HubOf and FT:HubOf(page.key)
+            local width=hub and hub.width or 520
+            self.frame=FT:Window("ForeverTools"..page.key,page.title,width,height)
+            local hint=FT:Label(self.frame,page.hint or "",12); hint:SetPoint("TOPLEFT",24,-66); hint:SetWidth(width-48); hint:SetTextColor(.66,.59,.48)
+            if hint.SetWordWrap then hint:SetWordWrap(true) end
+            if page.key=="SystemQuests" then self.frame:HookScript("OnHide",function() FT.modules.LootRoll:FinishMove() end) end
             for i,entry in ipairs(page.items) do
                 local key=entry[1]
-                local b=FT:QuietButton(self.frame,entry[2],452,32,entry[3]); b.title=entry[2]
-                b:SetPoint("TOPLEFT",24,-62-(i-1)*40); System.buttons[key]=b
+                local b=FT:QuietButton(self.frame,entry[2],width-48,32,entry[3]); b.title=entry[2]
+                b:SetPoint("TOPLEFT",24,-62-34-(i-1)*40); System.buttons[key]=b
                 b:SetScript("OnClick",function() System:Click(key) end)
-                -- Items that open their own page say so.
-                local opens={spellBinds=true,totems=true,fps=true,leveling=true,flightTimer=true,movers=true,rareAlert=true,threat=true,wheelCasting=true,smartKey=true}
-                FT:Tooltip(b,entry[2],entry[4]..(opens[key] and "\n\nClick to open its settings page." or ""))
+                FT:Tooltip(b,entry[2],entry[4])
             end
             if page.key=="SystemMinimap" then FT.minimapToggle=System.buttons.minimap end
             if page.key=="SystemGeneral" then FT.welcomeToggle=System.buttons.welcome end
         end
         System:Refresh(); self.frame:Show()
     end
+    -- The switches are System's: refreshing the page refreshes them all.
+    function module:Refresh() System:Refresh() end
     FT:RegisterModule(page.key,module)
 end
-function System:Open()
-    self.buttons=self.buttons or {}
-    if not self.frame then
-        local list={}; for _,page in ipairs(pages) do if not page.home then list[#list+1]=page end end
-        self.frame=FT:Window("ForeverToolsSystem","ForeverTools | System",500,86+#list*58+20)
-        for i,page in ipairs(list) do
-            local button=FT:QuietButton(self.frame,page.title,452,46,page.icon)
-            FT:ButtonIcon(button,page.icon,30)
-            button:SetPoint("TOPLEFT",24,-68-(i-1)*58)
-            button:SetScript("OnClick",function() FT:OpenModule(page.key) end)
-            FT:Tooltip(button,page.title,page.description)
-        end
-    end
-    self.frame:Show()
-end
+-- "System" on the main menu is a group of pages (Hubs.lua).
+System.redirect=true
+function System:Open() FT:OpenHub("SystemHub") end
 System.buttons={}
 for _,page in ipairs(pages) do buildPage(page) end
 function System:WatchSpellTooltip(tip)
@@ -418,7 +413,7 @@ function System:TooltipLayout(tip)
         end
     end
     -- Split Blizzard's "Level 3 <race> <class> (Player)" line into parts.
-    local parts={name=tipModule.hex(nameColor[1],nameColor[2],nameColor[3])..heading.."|r",faction=factionText and ("|cffffffff"..plain(factionText).."|r")}
+    local parts={name=tipModule.hex(nameColor[1],nameColor[2],nameColor[3])..heading.."|r",faction=tipModule:FactionText(factionText and plain(factionText) or factionName,faction)}
     local detailText=plain(details)
     local level=safeCall(UnitLevel,unit)
     local levelToken=(type(level)=="number" and level>0) and tostring(level) or "??"
@@ -669,7 +664,10 @@ function System:SuggestedRole()
         if spec.points>best then best,chosen,tied=spec.points,spec.name,false
         elseif spec.points==best then tied=true end
     end
-    if best==0 or tied then return end
+    -- A tree you picked yourself (Buff reminders > Your buffs) decides.
+    local manual=reminder.ManualSpec and reminder:ManualSpec()
+    if manual then chosen=manual
+    elseif best==0 or tied then return end
     local class=reminder:Class()
     if class=="Druid" and chosen=="Feral Combat" then return nil,"FERAL" end
     if (class=="Paladin" or class=="Warrior") and chosen=="Protection" then return "TANK" end

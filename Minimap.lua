@@ -75,7 +75,7 @@ function FT:UpdateMinimap()
             if owner.skipClick then owner.skipClick = false; return end
             if mouseButton == "RightButton" then FT:ShowMinimapMenu() else
                 if FT.minimapMenu then FT.minimapMenu:Hide() end
-                FT:OpenHome()
+                FT:OpenLast()
             end
         end)
         button:SetScript("OnDragStart", function(owner)

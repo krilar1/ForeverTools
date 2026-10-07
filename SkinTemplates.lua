@@ -83,11 +83,11 @@ function S:Refresh()
             end
             return list
         end
-        local w=111
-        self.saveTemplate=FT:QuietButton(frame,"Save as new",w,32,"add"); self.saveTemplate:SetPoint("TOPLEFT",222,-244)
+        local w=118
+        self.saveTemplate=FT:QuietButton(frame,"Save new",w,32,"add"); self.saveTemplate:SetPoint("TOPLEFT",222,-244)
         self.saveTemplate:SetScript("OnClick",function() self:SaveCurrentAsTemplate() end)
         FT:Tooltip(self.saveTemplate,"Save as new template","Save your current skin settings (every area) as a new template with a name you choose.")
-        self.updateTemplate=FT:QuietButton(frame,"Update",w,32,"reset"); self.updateTemplate:SetPoint("LEFT",self.saveTemplate,"RIGHT",12,0)
+        self.updateTemplate=FT:QuietButton(frame,"Update",w,32,"INV_Scroll_03"); self.updateTemplate:SetPoint("LEFT",self.saveTemplate,"RIGHT",12,0)
         self.updateTemplate:SetScript("OnClick",function() self:UpdateTemplate() end)
         FT:Tooltip(self.updateTemplate,"Update template","Replace the selected template with your current skin settings. Asks first. Only your own templates can be updated.")
         self.renameTemplate=FT:QuietButton(frame,"Rename",w,32,"INV_Misc_Note_01"); self.renameTemplate:SetPoint("LEFT",self.updateTemplate,"RIGHT",12,0)

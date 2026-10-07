@@ -73,6 +73,18 @@ function Report:Text()
         local ok,line=pcall(totems.Report,totems)
         if ok and type(line)=="string" then table.insert(lines,7,line) end
     end
+    -- What the game says about talents, for "wrong talent tree" reports.
+    local reminder=FT.modules and FT.modules.BuffReminder
+    if reminder and reminder.TalentReport then
+        local ok,line=pcall(reminder.TalentReport,reminder)
+        if ok and type(line)=="string" then table.insert(lines,7,line) end
+    end
+    -- What the smart interact key is set to right now.
+    local smart=FT.modules and FT.modules.SmartKey
+    if smart and smart.Report then
+        local ok,line=pcall(smart.Report,smart)
+        if ok and type(line)=="string" then table.insert(lines,7,line) end
+    end
     local profiles=FT.modules and FT.modules.Profiles
     if profiles and profiles.PlacementReport then
         local ok,line=pcall(profiles.PlacementReport,profiles)

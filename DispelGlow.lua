@@ -269,6 +269,72 @@ function Glow:SetEvents(on)
         if on then self.events:RegisterEvent(event) else self.events:UnregisterEvent(event) end
     end
 end
+-- Settings page (Appearance > Dispel glow).
+function Glow:Refresh()
+    local page=self.page; if not page then return end
+    local s=self:Settings()
+    page.toggle.label:SetText("Dispel glow: "..(s.enabled and "On" or "Off")); FT:SetSelected(page.toggle,s.enabled)
+    for key,b in pairs(page.frames) do FT:SetSelected(b,s[key]); b:SetAlpha(s.enabled and 1 or .5) end
+    page.strength.value=s.strength
+    page.strength.label:SetText("Glow: "..(({soft="Soft",medium="Medium",strong="Strong"})[s.strength] or "Medium"))
+    page.pulse.label:SetText("Gentle pulse: "..(s.pulse and "On" or "Off")); FT:SetSelected(page.pulse,s.pulse)
+    for name,b in pairs(page.colors) do
+        local c=s.colors[name]; b.swatch:SetVertexColor(c[1],c[2],c[3]); b:SetAlpha(s.enabled and 1 or .5)
+    end
+end
+function Glow:Open()
+    if not self.frame then
+        local frame=FT:Window("ForeverToolsDispelGlow","Dispel glow",760,560); self.frame=frame
+        local page={frames={},colors={}}; self.page=page
+        FT:PageInfo(frame,"Dispel glow","A soft glow around a unit frame while that unit has a debuff you can remove, in the debuff's color (magic, curse, disease or poison). Only dispels you have learned count, so nothing lights up before you train them. No icons are added.")
+        local hint=FT:Label(frame,"A glow on unit frames that have a debuff you can remove.",12); hint:SetPoint("TOPLEFT",24,-66); hint:SetWidth(712); hint:SetTextColor(.66,.59,.48)
+        page.toggle=FT:AccentButton(frame,"",712,34,"Spell_Holy_DispelMagic"); page.toggle:SetPoint("TOPLEFT",24,-94)
+        page.toggle:SetScript("OnClick",function() local s=self:Settings(); s.enabled=not s.enabled; self:Apply(); self:Refresh() end)
+        FT:Tooltip(page.toggle,"Dispel glow","A soft glow around a unit frame when it has a debuff you can dispel, in that debuff type's color. It uses the same glow art the game lights up for aggro. Choose the frames and colors below.")
+        local framesHead=FT:Label(frame,"Show on",15,true); framesHead:SetPoint("TOPLEFT",24,-146); FT:SectionHeading(framesHead,"INV_Misc_Head_Human_01",300)
+        for i,key in ipairs(self.frameKeys) do
+            local b=FT:QuietButton(frame,self.labels[key],136,32)
+            b:SetPoint("TOPLEFT",24+(i-1)*144,-174)
+            b:SetScript("OnClick",function() local s=self:Settings(); s[key]=not s[key]; self:Apply(); self:Refresh() end)
+            FT:Tooltip(b,self.labels[key].." frames",key=="raid" and "Raid frames. The game has its own dispel highlight for these in Edit Mode; use one or the other."
+                or key=="party" and "Show the glow on your party's frames, both the normal ones and the raid-style ones."
+                or "Show the glow on the "..self.labels[key]:lower().." frame.")
+            page.frames[key]=b
+        end
+        local lookHead=FT:Label(frame,"Look",15,true); lookHead:SetPoint("TOPLEFT",24,-226); FT:SectionHeading(lookHead,"Spell_Holy_DispelMagic",300)
+        page.strength=FT:Dropdown(frame,350,function()
+            local icon="Interface\\Icons\\Spell_Holy_DispelMagic"
+            return {{value="soft",label="Glow: Soft",icon=icon},{value="medium",label="Glow: Medium",icon=icon},{value="strong",label="Glow: Strong",icon=icon}}
+        end,function(value) self:Settings().strength=value; self:Apply(); self:Refresh() end,"Spell_Holy_DispelMagic")
+        page.strength:SetPoint("TOPLEFT",24,-254); page.strength:SetHeight(32)
+        FT:Tooltip(page.strength,"Glow strength","How bright the glow is.")
+        page.pulse=FT:QuietButton(frame,"",350,32,"Spell_Holy_DispelMagic"); page.pulse:SetPoint("TOPLEFT",386,-254)
+        page.pulse:SetScript("OnClick",function() local s=self:Settings(); s.pulse=not s.pulse; self:Apply(); self:Refresh() end)
+        FT:Tooltip(page.pulse,"Gentle pulse","Let the glow slowly fade in and out so it catches the eye.")
+        -- One color per debuff type. Picking a color shows it on your frames for a moment.
+        for i,name in ipairs(self.typeNames) do
+            local b=FT:QuietButton(frame,name,172,32); b:SetPoint("TOPLEFT",24+(i-1)*180,-294)
+            b.label:ClearAllPoints(); b.label:SetPoint("LEFT",12,0)
+            b.swatch=b:CreateTexture(nil,"ARTWORK"); b.swatch:SetTexture("Interface\\Buttons\\WHITE8X8"); b.swatch:SetSize(18,18); b.swatch:SetPoint("RIGHT",-10,0)
+            b:RegisterForClicks("LeftButtonUp","RightButtonUp")
+            b:SetScript("OnClick",function(_,mouse)
+                local function set(r,g,bl) self:SetColor(name,r,g,bl); self:Preview(name); self:Refresh() end
+                if mouse=="RightButton" then local d=self.defaultColors[name]; set(d[1],d[2],d[3]); return end
+                if not ColorPickerFrame then return end
+                local c=self:Settings().colors[name]; local old={c[1],c[2],c[3]}
+                self:Preview(name,8)
+                -- The frames follow at most 20 times a second while you drag the color wheel.
+                local function pick() local r,g,bl=ColorPickerFrame:GetColorRGB(); self:SetColor(name,r,g,bl); self:Refresh(); FT:Coalesce("dispelColor",function() self:Preview(name,6) end,.05) end
+                local function cancel() set(old[1],old[2],old[3]) end
+                if ColorPickerFrame.SetupColorPickerAndShow then FT:TrackColorPicker(); ColorPickerFrame:SetupColorPickerAndShow({r=old[1],g=old[2],b=old[3],hasOpacity=false,swatchFunc=pick,cancelFunc=cancel})
+                else ColorPickerFrame:SetColorRGB(unpack(old)); ColorPickerFrame.func=pick; ColorPickerFrame.cancelFunc=cancel; ColorPickerFrame:Show() end
+            end)
+            FT:Tooltip(b,name.." glow color","The glow color for "..name:lower().." debuffs. Click to change it: the glow shows on your frames for a few seconds so you can judge it. Right-click puts the default color back.")
+            page.colors[name]=b
+        end
+    end
+    self:Refresh(); self.frame:Show()
+end
 FT:RegisterModule("DispelGlow",Glow)
 Glow.events=CreateFrame("Frame")
 Glow.events:RegisterEvent("PLAYER_LOGIN")

@@ -69,6 +69,9 @@ local genericMacros = {
     {"Role Poll", 1, "generic", "spell_holy_powerwordshield", "#showtooltip\n/run InitiateRolePoll()"},
     {"Party GZ", 1, "generic", "inv_misc_rabbit", "#showtooltip GZ\n/P GZ!!!\n/P (\\ /)\n/P (^_^)\n/p (*(\")(\")", "#showtooltip\n/P GZ!!!\n/P (\\ /)\n/P (^_^)\n/p (*(\")(\")"},
     {"Target nearest enemy", 1, "generic", "ability_hunter_assassinate2", "#showtooltip\n/targetenemy [noharm][dead]\n/startattack"},
+    -- Text and note from Bandage.lua: it follows the bandages in your bags.
+    {"Bandage", 1, "generic", "inv_misc_bandage_12", function() return KT.modules.Bandage and KT.modules.Bandage:Body() or "#showtooltip\n/stopattack" end, nil,
+        "Stops your attack, then bandages you with the best bandage in your bags. The macro lists the bandages you carry, best first, so the next one takes over when one runs out. After you add it, ForeverTools keeps it up to date as your bags change (out of combat). Change the macro's text yourself and it is left alone."},
 }
 
 local function raceKey()
@@ -91,7 +94,10 @@ end
 
 local function addEntries(destination, entries, className, raceName, category)
     for _, data in ipairs(entries or {}) do
-        destination[#destination + 1] = { name = data[1], ranks = data[2], kind = data[3], icon = data[4], code = data[5], old = data[6], class = className, race = raceName, category = category }
+        local code = data[5]
+        -- A text that follows the game (the Bandage macro) is built when listed.
+        if type(code) == "function" then code = code() end
+        destination[#destination + 1] = { name = data[1], ranks = data[2], kind = data[3], icon = data[4], code = code, old = data[6], note = data[7], class = className, race = raceName, category = category }
     end
 end
 
@@ -755,6 +761,7 @@ function MacroForge:RenderList()
                     return button.entry and self:IsHidden(button.entry) and "Show this macro in the list again." or "Hide this macro from the list. Hidden macros are never added by Add all. Open Hidden to bring it back."
                 end)
                 KT:Tooltip(button,"Macro template",function()
+                    if button.entry and button.entry.note then return button.entry.note end
                     return button.entry and button.entry.name=="1-shot combo"
                         and "Build one macro that does several things. Pick learned spells above the macro name, and add trinkets or start attack from the gear button. Abilities off the global cooldown fire together; other spells may need another press."
                         or "Click to preview and edit this macro. Nothing changes in WoW until you add it."
@@ -961,15 +968,52 @@ function MacroForge:EquipLine(slot,text)
         if tonumber(number)==slot and name~="" then return (name:gsub('^"(.*)"$',"%1")) end
     end
 end
+-- The game's own color for an item quality (grey, white, green, blue,
+-- purple, orange), as a color code; nil when it is not known.
+local function qualityCode(quality)
+    if not plain(quality) or type(quality)~="number" then return nil end
+    local r,g,b
+    local entry=type(ITEM_QUALITY_COLORS)=="table" and ITEM_QUALITY_COLORS[quality]
+    if type(entry)=="table" and type(entry.r)=="number" then r,g,b=entry.r,entry.g,entry.b
+    else
+        local get=(C_Item and C_Item.GetItemQualityColor) or GetItemQualityColor
+        if get then local ok,cr,cg,cb=pcall(get,quality); if ok and type(cr)=="number" and type(cg)=="number" and type(cb)=="number" then r,g,b=cr,cg,cb end end
+    end
+    if not r then return nil end
+    return string.format("|cff%02x%02x%02x",math.floor(r*255+.5),math.floor(g*255+.5),math.floor(b*255+.5))
+end
+-- The quality of an item by name: what you wear in that slot, else what the
+-- game knows about the name (items in your bags).
+function MacroForge:EquipQuality(slot,name)
+    if type(name)~="string" or name=="" then return nil end
+    if GetInventoryItemLink and GetInventoryItemQuality then
+        local ok,link=pcall(GetInventoryItemLink,"player",slot)
+        if ok and linkName(link)==name then
+            local okQuality,quality=pcall(GetInventoryItemQuality,"player",slot)
+            if okQuality and plain(quality) and type(quality)=="number" then return quality end
+        end
+    end
+    local get=(C_Item and C_Item.GetItemInfo) or GetItemInfo
+    if get then
+        local ok,_,_,quality=pcall(get,name)
+        if ok and plain(quality) and type(quality)=="number" then return quality end
+    end
+end
+-- An item name in its quality color, like the game shows it.
+function MacroForge:ColoredItem(name,quality)
+    local code=qualityCode(quality)
+    return code and (code..name.."|r") or name
+end
 -- What can go in this slot: what you wear there now, then soulbound items in
 -- your bags that fit it. Read when the menu opens, never while playing.
 function MacroForge:EquipChoices(slot)
     local list={{value="",label="None (remove from macro)",icon="Interface\\Icons\\INV_Misc_QuestionMark"}}
     local seen={}
-    local function add(name,icon,suffix)
+    local function add(name,icon,suffix,quality)
         if type(name)~="string" or name=="" or seen[name] then return end
         seen[name]=true
-        list[#list+1]={value=name,label=name..(suffix or ""),icon=plain(icon) and icon or nil}
+        if quality==nil then quality=self:EquipQuality(slot,name) end
+        list[#list+1]={value=name,label=self:ColoredItem(name,quality)..(suffix or ""),icon=plain(icon) and icon or nil,tooltipTitle=name}
     end
     if GetInventoryItemLink then
         local ok,link=pcall(GetInventoryItemLink,"player",slot)
@@ -984,7 +1028,8 @@ function MacroForge:EquipChoices(slot)
             for index=1,(okCount and plain(count) and type(count)=="number" and count or 0) do
                 local ok,info=pcall(C_Container.GetContainerItemInfo,bag,index)
                 if ok and type(info)=="table" and plain(info.isBound) and info.isBound and plain(info.itemID) and fits(info.itemID,slot) then
-                    add((plain(info.itemName) and type(info.itemName)=="string" and info.itemName) or linkName(info.hyperlink),info.iconFileID)
+                    add((plain(info.itemName) and type(info.itemName)=="string" and info.itemName) or linkName(info.hyperlink),info.iconFileID,nil,
+                        plain(info.quality) and type(info.quality)=="number" and info.quality or nil)
                 end
             end
         end
@@ -1028,7 +1073,7 @@ function MacroForge:RefreshEquip()
     self.equipSlot.value=slot; self.equipSlot.label:SetText(label)
     local current=self:EquipLine(slot)
     self.equipItem.value=current or ""
-    self.equipItem.label:SetText(current or "Choose an item")
+    self.equipItem.label:SetText(current and self:ColoredItem(current,self:EquipQuality(slot,current)) or "Choose an item")
 end
 function MacroForge:RenderHistory()
     if not self.historyPanel or not self.selectedMacro then return end

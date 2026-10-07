@@ -2,9 +2,13 @@ local _,FT=...
 -- Smart interact key (off by default): one key that does the right thing.
 --   * A dialog is open (quest, gossip, merchant…): Interact with target, so
 --     nothing gets closed.
+--   * Your target is friendly or dead, or the game's interact key has
+--     something in reach: Interact with target (talk, loot).
 --   * RestedXP shows a quest item button: use the item.
 --   * RestedXP shows a target button and you have no target: target it.
 --   * Otherwise: Interact with target.
+-- When the key you chose is already your own Interact with target key, that
+-- binding is left alone and only the RestedXP cases are put on top of it.
 -- It uses the game's own secure key switching (a key that clicks another
 -- button), so it also works in combat and never acts on its own: you still
 -- press the key. RestedXP's buttons are only clicked, never changed. Without
@@ -57,14 +61,20 @@ function Key:Header()
         self:ClearBindings()
         local key=self:GetAttribute("smartkey")
         if not key or self:GetAttribute("on")~=1 then return end
-        self:SetBinding(false,key,"INTERACTTARGET")
+        -- Your own Interact key already interacts: nothing to put on it.
+        if self:GetAttribute("native")~=1 then self:SetBinding(false,key,"INTERACTTARGET") end
         if self:GetAttribute("dialog")==1 then return end
+        local state=self:GetAttribute("state-target")
+        if state=="interact" then return end
         local item=self:GetAttribute("item")
         if item then self:SetBindingClick(true,key,item,"LeftButton") return end
         local target=self:GetAttribute("targetbutton")
-        if target and self:GetAttribute("state-target")~=1 and self:GetAttribute("state-target")~="1" then self:SetBindingClick(true,key,target,"LeftButton") end
+        if target and state=="none" then self:SetBindingClick(true,key,target,"LeftButton") end
     ]])
-    RegisterStateDriver(h,"target","[@target,exists,nodead] 1; 0")
+    -- interact: someone to talk to or loot (a friendly or dead target, or
+    -- something in reach of the game's own interact key). enemy: a living
+    -- enemy target. none: no target.
+    RegisterStateDriver(h,"target","[@target,help,nodead][@target,dead][@softinteract,exists] interact; [@target,exists] enemy; none")
     self.header=h
     return h
 end
@@ -89,14 +99,17 @@ function Key:Update()
     self:WatchButtons()
     local item,target,dialog=self:Scan()
     local key=s.enabled and self:CurrentKey() or nil
-    self.state={item=item,target=target,dialog=dialog==1}
+    -- Is the chosen key the game's own Interact with target key?
+    local native=0
+    if key and GetBindingKey then for _,bound in ipairs({GetBindingKey("INTERACTTARGET")}) do if bound==key then native=1 end end end
+    self.state={item=item,target=target,dialog=dialog==1,native=native==1}
     -- Only touch the binding when something changed. (Changing it makes the
     -- game announce new bindings, which would otherwise start this again.)
-    local signature=tostring(s.enabled)..":"..tostring(key)..":"..tostring(item)..":"..tostring(target)..":"..dialog
+    local signature=tostring(s.enabled)..":"..tostring(key)..":"..tostring(item)..":"..tostring(target)..":"..dialog..":"..native
     if signature==self.signature then self:Refresh(); return end
     self.signature=signature
     h:SetAttribute("on",s.enabled and 1 or 0)
-    h:SetAttribute("smartkey",key)
+    h:SetAttribute("smartkey",key); h:SetAttribute("native",native)
     h:SetAttribute("item",item); h:SetAttribute("targetbutton",target); h:SetAttribute("dialog",dialog)
     h:SetAttribute("refresh",(h:GetAttribute("refresh") or 0)+1)
     self:Refresh()
@@ -152,10 +165,35 @@ function Key:Refresh()
     if not s.enabled then now="Off."
     elseif not key then now="|cffff9e59Choose a key first.|r"
     elseif st.dialog then now="A dialog is open: the key interacts."
-    elseif st.item then now="RestedXP shows a quest item: the key uses it."
+    elseif st.item then now="RestedXP shows a quest item: the key uses it. With a friendly or dead target it interacts instead."
     elseif st.target then now="RestedXP shows a target: with no target, the key targets it; otherwise it interacts."
     else now="The key interacts with your target." end
-    self.status:SetText("Right now: "..now..(rxp and "" or "\nRestedXP is not loaded, so the key is just Interact with target."))
+    local lines={"Right now: "..now}
+    if s.enabled and key then lines[#lines+1]=self:Doing(key) end
+    if not rxp then lines[#lines+1]="RestedXP is not loaded, so the key is just Interact with target." end
+    self.status:SetText(table.concat(lines,"\n"))
+end
+-- What the game has on the key at this moment, in plain words, so a key
+-- that another addon or binding took over shows up here.
+function Key:Doing(key)
+    local action=GetBindingAction and GetBindingAction(key,true)
+    if type(action)~="string" or action=="" then return "|cffff9e59The key has nothing on it. Turn the smart key off and on again, out of combat.|r" end
+    if action=="INTERACTTARGET" then return "The key is set to: Interact with target"..((self.state and self.state.native) and " (your own key binding)." or ".") end
+    local button=action:match("^CLICK ([^:]+)")
+    if button then
+        for _,name in ipairs(ITEMS) do if name==button then return "The key is set to: RestedXP's quest item." end end
+        for _,name in ipairs(TARGETS) do if name==button then return "The key is set to: RestedXP's target button." end end
+    end
+    return "|cffff9e59Something else has the key: "..((GetBindingName and GetBindingName(action)) or action)..".|r"
+end
+-- One line for the bug report.
+function Key:Report()
+    local s=self:Settings(); if not s.key then return nil end
+    local st=self.state or {}
+    local action=GetBindingAction and GetBindingAction(s.key,true)
+    local base=GetBindingAction and GetBindingAction(s.key)
+    return "Smart key: "..tostring(s.key).." ("..(s.enabled and "on" or "off")..") · set to "..tostring(action).." · game binding "..tostring(base)
+        .." · own interact key "..tostring(st.native==true).." · item "..tostring(st.item).." · target button "..tostring(st.target).." · dialog "..tostring(st.dialog==true)
 end
 function Key:Capture(on)
     self.capturing=on
@@ -170,8 +208,8 @@ function Key:Open()
     if not self.frame then
         local frame=FT:Window("ForeverToolsSmartKey","Smart interact key",520,262); self.frame=frame
         FT:BackTo(frame,"SystemKeybinds")
-        FT:PageInfo(frame,"Smart interact key","One key for questing. It picks the first that fits:\n1. A dialog is open: Interact with target (so nothing closes).\n2. RestedXP shows a quest item: use it.\n3. RestedXP shows a target and you have none: target it.\n4. Otherwise: Interact with target.\n Works in combat; RestedXP buttons that appear in combat count once it ends. You choose the key yourself and confirm it.")
-        self.toggle=FT:AccentButton(frame,"",472,34,"keybind"); self.toggle:SetPoint("TOPLEFT",24,-62)
+        FT:PageInfo(frame,"Smart interact key","One key for questing. It picks the first that fits:\n1. A dialog is open, or your target is friendly or dead: Interact with target (talk, loot).\n2. RestedXP shows a quest item: use it.\n3. RestedXP shows a target and you have none: target it.\n4. Otherwise: Interact with target.\n\nWorks in combat; RestedXP buttons that appear in combat count once it ends. You choose the key yourself and confirm it. The page shows what the key is set to right now.")
+        self.toggle=FT:AccentButton(frame,"",472,34,"INV_Misc_Key_10"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function()
             if InCombatLockdown() then FT:Toast("Leave combat to change this."); return end
             local s=self:Settings()
@@ -179,7 +217,7 @@ function Key:Open()
             s.enabled=not s.enabled; self:Apply()
             if FT.modules.System then FT.modules.System:Refresh() end
         end)
-        FT:Tooltip(self.toggle,"Smart interact key","One key for questing. It picks the first that fits:\n1. A dialog is open: Interact with target (so nothing closes).\n2. RestedXP shows a quest item: use it.\n3. RestedXP shows a target and you have none: target it.\n4. Otherwise: Interact with target.\n Works in combat; RestedXP buttons that appear in combat count once it ends. Choose a key first. Off, your key works exactly as before.")
+        FT:Tooltip(self.toggle,"Smart interact key","One key for questing: it talks and loots, uses RestedXP's quest item, or targets what RestedXP wants. Choose a key first. Off, your key works exactly as before. The (i) has the full order.")
         self.keyLabel=FT:Label(frame,"",15); self.keyLabel:SetPoint("TOPLEFT",24,-114); self.keyLabel:SetWidth(472)
         local change=FT:QuietButton(frame,"Choose a key",230,32,"keybind"); change:SetPoint("TOPLEFT",24,-140)
         change:SetScript("OnClick",function() if not InCombatLockdown() then self:Capture(true) end end)
@@ -201,7 +239,7 @@ function Key:Open()
             self:Capture(false); self:Propose(combo)
         end)
         self.capture=capture
-        self.status=FT:Label(frame,"",13); self.status:SetPoint("TOPLEFT",24,-190); self.status:SetWidth(472)
+        self.status=FT:Label(frame,"",13); self.status:SetPoint("TOPLEFT",24,-190); self.status:SetWidth(472); self.status:SetJustifyV("TOP")
         frame:HookScript("OnHide",function() if self.capturing then self:Capture(false) end end)
     end
     self:Update(); self:Refresh(); self.frame:Show()

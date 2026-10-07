@@ -43,6 +43,45 @@ function Icons:BrightIcon(button,record)
     if record.alpha==nil then record.alpha=button:GetAlpha() end
     button:SetAlpha(1)
 end
+-- The menu fades in, stays while the mouse is on it (or on its icon), and
+-- closes by itself a few seconds after the mouse has left.
+local IDLE,FADE_IN,FADE_OUT=3,.18,.25
+function Icons:OpenMenu()
+    local panel=self.panel
+    if not panel then return end
+    self:Scan();self:Layout()
+    panel.idle=0;panel.closing=false;panel.opening=true
+    panel:SetAlpha(0);panel:Show()
+end
+function Icons:CloseMenu(now)
+    local panel=self.panel
+    if not panel or not panel:IsShown() then return end
+    if now then panel.closing=false;panel.opening=false;panel:Hide();panel:SetAlpha(1);return end
+    panel.closing=true;panel.opening=false
+end
+function Icons:MenuUpdate(dt)
+    local panel=self.panel
+    local over=panel:IsMouseOver() or (self.launcher and self.launcher:IsMouseOver())
+    if over then
+        panel.idle=0
+        -- Coming back while it fades away keeps it open.
+        if panel.closing then panel.closing=false;panel.opening=true end
+    else
+        panel.idle=(panel.idle or 0)+dt
+        if panel.idle>=IDLE and not panel.closing then self:CloseMenu() end
+    end
+    if panel.closing then
+        local alpha=panel:GetAlpha()-dt/FADE_OUT
+        if alpha<=0 then self:CloseMenu(true) else panel:SetAlpha(alpha) end
+    elseif panel.opening then
+        local alpha=panel:GetAlpha()+dt/FADE_IN
+        if alpha>=1 then alpha=1;panel.opening=false end
+        panel:SetAlpha(alpha)
+    end
+end
+function Icons:Vertical()
+    return FT.modules.System:Settings().minimapIconsVertical==true
+end
 function Icons:Create()
     if self.launcher or not Minimap then return end
     local button=CreateFrame("Button","ForeverToolsMinimapIcons",Minimap);self.launcher=button
@@ -59,6 +98,7 @@ function Icons:Create()
     panel:SetPoint("TOPRIGHT",button,"BOTTOMRIGHT",0,-8);panel:Hide()
     FT:RoundedFill(panel,.025,.025,.03,.96)
     self.empty=FT:Label(panel,"No addon icons available",12);self.empty:SetPoint("CENTER")
+    panel:SetScript("OnUpdate",function(_,dt) self:MenuUpdate(dt) end)
     button:SetScript("OnDragStart",function()
         if InCombatLockdown() then return end
         self.dragging=true;panel:Hide();if GameTooltip then GameTooltip:Hide() end
@@ -74,9 +114,9 @@ function Icons:Create()
     button:SetScript("OnClick",function()
         if self.skipClick then self.skipClick=false;return end
         if InCombatLockdown() then FT:CombatOpenRequest();return end
-        if panel:IsShown() then panel:Hide() else self:Scan();self:Layout();panel:Show() end
+        if panel:IsShown() and not panel.closing then self:CloseMenu(true) else self:OpenMenu() end
     end)
-    FT:Tooltip(button,"Grouped minimap buttons","Click to open or close. Drag to move around the minimap. Icons keep their normal clicks and tooltips.")
+    FT:Tooltip(button,"Grouped minimap buttons","Click to open or close. The menu closes by itself a few seconds after your mouse leaves it. Drag this icon to move it around the minimap. The buttons inside keep their normal clicks and tooltips.")
 end
 function Icons:Eligible(button,known)
     if not button or button==self.launcher or (self.records[button] and self.records[button].active) or protected(button) then return false end
@@ -161,11 +201,20 @@ function Icons:Layout()
         end
     end
     table.sort(list,function(a,b) return (a:GetName() or "")<(b:GetName() or "") end)
-    local columns=math.min(6,math.max(1,#list));local rows=math.max(1,math.ceil(#list/columns))
-    self.panel:SetSize(math.max(180,columns*cell+16),rows*cell+16)
+    -- Horizontal: side by side, a new row after 6. Vertical: one below the
+    -- other, a new column after 6.
+    local vertical=self:Vertical()
+    local across=math.min(6,math.max(1,#list));local lines=math.max(1,math.ceil(#list/across))
+    local columns,rows=across,lines
+    if vertical then columns,rows=lines,across end
+    -- Wide enough for the "no icons" line when there is nothing to show.
+    self.panel:SetSize(math.max(#list==0 and 180 or 0,columns*cell+16),rows*cell+16)
     for i,button in ipairs(list) do
         local record=self.records[button]
-        record.x=8+((i-1)%columns+.5)*cell;record.y=-8-(math.floor((i-1)/columns)+.5)*cell
+        local along,line=(i-1)%across,math.floor((i-1)/across)
+        local column,row=along,line
+        if vertical then column,row=line,along end
+        record.x=8+(column+.5)*cell;record.y=-8-(row+.5)*cell
         self:Place(button,record)
     end
     self.empty:SetShown(#list==0);self.dirty=false
@@ -192,7 +241,7 @@ function Icons:Restore()
             button:SetScript("OnDragStart",record.dragStart);button:SetScript("OnDragStop",record.dragStop)
         end
     end
-    if self.panel then self.panel:Hide() end
+    self:CloseMenu(true)
     if self.launcher then self.launcher:Hide() end
 end
 function Icons:Apply()
@@ -206,6 +255,14 @@ function Icons:Apply()
     end
     self:PositionLauncher();self.launcher:Show();self:Scan();self:Layout()
 end
+function Icons:ToggleVertical()
+    if InCombatLockdown() then FT:Toast("Change minimap icons after combat.");return end
+    local s=FT.modules.System:Settings()
+    s.minimapIconsVertical=not (s.minimapIconsVertical==true)
+    if self.active then self:Scan();self:Layout() end
+    if FT.modules.Profiles then FT.modules.Profiles:SaveDraft() end
+    FT.modules.System:Refresh()
+end
 function Icons:Toggle()
     if InCombatLockdown() then FT:Toast("Change minimap icons after combat.");return end
     FT.modules.System:Settings().minimapIcons=not self:Enabled()
@@ -218,7 +275,7 @@ FT:RegisterModule("MinimapIcons",Icons)
 local events=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","ADDON_LOADED","PLAYER_REGEN_ENABLED","PLAYER_REGEN_DISABLED"}) do events:RegisterEvent(event) end
 events:SetScript("OnEvent",function(_,event)
-    if event=="PLAYER_REGEN_DISABLED" then Icons.dragging=false;if Icons.panel then Icons.panel:Hide() end;return end
+    if event=="PLAYER_REGEN_DISABLED" then Icons.dragging=false;Icons:CloseMenu(true);return end
     if FT.dbReady then FT:Coalesce("minimapIcons",function() Icons:Apply() end) end
 end)
 events:SetScript("OnUpdate",function(_,dt)

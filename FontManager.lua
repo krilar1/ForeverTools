@@ -122,7 +122,7 @@ Fonts:RegisterArea("cooldowns", "Cooldown numbers", "Cooldown numbers on action 
         if cooldown and cooldown.GetRegions then for _, region in ipairs({cooldown:GetRegions()}) do add(list, region) end end
     end end
 end)
-Fonts:RegisterArea("units", "Unitframe text", "Names and health and mana numbers on the player, target, focus, pet and party frames.", function(list)
+Fonts:RegisterArea("units", "Unit frame text", "Names and health and mana numbers on the player, target, focus, pet and party frames.", function(list)
     for _, prefix in ipairs({"PlayerFrame", "TargetFrame", "FocusFrame", "PetFrame", "TargetFrameToT", "FocusFrameToT",
         "PartyMemberFrame1", "PartyMemberFrame2", "PartyMemberFrame3", "PartyMemberFrame4"}) do
         for _, suffix in ipairs({"Name", "HealthBarText", "HealthBarTextLeft", "HealthBarTextRight", "ManaBarText", "ManaBarTextLeft", "ManaBarTextRight"}) do add(list, _G[prefix .. suffix]) end
@@ -144,7 +144,7 @@ Fonts:RegisterArea("units", "Unitframe text", "Names and health and mana numbers
         end
     end
 end)
-Fonts:RegisterArea("hits", "Unitframe hits", "The damage and healing numbers that flash on your player and pet portraits.", function(list)
+Fonts:RegisterArea("hits", "Unit frame hits", "The damage and healing numbers that flash on your player and pet portraits.", function(list)
     named(list, "PlayerHitIndicator PetHitIndicator TargetHitIndicator")
     for _, frame in ipairs({PlayerFrame or false, PetFrame or false, TargetFrame or false}) do
         if frame then add(list, frame.hitIndicator); add(list, frame.HitIndicator) end
@@ -359,7 +359,7 @@ function Fonts:WarnMissing()
     table.sort(files)
     self.warned = self.warned or {}
     for _, file in ipairs(files) do self.warned[file] = true end
-    local text = "Font file missing: " .. table.concat(files, ", ") .. ". Put it back in Interface\\AddOns\\ForeverTools\\Media\\Fonts and restart WoW, or choose another font in Font manager. Until then the game's own font is used."
+    local text = "Font file missing: " .. table.concat(files, ", ") .. ". Put it back in Interface\\AddOns\\ForeverTools\\Media\\Fonts and restart WoW, or choose another font in Appearance > Fonts. Until then the game's own font is used."
     print("|cffffd100ForeverTools:|r " .. text)
     FT:Toast("A chosen font file is missing. Details are in chat.", 5)
 end
@@ -435,7 +435,7 @@ end
 function Fonts:Open()
     self.selected = self.selected or "general"
     if not self.frame then
-        self.frame = FT:Window("ForeverToolsFontManager", "ForeverTools | Font manager", 760, 530)
+        self.frame = FT:Window("ForeverToolsFontManager", "Fonts", 760, 530)
         FT:AppearanceBack(self.frame)
         self.areaButtons = {}
         local areaScroll=CreateFrame("ScrollFrame",nil,self.frame,"UIPanelScrollFrameTemplate")
@@ -473,6 +473,7 @@ function Fonts:Open()
         FT:Tooltip(all,"Apply font to all areas","Use this font everywhere. Each area keeps its own size and outline. World damage numbers need a relog to change.")
         self.customFont=CreateFrame("EditBox",nil,self.frame,"InputBoxTemplate"); self.customFont:SetSize(350,28); self.customFont:SetPoint("TOPLEFT",246,-212); self.customFont:SetFont(FT.bodyFont,14,""); self.customFont:SetAutoFocus(false)
         self.customFontAdd=FT:QuietButton(self.frame,"Add font",128,28,"add"); self.customFontAdd:SetPoint("LEFT",self.customFont,"RIGHT",12,0)
+        FT:Tooltip(self.customFontAdd,"Add font","Add the font file named in the box to the list of fonts.")
         self.customFontAdd:SetScript("OnClick",function() local file=self.customFont:GetText(); local path=self:Resolve({font="file:"..file}); if not path then FT:Toast("Font not found. Put the file in Interface\\AddOns\\ForeverTools\\Media\\Fonts, then fully restart WoW."); return end; FT.db.customFonts=FT.db.customFonts or {}; local found=false; for _,v in ipairs(FT.db.customFonts) do if v==file then found=true end end; if not found then table.insert(FT.db.customFonts,file) end; self:ChooseFont("file:"..file) end)
         FT:Tooltip(self.customFont,"Font filename","Type the file name, for example MyFont.ttf. Put the file in ForeverTools/Media/Fonts while WoW is closed, then start WoW. Only use fonts you are allowed to use.")
         self.status = FT:Label(self.frame, "", 13); self.status:SetPoint("TOPLEFT", 240, -392); self.status:SetSize(494, 62); self.status:SetJustifyV("TOP")
@@ -482,7 +483,7 @@ function Fonts:Open()
         local apply = FT:QuietButton(self.frame, "Reapply fonts", 244, 32, "confirm"); apply:SetPoint("LEFT", reset, "RIGHT", 12, 0)
         self.reapplyButton=apply
         apply:SetScript("OnClick", function() self.notice=nil; self:Apply() end)
-        FT:PageInfo(self.frame, "Font manager", function()
+        FT:PageInfo(self.frame, "Fonts", function()
             return "Pick an area on the left, turn it on, then choose its font, size and outline. General sets one font for every area at once (each area keeps its own size and outline).\n\nThis area: " .. self.areas[self.selected].description .. ((self.status:GetText() or "") ~= "" and ("\n\n" .. self.status:GetText()) or "")
         end)
         FT:Tooltip(self.toggle, "Enable font changes", "Turn on to use your chosen font in this area.")

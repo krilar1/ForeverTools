@@ -1,26 +1,6 @@
 local _, FT = ...
-local Appearance = {}
+-- Appearance is a group of pages (Fonts, Unit frames, Skins, Chat, Tooltip):
+-- see Hubs.lua. Its pages go back to the main menu.
 function FT:AppearanceBack(frame)
-    frame.homeButton:SetScript("OnClick", function() FT:OpenModule("Appearance") end)
+    frame.homeButton:SetScript("OnClick", function() FT:OpenHome() end)
 end
-function Appearance:Open()
-    if not self.frame then
-        self.frame = FT:Window("ForeverToolsAppearance", "ForeverTools | Appearance", 440, 348)
-        local entries = {
-            {"Font manager", "Choose fonts, sizes and outlines for each text area.", "FontManager", "fonts"},
-            {"Unitframe colors", "Class-colored health bars for player, target and focus, and a dispel glow for debuffs you can remove. Party and raid class colors use Blizzard settings.", "UnitColors", "classes"},
-            {"Skins", "Dark mode and other looks for action bars, buffs, bags, minimap, unit frames, cast bars and more, with color and transparency controls.", "IconStyles", "skins"},
-            {"Chat", "Show, hide or mouseover-reveal chat buttons, the chat font and clickable links.", "Chat", "chat"},
-        }
-        for i, entry in ipairs(entries) do
-            local target = entry[3]
-            local button = FT:QuietButton(self.frame, entry[1], 392, 46, entry[4])
-            button:SetPoint("TOPLEFT", 24, -68 - (i-1)*58)
-            button:SetScript("OnClick", function() FT:OpenModule(target) end)
-            FT:ButtonIcon(button, entry[4], 30)
-            FT:Tooltip(button, entry[1], entry[2])
-        end
-    end
-    self.frame:Show()
-end
-FT:RegisterModule("Appearance", Appearance)

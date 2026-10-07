@@ -1,6 +1,6 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 0.60.0.**
+**Quality-of-life tools for WoW: Forever — version 0.70.0.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
 one place. Everything starts **off**, so the game looks like Blizzard's until you
@@ -28,8 +28,9 @@ the home window. Use **`/rl`** to reload the UI.
   that you can change. Only dispels you have learned count; no icons are added.
 - **Tooltips:** Build your own player tooltip: turn name, guild, level, race,
   class, faction and target on or off, order them and choose which share a
-  line, with a live preview. Also text sizes, position, faction icon, health
-  bar, buff sources and tooltip IDs.
+  line, with a live preview. Faction can be a badge or the faction's name in
+  its color. Also text sizes, position, health bar, buff sources and tooltip
+  IDs.
 - **Chat:** Show, hide or mouseover-reveal chat controls, change the chat font,
   and optional clickable links that open a copy box.
 - **Macros:** Browse class, racial and general templates; select ranks; add
@@ -74,25 +75,29 @@ the home window. Use **`/rl`** to reload the UI.
 - **Action bars and backups:** export and import your action bar layout with
   keybinds and spell binds, and keep backups you can put back any time
   (Keybinds → Backups and restore).
-- **Smart interact key:** one key that uses RestedXP's quest item or target
-  button when the guide shows one, and is Interact with target otherwise
-  (Keybinds).
+- **Smart interact key:** one key that talks and loots (a friendly or dead
+  target, or something in reach), uses RestedXP's quest item or target button
+  when the guide shows one, and is Interact with target otherwise (Keybinds).
+  The page shows what the key is set to right now.
+- **Battleground timer:** when a battleground queue pops, a bar counts down
+  the time you have left to enter (PvP). Off by default, movable.
 - **Rare alerts:** a glowing notice and optional sound when a rare appears.
   Click it to target the rare, out of combat (Combat).
 - **Quest objectives:** keep the objective tracker collapsed or open after
-  login and reload, or hide it altogether (System → Gameplay).
+  login and reload, or hide it altogether (On-screen info → Quests and loot
+  rolls).
 - **Death glow:** turn off the glowing screen effect while dead or a ghost
-  (System → Gameplay; the game's own ffxDeath setting).
+  (Combat → Death glow; the game's own ffxDeath setting).
 - **Druid mana bar:** your mana as a third bar on the player frame while in
   bear, cat or another form, in the game's own frame art (Appearance →
-  Unitframe colors). Off by default.
+  Druid mana bar). Off by default.
 - **Faster looting:** With auto loot on, take everything the moment a corpse
   opens. Off by default.
 - **Merchant helpers:** Optional auto-sell of grey items, optionally white
   weapons and armor, and items you mark yourself with a key of your choice
   (always-sell marks). At most 12 items are sold per visit, so all of them can
   be bought back. Selling is silent; auto-repair (with guild funds if allowed)
-  reports its cost in one chat line (System → Merchant).
+  reports its cost in one chat line (System → Loot and merchant).
 - **Minimap:** ForeverTools button, coordinates, and an optional launcher that
   groups other addons' minimap buttons into one menu.
 - **Profiles:** Named profiles shared by the characters that use them, saved
@@ -101,16 +106,31 @@ the home window. Use **`/rl`** to reload the UI.
   each new character.
 - **Quick keybinds:** `/kb` binds keys by hovering a slot, with snapshots to
   revert, save or discard; earlier sessions are in Keybinds → Backups and restore.
+- **Show key when interface is hidden:** a short line telling you which key
+  brings the interface back (System → General, off by default).
+- **Poison reminder:** rogues get a notice when a weapon has no poison on it,
+  per hand (Buff reminders → Your buffs, off by default).
 - **More:** FPS counter, movable loot rolls, group-role helper, custom
   mouse-wheel casting on mouseover, a Lua-error toggle and a copyable bug report.
-- **Where things are:** Fonts, unit-frame colors, skins and chat are under
-  **Appearance**. FPS counter, leveling stats and flight countdown are under
-  **System → On-screen info**. Quick keybinds, mouse-wheel casting and the
-  smart interact key are under **Keybinds**, and the threat meter, rare alerts
-  and totems under **Combat**, both on the main menu.
-- **Menus:** every settings window has Back, a close X, move and minimize
-  buttons, and an (i) icon explaining the page; pop-ups have only the X. A short What's new panel appears after each update (can be turned off
-  in System → General).
+- **Where things are** (the main menu):
+  - **Appearance:** Fonts, Unit frames, Dispel glow, Druid mana bar, Skins,
+    Chat and Tooltip.
+  - **Combat:** Threat meter, Rare alerts, Totems, Group role, Death glow.
+  - **PvP:** Battleground timer.
+  - **Keybinds:** Keybind tools (Quick keybind, Backups), Spell binds,
+    Mouse-wheel casting, Smart interact key.
+  - **On-screen info:** FPS counter, Leveling stats, Flight timer, Minimap,
+    Quests and loot rolls, Move elements.
+  - **System:** General, Loot and merchant, Always-sell marks.
+- **Menus:** every page of a group shows the group's sections on the left,
+  each with its current state; click one to see its options on the right. The
+  window keeps its size and place while you switch. Every page has Back (to
+  the main menu), a close X, move and minimize buttons, and an (i) icon
+  explaining the page; pop-ups have only the X. `/ft` and the minimap button
+  reopen the page you last used this session (`/ft home` opens the main
+  menu). A short What's new panel appears after each update (can be turned off
+  in System → General; `/ft whatsnew` shows it again). `/ft setup` opens the
+  first-time setup again; `/ft start` shows it as a demo that changes nothing.
 - **Combat-aware menus:** Settings close during combat; requesting the menu in
   combat opens it afterward.
 
@@ -143,9 +163,19 @@ the home window. Use **`/rl`** to reload the UI.
   for each class. Loading or importing the profile on that class offers to put
   them back, adding any macros you are missing (outside combat).
 - A new character starts from Blizzard's defaults and asks whether to use a
-  saved profile or start a new one. The profile chosen under **Profiles → New
-  characters** (by default, the last one you used) is preselected. Closing the
-  question keeps Blizzard's defaults; a fight or a reload only postpones it.
+  saved profile, start a new one or import a string. The profile chosen under
+  **Profiles → New characters** (by default, the last one you used) is
+  preselected. Closing the question keeps Blizzard's defaults; a fight or a
+  reload only postpones it. Before you have any saved profile, the question
+  offers a new profile or an import and closing it keeps your current settings.
+- **Edit Mode layout** (Export profile → Edit Mode layout, or `/ft editmode`):
+  your Edit Mode layout is kept by the game and is never part of a profile
+  string. Paste your Edit Mode string there and click Import layout: it is kept on
+  your account and you are asked whether to use it in the game now (outside
+  combat; if the game blocks addons from switching layouts you are told to import it in Edit
+  Mode). The two strings cannot be mixed: pasting an Edit Mode string into the
+  profile import is refused with a pointer to Edit Mode. During the last days of
+  the beta a daily reminder asks you to export your layout.
 - **Include keybinds** on the export window adds all your key bindings to the
   string. When you import a string with keybinds, **Apply keybinds** replaces
   your current bindings with them (outside combat).
@@ -193,11 +223,15 @@ the home window. Use **`/rl`** to reload the UI.
   wheel zooms the camera. This works out of combat; in a fight the wheel
   casts as usual.
 - Bindings change outside combat. If casting does not work, include a bug
-  report (System → Troubleshooting → Copy bug report).
+  report (System → General → Copy bug report).
 
 ## Macro tips
 
 - Use **New macro** to add a custom entry to Generic or your class list.
+- **Macros → Generic → Bandage** stops your attack and bandages you with the
+  best bandage in your bags. It lists the bandages you carry, best first, and
+  ForeverTools rewrites it when your bags change (out of combat). A Bandage
+  macro whose text you changed yourself is left alone.
 - For a combination macro, open **Macros → Generic → 1-shot combo**. Add learned
   spells with the row at the top, then use the gear button in front of the macro
   name for equipment-slot or other supported lines.

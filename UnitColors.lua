@@ -293,85 +293,15 @@ function Colors:Refresh()
     self.all.label:SetText(all and "All unit frames: On" or "Enable all unit frames")
     FT:SetSelected(self.all, all)
     self.note:SetText(self.deferred and "Saved. Changes apply when you leave combat." or "")
-    if self.druidMana then
-        local on=settings.druidMana==true
-        self.druidMana.label:SetText("Mana bar while shapeshifted: "..(on and "On" or "Off")); FT:SetSelected(self.druidMana,on)
-    end
-    self:RefreshDispel()
-end
--- Dispel glow lives here with the other unit-frame visuals (DispelGlow.lua).
-function Colors:BuildDispel()
-    local glow=FT.modules.DispelGlow; if not glow then return end
-    local frame=self.frame
-    local head=FT:Label(frame,"Dispel glow",16,true); head:SetPoint("TOPLEFT",24,-296); FT:SectionHeading(head,"Spell_Holy_DispelMagic",300)
-    self.dispelToggle=FT:AccentButton(frame,"",542,34,"buffs"); self.dispelToggle:SetPoint("TOPLEFT",24,-326)
-    self.dispelToggle:SetScript("OnClick",function() local s=glow:Settings(); s.enabled=not s.enabled; glow:Apply(); self:RefreshDispel() end)
-    FT:Tooltip(self.dispelToggle,"Dispel glow","A soft glow around a unit frame when it has a debuff you can dispel, in that debuff type's color. It uses the same glow art the game lights up for aggro. Choose the frames and colors below.")
-    self.dispelFrames={}
-    for i,key in ipairs(glow.frameKeys) do
-        local b=FT:QuietButton(frame,glow.labels[key],102,32)
-        b:SetPoint("TOPLEFT",24+(i-1)*110,-368)
-        b:SetScript("OnClick",function() local s=glow:Settings(); s[key]=not s[key]; glow:Apply(); self:RefreshDispel() end)
-        FT:Tooltip(b,glow.labels[key].." frames",key=="raid" and "Raid frames. Blizzard has its own dispel highlight for these in Edit Mode; use one or the other."
-            or key=="party" and "Show the glow on your party's frames, both the normal ones and the raid-style ones."
-            or "Show the glow on the "..glow.labels[key]:lower().." frame.")
-        self.dispelFrames[key]=b
-    end
-    local names={soft="Soft",medium="Medium",strong="Strong"}
-    self.dispelStrength=FT:Dropdown(frame,266,function()
-        local icon="Interface\\Icons\\"..FT.icons.skins
-        return {{value="soft",label="Glow: Soft",icon=icon},{value="medium",label="Glow: Medium",icon=icon},{value="strong",label="Glow: Strong",icon=icon}}
-    end,function(value) glow:Settings().strength=value; glow:Apply(); self:RefreshDispel() end,"skins")
-    self.dispelStrength:SetPoint("TOPLEFT",24,-408); self.dispelStrength:SetHeight(32)
-    self.dispelStrength.names=names
-    FT:Tooltip(self.dispelStrength,"Glow strength","How bright the outline is.")
-    self.dispelPulse=FT:QuietButton(frame,"",266,32,"reset"); self.dispelPulse:SetPoint("TOPLEFT",300,-408)
-    self.dispelPulse:SetScript("OnClick",function() local s=glow:Settings(); s.pulse=not s.pulse; glow:Apply(); self:RefreshDispel() end)
-    FT:Tooltip(self.dispelPulse,"Gentle pulse","Let the glow slowly fade in and out so it catches the eye.")
-    -- One color per debuff type. Picking a color shows it on your frames for a moment.
-    self.dispelColors={}
-    for i,name in ipairs(glow.typeNames) do
-        local b=FT:QuietButton(frame,name,131,32); b:SetPoint("TOPLEFT",24+(i-1)*137,-448)
-        b.label:ClearAllPoints(); b.label:SetPoint("LEFT",12,0)
-        b.swatch=b:CreateTexture(nil,"ARTWORK"); b.swatch:SetTexture("Interface\\Buttons\\WHITE8X8"); b.swatch:SetSize(18,18); b.swatch:SetPoint("RIGHT",-10,0)
-        b:RegisterForClicks("LeftButtonUp","RightButtonUp")
-        b:SetScript("OnClick",function(_,mouse)
-            local function set(r,g,bl) glow:SetColor(name,r,g,bl); glow:Preview(name); self:RefreshDispel() end
-            if mouse=="RightButton" then local d=glow.defaultColors[name]; set(d[1],d[2],d[3]); return end
-            if not ColorPickerFrame then return end
-            local c=glow:Settings().colors[name]; local old={c[1],c[2],c[3]}
-            glow:Preview(name,8)
-            -- The frames follow at most 20 times a second while you drag the color wheel.
-            local function pick() local r,g,bl=ColorPickerFrame:GetColorRGB(); glow:SetColor(name,r,g,bl); self:RefreshDispel(); FT:Coalesce("dispelColor",function() glow:Preview(name,6) end,.05) end
-            local function cancel() set(old[1],old[2],old[3]) end
-            if ColorPickerFrame.SetupColorPickerAndShow then FT:TrackColorPicker(); ColorPickerFrame:SetupColorPickerAndShow({r=old[1],g=old[2],b=old[3],hasOpacity=false,swatchFunc=pick,cancelFunc=cancel})
-            else ColorPickerFrame:SetColorRGB(unpack(old)); ColorPickerFrame.func=pick; ColorPickerFrame.cancelFunc=cancel; ColorPickerFrame:Show() end
-        end)
-        FT:Tooltip(b,name.." glow color","The glow color for "..name:lower().." debuffs. Click to change it: the glow shows on your frames for a few seconds so you can judge it. Right-click puts the default color back.")
-        self.dispelColors[name]=b
-    end
-end
-function Colors:RefreshDispel()
-    local glow=FT.modules.DispelGlow
-    if not glow or not self.dispelToggle then return end
-    local s=glow:Settings()
-    self.dispelToggle.label:SetText("Dispel glow: "..(s.enabled and "On" or "Off")); FT:SetSelected(self.dispelToggle,s.enabled)
-    for key,b in pairs(self.dispelFrames) do
-        FT:SetSelected(b,s[key]); b:SetAlpha(s.enabled and 1 or .5)
-    end
-    self.dispelStrength.value=s.strength
-    self.dispelStrength.label:SetText("Glow: "..(self.dispelStrength.names[s.strength] or "Medium"))
-    self.dispelPulse.label:SetText("Gentle pulse: "..(s.pulse and "On" or "Off")); FT:SetSelected(self.dispelPulse,s.pulse)
-    for name,b in pairs(self.dispelColors or {}) do
-        local c=s.colors[name]; b.swatch:SetVertexColor(c[1],c[2],c[3]); b:SetAlpha(s.enabled and 1 or .5)
-    end
 end
 function Colors:Open()
     if not self.frame then
-        self.frame=FT:Window("ForeverToolsUnitColors", "Unitframe colors", 590, 594)
+        self.frame=FT:Window("ForeverToolsUnitColors", "Unit frames", 760, 560)
         FT:AppearanceBack(self.frame)
-        FT:PageInfo(self.frame,"Unitframe colors","Class-colored health bars for the player, target and focus frames. NPCs, dead and offline units keep Blizzard's colors. Party and raid class colors are a Blizzard setting (Edit Mode).\n\nDispel glow: A soft glow in the debuff's color (magic, curse, disease or poison; each color is yours to choose) appears around a frame while that unit has a debuff you can remove. Only dispels you have learned count, so nothing lights up before you train them. No icons are added.\n\nDruid mana bar: In bear, cat and other forms that hide your mana, a third bar under your rage or energy shows it, using the game's own three-bar player frame. Hover it for the numbers (or always, with the game's status text option). Only druids see it.")
-        self.all=FT:AccentButton(self.frame, "", 542, 34, "classes"); self.all:SetPoint("TOPLEFT",24,-62)
+        FT:PageInfo(self.frame,"Unit frames","Health bars colored by class on the player, target and focus frames. NPCs, dead and offline units keep the game's colors.\n\nParty and raid class colors are set in the game's Edit Mode.")
+        local hint=FT:Label(self.frame,"Color health bars by class. NPCs, dead and offline units keep the game's colors.",12); hint:SetPoint("TOPLEFT",24,-66); hint:SetWidth(712); hint:SetTextColor(.66,.59,.48)
+        self.all=FT:AccentButton(self.frame, "", 712, 34, "classes"); self.all:SetPoint("TOPLEFT",24,-94)
+        FT:Tooltip(self.all,"All unit frames","Turn class colors on or off for the player, target and focus frames at once.")
         self.all:SetScript("OnClick",function()
             local s=self:Settings(); local all=true
             for _, entry in ipairs(groups) do all=all and s[entry[1]] == true end
@@ -381,14 +311,15 @@ function Colors:Open()
         self.buttons={}
         for i,entry in ipairs(groups) do
             local key=entry[1]
-            local button=FT:QuietButton(self.frame,"",542,32,"character")
-            button:SetPoint("TOPLEFT",24,-104-(i-1)*40)
+            local button=FT:QuietButton(self.frame,"",712,32,"character")
+            button:SetPoint("TOPLEFT",24,-136-(i-1)*40)
             button:SetScript("OnClick",function() local s=self:Settings(); s[key]=not s[key]; self:Apply() end)
+            FT:Tooltip(button,entry[2].." class colors","Color the "..entry[2]:lower().." frame's health bar by class. NPCs, dead and offline units keep the game's colors.")
             self.buttons[key]=button
         end
-        local partyInfo=FT:QuietButton(self.frame,"Party colors: use Blizzard Edit Mode",542,32,"party")
-        partyInfo:SetPoint("TOPLEFT",24,-104-#groups*40)
-        FT:Tooltip(partyInfo,"Party class colors","Party and raid class colors are a Blizzard setting. Click to open Edit Mode, select the party frame and turn on class colors.")
+        local partyInfo=FT:QuietButton(self.frame,"Party and raid: set in the game's Edit Mode",712,32,"party")
+        partyInfo:SetPoint("TOPLEFT",24,-136-#groups*40)
+        FT:Tooltip(partyInfo,"Party class colors","Party and raid class colors are the game's own setting. Click to open Edit Mode, select the party frame and turn on class colors.")
         partyInfo:SetScript("OnClick",function()
             if InCombatLockdown() then return end
             local manager=_G.EditModeManagerFrame
@@ -398,17 +329,8 @@ function Colors:Open()
                 manager:Show()
             end
         end)
-        self.note=FT:Label(self.frame,"",13); self.note:SetPoint("TOPLEFT",24,-270); self.note:SetSize(542,20)
+        self.note=FT:Label(self.frame,"",13); self.note:SetPoint("TOPLEFT",24,-298); self.note:SetSize(712,34)
         self.note:SetJustifyV("TOP")
-        self:BuildDispel()
-        local head=FT:Label(self.frame,"Druid mana bar",16,true); head:SetPoint("TOPLEFT",24,-496); FT:SectionHeading(head,"Ability_Racial_BearForm",300)
-        self.druidMana=FT:QuietButton(self.frame,"",542,32,"Ability_Racial_BearForm"); self.druidMana:SetPoint("TOPLEFT",24,-526)
-        self.druidMana:SetScript("OnClick",function()
-            local s=self:Settings(); s.druidMana=not (s.druidMana==true)
-            if FT.modules.DruidMana then FT.modules.DruidMana:Apply() end
-            self:Refresh()
-        end)
-        FT:Tooltip(self.druidMana,"Druid mana bar","Show your mana as a third bar on the player frame while you are in bear, cat or another form that hides it. It uses the game's own three-bar frame art. Hover the bar for the numbers. Does nothing on other classes.")
     end
     self:Apply(); self.frame:Show()
 end

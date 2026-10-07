@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "0.60.0"
+FT.version = "0.70.0"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -98,17 +98,40 @@ function FT:OpenModule(name)
         if other ~= module and other.frame then other.frame:Hide() end
     end
     module:Open()
+    if self.modules.Movers and self.modules.Movers.WatchPages then self.modules.Movers:WatchPages() end
+    -- A page (not a redirect to another page) is what /ft opens next time
+    -- this session, and gets its group's sidebar.
+    if module.frame and not module.redirect then
+        self.lastPage = name
+        if self.Dock then self:Dock(name) end
+    end
+end
+-- Open ForeverTools where you left it this session: the page you last had
+-- open, or the main menu. A reload or login starts at the main menu again.
+function FT:OpenLast()
+    local last = self.lastPage
+    if last and self.modules[last] and not InCombatLockdown() then
+        local ok, err = pcall(self.OpenModule, self, last)
+        if ok and self.modules[last].frame and self.modules[last].frame:IsShown() then return end
+        -- A page that fails to open is reported, and the main menu opens instead.
+        if not ok and geterrorhandler then geterrorhandler()(err) end
+        self.lastPage = nil
+    end
+    self:OpenHome()
 end
 
 -- Nine sliced rounded textures keep the corner radius constant at any panel size.
-local function layer(frame, inset, sublevel)
+local function layer(frame, inset, sublevel, flatRight)
     local result = {}
     for row = 0, 2 do
         for col = 0, 2 do
             local texture = frame:CreateTexture(nil, "BACKGROUND", nil, sublevel)
             texture:SetTexture("Interface\\AddOns\\" .. addonName .. "\\Media\\" .. (sublevel == -7 and "RoundedGradient.tga" or "Rounded.tga"))
             local cuts = {0, 0.25, 0.75, 1}
-            texture:SetTexCoord(cuts[col + 1], cuts[col + 2], cuts[row + 1], cuts[row + 2])
+            -- flatRight: the right column repeats the middle one, so the panel
+            -- ends in a straight edge there (a sidebar joined to a window).
+            local tc = (flatRight and col == 2) and 1 or col
+            texture:SetTexCoord(cuts[tc + 1], cuts[tc + 2], cuts[row + 1], cuts[row + 2])
             local startX = col == 2 and "RIGHT" or "LEFT"
             local endX = col == 0 and "LEFT" or "RIGHT"
             local startY = row == 2 and "BOTTOM" or "TOP"
@@ -128,9 +151,9 @@ function FT:Paint(frame, fill, border)
     for _, texture in ipairs(frame.fillTextures) do texture:SetVertexColor(unpack(fill)) end
     for _, texture in ipairs(frame.borderTextures) do texture:SetVertexColor(unpack(border)) end
 end
-function FT:Panel(frame)
-    frame.borderTextures = layer(frame, 0, -8)
-    frame.fillTextures = layer(frame, 1, -7)
+function FT:Panel(frame, flatRight)
+    frame.borderTextures = layer(frame, 0, -8, flatRight)
+    frame.fillTextures = layer(frame, 1, -7, flatRight)
     self:Paint(frame, {0.075,0.058,0.04, 1}, {.61,.51,.31, 1})
 end
 -- A single rounded fill without the purple addon border, for dark overlays.
@@ -238,6 +261,7 @@ local function gradient(texture, orientation, r1, g1, b1, a1, r2, g2, b2, a2)
         texture:SetGradient(orientation, CreateColor(r1, g1, b1, a1), CreateColor(r2, g2, b2, a2))
     else texture:SetVertexColor(r1, g1, b1, (a1 + a2) / 2) end
 end
+FT.GradientTexture = gradient
 function FT:TitleBand(frame, lineY)
     if frame.titleBand then return end
     lineY = lineY or 48
@@ -429,6 +453,15 @@ FT.icons = {
     buffs = "Spell_Holy_WordFortitude",
     party = "Spell_Holy_PrayerOfFortitude",
 }
+-- Icons that follow your faction: the flight master's mount and the banner.
+function FT:FlightIcon()
+    local faction = UnitFactionGroup and UnitFactionGroup("player")
+    return faction == "Alliance" and "Ability_Mount_Gryphon_01" or "Ability_Mount_Wyvern_01"
+end
+function FT:FactionIcon()
+    local faction = UnitFactionGroup and UnitFactionGroup("player")
+    return faction == "Alliance" and "INV_BannerPVP_02" or "INV_BannerPVP_01"
+end
 function FT:ButtonIcon(button, icon, size)
     if not button.icon then button.icon = button:CreateTexture(nil, "ARTWORK") end
     local pixels = size or math.min(20, button:GetHeight() - 8)
@@ -442,8 +475,9 @@ function FT:ButtonIcon(button, icon, size)
     else button.icon:SetTexture("Interface\\Icons\\" .. (self.icons[icon] or icon)) end
     button.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     FT:RoundIcon(button.icon)
-    if icon == "delete" then
-        button.icon:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+    if icon == "delete" or icon == "confirm" then
+        -- The game's own red cross and green check: "remove" and "done".
+        button.icon:SetTexture(icon == "delete" and "Interface\\Buttons\\UI-GroupLoot-Pass-Up" or "Interface\\RaidFrame\\ReadyCheck-Ready")
         button.icon:SetTexCoord(0,1,0,1)
         if button.icon.roundMask then button.icon:RemoveMaskTexture(button.icon.roundMask); button.icon.roundMask = nil end
     end
@@ -476,7 +510,7 @@ end
 function FT:Tooltip(button, title, body)
     button:HookScript("OnEnter", function(owner)
         GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-        GameTooltip:SetText(title, 1,.82,0)
+        GameTooltip:SetText(type(title) == "function" and title() or title, 1,.82,0)
         GameTooltip:AddLine(type(body) == "function" and body() or body, .96,.93,.86, true)
         GameTooltip.ftAddonHelp = true
         local tooltipModule = FT.modules.Tooltip
@@ -628,15 +662,12 @@ function FT:Window(name, title, width, height)
 end
 function FT:OpenHome()
     if self:CombatOpenRequest() then return end
-    local resume = self.resumeModule
-    if resume then
-        self.resumeModule = nil
-        local now = GetTime and GetTime() or 0
-        if self.modules[resume] and now - (self.resumeAt or 0) < 300 then self:OpenModule(resume); return end
-    end
+    if self.modules.Movers and self.modules.Movers.WatchPages then self.modules.Movers:WatchPages() end
+    -- Going to the main menu yourself (Back) forgets the last page.
+    self.lastPage = nil
     for _, module in pairs(self.modules) do if module.frame then module.frame:Hide() end end
     if not self.home then
-        self.home = self:Window("ForeverToolsHome", "ForeverTools", 540, 372)
+        self.home = self:Window("ForeverToolsHome", "ForeverTools", 540, 432)
         self.home.titleText:SetText("ForeverTools")
         -- One quiet line: version and author.
         local version = self:Label(self.home, "v" .. self.version .. "  |cff7d705c·  By Krilar|r", 11)
@@ -646,21 +677,25 @@ function FT:OpenHome()
         self.home.profileStatus:SetPoint("TOPRIGHT", -24, -61)
         self.home.profileStatus:SetWidth(210)
         self.home.profileStatus:SetJustifyH("RIGHT")
-        -- Eight buttons in two columns, each with a short line saying what's
-        -- inside, so they need no tooltips.
+        -- Buttons in two columns, each with a short line saying what's
+        -- inside, so they need no tooltips. An odd one at the end takes the
+        -- whole row.
         local tools={
-            {"Macros","MacroForge","macros","Ready-made class macros, editing and macro room"},
-            {"Buff reminders","BuffReminder","buffs","Self and group buffs, low ranks and cooldowns"},
-            {"Appearance","Appearance","fonts","Fonts, unit colors, skins and chat"},
-            {"Tooltip","Tooltip","tooltip","Layout, extras, text sizes and position"},
-            {"Combat","SystemCombat","Ability_Warrior_DefensiveStance","Threat meter, rare alerts and totems"},
-            {"Keybinds","SystemKeybinds","keybind","Quick keybind, spell binds, wheel casting and smart key"},
-            {"System","System","generic","General, minimap, gameplay, merchant and more"},
+            {"Macros","MacroForge","macros","Ready-made class macros, your own macros and macro room"},
+            {"Buff reminders","BuffReminder","buffs","Missing buffs, low ranks and cooldowns"},
+            {"Appearance","Appearance","skins","Fonts, unit frames, skins, chat and tooltip"},
+            {"Combat","SystemCombat","Ability_Warrior_DefensiveStance","Threat meter, rare alerts, totems and group role"},
+            {"PvP","PvP",self:FactionIcon(),"Battleground timer"},
+            {"Keybinds","Keybinds","keybind","Quick keybind, spell binds, wheel casting and smart key"},
+            {"On-screen info","SystemDisplay","fps","FPS, leveling stats, flight timer, minimap and quests"},
+            {"System","System","generic","General settings, looting and merchant"},
             {"Profiles",nil,"profiles","Save, load and share your setups"},
         }
         for i,entry in ipairs(tools) do
             local row=math.floor((i-1)/2);local column=(i-1)%2
-            local button=self:QuietButton(self.home,entry[1],240,52,entry[3])
+            local wide=i==#tools and column==0
+            local width=wide and 492 or 240
+            local button=self:QuietButton(self.home,entry[1],width,52,entry[3])
             self:ButtonIcon(button,entry[3],32)
             -- Macros: the game's own macro window icon.
             -- It is round art: use the square inside the circle, so the rounded
@@ -669,9 +704,9 @@ function FT:OpenHome()
             button:SetPoint("TOPLEFT",24+column*252,-90-row*60)
             -- Name, then the description on up to two lines; the pair sits
             -- centered in the button whether the description takes one line or two.
-            button.label:ClearAllPoints(); button.label:SetWidth(240-60)
+            button.label:ClearAllPoints(); button.label:SetWidth(width-60)
             button.sub=self:Label(button,entry[4],11); button.sub:SetTextColor(.66,.59,.48)
-            button.sub:SetWidth(240-60); button.sub:SetJustifyH("LEFT"); button.sub:SetWordWrap(true)
+            button.sub:SetWidth(width-60); button.sub:SetJustifyH("LEFT"); button.sub:SetWordWrap(true)
             if button.sub.SetMaxLines then button.sub:SetMaxLines(2) end
             local subHeight=math.min(26,button.sub:GetStringHeight() or 13)
             local top=math.floor((52-(15+2+subHeight))/2)
@@ -691,13 +726,8 @@ end
 -- Addon controls should never remain over combat gameplay. Saved changes remain
 -- available; closing only hides the interface until the player opens it again.
 function FT:CloseCombatControls()
-    -- Remember the page that was open, so opening ForeverTools again right
-    -- after combat brings you back to it instead of the main menu.
-    for name, module in pairs(self.modules) do
-        if module.frame and module.frame.IsShown and module.frame:IsShown() then
-            self.resumeModule, self.resumeAt = name, GetTime and GetTime() or 0
-        end
-    end
+    -- The page that was open stays remembered (FT.lastPage), so opening
+    -- ForeverTools again after the fight brings you back to it.
     -- Windows that wait for an answer (setup, what's new) come back after
     -- combat; their own buttons still close them for good.
     -- hidingForCombat lets a window tell "closed by the fight" from "closed by you".
@@ -731,7 +761,7 @@ combatClose:SetScript("OnEvent", function(_,event)
     local reopen=FT.reopenAfterCombat; FT.reopenAfterCombat=nil
     for frame in pairs(reopen or {}) do frame:Show() end
     if FT.openAfterCombat then
-        FT.openAfterCombat=nil;FT:OpenHome()
+        FT.openAfterCombat=nil;FT:OpenLast()
     end
 end)
 
@@ -746,13 +776,22 @@ SlashCmdList.FOREVERTOOLS = function(message)
     elseif command == "icons" or command == "skins" then FT:OpenModule("IconStyles")
     elseif command == "system" then FT:OpenModule("System")
     elseif command == "tooltip" or command == "tips" then FT:OpenModule("Tooltip")
-    elseif command == "keybinds" then FT:OpenModule("CustomKeybinds")
+    elseif command == "keybinds" then FT:OpenModule("Keybinds")
+    elseif command == "wheel" then FT:OpenModule("CustomKeybinds")
+    elseif command == "combat" then FT:OpenModule("SystemCombat")
+    elseif command == "pvp" then FT:OpenModule("PvP")
+    elseif command == "screen" or command == "info" then FT:OpenModule("SystemDisplay")
     elseif command == "threat" then FT:OpenModule("Threat")
+    elseif command == "editmode" or command == "editmode remind" then local layout=FT.modules.EditModeLayout; if layout then if command == "editmode remind" then layout:Remind(true) else layout:Show() end end
+    elseif command == "newchar" or command == "newcharacter" then if FT.modules.Profiles then FT.modules.Profiles:AskNewCharacter() end
     elseif command == "start" then if FT.modules.Onboarding then FT.modules.Onboarding:ShowDemo() end
+    elseif command == "setup" or command == "wizard" then if FT.modules.Onboarding then FT.modules.Onboarding:ShowSetup(true) end
+    elseif command == "whatsnew" or command == "news" then if FT.modules.Onboarding then FT.modules.Onboarding:ShowWhatsNew() end
     elseif command == "buffs" or command == "reminders" then FT:OpenModule("BuffReminder")
     elseif command == "chat" then FT:OpenModule("Chat")
     elseif command == "appearance" then FT:OpenModule("Appearance")
-    else FT:OpenHome() end
+    elseif command == "home" or command == "menu" then FT:OpenHome()
+    else FT:OpenLast() end
 end
 SLASH_FOREVERTOOLSRELOAD1 = "/rl"
 SlashCmdList.FOREVERTOOLSRELOAD = function()
@@ -917,11 +956,18 @@ end
 -- gets no cursor of its own from the game here, so both are done by hand:
 -- the box's text is laid out again with a hidden measuring text to turn a
 -- click into a place in the text and back. Call after the box's own scripts
--- are set (it only hooks). "inset" is the box's text inset.
-function FT:TextCaret(box, inset)
+-- are set (it only hooks). "inset" is the box's text inset. options.single
+-- is for a one-line box (the cursor stays on that one line); options.insetY
+-- is the text's top offset. options.light is for boxes that hold long
+-- strings (profile and layout strings, tens of thousands of letters): the
+-- line only follows where the game says the cursor is and never measures or
+-- lays out the text, so pasting or clicking in a huge string stays instant.
+function FT:TextCaret(box, inset, options)
     inset = inset or 6
+    options = options or {}
+    local insetY = options.insetY or inset
     local caret = box:CreateTexture(nil, "OVERLAY"); caret:SetTexture("Interface\\Buttons\\WHITE8x8")
-    caret:SetSize(2, 17); caret:SetVertexColor(1, .82, 0, 1); caret:SetPoint("TOPLEFT", box, "TOPLEFT", inset, -inset); caret:Hide()
+    caret:SetSize(2, 17); caret:SetVertexColor(1, .82, 0, 1); caret:SetPoint("TOPLEFT", box, "TOPLEFT", inset, -insetY); caret:Hide()
     local measure = box:CreateFontString(nil, "OVERLAY"); measure:Hide()
     if measure.SetWordWrap then measure:SetWordWrap(false) end
     local state = {moved = 0}
@@ -965,6 +1011,14 @@ function FT:TextCaret(box, inset)
         local limit = (box:GetWidth() or 0) - inset * 2
         width("")
         if state.lines and state.text == text and state.limit == limit then return state.lines end
+        -- Never lay out a huge text letter by letter (that froze the game):
+        -- past this size each line of the text counts as one row.
+        if #text > 4000 then
+            local rows, from = {}, 0
+            for logical in (text .. "\n"):gmatch("(.-)\n") do rows[#rows + 1] = {start = from, text = logical}; from = from + #logical + 1 end
+            state.lines, state.text, state.limit = rows, text, limit
+            return rows
+        end
         local out, start = {}, 0
         for logical in (text .. "\n"):gmatch("(.-)\n") do
             local rest, offset = logical, start
@@ -989,7 +1043,7 @@ function FT:TextCaret(box, inset)
         return out
     end
     local function place(x, y, height)
-        caret:ClearAllPoints(); caret:SetPoint("TOPLEFT", box, "TOPLEFT", x + inset, -(y + inset))
+        caret:ClearAllPoints(); caret:SetPoint("TOPLEFT", box, "TOPLEFT", x + inset, -(y + insetY))
         caret:SetHeight(math.max(13, height or lineHeight()))
         if state.x ~= x or state.y ~= y then state.x, state.y = x, y; state.moved = GetTime() end
     end
@@ -1026,18 +1080,22 @@ function FT:TextCaret(box, inset)
         if type(x) ~= "number" or type(y) ~= "number" then return end
         if type(height) == "number" and height > 4 then state.cursorHeight = height end
         local index = box:GetCursorPosition(); if type(index) == "number" then state.index = index end
-        place(x, -y, height)
+        place(x, options.single and 0 or -y, height)
     end)
     box:HookScript("OnTextChanged", function() state.lines = nil end)
     -- Blink like a normal text cursor; solid for a moment after it moves.
     local driver = CreateFrame("Frame", nil, box); driver:Hide()
     driver:SetScript("OnUpdate", function()
-        follow()
+        if not options.light then follow() end
         caret:SetAlpha(((GetTime() - state.moved) % 1.06) < .56 and 1 or 0)
     end)
     box:HookScript("OnEditFocusGained", function() state.moved = GetTime(); caret:SetAlpha(1); caret:Show(); driver:Show() end)
     box:HookScript("OnEditFocusLost", function() caret:Hide(); driver:Hide(); state.before = nil; state.index = nil end)
     box:HookScript("OnHide", function() caret:Hide(); driver:Hide() end)
+    if options.light then
+        box.ftCaret = {texture = caret, state = state, driver = driver}
+        return caret
+    end
     -- The mouse in the text. A click puts the cursor there (if the game did
     -- not), dragging selects from where you pressed to where you are, and a
     -- double-click selects the whole row with its line break, ready to delete.
@@ -1047,7 +1105,7 @@ function FT:TextCaret(box, inset)
         if type(left) ~= "number" or type(top) ~= "number" or type(scale) ~= "number" or scale <= 0 then return end
         local cx, cy = GetCursorPosition()
         if type(cx) ~= "number" or type(cy) ~= "number" then return end
-        return indexAt(cx / scale - left - inset, top - cy / scale - inset)
+        return indexAt(cx / scale - left - inset, top - cy / scale - insetY)
     end
     local function setCursor(index)
         box:SetCursorPosition(index)
@@ -1134,31 +1192,54 @@ end
 -- Secondary windows (setup, what's new, copy boxes, profile transfer) open in
 -- the middle. If a ForeverTools window is already open, they sit beside it on
 -- the side with the most room instead of covering it.
+-- Put a window next to the ForeverTools windows that are open, never on top
+-- of them: on the side of all of them with the most room (right, left, above,
+-- below). When the screen has no room for it on any side, it sits a little
+-- down and to the right of them, so every title bar and close button stays
+-- reachable. Positions are worked out in screen units, so windows with a
+-- different scale still line up.
 function FT:PlaceBeside(frame)
-    local anchor
-    local function consider(other)
-        if other and other ~= frame and other.IsShown and other:IsShown() and other:GetLeft() then anchor = anchor or other end
+    local parentScale = UIParent:GetEffectiveScale()
+    local function bounds(other)
+        local l, r, t, b = other:GetLeft(), other:GetRight(), other:GetTop(), other:GetBottom()
+        if type(l) ~= "number" or type(r) ~= "number" or type(t) ~= "number" or type(b) ~= "number" then return end
+        local s = other:GetEffectiveScale() / parentScale
+        -- A page with its group's sidebar reaches further left.
+        if other.ftSidebar and other.ftSidebar:IsShown() then l = l - (other.ftDockWidth or 0) end
+        return l * s, r * s, t * s, b * s
     end
-    consider(self.home)
-    for _, module in pairs(self.modules) do consider(module.frame) end
+    local left, right, top, bottom
+    for window in pairs(self.controlWindows or {}) do
+        if window ~= frame and not window.ignorePlacement and window.IsShown and window:IsShown() then
+            local l, r, t, b = bounds(window)
+            if l then
+                left = left and math.min(left, l) or l; right = right and math.max(right, r) or r
+                top = top and math.max(top, t) or t; bottom = bottom and math.min(bottom, b) or b
+            end
+        end
+    end
     frame:ClearAllPoints()
-    if not anchor then frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0); return end
-    local scale = anchor:GetEffectiveScale() / UIParent:GetEffectiveScale()
-    local left, right = anchor:GetLeft() * scale, anchor:GetRight() * scale
-    local top, bottom = anchor:GetTop() * scale, anchor:GetBottom() * scale
+    if not left then frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0); return end
+    local own = frame:GetEffectiveScale() / parentScale
+    if own <= 0 then own = 1 end
     local width, height = UIParent:GetWidth(), UIParent:GetHeight()
-    local w, h = frame:GetWidth(), frame:GetHeight()
+    local w, h = frame:GetWidth() * own, frame:GetHeight() * own
+    local gap = 12
     local room = { RIGHT = width - right, LEFT = left, TOP = height - top, BOTTOM = bottom }
-    local fits = { RIGHT = room.RIGHT >= w + 16, LEFT = room.LEFT >= w + 16, TOP = room.TOP >= h + 16, BOTTOM = room.BOTTOM >= h + 16 }
+    local need = { RIGHT = w + gap, LEFT = w + gap, TOP = h + gap, BOTTOM = h + gap }
     local best
     for _, side in ipairs({ "RIGHT", "LEFT", "TOP", "BOTTOM" }) do
-        if fits[side] and (not best or room[side] > room[best]) then best = side end
+        if room[side] >= need[side] and (not best or room[side] > room[best]) then best = side end
     end
-    if best == "RIGHT" then frame:SetPoint("LEFT", anchor, "RIGHT", 12, 0)
-    elseif best == "LEFT" then frame:SetPoint("RIGHT", anchor, "LEFT", -12, 0)
-    elseif best == "TOP" then frame:SetPoint("BOTTOM", anchor, "TOP", 0, 12)
-    elseif best == "BOTTOM" then frame:SetPoint("TOP", anchor, "BOTTOM", 0, -12)
-    else frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0) end
+    local midX, midY = (left + right) / 2, (top + bottom) / 2
+    local x, y -- top left corner, screen units from the bottom left
+    if best == "RIGHT" then x, y = right + gap, midY + h / 2
+    elseif best == "LEFT" then x, y = left - gap - w, midY + h / 2
+    elseif best == "TOP" then x, y = midX - w / 2, top + gap + h
+    elseif best == "BOTTOM" then x, y = midX - w / 2, bottom - gap
+    else x, y = left + 40, top - 40 end
+    x = math.max(0, math.min(x, width - w)); y = math.max(h, math.min(y, height))
+    frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x / own, y / own)
 end
 -- A read-only text box the player can select and copy with Ctrl+C.
 -- Nothing is sent anywhere; the text only leaves the game if the player pastes it.

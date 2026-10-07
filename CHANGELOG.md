@@ -1,3 +1,52 @@
+# ForeverTools 0.70.0 (2026-10-07)
+
+## New: easier to find your way
+- **Sections on the left of every page.** Open Appearance, Combat, PvP, Keybinds, On-screen info or System and that group's pages are listed in a sidebar, each with its current state. One click switches, and the window keeps its size and place.
+- **ForeverTools reopens the page you last used**, also after a fight closed it. **Back** and `/ft home` go to the main menu. After a reload or login it starts at the main menu again.
+- **The main menu is grouped by what things do:**
+  - **Appearance:** Fonts, Unit frames, Dispel glow, Druid mana bar, Skins, Chat, Tooltip.
+  - **Combat:** Threat meter, Rare alerts, Totems, Group role, Death glow.
+  - **PvP** (new): Battleground timer.
+  - **Keybinds:** Keybind tools (Quick keybind, Backups), Spell binds, Mouse-wheel casting, Smart interact key.
+  - **On-screen info** (new): FPS counter, Leveling stats, Flight timer, Minimap, Quests and loot rolls, Move elements.
+  - **System:** General (now with Show Lua errors and Copy bug report), Loot and merchant, Always-sell marks.
+
+## New
+- **Battleground timer** (PvP, off by default): when a queue pops, a bar counts down the time you have left to enter, from green to red. It sits in the middle of the screen, keeps clear of the game's enter window, can be moved, and never takes mouse clicks while you play.
+- **Bandage macro** (Macros → Generic → Bandage): stops your attack and bandages you with the best bandage in your bags. It lists the bandages you carry, best first, and is rewritten when your bags change (out of combat). A Bandage macro you edited yourself is left alone.
+- **Poison reminder for rogues** (Buff reminders → Your buffs → Weapon poisons): a notice when a weapon has no poison on it, for each hand. Off until you turn it on, and quiet until your rogue can use poisons.
+- **Start templates:** a new character can start from **Darkmode**, **Class Colors** or **Soft Shadow**: that look on every skin area, and nothing else turned on.
+- **Edit Mode layout** (Export profile → Edit Mode layout, or `/ft editmode`): the game keeps your Edit Mode layout, so a profile string never contains it. Paste your Edit Mode string here to keep it on your account; you are then asked whether to use it in the game now. If the game does not let an addon do that, you are told and can import it in Edit Mode instead.
+- **Edit Mode reminder on the last days of the beta** (October 18 to 21): once a day a small window asks you to export your Edit Mode layout, because it does not carry over to the live game. `/ft editmode remind` shows it now.
+- **New-character question:** next to New profile and Use selected there are now **Import ForeverTools profile** and **Import Edit Mode profile**. It also appears before you have any saved profile, and greets the character by name. `/ft newchar` shows it again.
+- **Show key when interface is hidden** (System → General, off by default): when you hide the interface, a small line says which key brings it back. It fades after a few seconds and stays out of screenshots.
+- **Grouped minimap buttons:** the menu fades in and closes by itself a few seconds after your mouse leaves it. New switch: Horizontal or Vertical.
+- **Commands:** `/ft setup` (first-time setup), `/ft whatsnew` and `/ft pvp`.
+
+## Fixed
+- **Smart interact key did not interact** while RestedXP showed a quest item or target button. It now interacts first when there is someone to talk to or loot, then uses the quest item, then RestedXP's target. The page shows what the key is set to right now.
+- **Buff reminders: Frost Armor was missing for mages.** Every class's list was checked, and these are now offered once you have learned them:
+  - **Mage:** Frost Armor, Molten Armor, Dampen Magic, Amplify Magic.
+  - **Hunter:** Aspect of the Monkey, Wild, Beast, Viper and Dragonhawk, and Trueshot Aura.
+  - **Priest:** Divine Spirit, Prayer of Spirit, Shadowform, Touch of Weakness, Shadowguard.
+  - **Warlock:** Fel Armor, Soul Link. **Warrior:** Commanding Shout. **Druid:** Omen of Clarity.
+  - None is watched until you pick it. Buffs that replace each other count for each other: any armor, any of those aspects, either shield, either shout.
+- **Buff reminders said "Assign buffs for: Unassigned"**, and a tree picked there could not be undone. The row is now **Talent tree**: Automatic follows your talents (with only a few points spent, the tree most players of your class level in), or pick a tree yourself.
+- **Chat controls set to Mouseover did not appear in combat.**
+- **Pasting a long string froze the game** (profile import, Edit Mode layout).
+- **The new-character question could vanish unanswered** when the interface was hidden, for example during the opening cutscene. It now waits until the interface is back.
+- **Always-sell marks:** remove buttons showed beside empty rows.
+
+## Changed
+- **Everything movable is magnetic:** a window opens beside the ones already open, and an element dropped on top of another slides off to the nearest free side.
+- **Unitframe colors is now Unit frames**; Dispel glow and Druid mana bar are sections of their own. **Font manager is now Fonts.**
+- **Tooltip: Faction is one switch:** Off, Icon (the Horde or Alliance badge, right after the name) or Text (the faction's name in its color). Place it with the arrows like any other part.
+- **Equip an item in a macro:** item names show in their quality color.
+- **Bag bar skin:** the bag slots use the same soft, rounded frame as the action bars.
+- **Icons, texts and tooltips:** icons that match their option, shorter and plainer texts, and a tooltip on every control and sidebar section.
+- **What's new is smaller**, and Tooltip, Chat and Mouse-wheel casting have a tighter layout.
+- **Importing a profile** warns when the pasted text is not a ForeverTools string, and the import boxes show a blinking typing line.
+
 # ForeverTools 0.60.0 (2026-10-03)
 
 ## New

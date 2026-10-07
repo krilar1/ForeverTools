@@ -379,7 +379,7 @@ function Binds:Popup()
         if InCombatLockdown() then FT:Toast("Leave combat to change keys.") return end
         if self.capturing then self:Capture(nil) else self:Capture(p.target) end
     end)
-    FT:Tooltip(p.keyButton,"Set key","Click, then press the key (with Shift, Ctrl or Alt if you like). You're told first if the key already does something.\n\nYour action bars still show the key on their button, but that button no longer answers it while this bind is on. Turn the bind off, or clear it, to give the key back.")
+    FT:Tooltip(p.keyButton,"Set key","Click, then press the key (with Shift, Ctrl or Alt if you like). You're told first if the key already does something.\n\nWhile this bind is on, the key does this instead of its action bar button. Turn the bind off or clear it to give the key back.")
     p.onButton=FT:QuietButton(p,"",200,32,"confirm"); p.onButton:SetPoint("TOPLEFT",24,-100)
     p.onButton:SetScript("OnClick",function()
         if InCombatLockdown() then FT:Toast("Leave combat to change keys.") return end
@@ -442,8 +442,8 @@ function Binds:Open()
     if not self.frame then
         local frame=FT:Window("ForeverToolsSpellBinds","Spell binds",520,608); self.frame=frame
         FT:BackTo(frame,"SystemKeybinds")
-        FT:PageInfo(frame,"Spell binds","Bind spells, items and macros straight to keys, without putting them on an action bar. Role keys pick your class's spell for each job, so the same key does the same job on every character. Click a role's icon to choose another of your spells, or drag any spell onto it if your class does that job differently.\n\nYour action bars keep showing their key text, but a key used here does the spell bind instead. These sit on top of your normal key bindings and never change them: keys you don't use here keep working as before, and a key you clear here gets its old action back. Keys can change out of combat only.")
-        self.toggle=FT:AccentButton(frame,"",472,34,"keybind"); self.toggle:SetPoint("TOPLEFT",24,-62)
+        FT:PageInfo(frame,"Spell binds","Bind spells, items and macros straight to keys, without an action bar.\n\nRole keys pick your class's spell for each job (interrupt, taunt, dispel and so on), so the same key does the same job on every character. Click a role's icon to choose another of your spells, or drag any spell onto it.\n\nA key used here does the spell bind instead of its normal action. Your normal key bindings are never changed: clear a key here and it gets its old action back. Keys can only change out of combat.")
+        self.toggle=FT:AccentButton(frame,"",472,34,"INV_Misc_Key_13"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function()
             if InCombatLockdown() then FT:Toast("Leave combat to change this.") return end
             local s=self:Settings(); s.enabled=not s.enabled; self:Apply()
@@ -484,7 +484,7 @@ function Binds:Open()
             row.keyButton=keyButton; row.role=role
             self.roleRows[i]=row
         end
-        self.barToggle=FT:QuietButton(frame,"",230,32,"fps"); self.barToggle:SetPoint("TOPLEFT",24,-372)
+        self.barToggle=FT:QuietButton(frame,"",230,32,"INV_Misc_Key_13"); self.barToggle:SetPoint("TOPLEFT",24,-372)
         self.barToggle:SetScript("OnClick",function()
             if InCombatLockdown() then return end
             local s=self:Settings(); s.bar=not s.bar; self:Apply()
@@ -497,7 +497,7 @@ function Binds:Open()
             end
         end)
         FT:Tooltip(self.barToggle,"Show on screen","A small bar with the role spells you gave a key: icon, key and cooldown. You can click them too. Move it with Move elements.")
-        self.askToggle=FT:QuietButton(frame,"",230,32,"profiles"); self.askToggle:SetPoint("TOPLEFT",266,-372)
+        self.askToggle=FT:QuietButton(frame,"",230,32,"character"); self.askToggle:SetPoint("TOPLEFT",266,-372)
         self.askToggle:SetScript("OnClick",function() local r=self:Root(); r.ask=not r.ask; self:Refresh() end)
         FT:Tooltip(self.askToggle,"Ask on new characters","On a character that hasn't used spell binds yet, ask once whether to use your usual role keys.")
         local grid=FT:Label(frame,"Your binds",15,true); grid:SetPoint("TOPLEFT",24,-420); FT:SectionHeading(grid,"INV_Misc_Key_03",330)

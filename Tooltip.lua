@@ -8,6 +8,12 @@ local orders={"NLT","NTL","LNT","LTN","TNL","TLN"}
 local partKeys={"name","guild","level","race","class","faction","target"}
 Tip.partKeys=partKeys
 Tip.partLabels={name="Name",guild="Guild",level="Level",race="Race",class="Class",faction="Faction",target="Target"}
+-- Faction is one part with three settings: off, the Horde or Alliance badge,
+-- or the faction's name in its color. Where it sits is its place in the layout.
+local factionModes={"off","icon","text"}
+local factionLabels={off="Off",icon="Icon",text="Text"}
+Tip.factionModes={off=true,icon=true,text=true}
+-- Older profiles: a separate "faction icon" choice with a fixed place.
 local iconPlaces={off=true,beforeName=true,afterName=true,beforeGuild=true,afterGuild=true}
 Tip.iconPlaces=iconPlaces
 -- Today's layout: name + guild, then level race class, then the target and
@@ -29,20 +35,13 @@ function Tip:Settings()
         s.target=FT.db.system~=nil and FT.db.system.tooltipTarget==true
     end
     if s.guild==nil then s.guild=false end
-    if s.guildFactionIcon==nil then s.guildFactionIcon=false end
     if s.guildFactionColor==nil then s.guildFactionColor=false end
-    if s.guildIconPosition~="after" then s.guildIconPosition="before" end
     if s.healthBar==nil then s.healthBar=true end
     if not s.position then s.position="Default" end
     if not s.order then s.order="NLT" end
     local valid=false
     for _,order in ipairs(orders) do if s.order==order then valid=true;break end end
     if not valid then s.order="NLT" end
-    -- Faction icon placement (replaces "icon by guild").
-    if not iconPlaces[s.factionIcon] then
-        s.factionIcon=s.guildFactionIcon and (s.guildIconPosition=="after" and "afterGuild" or "beforeGuild") or "off"
-    end
-    s.guildFactionIcon=s.factionIcon~="off"
     -- Layout: keep known parts once each, add any missing part at the end.
     local layout,seen={},{}
     for _,entry in ipairs(type(s.layout)=="table" and s.layout or {}) do
@@ -53,6 +52,35 @@ function Tip:Settings()
     end
     if #layout==0 then layout=defaultLayout(s.order); seen={} ; for _,e in ipairs(layout) do seen[e.key]=true end end
     for _,key in ipairs(partKeys) do if not seen[key] then layout[#layout+1]={key=key,show=true,join=false} end end
+    -- Faction: off, icon or text. An older profile had the icon as a separate
+    -- choice with a place; that becomes the Faction part, moved to that place.
+    if not self.factionModes[s.faction] then
+        local place=iconPlaces[s.factionIcon] and s.factionIcon
+            or (s.guildFactionIcon==true and (s.guildIconPosition=="after" and "afterGuild" or "beforeGuild")) or "off"
+        -- Without the guild shown, the icon sat after the name.
+        if (place=="beforeGuild" or place=="afterGuild") and not s.guild then place="afterName" end
+        local at
+        for i,entry in ipairs(layout) do if entry.key=="faction" then at=i end end
+        if place~="off" then
+            s.faction="icon"
+            local part=table.remove(layout,at)
+            local anchorKey=(place=="beforeName" or place=="afterName") and "name" or "guild"
+            local anchorAt=1
+            for i,entry in ipairs(layout) do if entry.key==anchorKey then anchorAt=i end end
+            if place=="afterName" or place=="afterGuild" then
+                part.join=true; table.insert(layout,anchorAt+1,part)
+            else
+                local anchor=layout[anchorAt]
+                part.join=anchor.join and anchorAt>1; anchor.join=true
+                table.insert(layout,anchorAt,part)
+            end
+        else
+            s.faction=layout[at].show and "text" or "off"
+        end
+    end
+    s.factionIcon=nil; s.guildFactionIcon=nil; s.guildIconPosition=nil
+    if type(s.factionHome)~="number" or s.faction~="icon" then s.factionHome=nil end
+    for _,entry in ipairs(layout) do if entry.key=="faction" then entry.show=s.faction~="off" end end
     s.layout=layout
     if type(s.offsetX)~="number" then s.offsetX=0 end
     if type(s.offsetY)~="number" then s.offsetY=0 end
@@ -68,6 +96,7 @@ function Tip:PartShown(entry)
     local s=self:Settings()
     if entry.key=="guild" then return s.guild end
     if entry.key=="target" then return s.target end
+    if entry.key=="faction" then return s.faction~="off" end
     return entry.show
 end
 local function hex(r,g,b) return string.format("|cff%02x%02x%02x",math.floor((r or 1)*255+.5),math.floor((g or 1)*255+.5),math.floor((b or 1)*255+.5)) end
@@ -77,21 +106,20 @@ function Tip:FactionIcon(faction,size)
     if faction~="Horde" and faction~="Alliance" then return nil end
     return "|TInterface\\TargetingFrame\\UI-PVP-"..faction..":"..size..":"..size..":0:0:64:64:0:40:0:40|t"
 end
+-- The faction's name in its own color (red for Horde, blue for Alliance).
+function Tip:FactionText(text,faction)
+    if type(text)~="string" or text=="" then return nil end
+    local color=faction=="Horde" and PLAYER_FACTION_COLOR_HORDE or faction=="Alliance" and PLAYER_FACTION_COLOR_ALLIANCE
+    if type(color)=="table" and color.r then return hex(color.r,color.g,color.b)..text.."|r" end
+    return (faction=="Horde" and "|cffff5a5a" or faction=="Alliance" and "|cff4a9eff" or "|cffffffff")..text.."|r"
+end
 -- parts: key -> colored text (nil when unknown). icon: faction badge text.
 -- Returns lines: { text=, name=bool, details=bool, target=bool, guildOnName=bool }.
 function Tip:Compose(parts,icon)
     local s=self:Settings()
     parts=setmetatable({},{__index=parts})
-    local hasGuild=s.guild and parts.guild and parts.guild~=""
-    if icon and s.factionIcon~="off" then
-        local place=s.factionIcon
-        -- Without a (shown) guild, guild placements fall back to after the name.
-        if (place=="beforeGuild" or place=="afterGuild") and not hasGuild then place="afterName" end
-        if place=="beforeName" then parts.name=icon.." "..(parts.name or "")
-        elseif place=="afterName" then parts.name=(parts.name or "").." "..icon
-        elseif place=="beforeGuild" then parts.guild=icon.." "..parts.guild
-        elseif place=="afterGuild" then parts.guild=parts.guild.." "..icon end
-    end
+    -- Icon: the badge stands where the Faction part is. Text: the name as given.
+    if s.faction=="icon" then parts.faction=icon or "" end
     local lines={}
     for _,entry in ipairs(s.layout) do
         local text=parts[entry.key]
@@ -231,9 +259,11 @@ function Tip:SetMoving(value)
     if self.moving then self:MovePreview() elseif self.previewFrame then self.previewFrame:Hide() end
     self:Refresh()
 end
-local iconChoices={{"off","Off"},{"beforeName","Before name"},{"afterName","After name"},{"beforeGuild","Before guild"},{"afterGuild","After guild"}}
 function Tip:MoveLayout(key,delta)
-    local layout=self:Settings().layout
+    -- Settings() hands out a fresh layout list each time: read it once.
+    local s=self:Settings()
+    if key=="faction" then s.factionHome=nil end
+    local layout=s.layout
     for i,entry in ipairs(layout) do
         if entry.key==key then
             local j=i+delta
@@ -247,11 +277,32 @@ function Tip:TogglePart(key)
     local s=self:Settings()
     if key=="guild" then s.guild=not s.guild
     elseif key=="target" then s.target=not s.target
+    elseif key=="faction" then
+        -- Off, then the icon, then the text, then off again.
+        local nextMode="off"
+        for i,mode in ipairs(factionModes) do if mode==s.faction then nextMode=factionModes[i%#factionModes+1] end end
+        s.faction=nextMode
+        -- Icon: a badge alone on a line looks lost, so it goes right after the
+        -- name. Back to Text, it returns to the line it came from. Once you
+        -- place the part yourself, it stays where you put it.
+        local at
+        for i,entry in ipairs(s.layout) do if entry.key=="faction" then at=i end end
+        if nextMode=="icon" and at and not s.layout[at].join and not (s.layout[at+1] and s.layout[at+1].join) then
+            local part=table.remove(s.layout,at)
+            local nameAt=0
+            for i,entry in ipairs(s.layout) do if entry.key=="name" then nameAt=i end end
+            s.factionHome=at; part.join=true; table.insert(s.layout,nameAt+1,part)
+        elseif nextMode=="text" and s.factionHome and at then
+            local part=table.remove(s.layout,at); part.join=false
+            table.insert(s.layout,math.max(1,math.min(s.factionHome,#s.layout+1)),part); s.factionHome=nil
+        end
     else for _,entry in ipairs(s.layout) do if entry.key==key then entry.show=not entry.show end end end
     self:Refresh()
 end
 function Tip:ToggleJoin(key)
-    for _,entry in ipairs(self:Settings().layout) do if entry.key==key and key~="target" then entry.join=not entry.join end end
+    local s=self:Settings()
+    if key=="faction" then s.factionHome=nil end
+    for _,entry in ipairs(s.layout) do if entry.key==key and key~="target" then entry.join=not entry.join end end
     self:Refresh()
 end
 -- Sample parts from your own character for the live preview.
@@ -274,7 +325,7 @@ function Tip:SampleParts()
         race="|cffffffff"..tostring(readable(race) and race or "Human").."|r",
         class=(c and hex(c.r,c.g,c.b) or "|cffffffff")..tostring(readable(label) and label or "Class").."|r",
         suffix="|cffffffff(Player)|r",
-        faction="|cffffffff"..tostring(readable(factionName) and factionName or "Horde").."|r",
+        faction=self:FactionText(tostring(readable(factionName) and factionName or "Horde"),readable(faction) and faction or "Horde"),
         target="|cffffd100Target: |cffffffffNone|r",
     },readable(faction) and faction or "Horde"
 end
@@ -305,18 +356,18 @@ function Tip:Refresh()
     -- Layout rows follow the saved order, top to bottom.
     for i,entry in ipairs(s.layout) do
         local row=self.rows[entry.key]
-        local top=-self.layoutTop-(i-1)*40
+        local top=-self.layoutTop-(i-1)*38
         row.toggle:ClearAllPoints(); row.toggle:SetPoint("TOPLEFT",self.frame,"TOPLEFT",24,top)
         local shown=self:PartShown(entry)
-        row.toggle.label:SetText(self.partLabels[entry.key]..": "..(shown and "On" or "Off")); FT:SetSelected(row.toggle,shown)
+        local state=shown and "On" or "Off"
+        if entry.key=="faction" then state=factionLabels[s.faction] or "Off" end
+        row.toggle.label:SetText(self.partLabels[entry.key]..": "..state); FT:SetSelected(row.toggle,shown)
         row.up:SetEnabled(i>1); row.up:SetAlpha(i>1 and 1 or .35)
         row.down:SetEnabled(i<#s.layout); row.down:SetAlpha(i<#s.layout and 1 or .35)
         local canJoin=entry.key~="target" and i>1
         row.join:SetEnabled(canJoin); row.join:SetAlpha(canJoin and (shown and 1 or .6) or .35)
         row.join.label:SetText(entry.join and canJoin and "Same line" or "New line"); FT:SetSelected(row.join,entry.join and canJoin)
     end
-    local iconLabel="Off"; for _,c in ipairs(iconChoices) do if c[1]==s.factionIcon then iconLabel=c[2] end end
-    self.factionIcon.value=s.factionIcon; self.factionIcon.label:SetText("Faction icon: "..iconLabel)
     self.health.label:SetText("Tooltip health bar: "..(s.healthBar and "On" or "Off")); FT:SetSelected(self.health,s.healthBar)
     self.guildColor.label:SetText("Faction-colored guild name: "..(s.guildFactionColor and "On" or "Off")); FT:SetSelected(self.guildColor,s.guildFactionColor)
     self.guildColor:SetAlpha(s.guild and 1 or .5)
@@ -331,86 +382,77 @@ function Tip:Refresh()
 end
 function Tip:Open()
     if not self.frame then
-        local frame=FT:Window("ForeverToolsTooltip","ForeverTools | Tooltip",1116,600)
+        local frame=FT:Window("ForeverToolsTooltip","Tooltip",760,560)
         self.frame=frame
-        FT:PageInfo(frame,"Tooltip","Build your player tooltip on the left and watch the preview (it uses your own character; other players' tooltips follow the same layout). Turn parts on or off, order them with the arrows, and use Same line to join a part to the one above.\n\nOn the right: extras (faction icon, guild color, health bar, IDs), text sizes (0 keeps Blizzard's size) and where tooltips appear on screen.")
-        local sectionIcons={Layout="INV_Misc_Note_01",Extras="INV_Misc_Book_07",["Text size"]="INV_Inscription_Tradeskill01",Position="INV_Misc_Map_01"}
+        FT:PageInfo(frame,"Tooltip","Left: build your player tooltip. Turn parts on or off, order them with the arrows, and use Same line to join a part to the one above. Faction has three settings: Off, Icon and Text. The preview uses your own character; other players' tooltips follow the same layout.\n\nRight: extras (guild color, health bar, IDs), text sizes, and where tooltips appear on screen.")
+        local sectionIcons={Layout="INV_Misc_Note_01",Extras="INV_Misc_Book_07",["Text size"]="INV_Inscription_Tradeskill01",Position="Ability_Rogue_Sprint"}
         local function section(x,y,title,hint)
             local h=FT:Label(frame,title,16,true); h:SetPoint("TOPLEFT",x,y); h:SetTextColor(1,.82,0)
-            FT:SectionHeading(h,sectionIcons[title],300)
+            FT:SectionHeading(h,sectionIcons[title],200)
         end
         section(24,-66,"Layout","Turn parts on or off, order them, and use Same line to join the part above.")
-        self.layoutTop=100
+        self.layoutTop=96
         self.rows={}
         for _,key in ipairs(partKeys) do
             local row={}
             local label=self.partLabels[key]
-            row.toggle=FT:QuietButton(frame,"",290,34,key=="target" and "mouseover" or key=="guild" and "party" or key=="class" and "classes" or key=="faction" and "map" or "tooltip")
+            row.toggle=FT:QuietButton(frame,"",190,34,key=="target" and "Ability_Hunter_SniperShot" or key=="guild" and "INV_Shirt_GuildTabard_01" or key=="class" and "classes" or key=="faction" and FT:FactionIcon() or "tooltip")
             row.toggle:SetScript("OnClick",function() self:TogglePart(key) end)
-            FT:Tooltip(row.toggle,label,({name="The player's name.",guild="The player's guild, if they have one.",level="The player's level.",race="The player's race.",class="The player's class, in class color.",faction="The Horde or Alliance line.",target="Who the player is targeting. Always on its own line."})[key])
+            FT:Tooltip(row.toggle,label,({name="The player's name.",guild="The player's guild, if they have one.",level="The player's level.",race="The player's race.",class="The player's class, in class color.",faction="Click to switch: Off, Icon (a small Horde or Alliance badge, right after the name) or Text (the faction's name in its color, on its own line). You can move either one with the arrows and Same line, like any other part.",target="Who the player is targeting. Always on its own line."})[key])
             -- Blizzard's own friends-list arrow, referenced from the game, not bundled.
-            row.up=FT:QuietButton(frame,"",40,34)
+            row.up=FT:QuietButton(frame,"",30,34)
             row.up.arrow=row.up:CreateTexture(nil,"ARTWORK"); row.up.arrow:SetPoint("CENTER")
             row.up.arrow:SetAtlas("friendslist-categorybutton-arrow-down",true); row.up.arrow:SetRotation(math.pi)
             row.up:SetPoint("LEFT",row.toggle,"RIGHT",6,0)
             row.up:SetScript("OnClick",function() self:MoveLayout(key,-1) end)
             FT:Tooltip(row.up,"Move up","Show "..label:lower().." earlier.")
-            row.down=FT:QuietButton(frame,"",40,34)
+            row.down=FT:QuietButton(frame,"",30,34)
             row.down.arrow=row.down:CreateTexture(nil,"ARTWORK"); row.down.arrow:SetPoint("CENTER")
             row.down.arrow:SetAtlas("friendslist-categorybutton-arrow-down",true)
             row.down:SetPoint("LEFT",row.up,"RIGHT",6,0)
             row.down:SetScript("OnClick",function() self:MoveLayout(key,1) end)
             FT:Tooltip(row.down,"Move down","Show "..label:lower().." later.")
-            row.join=FT:QuietButton(frame,"",124,34,"move")
+            row.join=FT:QuietButton(frame,"",112,34)
             row.join:SetPoint("LEFT",row.down,"RIGHT",6,0)
             if row.join.SetMotionScriptsWhileDisabled then row.join:SetMotionScriptsWhileDisabled(true) end
             row.join:SetScript("OnClick",function() self:ToggleJoin(key) end)
             FT:Tooltip(row.join,"Same line or new line",key=="target" and "The target always gets its own line." or "Same line puts "..label:lower().." on the line above, after what is already there. New line starts a new line.")
             self.rows[key]=row
         end
-        local previewTop=self.layoutTop+#partKeys*40+10
-        local ph=FT:Label(frame,"Preview",16,true); ph:SetPoint("TOPLEFT",24,-previewTop); ph:SetTextColor(1,.82,0); FT:SectionHeading(ph,"INV_Misc_Note_01",300)
-        local box=CreateFrame("Frame",nil,frame); box:SetPoint("TOPLEFT",24,-previewTop-30); box:SetWidth(512)
+        local previewTop=self.layoutTop+#partKeys*38+6
+        local ph=FT:Label(frame,"Preview",16,true); ph:SetPoint("TOPLEFT",24,-previewTop); ph:SetTextColor(1,.82,0); FT:SectionHeading(ph,"INV_Misc_Note_01",200)
+        local box=CreateFrame("Frame",nil,frame); box:SetPoint("TOPLEFT",24,-previewTop-30); box:SetWidth(380)
         FT:RoundedFill(box,0,0,0,.85)
         box.lines={}
-        for i=1,8 do local fs=box:CreateFontString(nil,"OVERLAY"); fs:SetFont(FT.bodyFont,12,""); fs:SetJustifyH("LEFT"); fs:SetWidth(492); box.lines[i]=fs end
+        for i=1,8 do local fs=box:CreateFontString(nil,"OVERLAY"); fs:SetFont(FT.bodyFont,12,""); fs:SetJustifyH("LEFT"); fs:SetWidth(360); box.lines[i]=fs end
         self.preview=box
         local divider=frame:CreateTexture(nil,"ARTWORK"); divider:SetColorTexture(.61,.51,.31,.6); divider:SetWidth(1)
-        divider:SetPoint("TOPLEFT",552,-96); divider:SetPoint("BOTTOMLEFT",552,24)
+        divider:SetPoint("TOPLEFT",412,-96); divider:SetPoint("BOTTOMLEFT",412,24)
         -- Right column.
-        local R=580
-        section(R,-66,"Extras","Faction icon, guild color, health bar and IDs.")
-        self.factionIcon=FT:Dropdown(frame,512,function()
-            local s=self:Settings(); local list={}
-            for _,c in ipairs(iconChoices) do
-                local guildPlace=c[1]=="beforeGuild" or c[1]=="afterGuild"
-                list[#list+1]={value=c[1],label="Faction icon: "..c[2],icon="Interface\\Icons\\INV_Misc_Map_01",disabled=guildPlace and not s.guild,
-                    tooltip=guildPlace and (s.guild and "Players without a guild get the icon after their name." or "Turn on Guild in the layout to use this. Players without a guild get the icon after their name.") or nil}
-            end
-            return list
-        end,function(value) self:Settings().factionIcon=value; self:Refresh() end,"map")
-        self.factionIcon:SetPoint("TOPLEFT",R,-100); self.factionIcon:SetHeight(34)
-        FT:Tooltip(self.factionIcon,"Faction icon","Show a small Horde or Alliance badge next to the player's name or guild.")
-        self.guildColor=FT:QuietButton(frame,"",512,34,"party"); self.guildColor:SetPoint("TOPLEFT",R,-140)
+        local R=422
+        section(R,-66,"Extras","Guild color, health bar and IDs.")
+        self.guildColor=FT:QuietButton(frame,"",314,34,"INV_Shirt_GuildTabard_01"); self.guildColor:SetPoint("TOPLEFT",R,-96)
         self.guildColor:SetScript("OnClick",function() local s=self:Settings();s.guildFactionColor=not s.guildFactionColor;self:Refresh() end)
         FT:Tooltip(self.guildColor,"Faction-colored guild name","Color the guild name red for Horde and blue for Alliance. Off keeps it white.")
-        self.health=FT:QuietButton(frame,"",512,34,"generic"); self.health:SetPoint("TOPLEFT",R,-180)
+        self.health=FT:QuietButton(frame,"",314,34,"Spell_Holy_Heal"); self.health:SetPoint("TOPLEFT",R,-134)
         self.health:SetScript("OnClick",function() local s=self:Settings();s.healthBar=not s.healthBar;self:Refresh();if GameTooltip then self:ApplyTooltip(GameTooltip) end end)
         FT:Tooltip(self.health,"Tooltip health bar","Show or hide the small health bar under unit tooltips.")
         -- Stored under System for profile compatibility; it belongs with tooltips.
-        self.ids=FT:QuietButton(frame,"",512,34,"spellID"); self.ids:SetPoint("TOPLEFT",R,-220)
+        self.ids=FT:QuietButton(frame,"",314,34,"spellID"); self.ids:SetPoint("TOPLEFT",R,-172)
         self.ids:SetScript("OnClick",function() local s=FT.modules.System:Settings();s.spellID=not s.spellID;self:Refresh() end)
         FT:Tooltip(self.ids,"Show tooltip IDs","Show spell, item, quest and achievement IDs at the bottom of tooltips.")
-        local line=frame:CreateTexture(nil,"ARTWORK"); line:SetColorTexture(.61,.51,.31,.6); line:SetSize(512,1); line:SetPoint("TOPLEFT",R,-266)
-        section(R,-278,"Text size","0 keeps Blizzard's size. The preview shows your sizes.")
+        local line=frame:CreateTexture(nil,"ARTWORK"); line:SetColorTexture(.61,.51,.31,.6); line:SetSize(314,1); line:SetPoint("TOPLEFT",R,-218)
+        section(R,-230,"Text size","0 keeps Blizzard's size. The preview shows your sizes.")
         self.sizes={}
         for i,entry in ipairs({{"name","Name line"},{"details","Other lines"},{"targetSize","Target line"}}) do
-            local part=entry[1]; local y=-312-(i-1)*42
+            local part=entry[1]; local y=-262-(i-1)*38
             local label=FT:Label(frame,entry[2],14);label:SetPoint("TOPLEFT",R,y-6)
-            local minus=FT:QuietButton(frame,"-",34,30,"reset");minus:SetPoint("TOPLEFT",R+300,y)
-            local value=FT:QuietButton(frame,"",120,30,"fonts");value:SetPoint("LEFT",minus,"RIGHT",4,0)
+            local minus=FT:QuietButton(frame,"-",34,30,"reset");minus:SetPoint("TOPLEFT",R+128,y)
+            local value=FT:QuietButton(frame,"",110,30,"fonts");value:SetPoint("LEFT",minus,"RIGHT",4,0)
             local plus=FT:QuietButton(frame,"+",34,30,"add");plus:SetPoint("LEFT",value,"RIGHT",4,0)
             self.sizes[part]=value
+            FT:Tooltip(minus,"Smaller","Make the "..entry[2]:lower().." one size smaller.")
+            FT:Tooltip(plus,"Larger","Make the "..entry[2]:lower().." one size larger.")
             for _,step in ipairs({{minus,-1},{plus,1}}) do
                 step[1]:SetScript("OnClick",function()
                     local s=self:Settings(); local current=s[part]==0 and (part=="name" and 16 or 12) or s[part]
@@ -425,9 +467,9 @@ function Tip:Open()
             end)
             FT:Tooltip(value,entry[2].." size","Use + and - to change the size. Click the number to go back to Blizzard's size (asks first).")
         end
-        local line2=frame:CreateTexture(nil,"ARTWORK"); line2:SetColorTexture(.61,.51,.31,.6); line2:SetSize(512,1); line2:SetPoint("TOPLEFT",R,-438)
-        section(R,-450,"Position","Where tooltips appear on screen.")
-        self.moveButton=FT:QuietButton(frame,"",512,34,"move");self.moveButton:SetPoint("TOPLEFT",R,-484)
+        local line2=frame:CreateTexture(nil,"ARTWORK"); line2:SetColorTexture(.61,.51,.31,.6); line2:SetSize(314,1); line2:SetPoint("TOPLEFT",R,-378)
+        section(R,-390,"Position","Where tooltips appear on screen.")
+        self.moveButton=FT:QuietButton(frame,"",314,34,"move");self.moveButton:SetPoint("TOPLEFT",R,-422)
         self.moveButton:SetScript("OnClick",function() self:SetMoving(not self.moving) end)
         FT:Tooltip(self.moveButton,"Move tooltip","Click to unlock, drag the preview where tooltips should appear, then click again to lock it.")
         frame:SetHeight(math.max(previewTop+30+150,518)+30)

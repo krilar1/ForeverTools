@@ -493,24 +493,24 @@ function Totems:PickColor(key)
 end
 function Totems:Open()
     if not self.frame then
-        local frame=FT:Window("ForeverToolsTotems","Totems",520,372); self.frame=frame
+        local frame=FT:Window("ForeverToolsTotems","Totems",540,372); self.frame=frame
         FT:BackTo(frame,"SystemCombat")
-        FT:PageInfo(frame,"Totems","Tools for shamans' totems.\n\nTotem range on minimap: a circle for each totem's 30-yard reach.\n\nLeft-behind warning: the totem's own icon under your player frame pulses red once you are farther from it than the distance you set, so a forgotten totem doesn't pull for you. Right-click the icon to remove the totem. Outdoors the distance is measured from where you placed it. In dungeons and raids the game hides your position, so it is a guess: the yards you have run out of combat since you placed it. That can warn a little early if you run back and forth.")
-        self.toggle=FT:AccentButton(frame,"",472,34,"Spell_Nature_StoneSkinTotem"); self.toggle:SetPoint("TOPLEFT",24,-62)
+        FT:PageInfo(frame,"Totems","Tools for shamans.\n\nTotem range on minimap: a circle for each totem's 30-yard reach.\n\nLeft-behind warning: the totem's icon under your player frame pulses red when you are farther from it than the distance you set, so a forgotten totem doesn't pull for you. Right-click the icon to remove the totem.\n\nIn dungeons and raids the game hides your position. There the distance is a guess (the yards you have run out of combat since you placed the totem), so it can warn a little early.")
+        self.toggle=FT:AccentButton(frame,"",492,34,"Spell_Nature_StoneSkinTotem"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function() local s=self:Settings(); s.range=not s.range; self:Apply() end)
-        FT:Tooltip(self.toggle,"Totem range on minimap","A circle on the minimap in each totem's element color, showing its 30-yard reach, so you can see when you're leaving it or need a new one. The spot is where you stood when you placed it. After Totemic Projection the circles hide until you place again, and in dungeons and raids the game hides your position, so nothing is drawn there.")
+        FT:Tooltip(self.toggle,"Totem range on minimap","A circle on the minimap in each totem's element color, showing its 30-yard reach, so you can see when you are leaving it. The spot is where you stood when you placed it. In dungeons and raids the game hides your position, so nothing is drawn there.")
         self.colorButtons={}
         for i,e in ipairs(elements) do
             local key=e.key
-            local b=FT:QuietButton(frame,e.label.." totem color",230,32,"fonts")
-            b:SetPoint("TOPLEFT",24+((i-1)%2)*242,-106-math.floor((i-1)/2)*40)
+            local b=FT:QuietButton(frame,e.label.." totem color",240,32,"fonts")
+            b:SetPoint("TOPLEFT",24+((i-1)%2)*252,-106-math.floor((i-1)/2)*40)
             b.swatch=b:CreateTexture(nil,"ARTWORK"); b.swatch:SetTexture("Interface\\Buttons\\WHITE8x8"); b.swatch:SetSize(16,16); b.swatch:SetPoint("RIGHT",-10,0)
             b:SetScript("OnClick",function() self:PickColor(key) end)
             FT:Tooltip(b,e.label.." totem color","The circle color for your "..e.label:lower().." totems.")
             self.colorButtons[key]=b
         end
         self.opacityLabel=FT:Label(frame,"",13); self.opacityLabel:SetPoint("TOPLEFT",24,-195)
-        local slider=CreateFrame("Slider",nil,frame,"OptionsSliderTemplate"); slider:SetSize(240,18); slider:SetPoint("TOPLEFT",256,-192)
+        local slider=CreateFrame("Slider",nil,frame,"OptionsSliderTemplate"); slider:SetSize(260,18); slider:SetPoint("TOPLEFT",256,-192)
         slider:SetMinMaxValues(0,.9); slider:SetValueStep(.05); slider:SetObeyStepOnDrag(true)
         local low=slider.Low or (slider.GetName and slider:GetName() and _G[slider:GetName().."Low"])
         local high=slider.High or (slider.GetName and slider:GetName() and _G[slider:GetName().."High"])
@@ -519,11 +519,11 @@ function Totems:Open()
         slider:SetScript("OnValueChanged",function(_,v) if self.settingSlider then return end; self:Settings().opacity=1-v; self:Paint(); self:Refresh() end)
         FT:Tooltip(slider,"Circle transparency","How see-through the circles are. Slide right for more see-through.")
         self.slider=slider
-        self.leftToggle=FT:AccentButton(frame,"",472,34,"Spell_Fire_SearingTotem"); self.leftToggle:SetPoint("TOPLEFT",24,-236)
+        self.leftToggle=FT:AccentButton(frame,"",492,34,"Spell_Fire_SearingTotem"); self.leftToggle:SetPoint("TOPLEFT",24,-236)
         self.leftToggle:SetScript("OnClick",function() local s=self:Settings(); s.leftBehind=not s.leftBehind; self:Apply() end)
-        FT:Tooltip(self.leftToggle,"Left-behind warning","The totem's icon under your player frame pulses red when you are farther from the totem than the distance below, so you don't leave one behind to pull by accident. Right-click the icon to remove the totem. In dungeons and raids the distance is a guess (yards run out of combat since you placed it).")
+        FT:Tooltip(self.leftToggle,"Left-behind warning","The totem's icon under your player frame pulses red when you are farther from the totem than the distance below, so you don't leave one behind to pull by accident. Right-click the icon to remove the totem. In dungeons and raids the distance is a guess.")
         self.leftLabel=FT:Label(frame,"",13); self.leftLabel:SetPoint("TOPLEFT",24,-289)
-        local range=CreateFrame("Slider",nil,frame,"OptionsSliderTemplate"); range:SetSize(240,18); range:SetPoint("TOPLEFT",256,-286)
+        local range=CreateFrame("Slider",nil,frame,"OptionsSliderTemplate"); range:SetSize(260,18); range:SetPoint("TOPLEFT",256,-286)
         range:SetMinMaxValues(20,60); range:SetValueStep(5); range:SetObeyStepOnDrag(true)
         local rlow=range.Low or (range.GetName and range:GetName() and _G[range:GetName().."Low"])
         local rhigh=range.High or (range.GetName and range:GetName() and _G[range:GetName().."High"])
@@ -535,7 +535,7 @@ function Totems:Open()
         end)
         FT:Tooltip(range,"Warning distance","How far you can go from a totem before its icon starts to pulse. Buff totems reach 30 yards.")
         self.leftSlider=range
-        self.note=FT:Label(frame,"",12); self.note:SetPoint("TOPLEFT",24,-326); self.note:SetWidth(472); self.note:SetTextColor(.66,.59,.48)
+        self.note=FT:Label(frame,"",12); self.note:SetPoint("TOPLEFT",24,-326); self.note:SetWidth(492); self.note:SetTextColor(.66,.59,.48)
     end
     self:Refresh(); self.frame:Show()
 end

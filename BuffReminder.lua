@@ -1,14 +1,19 @@
 local _,FT=...
 local Reminder={missing={},elapsed=0,cycle=1}
+-- Each class's long buffs: {name, watched by default, kind}. Only spells you
+-- have learned are listed, so a spell this game does not have costs nothing.
+-- Buffs of one kind replace each other (one armor, one aspect, one shield):
+-- you pick one, and any of them being up counts. A fourth value of true
+-- keeps a buff off the list while it still counts for its kind.
 local choices={
-    Druid={{"Mark of the Wild",true,"wild"},{"Gift of the Wild",false,"wild"},{"Thorns",false}},
-    Hunter={{"Aspect of the Hawk",true}},
-    Mage={{"Arcane Intellect",true,"intellect"},{"Arcane Brilliance",false,"intellect"},{"Ice Armor",false,"armor"},{"Mage Armor",false,"armor"}},
+    Druid={{"Mark of the Wild",true,"wild"},{"Gift of the Wild",false,"wild"},{"Thorns",false},{"Omen of Clarity",false}},
+    Hunter={{"Aspect of the Hawk",true,"aspect"},{"Aspect of the Dragonhawk",false,"aspect"},{"Aspect of the Monkey",false,"aspect"},{"Aspect of the Viper",false,"aspect"},{"Aspect of the Wild",false,"aspect"},{"Aspect of the Beast",false,"aspect"},{"Trueshot Aura",false}},
+    Mage={{"Arcane Intellect",true,"intellect"},{"Arcane Brilliance",false,"intellect"},{"Frost Armor",false,"armor"},{"Ice Armor",false,"armor"},{"Mage Armor",false,"armor"},{"Molten Armor",false,"armor"},{"Dampen Magic",false,"magic"},{"Amplify Magic",false,"magic"}},
     Paladin={{"Blessing of Might",true,"blessing"},{"Blessing of Wisdom",false,"blessing"},{"Blessing of Kings",false,"blessing"},{"Blessing of Salvation",false,"blessing"},{"Blessing of Light",false,"blessing"},{"Blessing of Sanctuary",false,"blessing"},{"Righteous Fury",true,"protection"}},
-    Priest={{"Power Word: Fortitude",true,"fortitude"},{"Prayer of Fortitude",false,"fortitude"},{"Inner Fire",false},{"Shadow Protection",false}},
-    Shaman={{"Lightning Shield",true},{"Water Shield",false}},
-    Warlock={{"Demon Armor",true,"armor"},{"Demon Skin",false,"armor"}},
-    Warrior={{"Battle Shout",true}},
+    Priest={{"Power Word: Fortitude",true,"fortitude"},{"Prayer of Fortitude",false,"fortitude"},{"Divine Spirit",false,"spirit"},{"Prayer of Spirit",false,"spirit"},{"Inner Fire",false},{"Shadow Protection",false,"shadow"},{"Prayer of Shadow Protection",false,"shadow",true},{"Shadowform",false},{"Touch of Weakness",false},{"Shadowguard",false}},
+    Shaman={{"Lightning Shield",true,"shield"},{"Water Shield",false,"shield"}},
+    Warlock={{"Demon Armor",true,"armor"},{"Demon Skin",false,"armor"},{"Fel Armor",false,"armor"},{"Soul Link",false}},
+    Warrior={{"Battle Shout",true,"shout"},{"Commanding Shout",false,"shout"}},
 }
 local enchants={"Windfury Weapon","Flametongue Weapon","Rockbiter Weapon","Frostbrand Weapon"}
 local fallbackTrees={
@@ -92,8 +97,43 @@ function Reminder:Class()
     local _,class=UnitClass("player")
     return safe(class) and type(class)=="string" and class:sub(1,1)..class:sub(2):lower() or ""
 end
+-- The tree most players of a class level in. Used while talents say little:
+-- no points yet, or only a few early ones in another tree (a rogue's first
+-- two in Assassination before going Combat).
+local levelingTree={Druid="Feral Combat",Hunter="Beast Mastery",Mage="Frost",Paladin="Retribution",Priest="Shadow",
+    Rogue="Combat",Shaman="Enhancement",Warlock="Affliction",Warrior="Arms"}
+local EARLY_POINTS=5
+-- Points spent in one tree, counted talent by talent. Some game versions do
+-- not give the total per tree, or give it in another place; this always works
+-- where talents can be read at all.
+local function talentSum(tab)
+    if type(GetNumTalents)~="function" or type(GetTalentInfo)~="function" then return nil end
+    local ok,count=pcall(GetNumTalents,tab)
+    if not ok or not safe(count) or type(count)~="number" or count<1 then return nil end
+    local total,read=0,false
+    for index=1,math.min(count,60) do
+        local found,_,_,_,_,rank,maxRank=pcall(GetTalentInfo,tab,index)
+        if found and safe(rank) and safe(maxRank) and type(rank)=="number" and type(maxRank)=="number" and rank>=0 and rank<=maxRank and maxRank<=10 then
+            total=total+rank; read=true
+        end
+    end
+    return read and total or nil
+end
+-- Your class's talent trees with the points in each: {name=, icon=, points=}.
+-- Kept until talents change (and for a few seconds at most), because it is
+-- asked for on every check.
 function Reminder:TalentSpecs()
+    local class=self:Class()
+    local now=GetTime and GetTime() or 0
+    local cache=self.specCache
+    if cache and cache.class==class and now-cache.time<10 then return cache.list end
+    local list,sources=self:ReadTalentSpecs()
+    self.specCache={class=class,time=now,list=list,sources=sources}
+    return list
+end
+function Reminder:ReadTalentSpecs()
     local result={}
+    local sources={}
     local names=fallbackTrees[self:Class()] or {}
     if type(GetTalentTabInfo)=="function" then
         local count=GetNumTalentTabs and GetNumTalentTabs() or 3
@@ -107,6 +147,7 @@ function Reminder:TalentSpecs()
                 -- tree name differently, so match by position when names differ.
                 if ok and safe(name) and type(name)=="string" and names[i] then
                     result[#result+1]={name=names[i],icon=safe(icon) and icon or nil,points=safe(points) and type(points)=="number" and points or 0}
+                    sources.tabs=true
                 end
             end
         end
@@ -117,8 +158,11 @@ function Reminder:TalentSpecs()
         local byName={};for _,spec in ipairs(result) do byName[spec.name]=spec end
         for i,name in ipairs(names) do
             local ok,_,liveName,_,icon,_,_,points=pcall(api.GetSpecializationInfo,i)
-            if ok and safe(liveName) and liveName==name and safe(points) and type(points)=="number" then
-                byName[name]={name=name,icon=safe(icon) and icon or nil,points=points}
+            -- By position, like above: the tree may be worded differently.
+            if ok and safe(liveName) and type(liveName)=="string" and safe(points) and type(points)=="number" then
+                local old=byName[name]
+                byName[name]={name=name,icon=safe(icon) and icon or (old and old.icon) or nil,points=math.max(points,old and old.points or 0)}
+                sources.spec=true
             end
         end
         result={};for _,name in ipairs(names) do if byName[name] then result[#result+1]=byName[name] end end
@@ -130,38 +174,99 @@ function Reminder:TalentSpecs()
         for _,name in ipairs(names) do result[#result+1]=byName[name] or {name=name,points=0} end
     end
     for i,spec in ipairs(result) do
+        -- Counted talent by talent: the larger number wins.
+        local sum=talentSum(i)
+        if sum then sources.talents=true; if sum>spec.points then spec.points=sum end end
         spec.icon=spec.icon or ("Interface\\Icons\\"..((treeIcons[self:Class()] or {})[i] or "INV_Misc_Book_09"))
     end
-    return result
+    return result,sources
 end
-function Reminder:CurrentSpec()
-    local best,dominant=0,nil
-    for _,spec in ipairs(self:TalentSpecs()) do
-        if spec.points>best then best,dominant=spec.points,spec.name end
+local function validTree(class,value)
+    for _,tree in ipairs(fallbackTrees[class] or {}) do if value==tree then return tree end end
+end
+-- The tree you picked yourself, or nil when the addon follows your talents.
+function Reminder:ManualSpec()
+    local s=self:Settings(); local class=self:Class()
+    local manual=type(s.manualSpec)=="table" and validTree(class,s.manualSpec[class])
+    if manual then return manual end
+    -- Older versions: a tree picked before any talent point was spent, used
+    -- only while no points are spent.
+    local old=type(s.chosenSpec)=="table" and validTree(class,s.chosenSpec[class])
+    if old then
+        local spent=0
+        for _,spec in ipairs(self:TalentSpecs()) do spent=spent+spec.points end
+        if spent==0 then return old end
     end
-    if dominant then return dominant end
+end
+-- The tree your talents point to. Most points wins; with only a few points
+-- spent, the tree most players of your class level in.
+function Reminder:AutoSpec()
+    local class=self:Class()
+    local default=validTree(class,levelingTree[class])
+    local best,bestPoints=nil,0
+    for _,spec in ipairs(self:TalentSpecs()) do
+        if spec.points>bestPoints then best,bestPoints=spec.name,spec.points end
+    end
+    if best then
+        if default and best~=default and bestPoints<=EARLY_POINTS then return default end
+        return best
+    end
     local active=C_SpecializationInfo and C_SpecializationInfo.GetSpecialization or GetSpecialization
     local info=C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo or GetSpecializationInfo
     if type(active)=="function" and type(info)=="function" then
         local ok,index=pcall(active)
         if ok and safe(index) and type(index)=="number" and index>0 then
             local found,_,name=pcall(info,index)
-            if found and safe(name) and type(name)=="string" then
-                for _,tree in ipairs(fallbackTrees[self:Class()] or {}) do if name==tree then return name end end
-            end
+            if found and safe(name) and type(name)=="string" and validTree(class,name) then return name end
         end
     end
-    -- No talent points yet (low level): use the tree the player picked.
-    local chosen=self:Settings().chosenSpec
-    chosen=type(chosen)=="table" and chosen[self:Class()]
-    for _,tree in ipairs(fallbackTrees[self:Class()] or {}) do if chosen==tree then return chosen end end
-    return "Unassigned"
+    -- A class this list does not know has no trees to offer.
+    return default or "Unassigned"
 end
+function Reminder:CurrentSpec()
+    return self:ManualSpec() or self:AutoSpec()
+end
+-- One line for the bug report: what the game says about your talents.
+function Reminder:TalentReport()
+    self.specCache=nil
+    local parts={}
+    for _,spec in ipairs(self:TalentSpecs()) do parts[#parts+1]=spec.name.." "..spec.points end
+    local sources=self.specCache and self.specCache.sources or {}
+    local read={}
+    for _,key in ipairs({"tabs","spec","talents"}) do if sources[key] then read[#read+1]=key end end
+    local manual=self:ManualSpec()
+    return "Talent trees: "..(#parts>0 and table.concat(parts,", ") or "none").." · using "..self:CurrentSpec()..(manual and " (picked)" or " (automatic)")
+        .." · read from: "..(#read>0 and table.concat(read,"+") or "nothing")
+end
+-- The choices of the tree dropdown: Automatic first, then each tree.
 function Reminder:SpecChoices()
     local result={}
-    for _,spec in ipairs(self:TalentSpecs()) do result[#result+1]={value=spec.name,label=spec.name,icon=spec.icon} end
-    if #result==0 then result[1]={value="Unassigned",label="Unassigned"} end
+    local auto=self:AutoSpec()
+    local autoIcon
+    local specs=self:TalentSpecs()
+    for _,spec in ipairs(specs) do if spec.name==auto then autoIcon=spec.icon end end
+    if #specs>0 then
+        result[1]={value="auto",label="Automatic: "..auto,icon=autoIcon,tooltipTitle="Automatic",
+            tooltip="Follows your talents: the tree with the most points. With only a few points spent it uses "..(levelingTree[self:Class()] or auto)..", the tree most "..self:Class():lower().."s level in."}
+    end
+    for _,spec in ipairs(specs) do
+        result[#result+1]={value=spec.name,label=spec.name..(spec.points>0 and (" · "..spec.points..(spec.points==1 and " point" or " points")) or ""),icon=spec.icon,tooltipTitle=spec.name,
+            tooltip="Always use "..spec.name..", whatever your talents say. Pick Automatic to follow your talents again."}
+    end
+    if #result==0 then result[1]={value="auto",label="Automatic"} end
     return result
+end
+-- Pick a tree yourself ("auto" follows your talents again).
+function Reminder:PickSpec(value)
+    local s=self:Settings(); local class=self:Class()
+    if type(s.manualSpec)~="table" then s.manualSpec={} end
+    if value=="auto" or not validTree(class,value) then
+        s.manualSpec[class]=nil
+        if type(s.chosenSpec)=="table" then s.chosenSpec[class]=nil end
+    else
+        s.manualSpec[class]=value
+    end
+    self:Apply()
 end
 function Reminder:Selection(spec)
     local s=self:Settings();local class=self:Class()
@@ -233,7 +338,7 @@ function Reminder:Available(learned,spec)
     spec=spec or self:CurrentSpec()
     for _,entry in ipairs(choices[self:Class()] or {}) do
         local spell=learned[entry[1]]
-        if spell and (entry[3]~="protection" or spec=="Protection") then
+        if spell and not entry[4] and (entry[3]~="protection" or spec=="Protection") then
             available[#available+1]={name=entry[1],spell=spell,default=entry[2],group=entry[3]}
         end
     end
@@ -352,6 +457,87 @@ function Reminder:SetMoving(value)
     self.dragging=false;self.moving=value==true
     self:Refresh()
 end
+-- Classes with a weapon reminder. Shamans pick a weapon buff per hand (the
+-- main hand is watched from the start). Rogues switch a poison reminder on
+-- per hand (off from the start: poisons come at a later level). Whatever is
+-- on the weapon counts; only a bare weapon reminds.
+local POISON_ICON="Interface\\Icons\\Ability_Poisons"
+-- Can this rogue use poisons yet? The reminder can be switched on before
+-- that; it stays quiet until one of these is true:
+--   * the spellbook has Poisons, or a poison spell (later versions of the game);
+--   * the game says the Poisons spell is known, or lists a Poisons skill;
+--   * there is a poison in the bags;
+--   * a weapon has something on it, now or earlier on this character.
+-- Once true it stays true. While false it is looked at again every few seconds.
+local POISONS_SPELL=2842
+local POISON_RECHECK=5
+local function poisonName(name)
+    if not safe(name) or type(name)~="string" then return false end
+    return name=="Poisons" or name:match(" Poison$")~=nil or name:match(" Poison [IVX]+$")~=nil
+end
+function Reminder:PoisonsKnown(learned)
+    if self.poisonsKnown then return true end
+    local guid
+    if UnitGUID then local ok,value=pcall(UnitGUID,"player"); if ok and safe(value) and type(value)=="string" then guid=value end end
+    local function known(remember)
+        self.poisonsKnown=true
+        if remember and guid then
+            if type(FT.db.poisonsSeen)~="table" then FT.db.poisonsSeen={} end
+            FT.db.poisonsSeen[guid]=true
+        end
+        return true
+    end
+    if guid and type(FT.db.poisonsSeen)=="table" and FT.db.poisonsSeen[guid]==true then return known() end
+    local now=GetTime and GetTime() or 0
+    if self.poisonChecked and now-self.poisonChecked<POISON_RECHECK then return false end
+    self.poisonChecked=now
+    for name in pairs(learned or {}) do if poisonName(name) then return known(true) end end
+    for _,check in ipairs({IsPlayerSpell or false,IsSpellKnown or false}) do
+        if check then local ok,value=pcall(check,POISONS_SPELL); if ok and safe(value) and value then return known(true) end end
+    end
+    if GetNumSkillLines and GetSkillLineInfo then
+        local ok,count=pcall(GetNumSkillLines)
+        if ok and safe(count) and type(count)=="number" then
+            for index=1,math.min(count,80) do
+                local found,name=pcall(GetSkillLineInfo,index)
+                if found and safe(name) and name=="Poisons" then return known(true) end
+            end
+        end
+    end
+    if C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemInfo then
+        for bag=0,(NUM_BAG_SLOTS or 4) do
+            local ok,count=pcall(C_Container.GetContainerNumSlots,bag)
+            if ok and safe(count) and type(count)=="number" then
+                for slot=1,count do
+                    local found,info=pcall(C_Container.GetContainerItemInfo,bag,slot)
+                    if found and type(info)=="table" and poisonName(info.itemName) then return known(true) end
+                end
+            end
+        end
+    end
+    for _,slot in ipairs({"main","off"}) do
+        local state=FT.BuffRanks:WeaponState(slot)
+        if state and state.present then return known(true) end
+    end
+    return false
+end
+function Reminder:WeaponKind()
+    local class=self:Class()
+    return class=="Shaman" and "enchant" or class=="Rogue" and "poison" or nil
+end
+-- What is watched for a hand: a name for the label and an icon. nil = off.
+function Reminder:WeaponWatch(slot,learned)
+    local s=self:Settings(); local kind=self:WeaponKind()
+    if kind=="enchant" then
+        local name=s[slot.."Enchant"]
+        if slot=="main" and name==nil then
+            for _,candidate in ipairs(enchants) do if learned[candidate] then name=candidate;break end end
+        end
+        if name and learned[name] then return name,learned[name].icon end
+    elseif kind=="poison" then
+        if s[slot.."Poison"]==true and self:PoisonsKnown(learned) then return "Poison",POISON_ICON end
+    end
+end
 function Reminder:WeaponMissing(slot)
     local state=FT.BuffRanks:WeaponState(slot)
     if not state then return nil end
@@ -401,7 +587,7 @@ end
 -- during a fight, so each of these buffs also gets our own record of when it
 -- runs out: read from the buff whenever the game shows it, and set from your
 -- own casts when it does not.
-local DEFAULT_DURATION={["Battle Shout"]=120}
+local DEFAULT_DURATION={["Battle Shout"]=120,["Commanding Shout"]=120}
 Reminder.seen={}
 function Reminder:Fighting() return self.fighting==true or InCombatLockdown() end
 function Reminder:CombatAny()
@@ -511,13 +697,13 @@ function Reminder:Refresh(cachedSpells)
             if #units>0 then
                 for _,entry in ipairs(self:Available(learned)) do
                     local group=entry.group
-                    if self:Enabled(entry,currentSpec,learned) and (group=="wild" or group=="blessing" or group=="intellect" or group=="fortitude") then
+                    if self:Enabled(entry,currentSpec,learned) and (group=="wild" or group=="blessing" or group=="intellect" or group=="fortitude" or group=="spirit") then
                         local missing=0
                         for _,unit in ipairs(units) do
                             if self:HasAura(entry.name,unit)==false and self:FamilyPresent(group,unit)==false then missing=missing+1 end
                         end
                         if missing>0 then
-                            local family=({wild="Wild buff",blessing="Blessing",intellect="Intellect",fortitude="Fortitude"})[group] or "Group buff"
+                            local family=({wild="Wild buff",blessing="Blessing",intellect="Intellect",fortitude="Fortitude",spirit="Spirit"})[group] or "Group buff"
                             self.groupMissing[#self.groupMissing+1]={name=family.." missing — "..missing.." member"..(missing==1 and "" or "s"),spell=entry.spell}
                         end
                     end
@@ -531,15 +717,14 @@ function Reminder:Refresh(cachedSpells)
                 self.missing[#self.missing+1]=food; styleKeys[food]="food"
             end
         end
-        if self:Class()=="Shaman" and selfHere then
+        local weaponKind=self:WeaponKind()
+        if weaponKind and selfHere then
+            local word=weaponKind=="poison" and "Poison" or "Weapon buff"
             for _,slot in ipairs({"main","off"}) do
-                local name=s[slot.."Enchant"]
-                if slot=="main" and name==nil then
-                    for _,candidate in ipairs(enchants) do if learned[candidate] then name=candidate;break end end
-                end
-                if name and learned[name] and (not fighting or s.combat["weapon:"..slot]==true) and self:WeaponMissing(slot) then
+                local name,icon=self:WeaponWatch(slot,learned)
+                if name and (not fighting or s.combat["weapon:"..slot]==true) and self:WeaponMissing(slot) then
                     local hand=slot=="main" and "main hand" or "off hand"
-                    local weapon={name="Weapon buff ("..hand..")",message="Weapon buff missing ("..hand..")",spell=learned[name]}
+                    local weapon={name=word.." ("..hand..")",message=word.." missing ("..hand..")",spell=weaponKind=="poison" and {icon=icon} or learned[name]}
                     self.missing[#self.missing+1]=weapon; styleKeys[weapon]="weapon:"..slot
                 end
             end
@@ -683,10 +868,13 @@ function Reminder:StyleInfo(key)
     local learned=self.learnedCache or {}
     local slot=type(key)=="string" and key:match("^weapon:(%a+)$")
     if slot then
-        if self:Class()~="Shaman" then return nil end
+        local kind=self:WeaponKind()
+        if not kind then return nil end
+        local hand=slot=="main" and "main hand" or "off hand"
+        if kind=="poison" then return "Poison ("..hand..")",POISON_ICON end
         local name=self:Settings()[slot.."Enchant"]
         if not name or name=="" then for _,candidate in ipairs(enchants) do if learned[candidate] then name=candidate; break end end end
-        return "Weapon buff ("..(slot=="main" and "main hand" or "off hand")..")",name and learned[name] and learned[name].icon or "Interface\\Icons\\Spell_Nature_RockBiter"
+        return "Weapon buff ("..hand..")",name and learned[name] and learned[name].icon or "Interface\\Icons\\Spell_Nature_RockBiter"
     end
     if key=="food" then local _,icon=self:FoodInfo(); return "Food buff",icon end
     if learned[key] then return key,learned[key].icon end
@@ -934,7 +1122,7 @@ function Reminder:OpenStyle(key,title)
             combat[key]=not combat[key] and true or nil
             self:RefreshStyle(); self:Refresh(self.learnedCache)
         end)
-        FT:Tooltip(panel.combat,"Also remind in combat","Notices normally hide while you fight. On: this buff's notice also shows during a fight, for buffs you can only or mostly cast in combat, like Battle Shout. In a fight the game can hide your buffs; then ForeverTools goes by when it saw you cast the buff and how long it lasts, so a buff that is removed early can be missed until the fight ends.")
+        FT:Tooltip(panel.combat,"Also remind in combat","Notices normally hide while you fight. With this on, this buff's notice also shows during a fight. Use it for buffs you cast in combat, like Battle Shout.\n\nIn a fight the game can hide your buffs. Then ForeverTools goes by when it saw you cast the buff, so a buff that is removed early can be missed until the fight ends.")
         panel.note=FT:Label(panel,"",11); panel.note:SetPoint("TOPLEFT",16,-434); panel.note:SetWidth(268); panel.note:SetJustifyH("LEFT"); panel.note:SetTextColor(.66,.59,.48)
         panel.styled={panel.sizeText,panel.size,panel.alphaText,panel.alpha,panel.color,panel.outline,panel.border,panel.borderColor,panel.pulse,panel.reset}
         panel:HookScript("OnHide",function() if self.styleKey then self.styleKey=nil; self:Refresh(self.learnedCache) end end)
@@ -982,13 +1170,13 @@ function Reminder:RefreshStyle()
     panel.note:SetText(st and (st.mode=="icon" and "Icon only: hover it to read which buff is missing." or "") or "Pick a look above to give this buff a notice of its own.")
 end
 local kindOrder={"group","blessing","aura","armor","self"}
-local kindLabels={group="Group buffs",blessing="Blessings",aura="Auras & stances",armor="Armor",self="Self buffs"}
+local kindLabels={group="Group buffs",blessing="Blessings",aura="Auras, aspects and stances",armor="Armor",self="Self buffs"}
 local kindIcons={group="Spell_Holy_PrayerOfFortitude",blessing="Spell_Holy_FistOfJustice",aura="Spell_Holy_DevotionAura",armor="Spell_Frost_FrostArmor02",self="Spell_Holy_WordFortitude"}
 local function kindOf(entry)
     local g=entry.group
-    if g=="wild" or g=="fortitude" or g=="intellect" then return "group" end
+    if g=="wild" or g=="fortitude" or g=="intellect" or g=="spirit" then return "group" end
     if g=="blessing" then return "blessing" end
-    if g=="stance" or g=="protection" then return "aura" end
+    if g=="stance" or g=="protection" or g=="aspect" then return "aura" end
     if g=="armor" then return "armor" end
     return "self"
 end
@@ -1025,12 +1213,13 @@ function Reminder:RefreshMenu(learned)
     self.hideChoice.value=s.hideAfter;self.hideChoice.label:SetText(self:HideAfterText())
     self.colorSwatch:SetVertexColor(unpack(s.textColor))
     self.groupColorSwatch:SetVertexColor(unpack(s.groupTextColor))
-    local editSpec=self.editSpec
-    if not editSpec or editSpec=="Unassigned" then editSpec=self:CurrentSpec() end
-    self.specChoice.value=editSpec;self.specChoice.label:SetText("Assign buffs for: "..editSpec)
-    local specs=self:SpecChoices()
-    local icon=specs[1] and specs[1].icon or "Interface\\Icons\\INV_Misc_Book_09"
-    for _,spec in ipairs(specs) do if spec.value==editSpec then icon=spec.icon;break end end
+    -- The buffs shown are always those of the tree in use.
+    local editSpec=self:CurrentSpec()
+    local manual=self:ManualSpec()
+    self.specChoice.value=manual or "auto"
+    self.specChoice.label:SetText("Talent tree: "..editSpec..(manual and " (your choice)" or " (automatic)"))
+    local icon="Interface\\Icons\\INV_Misc_Book_09"
+    for _,spec in ipairs(self:TalentSpecs()) do if spec.name==editSpec then icon=spec.icon or icon;break end end
     self.specChoice.icon:SetTexture(icon)
     local available=self:SortByKind(self:Available(learned,editSpec))
     local watched=0
@@ -1044,15 +1233,26 @@ function Reminder:RefreshMenu(learned)
             FT:SetSelected(button.gear,self:Style(entry.name)~=nil)
         end
     end
-    local weapon=self:Class()=="Shaman"
+    local weaponKind=self:WeaponKind()
+    local weapon=weaponKind~=nil
     for _,slot in ipairs({"main","off"}) do
         local dropdown=self[slot.."Dropdown"]
         if weapon then
-            local name=s[slot.."Enchant"]
-            if slot=="main" and name==nil then for _,candidate in ipairs(enchants) do if learned[candidate] then name=candidate;break end end end
-            dropdown.value=name or "";dropdown.label:SetText((slot=="main" and "Main hand: " or "Off hand: ")..(name or "Off"))
+            local hand=slot=="main" and "Main hand: " or "Off hand: "
+            if weaponKind=="poison" then
+                local on=s[slot.."Poison"]==true
+                -- Switched on before poisons are learned: it waits, and says so.
+                local ready=on and self:PoisonsKnown(learned)
+                dropdown.value=on and "on" or ""; dropdown.label:SetText(hand..(not on and "Off" or ready and "Remind when no poison" or "On, once you can use poisons"))
+                dropdown.icon:SetTexture(POISON_ICON)
+                if on then watched=watched+1 end
+            else
+                local name=s[slot.."Enchant"]
+                if slot=="main" and name==nil then for _,candidate in ipairs(enchants) do if learned[candidate] then name=candidate;break end end end
+                dropdown.value=name or "";dropdown.label:SetText(hand..(name~="" and name or "Off"))
+                if name and name~="" then watched=watched+1 end
+            end
             FT:SetSelected(dropdown.gear,self:Style("weapon:"..slot)~=nil)
-            if name and name~="" then watched=watched+1 end
         end
     end
     local _,foodIcon=self:FoodInfo()
@@ -1102,7 +1302,7 @@ function Reminder:RefreshMenu(learned)
         if #available==0 and not weapon then place(self.empty,X,y+4); y=y+30 end
         if weapon then
             headUsed=headUsed+1
-            local h=self.kindHeads[headUsed]; h.ftHeading.icon="INV_Sword_04"; h:SetText("Weapon buffs"); place(h,X,y); y=y+18
+            local h=self.kindHeads[headUsed]; h.ftHeading.icon="INV_Sword_04"; h:SetText(weaponKind=="poison" and "Weapon poisons" or "Weapon buffs"); place(h,X,y); y=y+18
             place(self.mainDropdown,X,y);place(self.offDropdown,X,y+38)
             place(self.mainDropdown.gear,X+414,y);place(self.offDropdown.gear,X+414,y+38);y=y+80
         end
@@ -1152,7 +1352,7 @@ function Reminder:Open()
         self.paneControls={}
         local function pane(control) self.paneControls[#self.paneControls+1]=control; return control end
         self.paneInfo={
-            self={title="Your buffs",icon="Spell_Holy_WordFortitude",hint="Pick buffs for each talent tree. The gear: own look, and reminders in combat."},
+            self={title="Your buffs",icon="Spell_Holy_WordFortitude",hint="Pick the buffs to watch. Gear: own look, and reminders in combat."},
             group={title="Group buffs",icon="Spell_Holy_PrayerOfFortitude",hint="A notice when group members are missing your group buffs."},
             rank={title="Low ranks",icon="INV_Misc_Book_07",hint="Catch spells cast at a lower rank than you know."},
             look={title="Look and position",icon="Ability_Rogue_Sprint",hint="Size and timing. Preview and Move are in the top row."},
@@ -1191,15 +1391,9 @@ function Reminder:Open()
         self.selfPreview:SetScript("OnClick",function() self.previewSelf=not self.previewSelf;FT:SetSelected(self.selfPreview,self.previewSelf);self:Apply() end)
         FT:Tooltip(self.selfPreview,"Preview self reminders","Show sample notices so you can see how they look: the shared notice, and one for each buff you gave a look of its own. The group notice has its own preview under Group buffs.")
         for _,b in ipairs({self.toggle,self.groupToggle,self.moveButton,self.selfPreview}) do if b.label.SetWordWrap then b.label:SetWordWrap(false) end end
-        self.specChoice=pane(FT:Dropdown(detail,442,function() return self:SpecChoices() end,function(value)
-            self.editSpec=value
-            -- Before any talent points are spent, the picked tree becomes your tree.
-            local spent=0; for _,spec in ipairs(self:TalentSpecs()) do spent=spent+spec.points end
-            if spent==0 then local s=self:Settings(); s.chosenSpec=type(s.chosenSpec)=="table" and s.chosenSpec or {}; s.chosenSpec[self:Class()]=value; self:Apply() end
-            self:RefreshMenu()
-        end,"classes"))
+        self.specChoice=pane(FT:Dropdown(detail,442,function() return self:SpecChoices() end,function(value) self:PickSpec(value) end,"classes"))
         self.specChoice.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-        FT:Tooltip(self.specChoice,"Buffs for each talent tree","Pick which buffs to watch for each talent tree. The addon follows the tree you have spent the most points in. Before you have talent points, the tree you pick here is used.")
+        FT:Tooltip(self.specChoice,"Your talent tree","Each talent tree keeps its own list of watched buffs, so a respec brings that tree's buffs back. Automatic follows your talents: the tree with the most points, and with only a few points the tree most players of your class level in. Pick a tree yourself to always use that one.")
         self.rows={}
         self.kindHeads={}
         for i=1,8 do
@@ -1215,7 +1409,7 @@ function Reminder:Open()
             FT:Tooltip(b.gear,"Notice look","Give this buff a notice of its own: a bar, an icon with text or just an icon, with its own size, color and place on screen. Lit when it has one. Also where you make this buff remind you during a fight.")
             b:SetScript("OnClick",function()
                 local entry=b.entry;if not entry then return end
-                local spec=self.editSpec or self:CurrentSpec();local selection=self:Selection(spec)
+                local spec=self:CurrentSpec();local selection=self:Selection(spec)
                 local on=self:Enabled(entry,spec,self:Learned())
                 selection[entry.name]=not on
                 if not on and entry.group and entry.group~="protection" then
@@ -1243,14 +1437,27 @@ function Reminder:Open()
         for _,slot in ipairs({"main","off"}) do
             local dropdown=pane(FT:Dropdown(detail,410,function()
                 local list={{value="",label="Off"}};local learned=self:Learned()
+                if self:WeaponKind()=="poison" then
+                    list[2]={value="on",label="Remind when no poison",icon=POISON_ICON,tooltip="A notice when this weapon has no poison on it. You can turn it on before you have learned poisons: it stays quiet until you can use them."}
+                    return list
+                end
                 for _,name in ipairs(enchants) do if learned[name] then list[#list+1]={value=name,label=name,icon=learned[name].icon} end end
                 return list
-            end,function(value) self:Settings()[slot.."Enchant"]=value;self:Apply() end,"welcome"))
+            end,function(value)
+                if self:WeaponKind()=="poison" then self:Settings()[slot.."Poison"]=value=="on" else self:Settings()[slot.."Enchant"]=value end
+                self:Apply()
+            end,"welcome"))
             self[slot.."Dropdown"]=dropdown
             dropdown.gear=pane(FT:QuietButton(detail,"",28,28)); FT:GearIcon(dropdown.gear)
-            dropdown.gear:SetScript("OnClick",function() self:OpenStyle("weapon:"..slot,slot=="main" and "Main-hand weapon buff" or "Off-hand weapon buff") end)
-            FT:Tooltip(dropdown.gear,"Notice look","Give this weapon buff a notice of its own: a bar, an icon with text or just an icon, with its own size, color and place on screen. Lit when it has one.")
-            FT:Tooltip(dropdown,"Weapon enchant reminder","Pick the weapon buff to watch for this hand. Any weapon buff counts. Empty hands and shields are ignored.")
+            dropdown.gear:SetScript("OnClick",function()
+                local what=self:WeaponKind()=="poison" and "poison" or "weapon buff"
+                self:OpenStyle("weapon:"..slot,(slot=="main" and "Main-hand " or "Off-hand ")..what)
+            end)
+            FT:Tooltip(dropdown.gear,"Notice look","Give this reminder a notice of its own: a bar, an icon with text or just an icon, with its own size, color and place on screen. Lit when it has one. Also where you make it remind you during a fight.")
+            FT:Tooltip(dropdown,"Weapon reminder",function()
+                if self:WeaponKind()=="poison" then return "A notice when the weapon in this hand has no poison on it. Off until you turn it on, for each hand. You can turn it on before you have learned poisons: it stays quiet until you know Poisons or carry a poison. Anything on the weapon counts, a sharpening stone too. Empty hands and shields are ignored." end
+                return "Pick the weapon buff to watch for this hand. Any weapon buff counts. Empty hands and shields are ignored."
+            end)
         end
         -- "Show in" rows: pick every place a notice may appear (multiple choice).
         self.whereRows={}
@@ -1323,10 +1530,13 @@ function Reminder:Open()
         end)
         FT:PageInfo(frame,"Buff reminders","The top row turns self and group reminders on, previews a notice and lets you move it. Pick a section on the left (each shows its current state) and its options appear on the right: your buffs for each talent tree, group buffs, low ranks, and the look of the notices. Cooldown reminders open their own page.\n\nA small notice appears when a buff is missing. Notices hide in combat, on flights and while dead. Left-click a notice to dismiss it, right-click it for settings.")
     end
-    self.editSpec=self:CurrentSpec()
     self:Apply();self.frame:Show()
 end
 FT:RegisterModule("BuffReminder",Reminder)
+-- Talents changed: read the trees again on the next look.
+local talentEvents=CreateFrame("Frame")
+for _,event in ipairs({"PLAYER_ENTERING_WORLD","SPELLS_CHANGED","PLAYER_TALENT_UPDATE","CHARACTER_POINTS_CHANGED","ACTIVE_TALENT_GROUP_CHANGED","PLAYER_LEVEL_UP","PLAYER_SPECIALIZATION_CHANGED","TRAIT_CONFIG_UPDATED"}) do pcall(talentEvents.RegisterEvent,talentEvents,event) end
+talentEvents:SetScript("OnEvent",function() Reminder.specCache=nil end)
 -- Many events in the same moment lead to one check.
 function Reminder:QueueApply(delay)
     if self.applyQueued then return end

@@ -2,6 +2,16 @@ local _,FT=...
 -- Short player-facing notes for the "What's new" window. Newest first.
 FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
+    {version="0.70.0",notes={
+        {icon="INV_Misc_Book_11",title="Sidebars on every page",text="Each group lists its sections on the left."},
+        {icon="Spell_Nature_TimeStop",title="Back where you were",text="/ft reopens the page you last used."},
+        {icon="INV_Misc_Map_01",title="Tidier main menu",text="Grouped by what things do."},
+        {icon="INV_Misc_PocketWatch_01",title="Battleground timer",text="Counts down your time to enter. In PvP."},
+        {icon="INV_Misc_Bandage_12",title="Bandage macro",text="Uses your best bandage. Macros > Generic."},
+        {icon="INV_Misc_ArmorKit_17",title="Start templates",text="Darkmode, Class Colors and Soft Shadow."},
+        {icon="INV_Misc_Note_02",title="Edit Mode layout",text="Export profile > Edit Mode layout."},
+        {icon="INV_Misc_Bag_08",title="Minimap button menu",text="Fades in and closes by itself."},
+    }},
     {version="0.60.0",notes={
         {icon="INV_Sword_04",title="Equip items in macros",text="Add a weapon or gear swap to any macro. Macros > the gear on a macro > Equip an item."},
         {icon="INV_Misc_Coin_01",title="Always-sell marks",text="Mark bag items with a key you choose; they are sold at merchants. System > Merchant."},

@@ -249,6 +249,30 @@ function S:BagSlot(button,key)
     edges[2]:SetPoint("BOTTOMLEFT",anchor,"BOTTOMLEFT");edges[2]:SetPoint("BOTTOMRIGHT",anchor,"BOTTOMRIGHT")
     edges[3]:SetPoint("TOPLEFT",anchor,"TOPLEFT");edges[3]:SetPoint("BOTTOMLEFT",anchor,"BOTTOMLEFT")
     edges[4]:SetPoint("TOPRIGHT",anchor,"TOPRIGHT");edges[4]:SetPoint("BOTTOMRIGHT",anchor,"BOTTOMRIGHT")
+    -- Bag bar: the same soft frame and rounded icon corners as the action bars
+    -- instead of four straight lines (kept as the fallback without the frame art).
+    if key=="bags" then
+        local pref=self:Area(key)
+        if not record.frameArt and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("UI-HUD-ActionBar-IconFrame") then
+            record.frameArt=button:CreateTexture(nil,"ARTWORK",nil,7)
+            record.frameArt:SetAtlas("UI-HUD-ActionBar-IconFrame")
+            record.frameArt:SetPoint("TOPLEFT",anchor,"TOPLEFT",-2,2); record.frameArt:SetPoint("BOTTOMRIGHT",anchor,"BOTTOMRIGHT",2,-2)
+        end
+        if record.frameArt then
+            local on=pref[key] and true or false
+            record.frameArt:SetShown(on)
+            if on then record.frameArt:SetVertexColor(pref.borderColor[1],pref.borderColor[2],pref.borderColor[3],1); record.frameArt:SetAlpha(pref.borderOpacity) end
+        end
+        if anchor~=button and anchor.AddMaskTexture and anchor.RemoveMaskTexture and button.CreateMaskTexture then
+            if not record.mask then
+                record.mask=button:CreateMaskTexture()
+                record.mask:SetTexture("Interface\\AddOns\\"..FT.name.."\\Media\\Rounded.tga","CLAMPTOBLACKADDITIVE","CLAMPTOBLACKADDITIVE")
+                record.mask:SetAllPoints(anchor)
+            end
+            if pref[key] and not record.maskOn then anchor:AddMaskTexture(record.mask); record.maskOn=true
+            elseif not pref[key] and record.maskOn then anchor:RemoveMaskTexture(record.mask); record.maskOn=false end
+        end
+    end
     if key=="bagWindows" then
         if not record.slotFill then
             record.slotFill=button:CreateTexture(nil,"BACKGROUND",nil,-5)
@@ -281,7 +305,7 @@ function S:BagSlot(button,key)
         end)
     end
     local s=self:Area(key)
-    for _,edge in ipairs(record.edges) do edge:SetVertexColor(s.borderColor[1],s.borderColor[2],s.borderColor[3],s.borderOpacity);edge:SetShown(s[key] and (key=="bags" or (s.hideSlotArt and not record.frameArt))) end
+    for _,edge in ipairs(record.edges) do edge:SetVertexColor(s.borderColor[1],s.borderColor[2],s.borderColor[3],s.borderOpacity);edge:SetShown(s[key] and ((key=="bags" and not record.frameArt) or (key~="bags" and s.hideSlotArt and not record.frameArt))) end
     if key=="bagWindows" then
         if C_Container and C_Container.GetContainerItemInfo and button.GetBagID and button.GetID then
             local ok,info=pcall(C_Container.GetContainerItemInfo,button:GetBagID(),button:GetID())

@@ -231,7 +231,9 @@ function Marks:Refresh()
     self.listTitle:SetText("Marked items ("..#list..")")
     for i,row in ipairs(self.rows) do
         local entry=list[(self.page-1)*PAGE+i]
-        row.entry=entry; row:SetShown(entry~=nil)
+        -- The X is a button of its own beside the row: shown with it, by hand.
+        -- (A show/hide hook on the row misses rows hidden while the window is closed.)
+        row.entry=entry; row:SetShown(entry~=nil); row.remove:SetShown(entry~=nil)
         if entry then
             row.label:SetText(entry.name)
             local icon=C_Item and C_Item.GetItemIconByID and select(2,pcall(C_Item.GetItemIconByID,entry.id))
@@ -268,20 +270,20 @@ function Marks:Open()
     if not self.frame then
         local frame=FT:Window("ForeverToolsSellMarks","Always-sell marks",520,572); self.frame=frame
         FT:BackTo(frame,"SystemMerchant")
-        FT:PageInfo(frame,"Always-sell marks","Mark the items you always want to sell. Hover an item in your bags and press your mark key: it gets a small coin, and every item of that kind is sold when you open a merchant. Press the key on it again to unmark.\n\nAt most 12 items are sold per merchant visit (greys, white gear and marked items together), so every one can be bought back. The rest is sold the next time you open a merchant.\n\nThe marks stay on your account and are never part of a profile or an export.")
+        FT:PageInfo(frame,"Always-sell marks","Mark the items you always want to sell. Hover an item in your bags and press your mark key: it gets a small coin, and every item of that kind is sold when you open a merchant. Press the key on it again to unmark.\n\nAt most 12 items are sold per merchant visit (greys, white gear and marked items together), so every one can be bought back. The rest is sold next time.\n\nThe marks stay on your account. They are never part of a profile or an export.")
         self.toggle=FT:AccentButton(frame,"",472,34,"INV_Misc_Coin_01"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function() local s=self:Settings(); s.sellMarked=not (s.sellMarked==true); self:Apply() end)
         FT:Tooltip(self.toggle,"Sell marked items","When you open a merchant, sell the items you have marked. Works with or without Auto-sell grey items. Items with no sell price are skipped.")
         self.keyLabel=FT:Label(frame,"",15); self.keyLabel:SetPoint("TOPLEFT",24,-114); self.keyLabel:SetWidth(472)
         local change=FT:QuietButton(frame,"Choose a key",230,32,"keybind"); change:SetPoint("TOPLEFT",24,-142)
         change:SetScript("OnClick",function() if not InCombatLockdown() then self:Capture(true) end end)
-        FT:Tooltip(change,"Choose a key","Click, then press the key (with Shift, Ctrl or Alt if you like). You're asked to confirm. The key only marks while your mouse is on an item in your bags, and it never takes the key away from what it does now. Escape cancels.")
+        FT:Tooltip(change,"Choose a key","Click, then press the key (with Shift, Ctrl or Alt if you like). You're asked to confirm. The key only marks while your mouse is on an item in your bags; everywhere else it does what it always did. Escape cancels.")
         self.clearKey=FT:QuietButton(frame,"Clear key",230,32,"reset"); self.clearKey:SetPoint("TOPLEFT",266,-142)
         self.clearKey:SetScript("OnClick",function() FT.db.sellMarkKey=nil; self:Apply() end)
         FT:Tooltip(self.clearKey,"Clear key","Remove the mark key. Marked items are still sold; you just can't mark new ones until you choose a key again.")
         self.scope=FT:QuietButton(frame,"",472,32,"character"); self.scope:SetPoint("TOPLEFT",24,-182)
         self.scope:SetScript("OnClick",function() local s=self:Settings(); s.sellMarksPerCharacter=not (s.sellMarksPerCharacter==true); self.page=1; self:Changed(); self:Apply() end)
-        FT:Tooltip(self.scope,"Who the marks are for","All characters: one list for your whole account. This character: each character has its own list. Switching does not delete anything; each list is kept. Click to switch.")
+        FT:Tooltip(self.scope,"Who the marks are for","All characters: one list for your whole account. This character: each character has its own list. Switching deletes nothing. Click to switch.")
         self.listTitle=FT:Label(frame,"",16,true); self.listTitle:SetPoint("TOPLEFT",24,-232); FT:SectionHeading(self.listTitle,"INV_Misc_Coin_02",300)
         self.rows={}
         for i=1,PAGE do
@@ -293,7 +295,7 @@ function Marks:Open()
             row.remove.glyph:SetTexture("Interface\\RaidFrame\\ReadyCheck-NotReady")
             row.remove:SetScript("OnClick",function() if row.entry then self:Set(row.entry.id,nil,false) end end)
             FT:Tooltip(row.remove,"Remove mark","Stop selling this item automatically.")
-            row:HookScript("OnShow",function() row.remove:Show() end); row:HookScript("OnHide",function() row.remove:Hide() end)
+            row.remove:Hide()
             row:HookScript("OnEnter",function()
                 if not row.entry or not GameTooltip.SetItemByID then return end
                 GameTooltip:SetOwner(row,"ANCHOR_RIGHT"); pcall(GameTooltip.SetItemByID,GameTooltip,row.entry.id); GameTooltip:Show()

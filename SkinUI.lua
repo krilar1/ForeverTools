@@ -34,6 +34,28 @@ function S:UsePreset(value)
     end end
     self:Apply()
 end
+-- Turn on every skin area and give each the preset (also used by the
+-- built-in profile templates).
+function S:ApplyPresetToAll(value)
+    local root=self:Settings()
+    for _,entry in ipairs(options) do
+        local key=entry[1]
+        if key~="everything" then
+            root[key]=true
+            local area=self:Area(key)
+            for _,p in ipairs(self.presets) do if p.value==value then
+                area.preset=p.value;area.borderOpacity=1
+                if p.color then area.color={unpack(p.color)};area.borderColor={unpack(p.border)};area.opacity=1-p.transparency/100;area.shadow=p.shadow end
+                if p.value=="class" then area.opacity=0;area.shadow=false end
+                if key=="buffs" then area.thickness=1 end
+                if p.value=="dark" and (key=="bags" or key=="bagWindows") then area.opacity=1 end
+                if key=="micro" and p.value=="dark" then area.hideSecondary=true end
+                -- Keep each unit area's rare/elite artwork preference.
+            end end
+        end
+    end
+    self:Apply()
+end
 function S:OpenColorPicker(setting)
     local s=self:Area(self.selected or "actions"); local old={unpack(s[setting])}; local oldPreset=s.preset
     local function change() local r,g,b=ColorPickerFrame:GetColorRGB(); s[setting]={r,g,b}; s.preset="custom"; self:LiveApply() end
@@ -63,7 +85,7 @@ function S:Refresh()
     -- Bag menu rows: art switches, then Slot color with its transparency.
     local bag=key=="bagWindows"
     self.hideArt:ClearAllPoints(); self.hideArt:SetPoint("TOPLEFT",222,bag and -361 or -401)
-    self.hideSlotArt:ClearAllPoints(); self.hideSlotArt:SetPoint("TOPLEFT",468,-361)
+    self.hideSlotArt:ClearAllPoints(); self.hideSlotArt:SetPoint("TOPLEFT",483,-361)
     self.slotColorButton:ClearAllPoints(); self.slotColorButton:SetPoint("TOPLEFT",222,-401)
     self.slotLabel:ClearAllPoints(); self.slotLabel:SetPoint("TOPLEFT",222,-441)
     self.slotSlider:ClearAllPoints(); self.slotSlider:SetPoint("TOPLEFT",432,-438)
@@ -74,7 +96,7 @@ function S:Refresh()
     self.presetChoice.value=s.preset
     for _,p in ipairs(self.presets) do if p.value==s.preset then self.presetChoice.label:SetText(p.label) end end
     self.hideArt:SetShown(key=="bagWindows" or key=="gryphons")
-    self.hideArt:SetWidth(key=="bagWindows" and 234 or 480)
+    self.hideArt:SetWidth(key=="bagWindows" and 249 or 510)
     self.hideArt.label:SetText((key=="bagWindows" and "Hide window art: " or "Hide Blizzard art: ")..(s.hideArt and "On" or "Off")); FT:SetSelected(self.hideArt,s.hideArt)
     self.hideSlotArt:SetShown(key=="bagWindows")
     if key=="bagWindows" then self.hideSlotArt.label:SetText("Hide empty slot art: "..(s.hideSlotArt and "On" or "Off")); FT:SetSelected(self.hideSlotArt,s.hideSlotArt) end
@@ -102,51 +124,36 @@ end
 function S:Open()
     self.selected=self.selected or "everything"
     if not self.frame then
-        self.frame=FT:Window("ForeverToolsIconStyles","ForeverTools | Skins",730,550); FT:AppearanceBack(self.frame); self.areaButtons={}
-        FT:PageInfo(self.frame,"Skins","Pick an area on the left and turn it on, then choose a look: a template, colors, transparency and border. Everything applies a template to all areas at once and holds your own saved templates. Changes apply right away and are saved to your profile. Hover any control for details.")
+        self.frame=FT:Window("ForeverToolsIconStyles","Skins",760,550); FT:AppearanceBack(self.frame); self.areaButtons={}
+        FT:PageInfo(self.frame,"Skins","Pick an area on the left and turn it on. Then choose its look: a template, colors, transparency and border.\n\nEverything gives all areas one template at once, and holds the templates you saved yourself. Changes apply right away and are saved to your profile.")
         local scroll=CreateFrame("ScrollFrame",nil,self.frame,"UIPanelScrollFrameTemplate"); scroll:SetPoint("TOPLEFT",20,-66); scroll:SetSize(160,420) -- scrollbar sits in the gap, clear of the settings
         local list=CreateFrame("Frame",nil,scroll); list:SetSize(156,#options*38); scroll:SetScrollChild(list)
         for i,entry in ipairs(options) do
             local key=entry[1]; local button=FT:QuietButton(list,entry[2],156,32,"skins"); button.label:SetFont(FT.bodyFont,12,""); button:SetPoint("TOPLEFT",0,-(i-1)*38)
             button:SetScript("OnClick",function() self.selected=key; self:Refresh() end); self.areaButtons[key]=button
+            FT:Tooltip(button,entry[2],key=="everything" and "Templates for every area at once, and your own saved templates." or function() return (self:Settings()[key] and "On. " or "Off. ").."Click to show the look for "..entry[2]:lower().."." end)
         end
         self.allPreset="dark"
-        self.allPresetChoice=FT:Dropdown(self.frame,480,function() local choices={}; for _,p in ipairs(self.presets) do if p.value~="custom" then choices[#choices+1]=p end end; return choices end,function(value) self.allPreset=value; self:Refresh() end,"skins"); self.allPresetChoice:SetPoint("TOPLEFT",222,-148)
-        local all=FT:AccentButton(self.frame,"Apply template to all areas",480,34,"skins");all:SetPoint("TOPLEFT",222,-194); self.applyAll=all
-        all:SetScript("OnClick",function() FT:Confirm("Apply the selected template to all supported skin areas? This replaces their current skin colors and transparency.",function()
-            local root=self:Settings()
-            for _,entry in ipairs(options) do
-                local key=entry[1]
-                if key~="everything" then
-                    root[key]=true
-                    local area=self:Area(key)
-                    for _,p in ipairs(self.presets) do if p.value==self.allPreset then
-                        area.preset=p.value;area.borderOpacity=1
-                        if p.color then area.color={unpack(p.color)};area.borderColor={unpack(p.border)};area.opacity=1-p.transparency/100;area.shadow=p.shadow end
-                        if p.value=="class" then area.opacity=0;area.shadow=false end
-                        if key=="buffs" then area.thickness=1 end
-                        if p.value=="dark" and (key=="bags" or key=="bagWindows") then area.opacity=1 end
-                        if key=="micro" and p.value=="dark" then area.hideSecondary=true end
-                        -- Keep each unit area's rare/elite artwork preference.
-                    end end
-                end
-            end
-            self:Apply()
-        end) end)
+        self.allPresetChoice=FT:Dropdown(self.frame,510,function() local choices={}; for _,p in ipairs(self.presets) do if p.value~="custom" then choices[#choices+1]=p end end; return choices end,function(value) self.allPreset=value; self:Refresh() end,"skins"); self.allPresetChoice:SetPoint("TOPLEFT",222,-148)
+        local all=FT:AccentButton(self.frame,"Apply template to all areas",510,34,"skins");all:SetPoint("TOPLEFT",222,-194); self.applyAll=all
+        all:SetScript("OnClick",function() FT:Confirm("Apply the selected template to all supported skin areas? This replaces their current skin colors and transparency.",function() self:ApplyPresetToAll(self.allPreset) end) end)
         FT:Tooltip(all,"Apply to all areas","Turn on every area and give them all the chosen template. You can still change each area afterwards.")
         self.heading=FT:Label(self.frame,"",20,true); self.heading:SetPoint("TOPLEFT",222,-105)
-        self.toggle=FT:AccentButton(self.frame,"",480,34,"skins"); self.toggle:SetPoint("TOPLEFT",222,-140)
+        self.toggle=FT:AccentButton(self.frame,"",510,34,"skins"); self.toggle:SetPoint("TOPLEFT",222,-140)
         self.toggle:SetScript("OnClick",function() local root=self:Settings(); root[self.selected]=not root[self.selected]; self:Apply() end)
-        self.presetChoice=FT:Dropdown(self.frame,480,function() return self.presets end,function(value) self:UsePreset(value) end,"skins"); self.presetChoice:SetPoint("TOPLEFT",222,-183)
+        FT:Tooltip(self.toggle,"Skin this area","Turn the skin for this area on or off. Off gives the area back its normal look.")
+        self.presetChoice=FT:Dropdown(self.frame,510,function() return self.presets end,function(value) self:UsePreset(value) end,"skins"); self.presetChoice:SetPoint("TOPLEFT",222,-183)
         local function colorButton(label,x,field)
-            local b=FT:QuietButton(self.frame,label,234,32,"fonts"); b:SetPoint("TOPLEFT",x,-225); b:SetScript("OnClick",function() self:OpenColorPicker(field) end)
+            local b=FT:QuietButton(self.frame,label,249,32,"fonts"); b:SetPoint("TOPLEFT",x,-225); b:SetScript("OnClick",function() self:OpenColorPicker(field) end)
             local swatch=b:CreateTexture(nil,"ARTWORK"); swatch:SetTexture("Interface\\Buttons\\WHITE8x8"); swatch:SetSize(16,16); swatch:SetPoint("RIGHT",-10,0); return b,swatch
         end
         self.borderButton,self.borderSwatch=colorButton("Border color",222,"borderColor")
-        self.colorButton,self.colorSwatch=colorButton("Shading color",468,"color")
+        self.colorButton,self.colorSwatch=colorButton("Shading color",483,"color")
+        FT:Tooltip(self.borderButton,"Border color","The color of the frame line around each button, icon or frame. Picking a color makes this area's look your own (Custom).")
+        FT:Tooltip(self.colorButton,function() return self.selected=="bagWindows" and "Background color" or "Shading color" end,function() return self.selected=="bagWindows" and "The color behind the bag window." or "The color of the shading behind each button or icon. Set how much of it shows with Fill transparency." end)
         local function slider(y,callback)
             local label=FT:Label(self.frame,"",13); label:SetPoint("TOPLEFT",222,y)
-            local slider=CreateFrame("Slider",nil,self.frame,"OptionsSliderTemplate"); slider:SetSize(260,18); slider:SetPoint("TOPLEFT",432,y+3); slider:SetMinMaxValues(0,1); slider:SetValueStep(.05); slider:SetObeyStepOnDrag(true)
+            local slider=CreateFrame("Slider",nil,self.frame,"OptionsSliderTemplate"); slider:SetSize(290,18); slider:SetPoint("TOPLEFT",432,y+3); slider:SetMinMaxValues(0,1); slider:SetValueStep(.05); slider:SetObeyStepOnDrag(true)
             slider:SetScript("OnValueChanged",function(_,value) if not self.settingSlider then callback(value) end end)
             -- Plain end labels instead of Low / High.
             local low=slider.Low or (slider.GetName and slider:GetName() and _G[slider:GetName().."Low"])
@@ -164,10 +171,11 @@ function S:Open()
         self.slotColorButton,self.slotColorSwatch=colorButton("Slot color",222,"slotColor")
         self.slotColorButton:ClearAllPoints(); self.slotColorButton:SetPoint("TOPLEFT",222,-441)
         FT:Tooltip(self.slotColorButton,"Bag slot color","The color of the square behind each bag slot.")
-        self.thickness=FT.modules.FontManager:Stepper(self.frame,234,function() local choices={}; for i=1,4 do choices[i]={value=i} end; return choices end,function(v) self:Area(self.selected).thickness=v; self:Apply() end)
+        self.thickness=FT.modules.FontManager:Stepper(self.frame,249,function() local choices={}; for i=1,4 do choices[i]={value=i} end; return choices end,function(v) self:Area(self.selected).thickness=v; self:Apply() end)
         self.thickness:SetPoint("TOPLEFT",222,-361)
         FT:Tooltip(self.thickness,"Border thickness","How thick the border is. On buffs and debuffs it's in real screen pixels, so 1 px is the thinnest line your screen can show.")
-        self.shadow=FT:QuietButton(self.frame,"",234,32,"skins"); self.shadow:SetPoint("TOPLEFT",468,-361)
+        for _,step in ipairs({self.thickness.minus,self.thickness.plus}) do if step then FT:Tooltip(step,"Border thickness","Make the border one step thinner or thicker (1 to 4).") end end
+        self.shadow=FT:QuietButton(self.frame,"",249,32,"skins"); self.shadow:SetPoint("TOPLEFT",483,-361)
         self.shadow:SetScript("OnClick",function() local s=self:Area(self.selected); s.shadow=not s.shadow; self:Apply() end)
         FT:Tooltip(self.shadow,"Shadow","A soft dark shadow around each icon that fades out. Set how far it reaches and how dark it is below.")
         local function ends(slider,low,high)
@@ -182,20 +190,21 @@ function S:Open()
         self.shadowStrengthSlider:SetMinMaxValues(.1,1); ends(self.shadowStrengthSlider,"Light","Dark")
         FT:Tooltip(self.shadowStrengthSlider,"Shadow darkness","How dark the shadow is next to the icon. It always fades out toward its edge.")
         for i,key in ipairs({"rares","elites"}) do
-            local option=key; local b=FT:QuietButton(self.frame,"",234,32,"skins"); b:SetPoint("TOPLEFT",222+(i-1)*246,-321)
+            local option=key; local b=FT:QuietButton(self.frame,"",249,32,"skins"); b:SetPoint("TOPLEFT",222+(i-1)*261,-321)
             b:SetScript("OnClick",function() local s=self:Area(self.selected); s[option]=not s[option]; self:Apply() end); self[key]=b
             FT:Tooltip(b,"Rare / elite artwork","Also color the rare or elite dragon on unit frames. Rare elites need both switches on.")
         end
-        self.microOutline=FT:QuietButton(self.frame,"",480,32,"skins");self.microOutline:SetPoint("TOPLEFT",222,-321)
+        self.microOutline=FT:QuietButton(self.frame,"",510,32,"skins");self.microOutline:SetPoint("TOPLEFT",222,-321)
         self.microOutline:SetScript("OnClick",function() local s=self:Area("micro");s.hideSecondary=not s.hideSecondary;self:Apply() end)
         FT:Tooltip(self.microOutline,"Extra micro menu outline","Hide the outer border around the micro menu. Each button keeps its own border.")
-        self.hideArt=FT:QuietButton(self.frame,"",480,32,"skins");self.hideArt:SetPoint("TOPLEFT",222,-401)
+        self.hideArt=FT:QuietButton(self.frame,"",510,32,"skins");self.hideArt:SetPoint("TOPLEFT",222,-401)
         self.hideArt:SetScript("OnClick",function() local s=self:Area(self.selected);s.hideArt=not s.hideArt;self:Apply() end)
         FT:Tooltip(self.hideArt,"Blizzard art",function() return self.selected=="bagWindows" and "Hide the bag window's textured background; your fill color is used instead." or "Hide the gryphons at both ends of the action bar." end)
-        self.hideSlotArt=FT:QuietButton(self.frame,"",234,32,"skins");self.hideSlotArt:SetPoint("TOPLEFT",468,-401)
+        self.hideSlotArt=FT:QuietButton(self.frame,"",249,32,"skins");self.hideSlotArt:SetPoint("TOPLEFT",483,-401)
         self.hideSlotArt:SetScript("OnClick",function() local s=self:Area("bagWindows");s.hideSlotArt=not s.hideSlotArt;self:Apply() end)
         FT:Tooltip(self.hideSlotArt,"Empty slot art","Hide Blizzard's picture in empty bag slots. The slot outline stays; use Slot color and Slot backgrounds to tint the square or make it see-through.")
-        local reset=FT:QuietButton(self.frame,"Reset this area",234,32,"reset"); reset:SetPoint("BOTTOMLEFT",222,30); self.reset=reset
+        local reset=FT:QuietButton(self.frame,"Reset this area",249,32,"reset"); reset:SetPoint("BOTTOMLEFT",222,30); self.reset=reset
+        FT:Tooltip(reset,"Reset this area","Put this area's colors, transparency and border back to how they start. Asks first.")
         reset:SetScript("OnClick",function() local key=self.selected; FT:Confirm("Reset this skin area to its defaults?",function() local root=self:Settings(); root.areas[key]=nil; self:Area(key); self:Apply() end) end)
 
         FT:Tooltip(self.presetChoice,"Preset for this area","Pick a look for this area only. Dark mode gives black borders.")

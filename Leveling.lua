@@ -401,15 +401,15 @@ function Leveling:Open()
     if not self.frame then
         local frame=FT:Window("ForeverToolsLeveling","ForeverTools | Leveling stats",540,560); self.frame=frame
         FT:BackTo(frame,"SystemDisplay")
-        FT:PageInfo(frame,"Leveling stats","Your chosen stats on a small movable line and in the XP bar tooltip. Session stats reset when you reload or level up, and the line hides at max level.\n\nBuild your layout: turn stats on or off and use the arrows to order them. Kills to level uses your recent kill experience; XP per hour starts with your first experience and settles over a few minutes.")
-        self.toggle=FT:AccentButton(frame,"",492,34,"fps"); self.toggle:SetPoint("TOPLEFT",24,-62)
+        FT:PageInfo(frame,"Leveling stats","Your chosen stats on a small line you can move, and in the XP bar tooltip. Turn stats on or off and use the arrows to order them.\n\nSession stats start over when you reload or level up, and the line hides at max level. XP per hour settles after a few minutes.")
+        self.toggle=FT:AccentButton(frame,"",492,34,"Spell_ChargePositive"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function() if self.moving then self.moving=false end; local s=self:Settings(); s.enabled=not s.enabled; self:Apply() end)
         FT:Tooltip(self.toggle,"Leveling stats","Show your chosen stats on screen and extra lines in the XP bar tooltip. The stats appear once you earn experience, so nothing sits on screen before there is anything to show.")
         self.rows={}
         for _,entry in ipairs(parts) do
             local key=entry[1]
             local row={}
-            row.toggle=FT:QuietButton(frame,"",400,34,"fps")
+            row.toggle=FT:QuietButton(frame,"",400,34,"Spell_ChargePositive")
             row.toggle:SetScript("OnClick",function() local s=self:Settings(); s[key]=not s[key]; self:Apply() end)
             FT:Tooltip(row.toggle,entry[2],"Show "..entry[2]:lower()..". Example: "..entry[3])
             -- Blizzard's own friends-list arrow (used by Forever's UI), referenced from the game, not bundled.

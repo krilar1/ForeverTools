@@ -194,10 +194,10 @@ function QoL:ChangeSize(delta)
 end
 function QoL:Open()
     if not self.frame then
-        self.frame = FT:Window("ForeverToolsFPSSettings", "ForeverTools | FPS counter", 500, 240)
+        self.frame = FT:Window("ForeverToolsFPSSettings", "FPS counter", 540, 240)
         FT:BackTo(self.frame,"SystemDisplay")
-        FT:PageInfo(self.frame, "FPS counter", "A small frames-per-second counter. Unlock, drag it anywhere (right up to the screen edge), then lock it in place. Moving turns the counter on. Changes apply right away.")
-        self.toggle = FT:AccentButton(self.frame, "", 452, 34, "fps")
+        FT:PageInfo(self.frame, "FPS counter", "A small frames-per-second counter. Unlock it, drag it anywhere (right up to the screen edge), then lock it. Moving it turns the counter on.")
+        self.toggle = FT:AccentButton(self.frame, "", 492, 34, "fps")
         self.toggle:SetPoint("TOPLEFT", 24, -62)
         self.toggle:SetScript("OnClick", function()
             if self.moving then self:SetMoving(false) end
@@ -205,7 +205,7 @@ function QoL:Open()
             settings.enabled = not settings.enabled
             self:Apply()
         end)
-        self.moveButton = FT:QuietButton(self.frame, "", 452, 32, "move")
+        self.moveButton = FT:QuietButton(self.frame, "", 492, 32, "move")
         self.moveButton:SetPoint("TOPLEFT", 24, -104)
         self.moveButton:SetScript("OnClick", function() self:SetMoving(not self.moving) end)
         self.smaller = FT:QuietButton(self.frame, "-", 40, 32)
@@ -225,12 +225,12 @@ function QoL:Open()
         FT:Tooltip(self.smaller, "Smaller", "Make the counter's text smaller.")
         FT:Tooltip(self.larger, "Larger", "Make the counter's text larger.")
         local icon = "Interface\\Icons\\INV_Misc_PocketWatch_01"
-        self.alignChoice = FT:Dropdown(self.frame, 452, function()
+        self.alignChoice = FT:Dropdown(self.frame, 492, function()
             return {{value="left",label="Line up: left",icon=icon,tooltip="Text lines up on the left; the counter grows to the right."},
                 {value="center",label="Line up: center",icon=icon,tooltip="Text is centered."},
                 {value="right",label="Line up: right",icon=icon,tooltip="Text lines up on the right; good next to the right screen edge."}}
         end, function(value) self:SetAlign(value) end, "move")
-        self.alignChoice:SetPoint("TOPLEFT", 24, -184); self.alignChoice.menuWidth = 452
+        self.alignChoice:SetPoint("TOPLEFT", 24, -184); self.alignChoice.menuWidth = 492
         FT:Tooltip(self.alignChoice, "Line up", "Which side the counter lines up on, the same as the leveling stats. It stays anchored on that side, so it can sit flush against a screen edge.")
         self.frame:HookScript("OnHide", function() if self.moving then self:SetMoving(false) end end)
     end
