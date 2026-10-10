@@ -40,7 +40,8 @@ function S:ApplyPresetToAll(value)
     local root=self:Settings()
     for _,entry in ipairs(options) do
         local key=entry[1]
-        if key~="everything" then
+        -- The bank keeps its own switch: "all areas" never turns it on.
+        if key~="everything" and key~="bank" then
             root[key]=true
             local area=self:Area(key)
             for _,p in ipairs(self.presets) do if p.value==value then
@@ -76,7 +77,14 @@ function S:Refresh()
     self.allPresetChoice.value=self.allPreset or "dark"
     for _,p in ipairs(self.presets) do if p.value==self.allPresetChoice.value then self.allPresetChoice.label:SetText(p.label) end end
     for _,control in ipairs({self.toggle,self.presetChoice,self.borderButton,self.colorButton,self.borderSlider,self.borderLabel,self.opacitySlider,self.opacityLabel,self.shadow,self.thickness,self.rares,self.elites,self.microOutline,self.hideArt,self.hideSlotArt,self.slotLabel,self.slotSlider,self.slotColorButton,self.reset,self.shadowSizeSlider,self.shadowSizeLabel,self.shadowStrengthSlider,self.shadowStrengthLabel}) do control:SetShown(not everything) end
+    self.bankNote:SetShown(key=="bank"); self.bankSkin:Hide()
     if everything then return end
+    -- Bank: only its switch; it wears the Bag menu's look.
+    if key=="bank" then
+        for _,control in ipairs({self.presetChoice,self.borderButton,self.colorButton,self.borderSlider,self.borderLabel,self.opacitySlider,self.opacityLabel,self.shadow,self.thickness,self.rares,self.elites,self.microOutline,self.hideArt,self.hideSlotArt,self.slotLabel,self.slotSlider,self.slotColorButton,self.reset,self.shadowSizeSlider,self.shadowSizeLabel,self.shadowStrengthSlider,self.shadowStrengthLabel}) do control:Hide() end
+        self.toggle.label:SetText("Skin the bank: "..(root.bank and "On" or "Off")); FT:SetSelected(self.toggle,root.bank==true)
+        return
+    end
     local s=self:Area(key)
     self.slotLabel:SetShown(key=="bagWindows");self.slotSlider:SetShown(key=="bagWindows");self.slotColorButton:SetShown(key=="bagWindows")
     self.slotColorSwatch:SetVertexColor(unpack(s.slotColor))
@@ -202,6 +210,11 @@ function S:Open()
         FT:Tooltip(self.hideArt,"Blizzard art",function() return self.selected=="bagWindows" and "Hide the bag window's textured background; your fill color is used instead." or "Hide the gryphons at both ends of the action bar." end)
         self.hideSlotArt=FT:QuietButton(self.frame,"",249,32,"skins");self.hideSlotArt:SetPoint("TOPLEFT",483,-401)
         self.hideSlotArt:SetScript("OnClick",function() local s=self:Area("bagWindows");s.hideSlotArt=not s.hideSlotArt;self:Apply() end)
+        self.bankSkin=FT:QuietButton(self.frame,"",249,32,"INV_Misc_Bag_10");self.bankSkin:SetPoint("TOPLEFT",483,-401)
+        self.bankSkin:SetScript("OnClick",function() local s=self:Area("bagWindows");s.bank=not (s.bank==true);self:Apply() end)
+        FT:Tooltip(self.bankSkin,"Also the bank","Give the bank the same look.")
+        self.bankNote=FT:Label(self.frame,"The bank window (and ForeverTools' view-only bank) wears the Bag menu's look: change its template, colors, transparency and art under Bag menu.\n\nOff: the bank keeps its default look. Apply to all areas never turns the bank on; only this switch does.",13)
+        self.bankNote:SetPoint("TOPLEFT",222,-186); self.bankNote:SetWidth(510); self.bankNote:SetTextColor(.85,.80,.70); self.bankNote:Hide()
         FT:Tooltip(self.hideSlotArt,"Empty slot art","Hide Blizzard's picture in empty bag slots. The slot outline stays; use Slot color and Slot backgrounds to tint the square or make it see-through.")
         local reset=FT:QuietButton(self.frame,"Reset this area",249,32,"reset"); reset:SetPoint("BOTTOMLEFT",222,30); self.reset=reset
         FT:Tooltip(reset,"Reset this area","Put this area's colors, transparency and border back to how they start. Asks first.")

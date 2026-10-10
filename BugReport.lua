@@ -10,7 +10,7 @@ function Report:Features()
     local function add(label,on) if on then out[#out+1]=label end end
     local skins=db.iconStyles or {}
     local areas={}
-    for _,key in ipairs({"actions","buffs","stances","minimap","bags","bagWindows","micro","xp","player","target","tot","focus","focustarget","pet","party","personal","castbar","swing","gryphons"}) do if skins[key] then areas[#areas+1]=key end end
+    for _,key in ipairs({"actions","buffs","stances","minimap","bags","bagWindows","bank","micro","xp","player","target","tot","focus","focustarget","pet","party","personal","castbar","swing","gryphons"}) do if skins[key] then areas[#areas+1]=key end end
     if #areas>0 then out[#out+1]="skins("..table.concat(areas,",")..")" end
     local fonts={}
     for id,pref in pairs(db.fonts or {}) do if type(pref)=="table" and pref.enabled then fonts[#fonts+1]=id end end
@@ -33,6 +33,10 @@ function Report:Features()
     for _,class in pairs(db.customKeybinds or {}) do if type(class)=="table" and class.enabled then keybinds=true end end
     add("wheelCasting",keybinds)
     add("totemRange",db.totems and db.totems.range); add("totemWarning",db.totems and db.totems.leftBehind)
+    local bags=db.bags or {}
+    local enemies=db.enemies or {}
+    add("stealthAlerts",enemies.stealth); add("markedAlerts",enemies.marks); add("nearbyEnemies",enemies.nearby)
+    add("bagGold",bags.gold); add("bagView",bags.view); add("itemCounts",bags.counts)
     return #out>0 and table.concat(out,", ") or "none (all defaults)"
 end
 function Report:Errors(limit)
@@ -77,6 +81,18 @@ function Report:Text()
     local reminder=FT.modules and FT.modules.BuffReminder
     if reminder and reminder.TalentReport then
         local ok,line=pcall(reminder.TalentReport,reminder)
+        if ok and type(line)=="string" then table.insert(lines,7,line) end
+    end
+    -- What the bag tools have read: ruleset name, characters, how the bank was read.
+    local bags=FT.Bags
+    if bags and bags.Report then
+        local ok,line=pcall(bags.Report,bags)
+        if ok and type(line)=="string" then table.insert(lines,7,line) end
+    end
+    -- What the Eat & Drink macro would use right now (only with that macro added).
+    local meal=FT.modules and FT.modules.FoodWater
+    if meal and meal.Report and GetMacroIndexByName and (GetMacroIndexByName(meal.NAME) or 0)>0 then
+        local ok,line=pcall(meal.Report,meal)
         if ok and type(line)=="string" then table.insert(lines,7,line) end
     end
     -- What the smart interact key is set to right now.

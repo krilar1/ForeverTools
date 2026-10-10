@@ -2,6 +2,16 @@ local _,FT=...
 -- Short player-facing notes for the "What's new" window. Newest first.
 FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
+    {version="0.80.0",notes={
+        {icon="INV_Misc_Bag_08",title="Bags",text="Everyone's gold, bank anywhere, alts' bags."},
+        {icon="INV_Misc_Note_04",title="Item counts",text="See every character's count in item tooltips."},
+        {icon="INV_Misc_Bag_10",title="Bag order",text="Put the backpack's first slot where you want it."},
+        {icon="Ability_Stealth",title="PvP alerts",text="Stealth alert, marked players, nearby enemies."},
+        {icon="INV_Misc_Map_01",title="Guided tour",text="Try each feature on screen. /ft setup"},
+        {icon="INV_Misc_Note_01",title="New Macros window",text="Every macro with its state; open one in place."},
+        {icon="INV_Drink_18",title="Eat & Drink for mages",text="One button for conjured food and water."},
+        {icon="Spell_Misc_Food",title="XP or stat food",text="Separate food reminders. Buff reminders."},
+    }},
     {version="0.70.0",notes={
         {icon="INV_Misc_Book_11",title="Sidebars on every page",text="Each group lists its sections on the left."},
         {icon="Spell_Nature_TimeStop",title="Back where you were",text="/ft reopens the page you last used."},

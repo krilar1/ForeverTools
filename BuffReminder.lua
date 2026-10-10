@@ -66,6 +66,8 @@ function Reminder:Settings()
     -- Food buff reminder: off by default; "leveling" stops at max level.
     if type(s.food)~="boolean" then s.food=false end
     if s.foodWhen~="always" then s.foodWhen="leveling" end
+    -- Stat food (Well Fed without the experience bonus): its own switch.
+    if type(s.foodStat)~="boolean" then s.foodStat=false end
     return s
 end
 -- Food buff ("Well Fed"). In Forever it also gives 5% more experience from
@@ -87,6 +89,75 @@ end
 function Reminder:Leveling()
     local leveling=FT.modules.Leveling
     return not (leveling and leveling.MaxLevel and leveling:MaxLevel())
+end
+-- Two kinds of food buff: experience food (Well Fed with more experience
+-- from kills) and stat food (Well Fed with stats). A reminder only shows
+-- for a kind you carry food for; which kind is read from the item's own
+-- tooltip ("experience", or "well fed" without it).
+local function tooltipText(data)
+    if type(data)~="table" or type(data.lines)~="table" then return nil end
+    local parts={}
+    for _,line in ipairs(data.lines) do
+        local left=line.leftText
+        if safe(left) and type(left)=="string" then parts[#parts+1]=left end
+    end
+    return table.concat(parts," "):lower()
+end
+function Reminder:FoodKinds()
+    if self.foodKinds then return self.foodKinds end
+    local kinds={xp=false,stat=false}
+    if not (C_TooltipInfo and C_TooltipInfo.GetBagItem and C_Container and C_Container.GetContainerNumSlots) then
+        -- Can't read item text: remind as before (any food counts).
+        kinds.xp,kinds.stat,kinds.unknown=true,true,true
+        return kinds
+    end
+    local seen={}
+    for bag=0,(NUM_BAG_SLOTS or 4) do
+        local okCount,count=pcall(C_Container.GetContainerNumSlots,bag)
+        if okCount and safe(count) and type(count)=="number" then
+            for slot=1,count do
+                local okID,id=pcall(C_Container.GetContainerItemID,bag,slot)
+                if okID and safe(id) and type(id)=="number" and not seen[id] then
+                    seen[id]=true
+                    local okTip,data=pcall(C_TooltipInfo.GetBagItem,bag,slot)
+                    local text=okTip and tooltipText(data)
+                    if text then
+                        if text:find("experience",1,true) and (text:find("well fed",1,true) or text:find("eat",1,true)) then kinds.xp=true
+                        elseif text:find("well fed",1,true) then kinds.stat=true end
+                    end
+                end
+            end
+        end
+    end
+    self.foodKinds=kinds
+    return kinds
+end
+-- Which food buffs you have now: xp, stat (nil when the game hides it).
+function Reminder:FoodBuffs()
+    local name=self:FoodInfo()
+    local has=self:HasAura(name)
+    if has~=true then return has,has end
+    if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then return true,true end
+    local xp,stat,found=false,false,false
+    for index=1,80 do
+        local ok,aura=pcall(C_UnitAuras.GetAuraDataByIndex,"player",index,"HELPFUL")
+        if not ok then return nil,nil end
+        if not aura then break end
+        if not safe(aura.name) then return nil,nil end
+        if aura.name==name or (safe(aura.spellId) and aura.spellId==FOOD_SPELL) then
+            local text
+            if C_TooltipInfo and C_TooltipInfo.GetUnitBuffByAuraInstanceID and safe(aura.auraInstanceID) then
+                local okTip,data=pcall(C_TooltipInfo.GetUnitBuffByAuraInstanceID,"player",aura.auraInstanceID,"HELPFUL")
+                text=okTip and tooltipText(data)
+            end
+            found=true
+            if not text then xp,stat=true,true
+            elseif text:find("experience",1,true) then xp=true else stat=true end
+        end
+    end
+    -- Well Fed is there but could not be looked at closer: it counts for both.
+    if not found then return true,true end
+    return xp,stat
 end
 -- Is the food reminder wanted right now? (Whether the buff is there is checked by the caller.)
 function Reminder:FoodWanted()
@@ -710,10 +781,16 @@ function Reminder:Refresh(cachedSpells)
                 end
             end
         end
-        if selfHere and not fighting and self:FoodWanted() then
-            local name,icon=self:FoodInfo()
-            if self:HasAura(name)==false then
-                local food={name="Food buff",message="Food buff missing"..(self:Leveling() and " (+5% XP)" or ""),spell={icon=icon}}
+        if selfHere and not fighting and (self:FoodWanted() or s.foodStat) then
+            local _,icon=self:FoodInfo()
+            local kinds=self:FoodKinds()
+            local xp,stat=self:FoodBuffs()
+            if self:FoodWanted() and kinds.xp and xp==false then
+                local food={name="Food buff",message=(kinds.unknown and "Food buff missing" or "XP food buff missing")..(self:Leveling() and " (+5% XP)" or ""),spell={icon=icon}}
+                self.missing[#self.missing+1]=food; styleKeys[food]="food"
+            end
+            if s.foodStat and kinds.stat and stat==false and not (kinds.unknown and self:FoodWanted()) then
+                local food={name="Stat food buff",message="Stat food buff missing",spell={icon=icon}}
                 self.missing[#self.missing+1]=food; styleKeys[food]="food"
             end
         end
@@ -1256,34 +1333,28 @@ function Reminder:RefreshMenu(learned)
         end
     end
     local _,foodIcon=self:FoodInfo()
-    self.foodToggle.label:SetText("Food buff: "..(s.food and "On" or "Off")); FT:SetSelected(self.foodToggle,s.food)
+    self.foodToggle.label:SetText("XP food: "..(s.food and "On" or "Off")); FT:SetSelected(self.foodToggle,s.food)
+    self.foodStatToggle.label:SetText("Stat food: "..(s.foodStat and "On" or "Off")); FT:SetSelected(self.foodStatToggle,s.foodStat)
+    self.foodStatToggle.icon:SetTexture(foodIcon)
     self.foodToggle.icon:SetTexture(foodIcon)
     FT:SetSelected(self.foodToggle.gear,self:Style("food")~=nil)
     self.foodWhen.label:SetText(s.foodWhen=="always" and "Remind: Always" or "Remind: While leveling")
     self.foodWhen:SetAlpha(s.food and 1 or .5)
     if s.food then watched=watched+1 end
-    -- Left: one row per section with its state. Right: only the chosen section.
-    local cd=FT.modules.CooldownReminder
-    local hide=s.hideAfter
-    local status={
-        self=(s.enabled and "On" or "Off").." · "..watched.." watched for "..editSpec,
-        group=s.groupEnabled and "On" or "Off",
-        rank="Alerts "..(s.lowRank and "on" or "off").." · bar marker "..(s.rankMarker and "on" or "off"),
-        look=math.floor(s.size*100+.5).."% · "..(hide==0 and "never hides" or "hides after "..(hide>=60 and (hide/60).." min" or hide.." s")),
-        cooldown=(cd and cd:Settings().enabled and "On" or "Off").." · opens its own page",
-    }
+    self.watchedCount=watched
     local pane=self.pane or "self"
-    for key,button in pairs(self.paneButtons) do button.meta:SetText(status[key] or ""); FT:SetSelected(button,key==pane) end
-    for _,control in ipairs(self.paneControls) do control:Hide() end
-    for _,h in ipairs(self.kindHeads) do h:Hide() end
+    -- Controls that stay are only moved, never hidden and shown again: a
+    -- button hidden for a moment while you press it would lose the click.
+    local placed={}
+    self.placedNow=placed
     local info=self.paneInfo[pane]
-    self.paneTitle.ftHeading.icon=info.icon; self.paneTitle:SetText(info.title); self.paneTitle:Show()
-    self.paneHint:SetText(info.hint); self.paneHint:Show()
-    local X,TOP,W=290,132,442
-    local function place(control,x,top) control:ClearAllPoints();control:SetPoint("TOPLEFT",self.frame,"TOPLEFT",x,-top);control:Show() end
-    place(self.paneTitle,X,TOP+14); place(self.paneHint,X,TOP+40)
-    local y=TOP+68
+    self.frame.titleText:SetText(info.title)
+    -- One page per section (the group's sidebar on the left), full width.
+    local X,COL=24,240
+    local function place(control,x,top) placed[control]=true; control:ClearAllPoints();control:SetPoint("TOPLEFT",self.frame,"TOPLEFT",x,-top);control:Show() end
+    local y=66
     if pane=="self" then
+        place(self.toggle,X,y); place(self.selfPreview,X+COL,y); y=y+46
         place(self.specChoice,X,y);y=y+40
         -- Buffs grouped under small headings (Blessings, Auras & stances, ...),
         -- two per row inside each group.
@@ -1295,7 +1366,7 @@ function Reminder:RefreshMenu(learned)
             if count>0 then
                 headUsed=headUsed+1
                 local h=self.kindHeads[headUsed]; h.ftHeading.icon=kindIcons[kind]; h:SetText(kindLabels[kind]); place(h,X,y); y=y+18
-                for n=0,count-1 do place(self.rows[first+n],X+(n%2)*227,y+math.floor(n/2)*38) end
+                for n=0,count-1 do place(self.rows[first+n],X+(n%2)*COL,y+math.floor(n/2)*38) end
                 y=y+math.ceil(count/2)*38+6
             end
         end
@@ -1304,103 +1375,112 @@ function Reminder:RefreshMenu(learned)
             headUsed=headUsed+1
             local h=self.kindHeads[headUsed]; h.ftHeading.icon="INV_Sword_04"; h:SetText(weaponKind=="poison" and "Weapon poisons" or "Weapon buffs"); place(h,X,y); y=y+18
             place(self.mainDropdown,X,y);place(self.offDropdown,X,y+38)
-            place(self.mainDropdown.gear,X+414,y);place(self.offDropdown.gear,X+414,y+38);y=y+80
+            place(self.mainDropdown.gear,X+444,y);place(self.offDropdown.gear,X+444,y+38);y=y+80
         end
         headUsed=headUsed+1
         local fh=self.kindHeads[headUsed]; fh.ftHeading.icon=nil; fh:SetText("Food"); place(fh,X,y); y=y+18
-        place(self.foodToggle,X,y); place(self.foodWhen,X+227,y); y=y+44
+        place(self.foodToggle,X,y); place(self.foodWhen,X+COL,y); y=y+40
+        place(self.foodStatToggle,X,y); y=y+44
         headUsed=headUsed+1
         local h=self.kindHeads[headUsed]; h.ftHeading.icon=nil; h:SetText("Show in"); place(h,X,y); y=y+18
         self:PlaceWhere("selfWhere",X,y);y=y+40
         place(self.selfColorButton,X,y);y=y+34
     elseif pane=="group" then
+        place(self.groupToggle,X,y); place(self.groupPreview,X+COL,y); y=y+46
         local h=self.kindHeads[1]; h.ftHeading.icon=nil; h:SetText("Show in"); place(h,X,y); y=y+18
         self:PlaceWhere("groupWhere",X,y);y=y+40
         place(self.groupColorButton,X,y);y=y+40
-        place(self.groupPreview,X,y);y=y+32
     elseif pane=="rank" then
-        place(self.rankToggle,X,y);place(self.rankOneToggle,X+227,y);y=y+38
-        place(self.markerToggle,X,y);place(self.exceptions,X+227,y);y=y+32
+        place(self.rankToggle,X,y);place(self.rankOneToggle,X+COL,y);y=y+40
+        place(self.markerToggle,X,y);place(self.exceptions,X+COL,y);y=y+32
     elseif pane=="look" then
         place(self.sizeValue,X,y+3);place(self.sizeSlider,X+124,y);y=y+36
         place(self.hideChoice,X,y);y=y+40
-        place(self.resetPosition,X,y);y=y+30
+        place(self.moveButton,X,y);place(self.resetPosition,X+COL,y);y=y+34
     end
-    -- One size for every section (room for the longest buff list), so the
-    -- window never grows or shrinks as you click around.
-    local bottom=math.max(TOP+478,y+14)
-    if self.paneBottom~=bottom then
-        self.paneBottom=bottom
-        self.detail:SetHeight(bottom-TOP)
-        self.frame:SetHeight(bottom+24)
+    -- A short line on what the page is for.
+    place(self.paneHint,X,y+12)
+    for _,control in ipairs(self.paneControls) do if not placed[control] then control:Hide() end end
+    for _,h in ipairs(self.kindHeads) do if not placed[h] then h:Hide() end end
+    self.placedNow=nil
+    self.paneHint:SetText(info.hint)
+    self.contentBottom=y
+    FT:RefreshDock(self.frame)
+end
+-- The state of each section, for the sidebar.
+function Reminder:PaneStatus(key)
+    local s=self:Settings()
+    if key=="self" then
+        local watched=self.watchedCount
+        if not watched then
+            watched=0; local learned=self:Learned(); local spec=self:CurrentSpec()
+            for _,entry in ipairs(self:Available(learned,spec)) do if self:Enabled(entry,spec,learned) then watched=watched+1 end end
+            if s.food then watched=watched+1 end
+        end
+        return (s.enabled and "On" or "Off").." · "..watched.." watched"
+    elseif key=="group" then return s.groupEnabled and "On" or "Off"
+    elseif key=="rank" then return "Alerts "..(s.lowRank and "on" or "off").." · bar marker "..(s.rankMarker and "on" or "off")
+    elseif key=="look" then
+        local hide=s.hideAfter
+        return math.floor(s.size*100+.5).."% · "..(hide==0 and "never hides" or "hides after "..(hide>=60 and (hide/60).." min" or hide.." s"))
     end
+    return ""
 end
 function Reminder:PlaceWhere(field,x0,top)
     local x=x0
     for _,place in ipairs(self.places) do
         local b=self.whereRows[field].buttons[place[1]]
-        b:ClearAllPoints(); b:SetPoint("TOPLEFT",self.frame,"TOPLEFT",x,-top); b:Show(); x=x+90
+        if self.placedNow then self.placedNow[b]=true end
+        b:ClearAllPoints(); b:SetPoint("TOPLEFT",self.frame,"TOPLEFT",x,-top); b:Show(); x=x+96
     end
 end
-function Reminder:Open()
+-- Buff reminders is a group like the rest of ForeverTools: Your buffs,
+-- Group buffs, Low ranks, Look and position, and Cooldown reminders in the
+-- sidebar. The first four are pages of one window.
+local pages={self="BuffReminder",group="BuffGroup",rank="BuffRanks",look="BuffLook"}
+Reminder.pages=pages
+Reminder.ownDockRefresh=true -- Refresh here redraws the notices, not the page
+function Reminder:Build()
     if not self.frame then
-        local frame=FT:Window("ForeverToolsBuffReminders","Buff reminders",772,634);self.frame=frame
-        -- Top row: the switches and tools you reach for most.
-        local top=CreateFrame("Frame",nil,frame); top:SetSize(724,58); top:SetPoint("TOPLEFT",24,-62); FT:Panel(top); self.topBar=top
-        -- Right side: the chosen section's options.
-        local detail=CreateFrame("Frame",nil,frame); detail:SetSize(474,478); detail:SetPoint("TOPLEFT",274,-132); FT:Panel(detail); self.detail=detail
+        local frame=FT:Window("ForeverToolsBuffReminders","Your buffs",520,640);self.frame=frame
+        for _,name in pairs(pages) do if FT.modules[name] then FT.modules[name].frame=frame end end
+        local W=472
+        -- Every control sits straight on the page; RefreshMenu places them.
+        local detail=CreateFrame("Frame",nil,frame); detail:SetAllPoints(); self.detail=detail
+        local top=detail
         self.paneControls={}
         local function pane(control) self.paneControls[#self.paneControls+1]=control; return control end
         self.paneInfo={
-            self={title="Your buffs",icon="Spell_Holy_WordFortitude",hint="Pick the buffs to watch. Gear: own look, and reminders in combat."},
-            group={title="Group buffs",icon="Spell_Holy_PrayerOfFortitude",hint="A notice when group members are missing your group buffs."},
-            rank={title="Low ranks",icon="INV_Misc_Book_07",hint="Catch spells cast at a lower rank than you know."},
-            look={title="Look and position",icon="Ability_Rogue_Sprint",hint="Size and timing. Preview and Move are in the top row."},
+            self={title="Your buffs",icon="Spell_Holy_WordFortitude",hint="Pick the buffs to watch for this talent tree. The gear on a buff gives it its own look and reminders in combat."},
+            group={title="Group buffs",icon="Spell_Holy_PrayerOfFortitude",hint="A notice when group members are missing one of your group buffs."},
+            rank={title="Low ranks",icon="INV_Misc_Book_07",hint="Catch spells cast at a lower rank than you know. Visit a trainer once so the ranks are known."},
+            look={title="Look and position",icon="Ability_Rogue_Sprint",hint="Size, timing and place of the notices. Left-click a notice to dismiss it, right-click it for settings."},
         }
-        self.paneTitle=FT:Label(detail,"",16,true); self.paneTitle:SetTextColor(1,.82,0); FT:SectionHeading(self.paneTitle,"Spell_Holy_WordFortitude",260)
-        self.paneHint=FT:Label(detail,"",12); self.paneHint:SetTextColor(.66,.59,.48); self.paneHint:SetWidth(442); self.paneHint:SetJustifyH("LEFT")
-        if self.paneHint.SetWordWrap then self.paneHint:SetWordWrap(false) end
-        -- Left side: the sections, each with its current state.
-        self.paneButtons={}
-        for i,entry in ipairs({{"self","Your buffs","Spell_Holy_WordFortitude"},{"group","Group buffs","Spell_Holy_PrayerOfFortitude"},{"rank","Low ranks","INV_Misc_Book_07"},{"look","Look and position","Ability_Rogue_Sprint"},{"cooldown","Cooldown reminders","Spell_Nature_TimeStop"}}) do
-            local key=entry[1]
-            local b=FT:QuietButton(frame,"",236,48); b.label:Hide()
-            b:SetPoint("TOPLEFT",24,-132-(i-1)*52)
-            b.icon=b:CreateTexture(nil,"ARTWORK"); b.icon:SetSize(28,28); b.icon:SetPoint("LEFT",10,0); b.icon:SetTexture("Interface\\Icons\\"..entry[3]); b.icon:SetTexCoord(.07,.93,.07,.93); FT:RoundIcon(b.icon)
-            b.title=FT:Label(b,entry[2],14); b.title:SetPoint("TOPLEFT",48,-8)
-            b.meta=FT:Label(b,"",11); b.meta:SetPoint("TOPLEFT",48,-27); b.meta:SetWidth(180); b.meta:SetJustifyH("LEFT"); b.meta:SetTextColor(.72,.66,.55)
-            if b.meta.SetWordWrap then b.meta:SetWordWrap(false) end
-            b:SetScript("OnClick",function()
-                if key=="cooldown" then FT:OpenModule("CooldownReminder"); return end
-                self.pane=key; self:RefreshMenu()
-            end)
-            FT:Tooltip(b,entry[2],key=="cooldown" and "A short notice to use a ready racial, trinket or long cooldown on tough targets and big pulls. Off by default. Click to open its settings page."
-                or self.paneInfo[key].hint.." Click to show these options on the right.")
-            self.paneButtons[key]=b
-        end
-        self.toggle=FT:AccentButton(top,"",196,34,"buffs");self.toggle:SetPoint("LEFT",14,0)
+        self.paneHint=pane(FT:Label(detail,"",12)); self.paneHint:SetTextColor(.66,.59,.48); self.paneHint:SetWidth(W); self.paneHint:SetJustifyH("LEFT")
+        if self.paneHint.SetWordWrap then self.paneHint:SetWordWrap(true) end
+        self.toggle=pane(FT:AccentButton(top,"",232,34,"buffs"))
         self.toggle:SetScript("OnClick",function() local s=self:Settings();s.enabled=not s.enabled;self:Apply() end)
         FT:Tooltip(self.toggle,"Self-buff reminders","Shows a small notice at the top of the screen when one of your buffs is missing. Hidden in combat, on flights and while dead. It never casts anything for you.")
-        self.groupToggle=FT:QuietButton(top,"",196,34,"party");self.groupToggle:SetPoint("LEFT",self.toggle,"RIGHT",8,0)
+        self.groupToggle=pane(FT:AccentButton(top,"",232,34,"party"))
         self.groupToggle:SetScript("OnClick",function() local s=self:Settings();s.groupEnabled=not s.groupEnabled;self:Apply() end)
         FT:Tooltip(self.groupToggle,"Group reminders","Shows a notice when someone in your group is missing one of your group buffs. Choose where it shows under Group buffs. Hidden in combat.")
-        self.moveButton=FT:QuietButton(top,"",100,34,"move");self.moveButton:SetPoint("RIGHT",-14,0)
+        self.moveButton=pane(FT:QuietButton(top,"",232,32,"move"))
         self.moveButton:SetScript("OnClick",function() self:SetMoving(not self.moving) end)
         FT:Tooltip(self.moveButton,"Move reminders","Click to unlock, drag the notice where you want it, then click again to lock it.")
-        self.selfPreview=FT:QuietButton(top,"Preview",112,34,"buffs");self.selfPreview:SetPoint("RIGHT",self.moveButton,"LEFT",-8,0)
+        self.selfPreview=pane(FT:QuietButton(top,"Preview",232,34,"buffs"))
         self.selfPreview:SetScript("OnClick",function() self.previewSelf=not self.previewSelf;FT:SetSelected(self.selfPreview,self.previewSelf);self:Apply() end)
         FT:Tooltip(self.selfPreview,"Preview self reminders","Show sample notices so you can see how they look: the shared notice, and one for each buff you gave a look of its own. The group notice has its own preview under Group buffs.")
         for _,b in ipairs({self.toggle,self.groupToggle,self.moveButton,self.selfPreview}) do if b.label.SetWordWrap then b.label:SetWordWrap(false) end end
-        self.specChoice=pane(FT:Dropdown(detail,442,function() return self:SpecChoices() end,function(value) self:PickSpec(value) end,"classes"))
+        self.specChoice=pane(FT:Dropdown(detail,W,function() return self:SpecChoices() end,function(value) self:PickSpec(value) end,"classes"))
         self.specChoice.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
         FT:Tooltip(self.specChoice,"Your talent tree","Each talent tree keeps its own list of watched buffs, so a respec brings that tree's buffs back. Automatic follows your talents: the tree with the most points, and with only a few points the tree most players of your class level in. Pick a tree yourself to always use that one.")
         self.rows={}
         self.kindHeads={}
         for i=1,8 do
-            local h=FT:Label(detail,"",12,true); h:SetTextColor(.66,.59,.48); FT:SectionHeading(h,nil,260,14); h:Hide(); self.kindHeads[i]=h
+            local h=FT:Label(detail,"",12,true); h:SetTextColor(.66,.59,.48); FT:SectionHeading(h,nil,320,14); h:Hide(); self.kindHeads[i]=h
         end
         for i=1,12 do
-            local b=pane(FT:QuietButton(detail,"",215,32,"welcome"))
+            local b=pane(FT:QuietButton(detail,"",232,32,"welcome"))
             b.label:SetFont(FT.font or "Fonts\\FRIZQT__.TTF",12,""); if b.label.SetWordWrap then b.label:SetWordWrap(false) end
             b.label:ClearAllPoints(); b.label:SetPoint("LEFT",b.icon,"RIGHT",8,0); b.label:SetPoint("RIGHT",b,"RIGHT",-32,0)
             -- The gear gives this buff a notice look of its own.
@@ -1422,20 +1502,24 @@ function Reminder:Open()
         end
         self.empty=pane(FT:Label(detail,"No supported self buffs learned yet.",13))
         -- Food buff: the same for every class and talent tree.
-        local food=pane(FT:QuietButton(detail,"",215,32,"welcome")); self.foodToggle=food
+        local food=pane(FT:QuietButton(detail,"",232,32,"welcome")); self.foodToggle=food
         food.label:SetFont(FT.font or "Fonts\\FRIZQT__.TTF",12,""); if food.label.SetWordWrap then food.label:SetWordWrap(false) end
         food.label:ClearAllPoints(); food.label:SetPoint("LEFT",food.icon,"RIGHT",8,0); food.label:SetPoint("RIGHT",food,"RIGHT",-32,0)
         food:SetScript("OnClick",function() local s=self:Settings(); s.food=not s.food; self:Apply() end)
-        FT:Tooltip(food,"Food buff reminder","A notice when you don't have a food buff (Well Fed). In WoW: Forever, Well Fed also gives 5% more experience from kills. It follows the same rules as your other buff notices.")
+        FT:Tooltip(food,"XP food reminder","A notice when you don't have the experience food buff (Well Fed with 5% more experience from kills). Only while you carry food that gives it. It follows the same rules as your other buff notices.")
+        local stat=pane(FT:QuietButton(detail,"",232,32,"welcome")); self.foodStatToggle=stat
+        stat.label:SetFont(FT.font or "Fonts\\FRIZQT__.TTF",12,""); if stat.label.SetWordWrap then stat.label:SetWordWrap(false) end
+        stat:SetScript("OnClick",function() local s=self:Settings(); s.foodStat=not s.foodStat; self:Apply() end)
+        FT:Tooltip(stat,"Stat food reminder","A notice when you don't have a stat food buff (Well Fed with stamina, spirit or other stats). Only while you carry such food. Turn on one or both: XP food, stat food.")
         food.gear=FT:QuietButton(food,"",24,24); food.gear:SetPoint("RIGHT",-4,0); FT:GearIcon(food.gear)
         food.gear:SetScript("OnClick",function() self:OpenStyle("food","Food buff") end)
         FT:Tooltip(food.gear,"Notice look","Give the food reminder a notice of its own: a bar, an icon with text or just an icon, with its own size, color and place on screen. Lit when it has one.")
-        self.foodWhen=pane(FT:QuietButton(detail,"",215,32,"reset"))
+        self.foodWhen=pane(FT:QuietButton(detail,"",232,32,"reset"))
         self.foodWhen.label:SetFont(FT.font or "Fonts\\FRIZQT__.TTF",12,""); if self.foodWhen.label.SetWordWrap then self.foodWhen.label:SetWordWrap(false) end
         self.foodWhen:SetScript("OnClick",function() local s=self:Settings(); s.foodWhen=s.foodWhen=="always" and "leveling" or "always"; self:Apply() end)
         FT:Tooltip(self.foodWhen,"When to remind","While leveling: the food reminder stops by itself at max level, where the extra kill experience no longer matters. Always: it keeps reminding at max level too. Click to switch.")
         for _,slot in ipairs({"main","off"}) do
-            local dropdown=pane(FT:Dropdown(detail,410,function()
+            local dropdown=pane(FT:Dropdown(detail,W-32,function()
                 local list={{value="",label="Off"}};local learned=self:Learned()
                 if self:WeaponKind()=="poison" then
                     list[2]={value="on",label="Remind when no poison",icon=POISON_ICON,tooltip="A notice when this weapon has no poison on it. You can turn it on before you have learned poisons: it stays quiet until you can use them."}
@@ -1465,7 +1549,7 @@ function Reminder:Open()
             local row={buttons={}}
             for _,place in ipairs(self.places) do
                 local key=place[1]
-                local b=pane(FT:QuietButton(detail,place[2],82,30))
+                local b=pane(FT:QuietButton(detail,place[2],88,30))
                 b.label:SetFont(FT.font or "Fonts\\FRIZQT__.TTF",12,""); if b.label.SetWordWrap then b.label:SetWordWrap(false) end
                 b:SetScript("OnClick",function() local s=self:Settings(); s[field][key]=not s[field][key]; self:Apply() end)
                 FT:Tooltip(b,place[2],(field=="selfWhere" and "Show self-buff notices here. " or "Show group-buff notices here (only while in a group). ")..place[3].." Pick as many places as you like.")
@@ -1474,21 +1558,21 @@ function Reminder:Open()
             self.whereRows[field]=row
         end
         self.sizeValue=pane(FT:Label(detail,"",14));self.sizeValue:SetWidth(120);self.sizeValue:SetJustifyH("LEFT")
-        self.sizeSlider=pane(CreateFrame("Slider",nil,detail,"OptionsSliderTemplate"));self.sizeSlider:SetSize(318,18)
+        self.sizeSlider=pane(CreateFrame("Slider",nil,detail,"OptionsSliderTemplate"));self.sizeSlider:SetSize(W-130,18)
         self.sizeSlider:SetMinMaxValues(.7,1.5);self.sizeSlider:SetValueStep(.05);self.sizeSlider:SetObeyStepOnDrag(true)
         self.sizeSlider:SetScript("OnValueChanged",function(_,value)
             if self.settingSize then return end
             self:Settings().size=math.floor(value*20+.5)/20;FT:Coalesce("reminderSlider",function() self:Apply() end,.05)
         end)
         FT:Tooltip(self.sizeSlider,"Reminder size","Make the notices smaller or bigger (70% to 150%).")
-        self.hideChoice=pane(FT:Dropdown(detail,442,function()
+        self.hideChoice=pane(FT:Dropdown(detail,W,function()
             local list={};for _,c in ipairs(hideChoices) do list[#list+1]={value=c[1],label=c[2],icon="Interface\\Icons\\INV_Misc_PocketWatch_01"} end;return list
         end,function(value) self:Settings().hideAfter=value;self.notices=nil;self:Apply() end,"fps"))
-        self.hideChoice:SetHeight(32); self.hideChoice.menuWidth=442
+        self.hideChoice:SetHeight(32); self.hideChoice.menuWidth=W
         FT:Tooltip(self.hideChoice,"Hide notice after","How long a notice stays before it hides by itself. It shows again when another buff goes missing. Never: it stays until the buff is back or you click it.")
         for _,entry in ipairs({{"textColor","Self text color"},{"groupTextColor","Group text color"}}) do
             local field,label=entry[1],entry[2]
-            local color=pane(FT:QuietButton(detail,label,442,32,"fonts"))
+            local color=pane(FT:QuietButton(detail,label,W,32,"fonts"))
             if field=="textColor" then self.selfColorButton=color else self.groupColorButton=color end
             local swatch=color:CreateTexture(nil,"ARTWORK");swatch:SetTexture("Interface\\Buttons\\WHITE8X8");swatch:SetSize(18,18);swatch:SetPoint("RIGHT",-12,0)
             if field=="textColor" then self.colorSwatch=swatch else self.groupColorSwatch=swatch end
@@ -1502,25 +1586,25 @@ function Reminder:Open()
             end)
             FT:Tooltip(color,label,"Choose the text color for this reminder notice.")
         end
-        self.rankToggle=pane(FT:QuietButton(detail,"",215,32,"INV_Misc_Book_07"))
+        self.rankToggle=pane(FT:QuietButton(detail,"",232,32,"INV_Misc_Book_07"))
         self.rankToggle:SetScript("OnClick",function() local s=self:Settings();s.lowRank=not s.lowRank;self:Apply() end)
         FT:Tooltip(self.rankToggle,"Low-rank alerts","Warns when you cast a buff at a lower rank than you know. Visit a trainer once so the addon knows which ranks you can learn.")
-        self.rankOneToggle=pane(FT:QuietButton(detail,"",215,32,"INV_Misc_Book_11"))
+        self.rankOneToggle=pane(FT:QuietButton(detail,"",232,32,"INV_Misc_Book_11"))
         self.rankOneToggle:SetScript("OnClick",function() local s=self:Settings();s.ignoreRankOne=not s.ignoreRankOne;self:Apply() end)
         FT:Tooltip(self.rankOneToggle,"Ignore rank 1","Never warn about rank 1 spells, for example cheap heals you use on purpose.")
-        self.markerToggle=pane(FT:QuietButton(detail,"",215,32,"INV_Misc_Note_02"))
+        self.markerToggle=pane(FT:QuietButton(detail,"",232,32,"INV_Misc_Note_02"))
         self.markerToggle:SetScript("OnClick",function() local s=self:Settings();s.rankMarker=not s.rankMarker;self:Apply() end)
         FT:Tooltip(self.markerToggle,"Low-rank marker on action bars","Adds a small amber corner to action buttons that use a lower rank than you know. Hover the button to see your best rank. Macros are not checked.")
-        self.exceptions=pane(FT:Dropdown(detail,215,function() return FT.modules.RankMarker:ExceptionChoices() end,function(value) FT.modules.RankMarker:ToggleIgnore(value) end,"INV_Misc_Note_03"))
+        self.exceptions=pane(FT:Dropdown(detail,232,function() return FT.modules.RankMarker:ExceptionChoices() end,function(value) FT.modules.RankMarker:ToggleIgnore(value) end,"INV_Misc_Note_03"))
         self.exceptions:SetHeight(32); self.exceptions.menuWidth=340
         FT:Tooltip(self.exceptions,"Low-rank exceptions","Pick spells you downrank on purpose. They get no marker and no alert. Pick one again to take it off the list.")
         for _,b in ipairs({self.rankToggle,self.rankOneToggle,self.markerToggle,self.exceptions}) do if b.label.SetWordWrap then b.label:SetWordWrap(false) end end
-        local resetPosition=pane(FT:QuietButton(detail,"Reset reminder position",442,30,"reset"));self.resetPosition=resetPosition
+        local resetPosition=pane(FT:QuietButton(detail,"Reset position",232,32,"reset"));self.resetPosition=resetPosition
         resetPosition:SetScript("OnClick",function()
             local s=self:Settings();s.x=nil;s.y=nil;s.screenWidth=nil;s.screenHeight=nil;self:Apply()
         end)
         FT:Tooltip(resetPosition,"Reset position","Move the notices back to the top center of the screen.")
-        self.groupPreview=pane(FT:QuietButton(detail,"Preview group reminder",442,32,"party"))
+        self.groupPreview=pane(FT:QuietButton(detail,"Preview",232,34,"party"))
         self.groupPreview:SetScript("OnClick",function() self.previewGroup=not self.previewGroup;FT:SetSelected(self.groupPreview,self.previewGroup);self:Apply() end)
         FT:Tooltip(self.groupPreview,"Preview group reminder","Show a sample group notice so you can see how it looks.")
         frame:HookScript("OnHide",function()
@@ -1528,15 +1612,34 @@ function Reminder:Open()
             FT:SetSelected(self.selfPreview,false);FT:SetSelected(self.groupPreview,false)
             self:SetMoving(false)
         end)
-        FT:PageInfo(frame,"Buff reminders","The top row turns self and group reminders on, previews a notice and lets you move it. Pick a section on the left (each shows its current state) and its options appear on the right: your buffs for each talent tree, group buffs, low ranks, and the look of the notices. Cooldown reminders open their own page.\n\nA small notice appears when a buff is missing. Notices hide in combat, on flights and while dead. Left-click a notice to dismiss it, right-click it for settings.")
+        FT:PageInfo(frame,"Buff reminders","A small notice appears when one of your buffs is missing. Pick a section on the left (each shows its current state): your buffs for each talent tree, group buffs, low ranks, the look and place of the notices, and cooldown reminders.\n\nNotices hide in combat, on flights and while dead, unless you let a buff remind you in combat (its gear). Left-click a notice to dismiss it, right-click it for settings.")
     end
-    self:Apply();self.frame:Show()
 end
+function Reminder:ShowPage(pane)
+    self:Build()
+    self.pane=pane
+    self:Apply();self.frame:Show()
+    -- Apply only redraws the page when it is open.
+    self:RefreshMenu()
+end
+function Reminder:Open() self:ShowPage("self") end
 FT:RegisterModule("BuffReminder",Reminder)
+for key,name in pairs(pages) do
+    if key~="self" then
+        FT:RegisterModule(name,{Open=function(page) Reminder:ShowPage(key); page.frame=Reminder.frame end,Refresh=function() if Reminder.frame and Reminder.frame:IsShown() then Reminder:RefreshMenu() end end})
+    end
+end
 -- Talents changed: read the trees again on the next look.
 local talentEvents=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_ENTERING_WORLD","SPELLS_CHANGED","PLAYER_TALENT_UPDATE","CHARACTER_POINTS_CHANGED","ACTIVE_TALENT_GROUP_CHANGED","PLAYER_LEVEL_UP","PLAYER_SPECIALIZATION_CHANGED","TRAIT_CONFIG_UPDATED"}) do pcall(talentEvents.RegisterEvent,talentEvents,event) end
 talentEvents:SetScript("OnEvent",function() Reminder.specCache=nil end)
+-- Food in the bags is read again after the bags change (only when the food
+-- reminders are on, and a moment after the last change).
+local bagEvents=CreateFrame("Frame"); bagEvents:RegisterEvent("BAG_UPDATE_DELAYED")
+bagEvents:SetScript("OnEvent",function()
+    Reminder.foodKinds=nil
+    if FT.dbReady then local s=Reminder:Settings(); if s.enabled and (s.food or s.foodStat) then FT:Coalesce("ftFoodBags",function() if Reminder.Refresh then Reminder:Refresh() end end,.5) end end
+end)
 -- Many events in the same moment lead to one check.
 function Reminder:QueueApply(delay)
     if self.applyQueued then return end

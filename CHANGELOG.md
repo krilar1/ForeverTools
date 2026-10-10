@@ -1,3 +1,39 @@
+# ForeverTools 0.80.0 (2026-10-10)
+
+## New: Bags (main menu → Bags)
+- **Gold of all your characters:** hover the gold in your bag to see every character's gold on this ruleset and a total. Each character needs one login.
+- **Bank anywhere:** right-click the bag's portrait to look at your bank, laid out like the game's, as it was at your last banker visit.
+- **Other characters' bags:** the bag's portrait menu → Characters shows an alt's bags in place of yours. Press B or pick yourself to go back.
+- **Item counts** (Appearance → Item counts): item tooltips show how many you have on each character, in bags and bank, and in the guild bank. Inside the tooltip or in a small box above or below; optionally only while Shift is held.
+- **Bag order** (Bags → Bag order): put the backpack's first slot in any corner, for example back at the top left like before the October 8 game update. Also where new loot goes and which way Clean Up packs. Game's own leaves your bag untouched.
+- **Extra buttons on the bag** (off by default): Bank and a character picker beside the sort button.
+- **Bank skin:** Skins → Bank gives the bank the Bag menu's look. Apply to all leaves it alone.
+
+## New: PvP (all off by default)
+- **Stealth alert:** a warning with the class icon, name and spell when an enemy player near you goes into stealth, with an edge flash and a sound.
+- **Marked players:** mark an enemy (right-click their portrait, `/ft mark`, or the page) and give a reason. When they show up again on any of your characters you get a red alert with the reason, and their tooltip says why you marked them.
+- **Nearby enemies:** a small list of enemy players seen in the last 30 seconds, marked ones first. Click a name to target them. Click the title to switch to Seen before (a log of players you met) and Marked. Anchor it to a screen edge, collapse it, show 1–20 players. It works in combat: players first seen in a fight show under the list.
+
+## New
+- **Guided tour** (`/ft setup`): instead of the old setup, a tour that shows each feature on your own screen. Pick a look, then Quick (about 3 min) or Full (about 5–10 min). Keep or skip each one, pause and resume later. `/ft start` is a practice run that puts every setting back afterwards.
+- **Macros window rebuilt:** pages for My class, My race, Generic, My own macros, Other classes, Hidden and Settings. Every macro shows whether it is in your macros, with Add and a "..." menu; click a macro to open it right there. "+ Add the N missing" adds the rest at once. The window opens to the right of the game's macro window.
+- **Eat & Drink** (Macros → My class, mages): one button that eats your conjured food when you are hurt and drinks your conjured water when your mana is low, the best you can use. Out of water or food, it conjures more. Bought and buff food are never used. It keeps working if you rename it.
+- **Food reminders split:** **XP food** and **Stat food** are separate switches. Each only reminds while you carry that kind of food.
+- **Buff reminders and Profiles** are groups with a sidebar like the rest of the menu. Profiles lists every profile with Use and a "..." menu (copy, rename, export, delete), and earlier versions each have a Restore button.
+
+## Changed
+- **No flash when you switch pages** inside a group.
+- **Elements may overlap again;** the one you clicked or dragged last is on top.
+- **Grouped minimap buttons** open in combat.
+- Teleport and Portal spells are no longer in the macro lists.
+
+## Fixed
+- The Bandage macro (and Eat & Drink) kept the link when renamed, also with a blank name.
+- Buff reminder switches sometimes needed two clicks.
+- The character list stayed open after Escape in the bank view.
+- Buff reminder text could be blank on the first login of the day.
+- The bag's search box got narrower each time a bag setting changed.
+
 # ForeverTools 0.70.0 (2026-10-07)
 
 ## New: easier to find your way

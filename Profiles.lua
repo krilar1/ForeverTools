@@ -58,9 +58,9 @@ function Profiles:ShowSwitcher(owner)
 end
 -- Only preferences are copied. Macro history and installed WoW macros belong to
 -- the character and are never rewritten by loading an appearance profile.
-local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer"}
+local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","bags","enemies"}
 -- Every module that must redraw after settings change (load, login, reset).
-local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey","Totems","DruidMana","SellMarks","QueueTimer"}
+local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey","Totems","DruidMana","SellMarks","QueueTimer","Bags","Enemies"}
 local function copy(value)
     if type(value) ~= "table" then return value end
     local result={}; for k,v in pairs(value) do result[k]=copy(v) end; return result
@@ -114,6 +114,18 @@ function Profiles:Store()
         if FT.db.profileVault[name]==nil and type(profile)=="table" then FT.db.profileVault[name]=copy(profile) end
     end
     return FT.db.profiles
+end
+Profiles.keys=keys
+-- Put settings back from a Snapshot() (the practice tour uses this).
+function Profiles:RestoreSnapshot(snapshot)
+    if type(snapshot)~="table" then return end
+    for _,key in ipairs(keys) do FT.db[key]=copy(snapshot[key]) end
+    FT.minimapDragAngle=nil
+    for _,module in ipairs(applyModules) do
+        local object=FT.modules[module]; if object then pcall(object.Apply,object) end
+    end
+    if FT.UpdateMinimap then FT:UpdateMinimap() end
+    self:RefreshIndicators()
 end
 function Profiles:Snapshot()
     local result={}
@@ -352,35 +364,11 @@ function Profiles:UsedBy(name)
 end
 function Profiles:Refresh()
     self:RefreshIndicators()
-    if not self.choice then return end
-    local store=self:Store()
-    local active=self.active and type(store[self.active])=="table" and self.active or nil
-    self.choice.value=active
-    local hasProfiles=self:AnyProfile()~=nil
-    self.choice.label:SetText(active or (hasProfiles and "No profile: choose one" or "No profile yet"))
-    self.choice:SetEnabled(hasProfiles)
-    if active then
-        local names,others=self:UsedBy(active)
-        local text=table.concat(names,", ")
-        if others>0 then text=text..(text~="" and " and " or "")..others.." more" end
-        self.usedBy:SetText("Used by: "..(text~="" and text or "this character").."  ·  saves automatically")
-    else
-        self.usedBy:SetText("Your first change makes a profile named after this character.")
-    end
-    for _,button in ipairs({self.copyButton,self.rename,self.delete,self.export}) do button:SetEnabled(active~=nil); button:SetAlpha(active and 1 or .45) end
-    local history=active and FT.db.profileBackups and FT.db.profileBackups[active]
-    local backups=type(history)=="table" and #history or 0
-    self.undo.label:SetText(backups>0 and ("Restore an earlier version ("..backups..")") or "No earlier versions yet")
-    self.undo:SetEnabled(backups>0); self.undo:SetAlpha(backups>0 and 1 or .45)
-    if self.newCharacter then
-        local chosen=FT.db.newCharacterProfile
-        if type(chosen)~="string" or type(store[chosen])~="table" then chosen=nil end
-        self.newCharacter.value=chosen or "\001last"
-        local last=self:NewCharacterProfile()
-        self.newCharacter.label:SetText(chosen or ("Last used"..(last and (" ("..last..")") or "")))
-        self.newCharacter:SetEnabled(hasProfiles); self.newCharacter:SetAlpha(hasProfiles and 1 or .45)
-    end
+    if not self.uiReady then return end
+    self:RenderPage()
+    if self.frame and FT.RefreshDock then FT:RefreshDock(self.frame) end
 end
+Profiles.ownDockRefresh=true
 function Profiles:RestoreChoices()
     local list={}
     local history=self.active and FT.db.profileBackups and FT.db.profileBackups[self.active] or {}
@@ -407,8 +395,8 @@ function Profiles:RestoreVersion(index)
         FT:Toast('Profile "'..name..'" restored.',3)
     end)
 end
-function Profiles:CopyProfile()
-    local from=self.active; if not from or not self:Store()[from] then return end
+function Profiles:CopyProfile(from)
+    from=from or self.active; if not from or not self:Store()[from] then return end
     FT:AskText('Copy "'..from..'" as a new profile named:',from.." copy",function(new)
         new=new:match("^%s*(.-)%s*$")
         if new=="" or #new>120 then FT:Toast("Use 1–120 characters."); return end
@@ -419,82 +407,261 @@ function Profiles:CopyProfile()
         self:Refresh()
     end)
 end
--- Profiles is its own window like every other page: movable, with Back (to
--- the main menu) and the close X. The controls sit in a content frame.
+-- Profiles is a group like the rest of ForeverTools (0.80.0): Profiles (a
+-- list with Use and a ... menu), Export and import, Earlier versions, New
+-- characters and Default settings in the sidebar. All are pages of one
+-- window, so switching between them never flickers.
+local PW,PH=520,560
+local CW=472 -- content width
+local MUTED={.66,.59,.48}
+local GREEN={.45,.86,.55}
+Profiles.pages={list="Profiles",share="ProfilesShare",undo="ProfilesUndo",new="ProfilesNew",reset="ProfilesReset"}
+local pageTitles={list="Profiles",share="Export and import",undo="Earlier versions",new="New characters",reset="Default settings"}
 function Profiles:TogglePanel() FT:OpenModule("Profiles") end
-function Profiles:Open()
+function Profiles:Open() self:ShowPage("list") end
+function Profiles:ShowPage(page)
     self:Attach(FT.home)
+    self.page=page
     self:Refresh()
     self.panel:Show()
 end
-function Profiles:Attach(home)
-    if not self.choice then
-        local window=FT:Window("ForeverToolsProfiles","Profiles",520,514)
-        window.noSavePrompt=true -- this page saves by itself
-        self.panel=window; self.frame=window
-        FT:PageInfo(window,"Profiles","A profile is your ForeverTools setup. Characters on the same profile share it, and every change is saved to it by itself.\n\nKeybinds, action bars and spell binds stay with each character. They only travel in an export.")
-        self.choice=FT:Dropdown(window,472,function() return self:ProfileList() end,function(name) self:Load(name,true) ; self:Refresh() end,"profiles")
-        self.choice:SetPoint("TOPLEFT",24,-62); self.choice:SetHeight(34)
-        FT:Tooltip(self.choice,"Profile","The profile this character uses. Pick another to switch; the one you leave keeps everything you changed.")
-        self.usedBy=FT:Label(window,"",12); self.usedBy:SetPoint("TOPLEFT",26,-104); self.usedBy:SetWidth(468); self.usedBy:SetJustifyH("LEFT")
-        self.usedBy:SetTextColor(.66,.59,.48); self.usedBy:SetWordWrap(false)
-        local function heading(text,icon,y) local h=FT:Label(window,text,15,true); h:SetPoint("TOPLEFT",24,y); FT:SectionHeading(h,icon,380) end
-        local function button(text,icon,x,y,width) local b=FT:QuietButton(window,text,width or 232,32,icon); b:SetPoint("TOPLEFT",x,y); return b end
-        heading("Manage","INV_Misc_Book_09",-130)
-        local new=button("New profile","add",24,-154)
-        new:SetScript("OnClick",function()
-            FT:AskText("Name for the new profile:","",function(name) self:Create(name) end)
-        end)
-        FT:Tooltip(new,"New profile","Start a profile with default settings (everything off) and switch to it. Your custom macros and fonts come along.")
-        self.copyButton=button("Copy","INV_Misc_Note_02",264,-154)
-        self.copyButton:SetScript("OnClick",function() self:CopyProfile() end)
-        FT:Tooltip(self.copyButton,"Copy profile","Make a new profile with the same settings as this one and switch to it. Good for trying things without changing the original.")
-        self.rename=button("Rename","fonts",24,-194)
-        self.rename:SetScript("OnClick",function()
-            local old=self.active; if not old or not self:Store()[old] then return end
-            FT:AskText('Rename profile "'..old..'" to:',old,function(new)
-                if new=="" or new==old then return end
-                if #new>120 then FT:Toast("Use at most 120 characters."); return end
-                if self:Store()[new] then FT:Toast("A profile with that name already exists."); return end
-                self:Rename(old,new)
-            end)
-        end)
-        FT:Tooltip(self.rename,"Rename profile","Give this profile a new name. Its settings and the characters using it stay the same.")
-        self.delete=button("Delete","delete",264,-194)
-        StaticPopupDialogs.FOREVERTOOLS_PROFILE_DELETE={text="",button1="Delete",button2="Cancel",timeout=0,whileDead=true,hideOnEscape=true,OnAccept=function() if self.pendingDelete then self:Delete(self.pendingDelete); self.pendingDelete=nil end end}
-        self.delete:SetScript("OnClick",function()
-            self.pendingDelete=self.active; if not self.pendingDelete then return end
-            StaticPopupDialogs.FOREVERTOOLS_PROFILE_DELETE.text='Delete profile "'..self.pendingDelete..'"?\n\nThis character keeps its current settings. Other characters using it go back to default settings.'
-            FT:ShowPopup("FOREVERTOOLS_PROFILE_DELETE")
-        end)
-        FT:Tooltip(self.delete,"Delete profile","Delete this profile. Asks first.")
-        heading("Share","INV_Misc_Note_01",-242)
-        self.export=button("Export","INV_Misc_Note_01",24,-266)
-        self.export:SetScript("OnClick",function() self:AutoSave(true); self:Transfer(false) end)
-        FT:Tooltip(self.export,"Export","Text you can copy to keep a backup or move your setup to another computer or account. You choose whether keybinds, action bars and spell binds come along.")
-        local import=button("Import","INV_Misc_Note_03",264,-266)
-        import:SetScript("OnClick",function() self:Transfer(true) end)
-        FT:Tooltip(import,"Import","Paste an export text. It becomes a new profile and this character switches to it; your keybinds, action bars and spell binds are backed up first if the text includes them.")
-        heading("Undo","Spell_Nature_TimeStop",-314)
-        self.undo=FT:Dropdown(window,472,function() return self:RestoreChoices() end,function(index) self:RestoreVersion(index) end,"reset")
-        self.undo:SetPoint("TOPLEFT",24,-338); self.undo:SetHeight(32); self.undo.menuWidth=472
-        FT:Tooltip(self.undo,"Restore an earlier version","Copies of this profile saved automatically: before your first change each session, before a restore, and before default settings. The last 3 are kept.")
-        heading("New characters","INV_Misc_Head_Human_01",-386)
-        self.newCharacter=FT:Dropdown(window,472,function()
-            local list={{value="\001last",label="Last used profile",icon="Interface\\Icons\\INV_Misc_Book_09"}}
-            for _,entry in ipairs(self:ProfileList()) do list[#list+1]=entry end
-            return list
-        end,function(value) FT.db.newCharacterProfile=value~="\001last" and value or nil; self:Refresh() end,"character")
-        self.newCharacter:SetPoint("TOPLEFT",24,-410); self.newCharacter:SetHeight(32)
-        FT:Tooltip(self.newCharacter,"Profile for new characters","A new character asks once which profile to use; this one is picked for it. \"Last used\" is the profile you used most recently.")
-        self.defaults=FT:QuietButton(window,"Default settings",472,32,"reset"); self.defaults:SetPoint("TOPLEFT",24,-458)
-        self.defaults.outline=true; FT:UpdateButton(self.defaults); self.defaults.label:SetTextColor(1,.86,.55)
-        self.defaults:SetScript("OnClick",function() self:DefaultSettings() end)
-        FT:Tooltip(self.defaults,"Default settings","Put everything ForeverTools changes back to the game's defaults, as if the addon was just installed. This profile is reset too; a copy is kept under Undo. Custom macros, other profiles and learned flight times stay. Asks first, then reloads.")
+-- The state of a section, for the sidebar.
+function Profiles:SidebarStatus(key)
+    local store=self:Store()
+    local active=self.active and type(store[self.active])=="table" and self.active or nil
+    if key=="list" then
+        local n=#self:ProfileList()
+        if n==0 then return "No profile yet" end
+        return (active and ("Using "..active) or "None in use").." · "..n.." in all"
+    elseif key=="undo" then
+        local history=active and FT.db.profileBackups and FT.db.profileBackups[active]
+        local count=type(history)=="table" and #history or 0
+        return count==0 and "None yet" or (count.." saved")
+    elseif key=="new" then
+        local chosen=FT.db.newCharacterProfile
+        if type(chosen)=="string" and type(store[chosen])=="table" then return chosen end
+        return "Last used profile"
     end
+    return ""
+end
+local function rowButton(parent,width)
+    local row=FT:QuietButton(parent,"",width,54); row.label:Hide()
+    row.icon=row:CreateTexture(nil,"ARTWORK"); row.icon:SetSize(34,34); row.icon:SetPoint("LEFT",10,0); FT:RoundIcon(row.icon)
+    row.title=FT:Label(row,"",15); row.title:SetPoint("TOPLEFT",56,-8); row.title:SetWidth(width-56-170)
+    row.meta=FT:Label(row,"",12); row.meta:SetPoint("TOPLEFT",56,-29); row.meta:SetWidth(width-56-170)
+    for _,label in ipairs({row.title,row.meta}) do if label.SetWordWrap then label:SetWordWrap(false) end; label:SetJustifyH("LEFT") end
+    row.more=FT:QuietButton(row,"...",38,32); row.more:SetPoint("RIGHT",-10,0)
+    row.more.label:ClearAllPoints(); row.more.label:SetPoint("CENTER",0,3)
+    if row.more.icon then row.more.icon:Hide() end
+    row.action=FT:QuietButton(row,"",104,32); row.action:SetPoint("RIGHT",row.more,"LEFT",-6,0)
+    if row.action.icon then row.action.icon:Hide() end
+    row.action.label:ClearAllPoints(); row.action.label:SetPoint("CENTER",0,0)
+    if row.action.SetMotionScriptsWhileDisabled then row.action:SetMotionScriptsWhileDisabled(true) end
+    return row
+end
+-- "Used by Krilar, Alt and 2 more" (or nobody).
+function Profiles:UsedByText(name)
+    local names,others=self:UsedBy(name)
+    local text=table.concat(names,", ")
+    if others>0 then text=text..(text~="" and " and " or "")..others.." more" end
+    return text
+end
+-- The ... menu on a profile.
+function Profiles:ProfileMenu(owner,name)
+    local active=name==self.active
+    local list={
+        {value="copy",label="Copy",icon="Interface\\Icons\\INV_Misc_Note_02",tooltip="Make a new profile with the same settings and switch to it. Good for trying things without changing the original."},
+        {value="rename",label="Rename",icon="Interface\\Icons\\"..FT.icons.fonts,tooltip="Give this profile a new name. Its settings and the characters using it stay the same."},
+    }
+    if active then list[#list+1]={value="export",label="Export",icon="Interface\\Icons\\INV_Misc_Note_01",tooltip="Text you can copy, to keep a backup or move your setup to another computer."} end
+    list[#list+1]={value="delete",label="Delete",icon="Interface\\RaidFrame\\ReadyCheck-NotReady",tooltip="Delete this profile. Asks first."}
+    owner.options=function() return list end
+    owner.value=nil; owner.menuWidth=220
+    owner.onSelect=function(value)
+        if value=="copy" then self:CopyProfile(name)
+        elseif value=="rename" then self:AskRename(name)
+        elseif value=="export" then self:AutoSave(true); self:Transfer(false)
+        elseif value=="delete" then self:AskDelete(name) end
+    end
+    FT:ShowChoices(owner)
+end
+function Profiles:AskRename(old)
+    if not old or not self:Store()[old] then return end
+    FT:AskText('Rename profile "'..old..'" to:',old,function(new)
+        if new=="" or new==old then return end
+        if #new>120 then FT:Toast("Use at most 120 characters."); return end
+        if self:Store()[new] then FT:Toast("A profile with that name already exists."); return end
+        self:Rename(old,new)
+    end)
+end
+function Profiles:AskDelete(name)
+    self.pendingDelete=name; if not name then return end
+    StaticPopupDialogs.FOREVERTOOLS_PROFILE_DELETE.text='Delete profile "'..name..'"?\n\n'..(name==self.active and "This character keeps its current settings. " or "")..'Characters using it go back to default settings.'
+    FT:ShowPopup("FOREVERTOOLS_PROFILE_DELETE")
+end
+function Profiles:Use(name)
+    if not name or name==self.active then return end
+    self:Load(name,true); self:Refresh()
+end
+-- Draw the open page.
+function Profiles:RenderPage()
+    local page=self.page or "list"
+    local store=self:Store()
+    local active=self.active and type(store[self.active])=="table" and self.active or nil
+    self.frame.titleText:SetText(pageTitles[page] or "Profiles")
+    for key,pane in pairs(self.panes) do pane:SetShown(key==page) end
+    if page=="list" then
+        local list=self:ProfileList()
+        -- The one in use first.
+        table.sort(list,function(a,b) if (a.value==active)~=(b.value==active) then return a.value==active end return a.label<b.label end)
+        local y=0
+        for i,entry in ipairs(list) do
+            local row=self.rows[i]
+            if not row then
+                row=rowButton(self.list,CW); self.rows[i]=row
+                row.action:SetScript("OnClick",function() self:Use(row.name) end)
+                row.more:SetScript("OnClick",function(owner) if row.name then self:ProfileMenu(owner,row.name) end end)
+                row:SetScript("OnClick",function() if row.name then self:ProfileMenu(row.more,row.name) end end)
+                FT:Tooltip(row.action,"Use this profile","Switch this character to this profile. The one you leave keeps everything you changed.")
+                FT:Tooltip(row.more,"More","Copy, rename, export or delete this profile.")
+                FT:Tooltip(row,function() return row.name or "Profile" end,"Click for copy, rename, export and delete.")
+            end
+            local name=entry.value; local inUse=name==active
+            row.name=name
+            row:ClearAllPoints(); row:SetPoint("TOPLEFT",self.list,"TOPLEFT",0,-y)
+            row.icon:SetTexture(inUse and "Interface\\Icons\\INV_Misc_Book_09" or "Interface\\Icons\\INV_Misc_Book_11")
+            row.title:SetText(name)
+            local used=self:UsedByText(name)
+            if inUse then
+                row.meta:SetText("\226\156\147 In use"..(used~="" and (" · "..used) or "")); row.meta:SetTextColor(GREEN[1],GREEN[2],GREEN[3])
+            else
+                row.meta:SetText(used~="" and ("Used by "..used) or "Not used by any character"); row.meta:SetTextColor(MUTED[1],MUTED[2],MUTED[3])
+            end
+            row.action.label:SetText(inUse and "In use" or "Use")
+            row.action:SetEnabled(not inUse)
+            row.action.label:SetTextColor(inUse and .6 or .95,inUse and .56 or .90,inUse and .48 or .81)
+            FT:SetSelected(row,inUse)
+            if inUse then row.title:SetTextColor(1,.86,.55) else row.title:SetTextColor(.95,.90,.81) end
+            row:Show()
+            y=y+58
+        end
+        for i=#list+1,#self.rows do self.rows[i]:Hide(); self.rows[i].name=nil end
+        self.list:SetHeight(math.max(1,y))
+        self.empty:SetShown(#list==0)
+        self.listHint:SetText(active and "Every change is saved to the profile in use by itself. Keybinds, action bars and spell binds stay with each character."
+            or "Your first change makes a profile named after this character.")
+    elseif page=="share" then
+        self.export:SetEnabled(active~=nil); self.export:SetAlpha(active and 1 or .45)
+        self.export.label:SetText(active and ('Export "'..active..'"') or "Export (no profile yet)")
+    elseif page=="undo" then
+        local choices=active and self:RestoreChoices() or {}
+        local y=0
+        for i,entry in ipairs(choices) do
+            local row=self.versionRows[i]
+            if not row then
+                row=rowButton(self.versions,CW); self.versionRows[i]=row
+                row.more:Hide(); row.action:ClearAllPoints(); row.action:SetPoint("RIGHT",-10,0)
+                row.action:SetScript("OnClick",function() if row.index then self:RestoreVersion(row.index) end end)
+                row:SetScript("OnClick",function() if row.index then self:RestoreVersion(row.index) end end)
+                FT:Tooltip(row.action,"Restore","Put the profile back the way it was then. Your current version is kept in this list too, so this can be undone. Asks first.")
+            end
+            row.index=entry.value
+            local when,label=entry.label:match("^(.-) · (.*)$")
+            row.title:SetText(label or entry.label); row.meta:SetText(when or ""); row.meta:SetTextColor(MUTED[1],MUTED[2],MUTED[3])
+            row.icon:SetTexture("Interface\\Icons\\"..FT.icons.reset)
+            row.action.label:SetText("Restore")
+            row:ClearAllPoints(); row:SetPoint("TOPLEFT",self.versions,"TOPLEFT",0,-y); row:Show()
+            y=y+58
+        end
+        for i=#choices+1,#self.versionRows do self.versionRows[i]:Hide(); self.versionRows[i].index=nil end
+        self.versions:SetHeight(math.max(1,y))
+        self.noVersions:SetShown(#choices==0)
+        self.noVersions:SetText(active and ('No earlier versions of "'..active..'" yet.') or "No profile in use yet.")
+        self.versionsHint:ClearAllPoints(); self.versionsHint:SetPoint("TOPLEFT",self.panes.undo,"TOPLEFT",24,-(66+math.max(y,30)+10))
+    elseif page=="new" then
+        local hasProfiles=self:AnyProfile()~=nil
+        local chosen=FT.db.newCharacterProfile
+        if type(chosen)~="string" or type(store[chosen])~="table" then chosen=nil end
+        self.newCharacter.value=chosen or "\001last"
+        local last=self:NewCharacterProfile()
+        self.newCharacter.label:SetText(chosen or ("Last used"..(last and (" ("..last..")") or "")))
+        self.newCharacter:SetEnabled(hasProfiles); self.newCharacter:SetAlpha(hasProfiles and 1 or .45)
+    end
+end
+function Profiles:Attach(home)
+    if self.uiReady then self:Refresh(); return end
+    local window=FT:Window("ForeverToolsProfiles","Profiles",PW,PH)
+    window.noSavePrompt=true -- this page saves by itself
+    self.panel=window; self.frame=window
+    for _,name in pairs(self.pages) do if FT.modules[name] then FT.modules[name].frame=window end end
+    FT:PageInfo(window,"Profiles","A profile is your ForeverTools setup. Characters on the same profile share it, and every change is saved to it by itself.\n\nKeybinds, action bars and spell binds stay with each character. They only travel in an export.")
+    self.panes={}
+    for key in pairs(self.pages) do local pane=CreateFrame("Frame",nil,window); pane:SetAllPoints(); pane:Hide(); self.panes[key]=pane end
+    local function hint(parent,anchor,text,gap)
+        local l=FT:Label(parent,text,12); l:SetPoint("TOPLEFT",anchor,"BOTTOMLEFT",2,-(gap or 6)); l:SetWidth(CW-4); l:SetJustifyH("LEFT")
+        l:SetTextColor(MUTED[1],MUTED[2],MUTED[3]); if l.SetWordWrap then l:SetWordWrap(true) end
+        return l
+    end
+    StaticPopupDialogs.FOREVERTOOLS_PROFILE_DELETE={text="",button1="Delete",button2="Cancel",timeout=0,whileDead=true,hideOnEscape=true,OnAccept=function() if self.pendingDelete then self:Delete(self.pendingDelete); self.pendingDelete=nil end end}
+    -- Profiles: + New profile, then one row per profile.
+    local list=self.panes.list
+    self.newButton=FT:AccentButton(list,"+ New profile",232,30,"add"); self.newButton:SetPoint("TOPLEFT",24,-62)
+    self.newButton:SetScript("OnClick",function() FT:AskText("Name for the new profile:","",function(name) self:Create(name) end) end)
+    FT:Tooltip(self.newButton,"New profile","Start a profile with default settings (everything off) and switch to it. Your custom macros and fonts come along.")
+    local scroll=CreateFrame("ScrollFrame",nil,list,"UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT",24,-104); scroll:SetPoint("BOTTOMRIGHT",-24,62); self.listScroll=scroll
+    self.list=CreateFrame("Frame",nil,scroll); self.list:SetWidth(CW); scroll:SetScrollChild(self.list)
+    FT:AutoHideScrollBar(scroll)
+    self.rows={}
+    self.empty=FT:Label(self.list,"No profiles yet.",14); self.empty:SetPoint("TOPLEFT",6,-8)
+    self.listHint=FT:Label(list,"",12); self.listHint:SetPoint("BOTTOMLEFT",26,20); self.listHint:SetWidth(CW-4); self.listHint:SetJustifyH("LEFT")
+    self.listHint:SetTextColor(MUTED[1],MUTED[2],MUTED[3]); if self.listHint.SetWordWrap then self.listHint:SetWordWrap(true) end
+    self.usedBy=self.listHint
+    -- Export and import.
+    local share=self.panes.share
+    self.export=FT:QuietButton(share,"Export",CW,34,"INV_Misc_Note_01"); self.export:SetPoint("TOPLEFT",24,-66)
+    self.export:SetScript("OnClick",function() self:AutoSave(true); self:Transfer(false) end)
+    FT:Tooltip(self.export,"Export","Text you can copy to keep a backup or move your setup to another computer or account. You choose whether keybinds, action bars and spell binds come along.")
+    hint(share,self.export,"The profile in use as text: keep it as a backup, or paste it on another computer or account. You choose whether keybinds, action bars and spell binds come along.")
+    self.import=FT:QuietButton(share,"Import",CW,34,"INV_Misc_Note_03"); self.import:SetPoint("TOPLEFT",24,-168)
+    self.import:SetScript("OnClick",function() self:Transfer(true) end)
+    FT:Tooltip(self.import,"Import","Paste an export text. It becomes a new profile and this character switches to it; your keybinds, action bars and spell binds are backed up first if the text includes them.")
+    hint(share,self.import,"Paste an export text. It becomes a new profile and this character switches to it. Keybinds and bars in it are backed up first.")
+    -- Earlier versions: one row each, with Restore.
+    local undo=self.panes.undo
+    self.versions=CreateFrame("Frame",nil,undo); self.versions:SetPoint("TOPLEFT",24,-66); self.versions:SetSize(CW,1)
+    self.versionRows={}
+    self.noVersions=FT:Label(self.versions,"",14); self.noVersions:SetPoint("TOPLEFT",6,-8)
+    self.versionsHint=FT:Label(undo,"Saved by themselves: before your first change each session, before a restore, and before default settings. The last 3 are kept.",12)
+    self.versionsHint:SetWidth(CW-4); self.versionsHint:SetJustifyH("LEFT"); self.versionsHint:SetTextColor(MUTED[1],MUTED[2],MUTED[3])
+    if self.versionsHint.SetWordWrap then self.versionsHint:SetWordWrap(true) end
+    -- New characters.
+    local new=self.panes.new
+    self.newCharacter=FT:Dropdown(new,CW,function()
+        local choices={{value="\001last",label="Last used profile",icon="Interface\\Icons\\INV_Misc_Book_09"}}
+        for _,entry in ipairs(self:ProfileList()) do choices[#choices+1]=entry end
+        return choices
+    end,function(value) FT.db.newCharacterProfile=value~="\001last" and value or nil; self:Refresh() end,"character")
+    self.newCharacter:SetPoint("TOPLEFT",24,-66); self.newCharacter:SetHeight(34); self.newCharacter.menuWidth=CW
+    FT:Tooltip(self.newCharacter,"Profile for new characters","A new character asks once which profile to use; this one is picked for it. \"Last used\" is the profile you used most recently.")
+    hint(new,self.newCharacter,"A new character asks once which profile to use, with this one picked. Templates (Darkmode, Class Colors, Soft Shadow) are offered there too.")
+    -- Default settings.
+    local reset=self.panes.reset
+    self.defaults=FT:QuietButton(reset,"Default settings",CW,34,"reset"); self.defaults:SetPoint("TOPLEFT",24,-66)
+    self.defaults.outline=true; FT:UpdateButton(self.defaults); self.defaults.label:SetTextColor(1,.86,.55)
+    self.defaults:SetScript("OnClick",function() self:DefaultSettings() end)
+    FT:Tooltip(self.defaults,"Default settings","Put everything ForeverTools changes back to the game's defaults, as if the addon was just installed. This profile is reset too; a copy is kept under Earlier versions. Custom macros, other profiles and learned flight times stay. Asks first, then reloads.")
+    hint(reset,self.defaults,"Everything ForeverTools changes goes back to the game's defaults, as if the addon was just installed. This profile is reset too; a copy is kept under Earlier versions. Custom macros, other profiles and learned flight times stay. Asks first, then reloads the interface.")
+    self.choice=true -- older code checks this to know the window is built
+    self.uiReady=true
     self:Refresh()
 end
 FT:RegisterModule("Profiles",Profiles)
+for key,name in pairs(Profiles.pages) do
+    if key~="list" then
+        FT:RegisterModule(name,{Open=function(page) Profiles:ShowPage(key); page.frame=Profiles.frame end,Refresh=function() Profiles:Refresh() end})
+    end
+end
 function Profiles:WelcomeCharacter()
     local guid=self:Character(); if not guid then return end
     FT.db.profileCharacters=FT.db.profileCharacters or {}
@@ -763,7 +930,7 @@ end)
 
 -- Settings only: saved profiles, custom macros/fonts, learned flight routes,
 -- rank knowledge and macro history are kept. A reload re-applies native UI.
-local resettable={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","chat","system","customKeybinds","lootRoll","tooltip","buffReminder","flightTimer","leveling","vendor","dispelGlow","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer"}
+local resettable={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","chat","system","customKeybinds","lootRoll","tooltip","buffReminder","flightTimer","leveling","vendor","dispelGlow","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","bags","enemies"}
 function Profiles:DefaultsForCharacter()
     for _,key in ipairs(resettable) do FT.db[key]=nil end
     self.active,self.selected=nil,nil
@@ -842,7 +1009,7 @@ end
 function Profiles:Normalize()
     -- Every module fills in its defaults first, so opening a page for the
     -- first time never counts as a change.
-    for _,name in ipairs({"LootRoll","System","Tooltip","QualityOfLife","FlightTimer","BuffReminder","CooldownReminder","Leveling","UnitColors","Chat","CustomKeybinds","IconStyles","DispelGlow","RareAlert","Threat","SmartKey","Totems","Movers","QueueTimer"}) do
+    for _,name in ipairs({"LootRoll","System","Tooltip","QualityOfLife","FlightTimer","BuffReminder","CooldownReminder","Leveling","UnitColors","Chat","CustomKeybinds","IconStyles","DispelGlow","RareAlert","Threat","SmartKey","Totems","Movers","QueueTimer","Bags","Enemies"}) do
         local module=FT.modules[name]
         if module and module.Settings then pcall(module.Settings,module) end
     end
@@ -1130,6 +1297,8 @@ function Profiles:ValidateImport(data)
     end
     if not check(result.fps,{enabled="boolean",fontSize="number",x="number",y="number",screenWidth="number",screenHeight="number",align="string",anchorX="number",anchorY="number",anchorWidth="number",anchorHeight="number"}) then return nil,"Invalid FPS settings." end
     if not check(result.queueTimer,{enabled="boolean",size="number",x="number",y="number"}) then return nil,"Invalid battleground timer settings." end
+    if not check(result.bags,{gold="boolean",view="boolean",counts="boolean",locked="boolean",buttons="boolean",countSplit="boolean",countSelf="boolean",countGuild="boolean",countShift="boolean",countSpacer="boolean",countStyle="string",countPlace="string",bagX="number",bagY="number",bankX="number",bankY="number",order="string",insert="string",cleanup="string"}) then return nil,"Invalid bag settings." end
+    if not check(result.enemies,{stealth="boolean",fade="boolean",marks="boolean",nearby="boolean",instances="boolean",sound="boolean",flash="boolean",markTooltip="boolean",size="number",nearSize="number",nearTime="number",x="number",y="number",nearX="number",nearY="number",nearDock="string",nearCollapsed="boolean",nearShowEmpty="boolean",nearAlong="number",nearRows="number",nearFade="boolean"}) then return nil,"Invalid enemy alert settings." end
     if not check(result.flightTimer,{enabled="boolean",font="string",size="number",outline="string",color="table",x="number",y="number"}) then return nil,"Invalid flight timer settings." end
     if not check(result.lootRoll,{x="number",y="number",custom="boolean"}) then return nil,"Invalid loot-roll position." end
     if not check(result.leveling,{enabled="boolean",progress="boolean",rested="boolean",perHour="boolean",timeToLevel="boolean",kills="boolean",tooltip="boolean",fontSize="number",x="number",y="number",screenWidth="number",screenHeight="number",layout="string",order="table",background="boolean",backgroundColor="table",backgroundAlpha="number",align="string"}) then return nil,"Invalid leveling settings." end
@@ -1191,7 +1360,7 @@ function Profiles:ValidateImport(data)
     if not check(result.smartKey,{enabled="boolean",key="string",confirmed="boolean"}) then return nil,"Invalid smart key settings." end
     if not check(result.fireAlert,{sound="string",channel="string"}) then return nil,"Invalid standing-in-fire settings." end
     if not check(result.rareAlert,{enabled="boolean",sound="boolean",soundKey="string",duration="number",size="number",glow="table",x="number",y="number"}) then return nil,"Invalid rare alert settings." end
-    if not check(result.buffReminder,{enabled="boolean",selected="table",mainEnchant="string",offEnchant="string",mainPoison="boolean",offPoison="boolean",manualSpec="table",rankMarker="boolean",ignoredRanks="table",selfWhere="table",groupWhere="table",chosenSpec="table",hideAfter="number",styles="table",food="boolean",foodWhen="string",combat="table"}) then return nil,"Invalid buff reminders." end
+    if not check(result.buffReminder,{enabled="boolean",selected="table",mainEnchant="string",offEnchant="string",mainPoison="boolean",offPoison="boolean",manualSpec="table",rankMarker="boolean",ignoredRanks="table",selfWhere="table",groupWhere="table",chosenSpec="table",hideAfter="number",styles="table",food="boolean",foodWhen="string",foodStat="boolean",combat="table"}) then return nil,"Invalid buff reminders." end
     for name,on in pairs(result.buffReminder and result.buffReminder.combat or {}) do
         if type(name)~="string" or #name>80 or on~=true then return nil,"Invalid combat reminder." end
     end

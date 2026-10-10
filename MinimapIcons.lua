@@ -113,7 +113,9 @@ function Icons:Create()
     Minimap:HookScript("OnSizeChanged",function() self:PositionLauncher() end)
     button:SetScript("OnClick",function()
         if self.skipClick then self.skipClick=false;return end
-        if InCombatLockdown() then FT:CombatOpenRequest();return end
+        -- Works in combat too: the icons are only shown where they were last
+        -- laid out (protected buttons are never collected, so nothing here is
+        -- blocked); new icons are sorted in after the fight.
         if panel:IsShown() and not panel.closing then self:CloseMenu(true) else self:OpenMenu() end
     end)
     FT:Tooltip(button,"Grouped minimap buttons","Click to open or close. The menu closes by itself a few seconds after your mouse leaves it. Drag this icon to move it around the minimap. The buttons inside keep their normal clicks and tooltips.")
@@ -275,7 +277,7 @@ FT:RegisterModule("MinimapIcons",Icons)
 local events=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","ADDON_LOADED","PLAYER_REGEN_ENABLED","PLAYER_REGEN_DISABLED"}) do events:RegisterEvent(event) end
 events:SetScript("OnEvent",function(_,event)
-    if event=="PLAYER_REGEN_DISABLED" then Icons.dragging=false;Icons:CloseMenu(true);return end
+    if event=="PLAYER_REGEN_DISABLED" then Icons.dragging=false;return end
     if FT.dbReady then FT:Coalesce("minimapIcons",function() Icons:Apply() end) end
 end)
 events:SetScript("OnUpdate",function(_,dt)

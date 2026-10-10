@@ -21,6 +21,12 @@ function Skins:Settings()
     self.checkedRoot=s; self.checkedAreas={}
     -- Every skin area starts off; players opt in per area (or via first-run setup).
     if type(s.actions)~="boolean" then s.actions=false end
+    -- The bank's own switch (Skins > Bank). Before, it was "Also the bank"
+    -- inside Bag menu; that choice carries over.
+    if type(s.bank)~="boolean" then
+        local old=type(s.areas)=="table" and type(s.areas.bagWindows)=="table" and s.areas.bagWindows.bank==true
+        s.bank=(old and s.bagWindows==true) and true or false
+    end
     for _,key in ipairs({"minimap","bags","bagWindows","micro","xp","player","target","tot","focus","focustarget","pet","party","personal","castbar","swing"}) do
         if type(s[key])~="boolean" then s[key]=false end
     end

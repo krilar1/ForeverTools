@@ -7,9 +7,9 @@ local _,FT=...
 local Movers={labels={}}
 local function mod(name) return FT.modules[name] end
 local function hasTarget() return UnitExists and UnitExists("target") and true or false end
--- Magnetic elements: one dropped on top of another slides off it, so two
--- never sit on the same spot. Each element says how to move itself by a few
--- pixels (nudge), the way its own drag does, so the new place is saved.
+-- Each element says how to move itself by a few pixels (nudge), the way its
+-- own drag does, so the new place is saved. (Settle, which slid a dropped
+-- element off another, is no longer used: elements may overlap.)
 --   byOffset: elements that follow the mouse plus an offset. Right after a
 --     drop the mouse has not moved, so changing the offset moves the element.
 --   byFrame: elements that save where their frame is when a drag ends.
@@ -78,7 +78,17 @@ local elements={
         frame=function(m) return m.bar end, nudge=function(m,dx,dy) byFrame(m.bar,dx,dy) end,
         reset=function(m) m:ResetPosition() end,
         resetTip="Put the timer back in the middle of the screen."},
-    {key="reminders",name="Buff and cooldown reminders",module="BuffReminder",open="BuffReminder",
+    {key="enemyAlert",name="Enemy alert",module="Enemies",open="EnemyAlerts",
+        used=function(m) local s=m:Settings(); return s.stealth or s.marks end,
+        start=function(m) m:SetMoving(true) end, stop=function(m) if m.moving then m:SetMoving(false) end end,
+        frame=function(m) return m.notice end, nudge=function(m,dx,dy) byFrame(m.notice,dx,dy) end,
+        reset=function(m) m:ResetPosition() end, resetTip="Put the enemy alert back near the top of the screen."},
+    {key="enemyNearby",name="Nearby enemies",module="Enemies",open="EnemyNearby",
+        used=function(m) return m:Settings().nearby==true end,
+        start=function(m) m:SetMovingStrip(true) end, stop=function(m) if m.movingStrip then m:SetMovingStrip(false) end end,
+        frame=function(m) return m.strip end, nudge=function(m,dx,dy) byFrame(m.strip,dx,dy) end,
+        reset=function(m) m:ResetStrip() end, resetTip="Put the list back at the top left of the screen."},
+    {key="reminders",name="Buff and cooldown reminders",short="Buff reminders",module="BuffReminder",open="BuffReminder",
         used=function(m) local s=m:Settings(); local cd=mod("CooldownReminder"); return s.enabled==true or s.groupEnabled==true or (cd and cd:Settings().enabled==true) or false end,
         start=function(m) m:SetMoving(true) end, stop=function(m) if m.moving then m:SetMoving(false) end end,
         frame=function(m) return m.badge end, nudge=function(m,dx,dy) byOffset(m,"dragX","dragY",dx,dy,m.DragUpdate) end,
@@ -171,14 +181,33 @@ function Movers:Settle(e)
         if not after or (math.abs(after.l-before.l)<.5 and math.abs(after.b-before.b)<.5) then return end
     end
 end
--- Listen for drops on every element that exists by now.
+-- Elements may overlap (a rare alert seldom meets a stealth alert). The one
+-- you clicked or dragged last is drawn on top, so overlapping ones never mix.
+local STRATA={BACKGROUND=1,LOW=2,MEDIUM=3,HIGH=4,DIALOG=5,FULLSCREEN=6,FULLSCREEN_DIALOG=7,TOOLTIP=8}
+function Movers:BringToFront(frame)
+    if not frame or not frame.GetFrameLevel then return end
+    local strata=frame:GetFrameStrata(); local top=frame:GetFrameLevel()
+    for _,other in ipairs(self:Others(frame)) do
+        local s=other:GetFrameStrata()
+        if (STRATA[s] or 0)>(STRATA[strata] or 0) then strata=s; top=other:GetFrameLevel() end
+    end
+    if strata~=frame:GetFrameStrata() then pcall(frame.SetFrameStrata,frame,strata) end
+    for _,other in ipairs(self:Others(frame)) do
+        if other:GetFrameStrata()==strata then top=math.max(top,other:GetFrameLevel()) end
+    end
+    if frame:GetFrameLevel()<=top then pcall(frame.SetFrameLevel,frame,math.min(top+1,9000)) end
+    if frame.Raise then pcall(frame.Raise,frame) end
+end
+-- Listen for clicks and drags on every element that exists by now.
 function Movers:Hook()
     self.hooked=self.hooked or {}
     for _,e in ipairs(elements) do
         local m=mod(e.module); local frame=m and e.frame(m)
-        if frame and e.nudge and not self.hooked[frame] and frame.HookScript then
+        if frame and not self.hooked[frame] and frame.HookScript then
             self.hooked[frame]=true
-            frame:HookScript("OnDragStop",function() if not self.settling then self.settling=true; pcall(self.Settle,self,e); self.settling=false end end)
+            local function front() if not InCombatLockdown() then self:BringToFront(frame) end end
+            frame:HookScript("OnMouseDown",front)
+            frame:HookScript("OnDragStart",front)
         end
     end
 end
@@ -323,14 +352,17 @@ function Movers:Refresh()
     self.unused.label:SetText("Show unused elements: "..(s.showUnused and "On" or "Off")); FT:SetSelected(self.unused,s.showUnused)
     for _,row in ipairs(self.rows) do
         local used=self:Used(row.e)
-        row.button.label:SetText(row.e.name.."  |cffa8977a- "..(used and "On" or "Off").."|r")
+        -- In use: bright; turned off: dimmed (its tooltip says which).
+        row.button.label:SetText(row.e.short or row.e.name); row.button.label:SetAlpha(used and 1 or .5)
     end
 end
 function Movers:Open()
     if not self.frame then
         -- Rows 36 apart: the list has to fit the group's window (Hubs.lua).
         local rowsTop,STEP=184,36
-        local height=rowsTop+#elements*STEP+32+24
+        -- Two columns, so the list keeps fitting as elements are added.
+        local rowCount=math.ceil(#elements/2)
+        local height=rowsTop+rowCount*STEP+32+24
         local frame=FT:Window("ForeverToolsMovers","Move elements",540,height); self.frame=frame
         FT:BackTo(frame,"SystemDisplay")
         FT:PageInfo(frame,"Move elements","Unlock everything ForeverTools draws on screen and drag it where you like, all at once. Click Done on the bar at the top, or enter combat, to lock it again.\n\nAction bars, unit frames and other game frames are moved in the game's Edit Mode.")
@@ -343,17 +375,21 @@ function Movers:Open()
         local head=FT:Label(frame,"Elements",15,true); head:SetPoint("TOPLEFT",24,-154); FT:SectionHeading(head,"Ability_Rogue_Sprint",380)
         self.rows={}
         for i,e in ipairs(elements) do
-            local y=-rowsTop-(i-1)*STEP
-            local b=FT:QuietButton(frame,e.name,350,32,"move"); b:SetPoint("TOPLEFT",24,y)
+            local col=(i-1)%2; local y=-rowsTop-math.floor((i-1)/2)*STEP
+            local x=24+col*252
+            local b=FT:QuietButton(frame,e.name,200,32,"move"); b:SetPoint("TOPLEFT",x,y)
+            b.label:ClearAllPoints(); b.label:SetPoint("LEFT",34,0); b.label:SetWidth(160); b.label:SetJustifyH("LEFT")
+            if b.label.SetWordWrap then b.label:SetWordWrap(false) end
             -- Its own page has its own move and preview, so lock everything first.
             b:SetScript("OnClick",function() if self.active then self:Stop() end; FT:OpenModule(e.open) end)
-            FT:Tooltip(b,e.name,"Click to open its settings page. This locks all elements first."..(e.note and ("\n\n"..e.note) or ""))
-            local r=FT:QuietButton(frame,"Reset",130,32,"reset"); r:SetPoint("TOPLEFT",386,y)
+            FT:Tooltip(b,e.name,function() return (self:Used(e) and "In use." or "Turned off.").." Click to open its settings page. This locks all elements first."..(e.note and ("\n\n"..e.note) or "") end)
+            local r=FT:QuietButton(frame,"",34,32,"reset"); r:SetPoint("TOPLEFT",x+206,y)
+            r.icon:ClearAllPoints(); r.icon:SetPoint("CENTER")
             r:SetScript("OnClick",function() self:Reset(e) end)
             FT:Tooltip(r,"Reset "..e.name:lower(),e.resetTip or "Put it back where it starts.")
             self.rows[i]={e=e,button=b}
         end
-        local all=FT:QuietButton(frame,"Reset all positions",492,32,"reset"); all:SetPoint("TOPLEFT",24,-rowsTop-#elements*STEP-4)
+        local all=FT:QuietButton(frame,"Reset all positions",492,32,"reset"); all:SetPoint("TOPLEFT",24,-rowsTop-rowCount*STEP-4)
         all:SetScript("OnClick",function() FT:Confirm("Put every element back where it starts?",function() for _,e in ipairs(elements) do self:Reset(e) end end) end)
         FT:Tooltip(all,"Reset all positions","Put every element on this list back where it starts.")
     end

@@ -56,7 +56,7 @@ local pages={
         {"welcome","Welcome message","welcome","Print a short \"ForeverTools loaded\" line in chat when you log in."},
         {"hiddenUIHint","Show key when interface is hidden","INV_Misc_Eye_01","When you hide the interface (ALT-Z by default), show for a few seconds which key brings it back. The line fades by itself, steps aside for a screenshot and returns a couple of seconds later, and does not show during cutscenes."},
         {"whatsNew","What's new after updates","INV_Misc_Note_05","After an update, show a short summary of what changed, once. Turn off to never show it."},
-        {"setup","Run first-time setup again","INV_Misc_Book_09","Open the welcome setup to pick a starting look. Your current settings stay until you apply one."},
+        {"setup","First-time tour","INV_Misc_Book_09","Take the guided tour again, or continue it where you paused: each stop shows a feature on your screen, and you keep it or not. You can also pick a new look first. Nothing changes unless you keep it."},
         {"reset","Reset all settings","reset","Return every ForeverTools setting to its default (all off) and reload. Saved profiles, custom macros and learned flight times are kept. Asks first."},
         {"scriptErrors","Show Lua errors","errors","Show or hide the game's Lua error pop-ups. Hiding them does not fix the errors. This is the game's own setting."},
         {"bugReport","Copy bug report","INV_Misc_Note_04","Opens a box with your addon version, game build, enabled features and recent ForeverTools errors, ready to copy. Nothing is sent anywhere."},

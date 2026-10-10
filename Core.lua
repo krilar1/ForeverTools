@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "0.70.0"
+FT.version = "0.80.0"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -51,6 +51,16 @@ function FT:InitializeDB()
             self.headingFont, self.bodyFont = path, path; break
         end
     end
+    -- A practice tour (/ft start) cut short by a reload or logout: put every
+    -- setting back the way it was before it started.
+    local trial = self.db.tourTrial
+    if type(trial) == "table" then
+        local profiles = self.modules.Profiles
+        local settings = type(trial.settings) == "table" and trial.settings or {}
+        for _, key in ipairs(profiles and profiles.keys or {}) do self.db[key] = settings[key] end
+        self.db.tour, self.db.setupDone, self.db.setupAsked = trial.tour, trial.setupDone, trial.setupAsked
+        self.db.tourTrial = nil
+    end
     self.dbReady = true
 end
 local databaseEvents = CreateFrame("Frame")
@@ -94,16 +104,29 @@ function FT:OpenModule(name)
     local module = self.modules[name]
     if not module then return end
     if self.home then self.home:Hide() end
+    -- Pages that share one window (Macros) switch without closing it, so
+    -- nothing flickers and the window stays where you put it.
+    local stays = module.frame and module.frame:IsShown()
+    -- Another page of the same group is open: the new page takes its place
+    -- at once, without fading in (it would flash).
+    local hub = self.HubOf and self:HubOf(name)
+    local sameGroup = false
     for _, other in pairs(self.modules) do
-        if other ~= module and other.frame then other.frame:Hide() end
+        if other ~= module and other.frame and other.frame ~= module.frame then
+            if hub and other.frame:IsShown() and other.frame.ftSidebar and other.frame.ftSidebar.hub == hub then sameGroup = true end
+            other.frame:Hide()
+        end
     end
-    module:Open()
+    self.noFade = sameGroup or nil
+    local ok, err = pcall(module.Open, module)
+    self.noFade = nil
+    if not ok then error(err, 0) end
     if self.modules.Movers and self.modules.Movers.WatchPages then self.modules.Movers:WatchPages() end
     -- A page (not a redirect to another page) is what /ft opens next time
     -- this session, and gets its group's sidebar.
     if module.frame and not module.redirect then
         self.lastPage = name
-        if self.Dock then self:Dock(name) end
+        if self.Dock then self:Dock(name, stays) end
     end
 end
 -- Open ForeverTools where you left it this session: the page you last had
@@ -320,7 +343,7 @@ function FT:FadeIn(frame)
     local alpha = group:CreateAnimation("Alpha")
     alpha:SetFromAlpha(0); alpha:SetToAlpha(1); alpha:SetDuration(0.15)
     frame.fadeIn = group
-    frame:HookScript("OnShow", function() group:Stop(); group:Play() end)
+    frame:HookScript("OnShow", function() group:Stop(); if not FT.noFade then group:Play() end end)
 end
 -- Icons get softly rounded corners (the addon's own rounded shape as a
 -- mask), the same everywhere. Safe to call more than once.
@@ -387,7 +410,31 @@ function FT:Label(parent, text, size, heading)
     label:SetText(text)
     label:SetTextColor(0.95,0.90,0.81)
     label:SetJustifyH("LEFT")
+    self.labels[label] = true
     return label
+end
+-- On the first login of a session the game may still be loading the addon's
+-- font file when the first notices are drawn; their text then stays blank
+-- until a reload. A few seconds after login, every label that is on screen
+-- sets its font and text again, which draws it once the font is there.
+FT.labels = setmetatable({}, {__mode = "k"})
+function FT:RedrawLabels()
+    for label in pairs(self.labels) do
+        if label.IsVisible and label:IsVisible() then
+            local font, size, flags = label:GetFont()
+            local text = label:GetText()
+            if font then pcall(label.SetFont, label, font, size, flags or "") end
+            if text and (not issecretvalue or not issecretvalue(text)) then label:SetText(""); label:SetText(text) end
+        end
+    end
+end
+do
+    local warm = CreateFrame("Frame")
+    warm:RegisterEvent("PLAYER_ENTERING_WORLD")
+    warm:SetScript("OnEvent", function(owner)
+        owner:UnregisterAllEvents()
+        for _, delay in ipairs({2, 6}) do C_Timer.After(delay, function() FT:RedrawLabels() end) end
+    end)
 end
 -- Hover glow: a soft light inside the button's edges, shown only on hover.
 local function hoverGlow(button)
@@ -681,15 +728,16 @@ function FT:OpenHome()
         -- inside, so they need no tooltips. An odd one at the end takes the
         -- whole row.
         local tools={
-            {"Macros","MacroForge","macros","Ready-made class macros, your own macros and macro room"},
-            {"Buff reminders","BuffReminder","buffs","Missing buffs, low ranks and cooldowns"},
+            {"Macros","MacrosHub","macros","Ready-made class macros, your own macros and macro room"},
+            {"Buff reminders","BuffsHub","buffs","Missing buffs, low ranks and cooldowns"},
             {"Appearance","Appearance","skins","Fonts, unit frames, skins, chat and tooltip"},
             {"Combat","SystemCombat","Ability_Warrior_DefensiveStance","Threat meter, rare alerts, totems and group role"},
-            {"PvP","PvP",self:FactionIcon(),"Battleground timer"},
+            {"PvP","PvP",self:FactionIcon(),"Stealth alerts, marked players, nearby enemies"},
             {"Keybinds","Keybinds","keybind","Quick keybind, spell binds, wheel casting and smart key"},
             {"On-screen info","SystemDisplay","fps","FPS, leveling stats, flight timer, minimap and quests"},
             {"System","System","generic","General settings, looting and merchant"},
-            {"Profiles",nil,"profiles","Save, load and share your setups"},
+            {"Bags","BagsHub","INV_Misc_Bag_08","Gold, bank view, other characters' bags, item counts"},
+            {"Profiles","ProfilesHub","profiles","Save, load and share your setups"},
         }
         for i,entry in ipairs(tools) do
             local row=math.floor((i-1)/2);local column=(i-1)%2
@@ -768,7 +816,7 @@ end)
 SLASH_FOREVERTOOLS1 = "/ft"
 SlashCmdList.FOREVERTOOLS = function(message)
     local command = string.lower((message or ""):match("^%s*(.-)%s*$"))
-    if command == "macro" or command == "macros" then FT:OpenModule("MacroForge")
+    if command == "macro" or command == "macros" then FT:OpenModule("MacrosHub")
     elseif command == "fps" then FT:OpenModule("QualityOfLife")
     elseif command == "move" then if FT.modules.Movers then FT.modules.Movers:Toggle() end
     elseif command == "fonts" or command == "font" then FT:OpenModule("FontManager")
@@ -780,6 +828,10 @@ SlashCmdList.FOREVERTOOLS = function(message)
     elseif command == "wheel" then FT:OpenModule("CustomKeybinds")
     elseif command == "combat" then FT:OpenModule("SystemCombat")
     elseif command == "pvp" then FT:OpenModule("PvP")
+    elseif command == "bags" or command == "bag" or command == "bank" then FT:OpenModule("BagsHub")
+    elseif command == "counts" then FT:OpenModule("ItemCounts")
+    elseif command == "mark" then if FT.Enemies then FT.Enemies:MarkUnit("target") end
+    elseif command == "enemies" or command == "stealth" then FT:OpenModule("EnemyAlerts")
     elseif command == "screen" or command == "info" then FT:OpenModule("SystemDisplay")
     elseif command == "threat" then FT:OpenModule("Threat")
     elseif command == "editmode" or command == "editmode remind" then local layout=FT.modules.EditModeLayout; if layout then if command == "editmode remind" then layout:Remind(true) else layout:Show() end end
@@ -814,9 +866,12 @@ end
 function FT:ShowChoices(owner)
     if self:CombatOpenRequest() then return end
     if not self.choiceMenu then
-        local menu = CreateFrame("Frame", nil, UIParent)
+        local menu = CreateFrame("Frame", "ForeverToolsChoiceMenu", UIParent)
         self.choiceMenu = menu
         menu:SetFrameStrata("FULLSCREEN_DIALOG"); menu:SetClampedToScreen(true); menu:EnableMouse(true)
+        -- Escape closes it, and it goes away with the window it belongs to.
+        if UISpecialFrames then table.insert(UISpecialFrames, "ForeverToolsChoiceMenu") end
+        menu:SetScript("OnUpdate", function(m) if m.owner and m.owner.IsVisible and not m.owner:IsVisible() then m:Hide() end end)
         self:Panel(menu)
         menu.scroll = CreateFrame("ScrollFrame", nil, menu, "UIPanelScrollFrameTemplate")
         menu.scroll:SetPoint("TOPLEFT", 8, -8); menu.scroll:SetPoint("BOTTOMRIGHT", -26, 8)

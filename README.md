@@ -1,11 +1,11 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 0.70.0.**
+**Quality-of-life tools for WoW: Forever — version 0.80.0.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
 one place. Everything starts **off**, so the game looks like Blizzard's until you
-choose otherwise. A short first-time setup offers Minimal, Dark mode and Full
-presets, and new characters can reuse any saved profile.
+choose otherwise. A guided tour shows each feature on your own screen, and new
+characters can reuse any saved profile.
 
 Open the menu with **`/ft`** or the minimap button, and search any setting from
 the home window. Use **`/rl`** to reload the UI.
@@ -33,8 +33,10 @@ the home window. Use **`/rl`** to reload the UI.
   IDs.
 - **Chat:** Show, hide or mouseover-reveal chat controls, change the chat font,
   and optional clickable links that open a copy box.
-- **Macros:** Browse class, racial and general templates; select ranks; add
-  mouseover support; and build custom macros with spell and equipment actions.
+- **Macros:** Browse class, racial and general templates, each with its state
+  (added or not); open one in the list to select ranks, add mouseover support
+  and more lines; and build custom macros with spell and equipment actions.
+  Mages get Eat & Drink: one button for conjured food and water.
   Add all fits your macro tab (Make room), hides macros you never use, and can
   give unlearned spells their icon so bars can be set up from level 1.
   A macro can also equip items (a weapon swap, for example): pick a slot and an
@@ -44,8 +46,9 @@ the home window. Use **`/rl`** to reload the UI.
   bars, with per-spell exceptions. Choose where notices appear and how long
   they stay. Any buff can get a notice look of its own (bar, icon and text, or
   icon only) with its own size, colors and place on screen.
-  A food buff reminder (Well Fed gives 5% more experience from kills in
-  Forever) works for every class, while leveling or always.
+  Food reminders for every class: XP food (Well Fed gives 5% more experience
+  from kills in Forever, while leveling or always) and stat food, each only
+  while you carry that food.
   Notices hide in combat, except for buffs you set to also remind in combat
   (Battle Shout, for example).
 - **Leveling stats:** XP per hour, time to level, kills to level, XP progress and
@@ -79,6 +82,13 @@ the home window. Use **`/rl`** to reload the UI.
   target, or something in reach), uses RestedXP's quest item or target button
   when the guide shows one, and is Interact with target otherwise (Keybinds).
   The page shows what the key is set to right now.
+- **Bags:** gold of all your characters on the bag's gold, a view-only bank
+  from the bag's portrait (right-click), other characters' bags in place of
+  yours, item counts per character in tooltips (bags, bank, guild bank), and
+  Bag order: put the backpack's first slot in the corner you want (Bags).
+- **PvP awareness** (off by default): stealth alert, marked players with a
+  reason and a red alert when they show up, and a nearby enemies list that
+  targets on click and works in combat (PvP).
 - **Battleground timer:** when a battleground queue pops, a bar counts down
   the time you have left to enter (PvP). Off by default, movable.
 - **Rare alerts:** a glowing notice and optional sound when a rare appears.
@@ -116,12 +126,13 @@ the home window. Use **`/rl`** to reload the UI.
   - **Appearance:** Fonts, Unit frames, Dispel glow, Druid mana bar, Skins,
     Chat and Tooltip.
   - **Combat:** Threat meter, Rare alerts, Totems, Group role, Death glow.
-  - **PvP:** Battleground timer.
+  - **PvP:** Enemy alerts, Marked players, Nearby enemies, Battleground timer.
   - **Keybinds:** Keybind tools (Quick keybind, Backups), Spell binds,
     Mouse-wheel casting, Smart interact key.
   - **On-screen info:** FPS counter, Leveling stats, Flight timer, Minimap,
     Quests and loot rolls, Move elements.
   - **System:** General, Loot and merchant, Always-sell marks.
+  - **Macros, Buff reminders, Bags and Profiles** are groups of their own.
 - **Menus:** every page of a group shows the group's sections on the left,
   each with its current state; click one to see its options on the right. The
   window keeps its size and place while you switch. Every page has Back (to
@@ -129,8 +140,8 @@ the home window. Use **`/rl`** to reload the UI.
   explaining the page; pop-ups have only the X. `/ft` and the minimap button
   reopen the page you last used this session (`/ft home` opens the main
   menu). A short What's new panel appears after each update (can be turned off
-  in System → General; `/ft whatsnew` shows it again). `/ft setup` opens the
-  first-time setup again; `/ft start` shows it as a demo that changes nothing.
+  in System → General; `/ft whatsnew` shows it again). `/ft setup` starts the
+  guided tour; `/ft start` is a practice run of the tour: when it ends, every setting goes back to how it was.
 - **Combat-aware menus:** Settings close during combat; requesting the menu in
   combat opens it afterward.
 
@@ -152,10 +163,11 @@ the home window. Use **`/rl`** to reload the UI.
 - Profiles are shared: every character using a profile follows it and gets
   changes made on another character at its next login. The Profiles page shows
   which characters use each profile.
-- **Undo** lists earlier versions of the profile, saved automatically before
+- **Earlier versions** lists earlier versions of the profile, saved automatically before
   your first change each session, before a restore and before default settings.
-- **New profile** starts from default settings, **Copy** duplicates the current
-  profile, and **Rename** and **Delete** manage it. Deleting a profile sends
+- The Profiles page lists every profile with **Use**; **+ New profile** starts
+  from default settings, and the "..." menu on a profile has **Copy**,
+  **Rename**, **Export** and **Delete**. Deleting a profile sends
   other characters that used it back to default settings at their next login.
 - **Default settings** resets the profile and returns everything ForeverTools
   changes to Blizzard's defaults, as if the addon was just installed.

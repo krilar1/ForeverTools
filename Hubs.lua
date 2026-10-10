@@ -8,6 +8,24 @@ local function onOff(v) return v and "On" or "Off" end
 local function mod(name) return FT.modules[name] end
 local function settings(name) local m = mod(name); return m and m.Settings and m:Settings() or {} end
 local function count(list) local n = 0; for _, v in ipairs(list) do if v then n = n + 1 end end; return n end
+-- "9 of 22 added" for a macro list (the name of your class or race first).
+local function macroCount(view, named)
+    local m = mod("MacroForge"); if not m or not m.ViewCount or not FT.dbReady then return "" end
+    local ok, added, total = pcall(m.ViewCount, m, view)
+    if not ok then return "" end
+    local who = ""
+    if named then
+        if view == "class" then local name = UnitClass("player"); who = (name or "") .. " · "
+        else local name = UnitRace("player"); who = (name or "") .. " · " end
+    end
+    return who .. added .. " of " .. total .. " added"
+end
+-- The state of a Buff reminders section.
+local function buffStatus(key)
+    local m = mod("BuffReminder"); if not m or not m.PaneStatus or not FT.dbReady then return "" end
+    local ok, text = pcall(m.PaneStatus, m, key)
+    return ok and text or ""
+end
 local hubs = {
     {key = "Appearance", width = 760, height = 560, title = "Appearance", pages = {
         {"FontManager", "Fonts", "fonts", function() local m = mod("FontManager"); return m and m.Summary and m:Summary() or "Fonts, sizes and outlines" end},
@@ -29,6 +47,10 @@ local hubs = {
         end},
         {"Chat", "Chat", "chat", function() return "Buttons, font and links" end},
         {"Tooltip", "Tooltip", "tooltip", function() return "Layout, extras and position" end},
+        {"ItemCounts", "Item counts", "INV_Misc_Note_04", function()
+            local B = FT.Bags; if not B then return "" end
+            local s = B:Settings(); return s.counts and ({each = "Each character", total = "Total only", both = "Each and total"})[s.countStyle] or "Off"
+        end},
     }},
     {key = "SystemCombat", width = 540, height = 578, title = "Combat", pages = {
         {"Threat", "Threat meter", "Ability_Warrior_DefensiveStance", function() local t = settings("Threat"); return (t.enabled and "Meter on" or "Meter off") .. " · threat % " .. onOff(t.text):lower() end},
@@ -42,7 +64,16 @@ local hubs = {
             return onOff(value ~= "0")
         end},
     }},
-    {key = "PvP", width = 540, height = 420, title = "PvP", pages = {
+    {key = "PvP", width = 540, height = 520, title = "PvP", pages = {
+        {"EnemyAlerts", "Enemy alerts", "Ability_Stealth", function()
+            local s = settings("Enemies")
+            return (s.stealth and "Stealth on" or "Stealth off") .. " · marked " .. onOff(s.marks):lower()
+        end},
+        {"EnemyMarks", "Marked players", "Ability_Hunter_SniperShot", function()
+            local n = 0; for _ in pairs(type(FT.db.enemyMarks) == "table" and FT.db.enemyMarks or {}) do n = n + 1 end
+            return n == 0 and "None yet" or (n .. " marked")
+        end},
+        {"EnemyNearby", "Nearby enemies", "INV_Misc_Spyglass_02", function() return onOff(settings("Enemies").nearby) end},
         {"QueueTimer", "Battleground timer", "INV_Misc_PocketWatch_01", function() return onOff(settings("QueueTimer").enabled) end},
     }},
     {key = "Keybinds", width = 520, height = 608, title = "Keybinds", pages = {
@@ -58,6 +89,59 @@ local hubs = {
         {"SystemMinimap", "Minimap", "map", function() return "Button, coordinates, grouping" end},
         {"SystemQuests", "Quests and loot rolls", "INV_Misc_Note_01", function() return "Tracker and roll position" end},
         {"Movers", "Move elements", "move", function() local m = mod("Movers"); return m and m.active and "Moving now" or "Drag things on screen" end},
+    }},
+    -- Starts to the right, clear of the game's own macro window (left side).
+    {key = "MacrosHub", width = 600, height = 660, shiftX = 220, title = "Macros", pages = {
+        {"MacroForge", "My class", function()
+            local _, class = UnitClass("player")
+            return "ClassIcon_" .. (class and (class:sub(1, 1) .. class:sub(2):lower()) or "Warrior")
+        end, function() return macroCount("class", true) end},
+        {"MacroRace", "My race", "INV_Misc_Head_Human_01", function() return macroCount("race", true) end},
+        {"MacroGeneric", "Generic", "generic", function() return macroCount("generic") end},
+        {"MacroOwn", "My own macros", "INV_Misc_Note_01", function()
+            local m = mod("MacroForge"); if not m or not m.ViewEntries then return "" end
+            local n = #m:ViewEntries("own"); return n == 0 and "None yet" or (n .. " made by you")
+        end},
+        {"MacroOther", "Other classes", "classes", function() return "Look at an alt's macros" end},
+        {"MacroHidden", "Hidden", "reset", function()
+            local m = mod("MacroForge"); local n = m and m.HiddenCount and m:HiddenCount() or 0
+            return n == 0 and "None" or (n .. " hidden")
+        end},
+        {"MacroSettings", "Settings", "general", function()
+            local db = FT.db or {}
+            return (db.macroScope == "account" and "General" or "Character") .. " tab · mouseover " .. (db.macroBulkMouseover and "on" or "off")
+        end},
+    }},
+    {key = "BuffsHub", width = 520, height = 640, title = "Buff reminders", pages = {
+        {"BuffReminder", "Your buffs", "Spell_Holy_WordFortitude", function() return buffStatus("self") end},
+        {"BuffGroup", "Group buffs", "Spell_Holy_PrayerOfFortitude", function() return buffStatus("group") end},
+        {"BuffRanks", "Low ranks", "INV_Misc_Book_07", function() return buffStatus("rank") end},
+        {"BuffLook", "Look and position", "Ability_Rogue_Sprint", function() return buffStatus("look") end},
+        {"CooldownReminder", "Cooldown reminders", "Spell_Nature_TimeStop", function() return onOff(settings("CooldownReminder").enabled) end},
+    }},
+    {key = "ProfilesHub", width = 520, height = 560, title = "Profiles", pages = {
+        {"Profiles", "Profiles", "profiles", function() local m = mod("Profiles"); return m and m.SidebarStatus and m:SidebarStatus("list") or "" end},
+        {"ProfilesShare", "Export and import", "INV_Misc_Note_01", function() return "Backups and other computers" end},
+        {"ProfilesUndo", "Earlier versions", "Spell_Nature_TimeStop", function() local m = mod("Profiles"); return m and m.SidebarStatus and m:SidebarStatus("undo") or "" end},
+        {"ProfilesNew", "New characters", "INV_Misc_Head_Human_01", function() local m = mod("Profiles"); return m and m.SidebarStatus and m:SidebarStatus("new") or "" end},
+        {"ProfilesReset", "Default settings", "reset", function() return "Start over" end},
+    }},
+    {key = "BagsHub", width = 540, height = 440, title = "Bags", pages = {
+        {"BagsGeneral", "Bags", "INV_Misc_Bag_08", function()
+            local B = FT.Bags; if not B then return "" end
+            local s = B:Settings(); local n = count({s.gold, s.view, s.counts})
+            return n == 0 and "Off" or (n .. " of 3 on")
+        end},
+        {"BagsCharacters", "Characters", "character", function()
+            local B = FT.Bags; if not B then return "" end
+            local n = 0; local st = FT.db and FT.db.bagStore
+            if type(st) == "table" and type(st.chars) == "table" then for _ in pairs(st.chars) do n = n + 1 end end
+            return B:Recording() and (n .. " remembered") or "Not remembering"
+        end},
+        {"BagsOrder", "Bag order", "INV_Misc_Bag_10", function()
+            local O = FT.BagOrder; if not O or not FT.Bags then return "" end
+            return O:Summary()
+        end},
     }},
     {key = "SystemHub", width = 520, height = 572, title = "System", pages = {
         {"SystemGeneral", "General", "general", function() return "Messages, setup, errors" end},
@@ -77,11 +161,17 @@ local tips = {
     IconStyles = "Dark mode and other looks for action bars, buffs, bags, unit frames and more.",
     Chat = "Show or hide the buttons around the chat, and set the chat font and clickable links.",
     Tooltip = "What player tooltips show and in which order, text sizes, and where tooltips appear.",
+    ItemCounts = "How many of an item you have on each character and in your banks, on item tooltips.",
+    BagsGeneral = "Gold of all your characters, a view-only bank, and other characters' bags, from your bag.",
+    BagsCharacters = "The characters ForeverTools remembers for gold, item counts and the bag buttons.",
     Threat = "A threat meter next to the damage meter, and your threat % above your target.",
     RareAlert = "A notice, and a sound if you like, when a rare is nearby.",
     Totems = "For shamans: totem range on the minimap, and a warning when you leave a totem behind.",
     SystemGameplay = "Set your role (tank, healer or damage) by itself when you join a group.",
     SystemDeath = "The glowing, washed-out screen while you are dead or a ghost.",
+    EnemyAlerts = "A warning when an enemy player near you goes into stealth, and a red one when a player you marked shows up.",
+    EnemyMarks = "Players you marked, so you are warned when they show up again.",
+    EnemyNearby = "A small row of class icons of the enemy players you have seen recently.",
     QueueTimer = "A countdown of the time you have to enter when a battleground queue pops.",
     SystemKeybinds = "Bind action buttons by hovering them (/kb), and put earlier keybinds back.",
     SpellBinds = "Bind spells, items and macros straight to keys, without an action bar.",
@@ -96,6 +186,23 @@ local tips = {
     SystemGeneral = "Login message, what's new, first-time setup, resetting, Lua errors and the bug report.",
     SystemMerchant = "Faster looting, and selling and repairing at merchants.",
     SellMarks = "Mark items in your bags with a key; marked items are sold at merchants.",
+    MacroForge = "Ready-made macros for your class: add the missing ones, or open one to change it.",
+    MacroRace = "Macros for your race's own abilities.",
+    MacroGeneric = "Useful macros for any class: bandage, eat and drink, start attack and more.",
+    MacroOwn = "Macros you made yourself.",
+    MacroOther = "Look at another class's macros, for an alt.",
+    MacroHidden = "Macros you hid or removed from the lists; bring them back from here.",
+    BuffReminder = "A notice when one of your own buffs is missing: pick them for each talent tree, plus weapon buffs and food.",
+    BuffGroup = "A notice when someone in your group is missing one of your group buffs.",
+    BuffRanks = "Warnings and an action-bar marker for spells cast at a lower rank than you know.",
+    BuffLook = "Size, timing and place of the reminder notices.",
+    CooldownReminder = "A short notice to use a ready racial, trinket or long cooldown on tough targets and big pulls.",
+    Profiles = "Your profiles: switch, make a new one, copy, rename or delete.",
+    ProfilesShare = "Export your setup as text, or import one.",
+    ProfilesUndo = "Copies of this profile saved by themselves; put one back.",
+    ProfilesNew = "Which profile a new character starts with.",
+    ProfilesReset = "Put everything ForeverTools changes back to the game's defaults.",
+    MacroSettings = "Which tab macros go to, mouseover for all, icons, and cleaning up your Character macros.",
 }
 FT.hubs = hubs
 local byPage = {}
@@ -150,7 +257,8 @@ local function buildSidebar(frame, hub)
         b.meta = FT:Label(b, "", 11); b.meta:SetPoint("TOPLEFT", 46, -26); b.meta:SetWidth(SIDE - 24 - 52); b.meta:SetJustifyH("LEFT"); b.meta:SetTextColor(.72, .66, .55)
         if b.meta.SetWordWrap then b.meta:SetWordWrap(false) end
         if b.title.SetWordWrap then b.title:SetWordWrap(false) end
-        b:SetScript("OnClick", function() if FT.modules[name] and FT.modules[name].frame ~= frame then FT:OpenModule(name) end end)
+        -- Pages can share one window (Macros): what counts is which page is showing.
+        b:SetScript("OnClick", function() if FT.modules[name] and (FT.modules[name].frame ~= frame or side.index ~= i or not frame:IsShown()) then FT:OpenModule(name) end end)
         FT:Tooltip(b, title, function()
             local ok, state = pcall(page[4])
             return (tips[name] or "") .. (ok and type(state) == "string" and state ~= "" and ("\n\nNow: " .. state) or "")
@@ -172,7 +280,7 @@ function FT:RefreshDock(frame)
     end
 end
 -- Join the group's sidebar to a page that has just been opened.
-function FT:Dock(name)
+function FT:Dock(name, stays)
     local hub, index = self:HubOf(name)
     local module = self.modules[name]
     local frame = module and module.frame
@@ -196,16 +304,21 @@ function FT:Dock(name)
             if type(left) == "number" and type(top) == "number" then hub.left, hub.top = left, top end
         end)
         -- A page that refreshes itself (a switch was clicked) refreshes the sidebar too.
-        if type(module.Refresh) == "function" then
+        if type(module.Refresh) == "function" and not module.ownDockRefresh then
             local refresh = module.Refresh
             module.Refresh = function(owner, ...) local a, b = refresh(owner, ...); FT:RefreshDock(frame); return a, b end
         end
     end
+    -- Pages that share one window (Macros) light their own button.
+    frame.ftSidebar.index = index
     -- Every page of a group has the group's size, so nothing jumps when you
     -- switch between them.
     if not frame.minimized then frame:SetSize(hub.width, hub.height) end
-    frame:ClearAllPoints()
-    if hub.left and hub.top then frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", hub.left, hub.top)
-    else frame:SetPoint("CENTER", UIParent, "CENTER", SIDE / 2, 0) end
+    -- Already open (another page of the same window): it stays put.
+    if not stays then
+        frame:ClearAllPoints()
+        if hub.left and hub.top then frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", hub.left, hub.top)
+        else frame:SetPoint("CENTER", UIParent, "CENTER", SIDE / 2 + (hub.shiftX or 0), 0) end
+    end
     self:RefreshDock(frame)
 end

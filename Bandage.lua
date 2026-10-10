@@ -9,6 +9,50 @@ local _,FT=...
 --   * With no bandage in your bags it lists the standard ones by item, best
 --     first, so it works the moment you get one.
 local Bandage={}
+-- Macros ForeverTools keeps up to date (Bandage, Eat & Drink) are found by
+-- their name, or, after you renamed one (many players give macros a blank
+-- name so no text shows on the bars), by the text ForeverTools last wrote
+-- into it. That text is remembered per tab: General, and each character.
+local function plainText(body) return type(body)=="string" and body:gsub("\r\n","\n"):gsub("\n+$","") or "" end
+function FT:FollowedMacros(name,ours)
+    local found={}
+    if not GetNumMacros or not GetMacroInfo then return found end
+    local memory=type(self.db.followedMacros)=="table" and type(self.db.followedMacros[name])=="table" and self.db.followedMacros[name] or nil
+    if not memory and GetMacroIndexByName and (GetMacroIndexByName(name) or 0)==0 then return found end
+    local guid=UnitGUID and UnitGUID("player") or "?"
+    if type(guid)~="string" then guid="?" end
+    local account,character=GetNumMacros()
+    local first=(MAX_ACCOUNT_MACROS or 120)+1
+    local function check(index,slot)
+        local macroName,_,body=GetMacroInfo(index)
+        if type(body)~="string" or not ours(body) then return end
+        local text=plainText(body)
+        if macroName==name or (memory and memory[slot]==text) then
+            found[#found+1]={index=index,slot=slot,body=text}
+            -- Remember it now, so a rename right after (in the game's macro
+            -- window, before any update) still finds it.
+            if macroName==name and (not memory or memory[slot]~=text) then self:RememberFollowed(name,slot,text); memory=self.db.followedMacros[name] end
+        end
+    end
+    for index=1,(account or 0) do check(index,"account") end
+    for index=first,first+(character or 0)-1 do check(index,guid) end
+    return found
+end
+function FT:RememberFollowed(name,slot,body)
+    if type(self.db.followedMacros)~="table" then self.db.followedMacros={} end
+    if type(self.db.followedMacros[name])~="table" then self.db.followedMacros[name]={} end
+    self.db.followedMacros[name][slot]=body
+end
+-- Rewrite every followed macro called name to body. Returns how many changed.
+function FT:UpdateFollowed(name,ours,body)
+    local changed=0
+    for _,macro in ipairs(self:FollowedMacros(name,ours)) do
+        if macro.body~=body then
+            if EditMacro and pcall(EditMacro,macro.index,nil,nil,body) then changed=changed+1; self:RememberFollowed(name,macro.slot,body) end
+        else self:RememberFollowed(name,macro.slot,body) end
+    end
+    return changed
+end
 local NAME="Bandage"
 local LIMIT=255
 -- Standard bandages with how good they are (higher is better). A bandage the
@@ -105,26 +149,38 @@ end
 -- Rewrite the Bandage macros you added (General and Character) to match
 -- your bags. Returns how many were changed.
 function Bandage:Update()
-    if not GetMacroIndexByName or not GetMacroInfo or not EditMacro or not GetNumMacros then return 0 end
-    if (GetMacroIndexByName(NAME) or 0)==0 then return 0 end
+    if not GetMacroInfo or not EditMacro or not GetNumMacros then return 0 end
+    local list=FT:FollowedMacros(NAME,function(body) return self:Ours(body) end)
+    if #list==0 then return 0 end
     -- Not in a fight, and not while you have the game's macro window open.
     if InCombatLockdown() or (MacroFrame and MacroFrame.IsShown and MacroFrame:IsShown()) then self.pending=true; return 0 end
     self.pending=nil
-    local body=self:Body()
-    local account,character=GetNumMacros()
-    local first=(MAX_ACCOUNT_MACROS or 120)+1
-    local changed=0
-    local function check(index)
-        local name,_,existing=GetMacroInfo(index)
-        if name==NAME and type(existing)=="string" and self:Ours(existing) and normalized(existing)~=body then
-            if pcall(EditMacro,index,nil,nil,body) then changed=changed+1 end
-        end
-    end
-    for index=1,(account or 0) do check(index) end
-    for index=first,first+(character or 0)-1 do check(index) end
-    return changed
+    return FT:UpdateFollowed(NAME,function(body) return self:Ours(body) end,self:Body())
 end
+-- Is it in your macros (under any name)?
+function Bandage:Installed() return #FT:FollowedMacros(NAME,function(body) return self:Ours(body) end)>0 end
 FT:RegisterModule("Bandage",Bandage)
+-- Bring every followed macro up to date: after your macros change, and when
+-- you close the game's macro window (nothing is rewritten while it is open).
+function FT:RefreshFollowed()
+    for _,key in ipairs({"Bandage","FoodWater"}) do
+        local follow=self.modules[key]
+        if follow and follow.Update then pcall(follow.Update,follow) end
+    end
+end
+local watcher=CreateFrame("Frame")
+watcher:RegisterEvent("UPDATE_MACROS"); watcher:RegisterEvent("ADDON_LOADED"); watcher:RegisterEvent("PLAYER_LOGIN")
+local function hookMacroFrame()
+    if watcher.hooked or not MacroFrame or not MacroFrame.HookScript then return end
+    watcher.hooked=true
+    MacroFrame:HookScript("OnHide",function() FT:Coalesce("ftFollowedMacros",function() if not InCombatLockdown() then FT:RefreshFollowed() end end,.2) end)
+end
+watcher:SetScript("OnEvent",function(_,event,addon)
+    if not FT.dbReady then return end
+    if event=="ADDON_LOADED" then if addon=="Blizzard_MacroUI" then hookMacroFrame() end return end
+    hookMacroFrame()
+    if event=="UPDATE_MACROS" and not InCombatLockdown() then FT:Coalesce("ftFollowedMacros",function() FT:RefreshFollowed() end,.5) end
+end)
 local events=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_ENTERING_WORLD","BAG_UPDATE_DELAYED","PLAYER_REGEN_ENABLED"}) do events:RegisterEvent(event) end
 events:SetScript("OnEvent",function(_,event)

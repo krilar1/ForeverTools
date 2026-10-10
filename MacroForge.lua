@@ -48,6 +48,18 @@ for class,entries in pairs(KT.verifiedMacros or {}) do
     end
 end
 
+-- Eat & Drink (FoodWater.lua): eats when hurt, drinks when mana is low. Its
+-- text follows your health, mana and bags, so it keeps its own name.
+table.insert(classMacros.Mage,1,{"Eat & Drink",1,"generic","inv_misc_food_73",
+    function() return KT.modules.FoodWater and KT.modules.FoodWater:Body() or "#showtooltip" end,nil,
+    "One button for your conjured food and water. Hurt and low on mana: it eats and drinks at once. Full health: it only drinks. Full mana: it only eats. It always uses the best you have conjured, and when you run out it conjures more (water first). Buff food is never touched. ForeverTools keeps it up to date after you add it, also if you rename it (a blank name hides the text on your bar). Change its text yourself and it is left alone.",named=true})
+-- Teleports and portals are spells you click from the spellbook once in a
+-- while; they never need a macro, so the list leaves them out.
+local function isTravelSpell(name) return type(name)=="string" and (name:find("^Teleport") or name:find("^Portal")) ~= nil end
+for _,entries in pairs(classMacros) do
+    for i=#entries,1,-1 do if isTravelSpell(entries[i][1]) then table.remove(entries,i) end end
+end
+
 local racials = {
     Human = {{"Will to Survive", 1, "self", "spell_shadow_charm"}, {"Perception", 1, "self", "spell_nature_sleep"}},
     Dwarf = {{"Stoneform", 1, "self", "spell_shadow_unholystrength"}, {"Find Treasure", 1, "self", "inv_misc_bag_10"}},
@@ -97,7 +109,7 @@ local function addEntries(destination, entries, className, raceName, category)
         local code = data[5]
         -- A text that follows the game (the Bandage macro) is built when listed.
         if type(code) == "function" then code = code() end
-        destination[#destination + 1] = { name = data[1], ranks = data[2], kind = data[3], icon = data[4], code = code, old = data[6], note = data[7], class = className, race = raceName, category = category }
+        destination[#destination + 1] = { name = data[1], ranks = data[2], kind = data[3], icon = data[4], code = code, old = data[6], note = data[7], class = className, race = raceName, category = category, named = data.named }
     end
 end
 
@@ -172,7 +184,7 @@ local classIcons = {
 local bulkExcluded = {
     Druid = {"Nature's Grasp", "Teleport: Moonglade"},
     Hunter = {"Track Beasts", "Track Undead"},
-    Mage = {"Teleport: Ironforge", "Teleport: Orgrimmar", "Teleport: Stormwind", "Teleport: Undercity"},
+    Mage = {},
     Paladin = {"Sense Undead"},
     Priest = {"Confounding Flash", "Hex of Weakness", "Fade", "Touch of Weakness", "Elune's Grace", "Shadowguard"},
 }
@@ -194,7 +206,7 @@ function MacroForge:AddLearnedEntries(entries,className,includeGeneral)
     for _,spell in ipairs(spells) do
         -- The first spellbook line is General (Attack, racials, professions);
         -- those are not class spells and are only listed for clean-up.
-        if type(spell.name)=="string" and (includeGeneral or spell.line~=1) then
+        if type(spell.name)=="string" and (includeGeneral or spell.line~=1) and not isTravelSpell(spell.name) then
             local rank=tonumber((spell.rank or ""):match("(%d+)")) or 1
             if not known[spell.name] then
                 -- Unknown targeting stays a plain cast; never guess help/harm.
@@ -295,6 +307,7 @@ function MacroForge:ClassIcon(className)
     return "Interface\\Icons\\" .. (classIcons[className] or "INV_Misc_QuestionMark")
 end
 function MacroForge:MacroName(entry)
+    if entry.named then return string.sub(entry.name, 1, 16) end
     return (entry.class or entry.characterOnly) and " " or string.sub(entry.name, 1, 16)
 end
 
@@ -352,7 +365,7 @@ function MacroForge:EntryExists(entry, body)
         end
         return false
     end
-    if not entry.class and not entry.characterOnly then return (GetMacroIndexByName(self:MacroName(entry)) or 0) > 0 end
+    if entry.named or (not entry.class and not entry.characterOnly) then return (GetMacroIndexByName(self:MacroName(entry)) or 0) > 0 end
     local _, count = GetNumMacros()
     local wanted = normalizeBody(body)
     local legacy = {}
@@ -421,6 +434,10 @@ function MacroForge:CreateEntry(entry, confirmed)
         local destination = scope == "character" and "Character" or "General"
         self:Status("Added " .. entry.name .. " to " .. destination .. " macros.")
         if not self.bulkAdding then KT:Toast("Added to " .. string.lower(destination) .. " macros") end
+        -- Macros that follow the game (Bandage, Eat & Drink) catch up at once.
+        for _,key in ipairs({"Bandage","FoodWater"}) do
+            local follow=KT.modules[key]; if follow and follow.Update then C_Timer.After(0,function() follow.best=nil; pcall(follow.Update,follow) end) end
+        end
         return true
     end
     self.skipReason = "full"
@@ -550,6 +567,7 @@ function MacroForge:HiddenState(entry)
 end
 function MacroForge:IsHidden(entry) return self:HiddenState(entry) ~= nil end
 function MacroForge:SetHidden(entry, hidden, deleted)
+    self.counts = nil
     if type(KT.db.hiddenMacros) ~= "table" then KT.db.hiddenMacros = {} end
     KT.db.hiddenMacros[self:HiddenKey(entry)] = hidden and (deleted and "deleted" or true) or nil
     local count = 0; for _ in pairs(KT.db.hiddenMacros) do count = count + 1 end
@@ -664,139 +682,6 @@ local function sameEntry(a, b)
     return a and b and a.name == b.name and a.class == b.class and a.race == b.race
 end
 
-function MacroForge:UpdateFilters()
-    local previewing = self.filter == "class" and self.browsedClass
-    -- The Hidden view is its own list: neither Character nor Generic is lit.
-    local listing = not self.showHidden
-    KT:SetSelected(self.filterButtons.mine, listing and (self.filter == "mine" or previewing ~= nil and previewing ~= false))
-    KT:SetSelected(self.filterButtons.generic, listing and self.filter == "generic")
-    -- The Character button names the class you are looking at.
-    self.filterButtons.mine.label:SetText(previewing and (previewing .. " (preview)") or "Character")
-    self.filterButtons.mine.icon:SetTexture(self:ClassIcon(previewing or classKey()))
-end
-function MacroForge:RenderList()
-    if not self.uiReady then return end
-    if self.filter == "class" and not self.browsedClass then self.filter = "mine" end
-    local query = string.lower(self.search:GetText() or "")
-    for _, button in ipairs(self.rows) do button:Hide() end
-    local shown = 0
-    local function matches(entry)
-        if query == "" then return true end
-        local haystack = string.lower(entry.name .. " " .. (entry.class or "") .. " " .. (entry.race or "") .. " " .. entry.category)
-        return haystack:find(query, 1, true) ~= nil
-    end
-    -- What to draw, top to bottom: macro rows, and in the Hidden view a
-    -- heading above the hidden ones and another above the deleted ones.
-    local items = {}
-    if self.showHidden then
-        local hidden, deleted = self:HiddenEntries()
-        for _, part in ipairs({{"Hidden", hidden}, {"Deleted", deleted}}) do
-            local kept = {}
-            for _, entry in ipairs(part[2]) do if matches(entry) then kept[#kept + 1] = entry end end
-            if #kept > 0 then
-                items[#items + 1] = {head = part[1] .. " (" .. #kept .. ")"}
-                for _, entry in ipairs(kept) do items[#items + 1] = {entry = entry} end
-            end
-        end
-    else
-        for _, entry in ipairs(self:AllEntries()) do
-            if matches(entry) and (entry.category == "classPicker" or not self:IsHidden(entry)) then items[#items + 1] = {entry = entry} end
-        end
-    end
-    local y, heads = 0, 0
-    self.listHeads = self.listHeads or {}
-    for _, head in ipairs(self.listHeads) do head:Hide(); if head.ftHeading and head.ftHeading.line then head.ftHeading.line:Hide() end end
-    for _, item in ipairs(items) do
-        local entry = item.entry
-        if item.head then
-            heads = heads + 1
-            local head = self.listHeads[heads]
-            if not head then
-                head = KT:Label(self.list, "", 13, true); head:SetTextColor(1, .82, 0)
-                KT:SectionHeading(head, nil, 200, 14)
-                self.listHeads[heads] = head
-            end
-            head:ClearAllPoints(); head:SetPoint("TOPLEFT", 4, -(y + 8)); head:SetText(item.head); head:Show()
-            if head.ftHeading and head.ftHeading.line then head.ftHeading.line:Show() end
-            y = y + 30
-        else
-            shown = shown + 1
-            local button = self.rows[shown]
-            if not button then
-                button = KT:QuietButton(self.list, "", 300, 44)
-                button.label:Hide()
-                button.icon = button:CreateTexture(nil, "ARTWORK")
-                button.icon:SetSize(28, 28)
-                button.icon:SetPoint("LEFT", 8, 0); KT:RoundIcon(button.icon)
-                button.title = KT:Label(button, "", 14)
-                button.title:SetPoint("TOPLEFT", 44, -6)
-                button.title:SetWidth(246)
-                button.meta = KT:Label(button, "", 11)
-                button.meta:SetPoint("TOPLEFT", 44, -25)
-                button.meta:SetTextColor(.72,.66,.55)
-                button:SetScript("OnClick", function(owner)
-                    if owner.entry.category == "classPicker" then
-                        self.browsedClass = owner.entry.class
-                        self:Select(self:AllEntries()[1])
-                        self:Status("Previewing " .. self.browsedClass .. " macros. Click Character to go back to your own.")
-                    else self:Select(owner.entry) end
-                end)
-                -- Two small buttons on the right of each row: hide (or show
-                -- again), then X to delete.
-                button.remove = KT:QuietButton(button, "", 24, 24)
-                button.remove:SetPoint("RIGHT", -8, 0)
-                button.remove.glyph = button.remove:CreateTexture(nil, "ARTWORK"); button.remove.glyph:SetSize(14, 14); button.remove.glyph:SetPoint("CENTER")
-                button.remove.glyph:SetTexture("Interface\\RaidFrame\\ReadyCheck-NotReady")
-                button.remove:SetScript("OnClick", function() self:DeleteEntry(button.entry) end)
-                KT:Tooltip(button.remove, "Delete", function()
-                    return self.showHidden and "Delete this macro of yours for good. Asks first."
-                        or "Remove this macro from the list. It moves to Hidden, where you can bring it back. A macro already added to WoW stays there; use Delete… in the top row for those."
-                end)
-                button.hide = KT:QuietButton(button, "", 24, 24)
-                button.hide:SetPoint("RIGHT", button.remove, "LEFT", -4, 0)
-                button.hide.glyph = button.hide:CreateTexture(nil, "ARTWORK"); button.hide.glyph:SetSize(16, 16); button.hide.glyph:SetPoint("CENTER")
-                button.hide.glyph:SetTexCoord(.08, .92, .08, .92); KT:RoundIcon(button.hide.glyph)
-                button.hide:SetScript("OnClick", function() local e = button.entry; if e then self:SetHidden(e, not self:IsHidden(e)) end end)
-                KT:Tooltip(button.hide, "Hide or show", function()
-                    return button.entry and self:IsHidden(button.entry) and "Show this macro in the list again." or "Hide this macro from the list. Hidden macros are never added by Add all. Open Hidden to bring it back."
-                end)
-                KT:Tooltip(button,"Macro template",function()
-                    if button.entry and button.entry.note then return button.entry.note end
-                    return button.entry and button.entry.name=="1-shot combo"
-                        and "Build one macro that does several things. Pick learned spells above the macro name, and add trinkets or start attack from the gear button. Abilities off the global cooldown fire together; other spells may need another press."
-                        or "Click to preview and edit this macro. Nothing changes in WoW until you add it."
-                end)
-                self.rows[shown] = button
-            end
-            button:ClearAllPoints()
-            button:SetPoint("TOPLEFT", 0, -y); y = y + 48
-            button.entry = entry
-            button.icon:SetTexture(self:IconForEntry(entry))
-            button.title:SetText(entry.name)
-            local state = entry.category ~= "classPicker" and self:HiddenState(entry) or nil
-            local isHidden = state ~= nil
-            button.hide:SetShown(entry.category ~= "classPicker")
-            -- In the Hidden view only your own macros can be deleted for good.
-            button.remove:SetShown(entry.category ~= "classPicker" and (not isHidden or entry.category == "custom"))
-            -- An eye hides the macro; in the Hidden view the same button brings it back.
-            button.hide.glyph:SetTexture(isHidden and "Interface\\Icons\\Spell_Nature_TimeStop" or "Interface\\Icons\\INV_Misc_Eye_01")
-            button.title:SetWidth(186)
-            button.meta:SetText(entry.category == "classPicker" and "View class macros" or entry.category=="custom" and (entry.class and "Custom • "..entry.class or "Custom • Generic") or entry.class or entry.race or "Generic")
-            KT:SetSelected(button, sameEntry(entry, self.selectedMacro))
-            button:Show()
-        end
-    end
-    self.list:SetHeight(math.max(1, y))
-    self.empty:SetShown(shown == 0)
-    self.empty:SetText(self.showHidden and "Nothing hidden or deleted here." or "No matching macros.")
-    local hiddenCount = self:HiddenCount()
-    self.hiddenButton.label:SetText("Hidden (" .. hiddenCount .. ")")
-    KT:SetSelected(self.hiddenButton, self.showHidden == true)
-    self.hiddenButton:SetEnabled(hiddenCount > 0 or self.showHidden == true); self.hiddenButton:SetAlpha((hiddenCount > 0 or self.showHidden) and 1 or .45)
-    self.detail:Show()
-    self:UpdateFilters()
-    self:UpdateBulkInfo()
-end
 function MacroForge:Select(entry)
     KT:FlushMacroRevision(self.selectedMacro)
     self.selectedMacro, self.selectedRank, self.mouseover = entry, "max", self:EntryMouseover(entry)
@@ -823,61 +708,6 @@ function MacroForge:ForgetDefaultBody(entry)
     for _, old in ipairs(self:LegacyBodies(entry, current)) do
         if saved == normalizeBody(old) then record.body = false; record.dirty = nil; return end
     end
-end
-function MacroForge:UpdatePreview()
-    local entry = self.selectedMacro
-    if not entry then return end
-    self:ForgetDefaultBody(entry)
-    self.title:SetText(entry.name)
-    self.rankLabel:SetText(entry.ranks and entry.ranks > 1 and (self.selectedRank == "max" and "Max rank" or "Rank " .. self.selectedRank) or "Single rank")
-    local hasRanks = entry.ranks and entry.ranks > 1
-    self.prevRank:SetShown(hasRanks); self.nextRank:SetShown(hasRanks); self.rankLabel:SetShown(hasRanks)
-    local showMouseover = self:CanMouseover(entry)
-    self.mouseoverButton:ClearAllPoints()
-    if hasRanks then self.mouseoverButton:SetPoint("TOPRIGHT", self.detail, "TOPRIGHT", -16, -88)
-    else self.mouseoverButton:SetPoint("TOPLEFT", self.detail, "TOPLEFT", 16, -88) end
-    local controls = hasRanks or showMouseover
-    self.previewArea:ClearAllPoints(); self.previewArea:SetPoint("TOPLEFT", self.detail, "TOPLEFT", 16, controls and -124 or -88)
-    self.previewArea:SetHeight(controls and 300 or 336)
-    self.prevRank:SetEnabled(hasRanks)
-    self.nextRank:SetEnabled(entry.ranks and entry.ranks > 1)
-    self.mouseoverButton:SetShown(showMouseover)
-    local own = self.mouseover ~= (self.bulkMouseover == true)
-    self.mouseoverButton.label:SetText((self.mouseover and "Mouseover: On" or "Mouseover: Off") .. (own and " *" or ""))
-    KT:SetSelected(self.mouseoverButton, self.mouseover)
-    self.loadingPreview = true
-    self.preview:SetText(KT:MacroBody(entry, self:BuildMacro(entry)))
-    self.loadingPreview = false
-    self:UpdateScopeButton()
-    self:UpdateDefaultButton()
-end
--- "Save to" in the top row: Character or General. Class and racial macros
--- always go to Character, so the button rests there for them.
-function MacroForge:UpdateScopeButton()
-    local button = self.scopeButton; if not button then return end
-    local entry = self.selectedMacro
-    local forced = entry and (entry.class ~= nil or entry.characterOnly) or false
-    local effective = forced and "character" or self.scope
-    button.value = effective
-    button.label:SetText("Save to: " .. (effective == "account" and "General" or "Character"))
-    button.icon:SetTexture("Interface\\Icons\\" .. (effective == "account" and KT.icons.general or KT.icons.character))
-    if effective ~= "account" then button.icon:SetTexture(self:ClassIcon(classKey())) end
-end
-function MacroForge:ScopeChoices()
-    local entry = self.selectedMacro
-    local forced = entry and (entry.class ~= nil or entry.characterOnly) or false
-    return {
-        {value = "character", label = "Character", icon = self:ClassIcon(classKey()), tooltip = "This character's own macro tab."},
-        {value = "account", label = "General", icon = "Interface\\Icons\\" .. KT.icons.general, disabled = forced,
-            tooltip = forced and "Class and racial macros always save to Character. To save a macro to General, pick one from the Generic list, or make your own with New macro and choose Generic." or "The tab shared by all your characters."},
-    }
-end
-function MacroForge:UpdateDefaultButton()
-    if not self.defaultButton or not self.selectedMacro then return end
-    -- Only there when the text differs from the original.
-    local changed = (self.preview:GetText() or "") ~= self:BuildMacro(self.selectedMacro)
-    self.defaultButton:SetShown(changed)
-    self.title:SetWidth(changed and 282 or 390)
 end
 function MacroForge:LearnedSpellChoices()
     local book=KT.modules.CustomKeybinds
@@ -1113,69 +943,6 @@ function MacroForge:ChooseScope(scope)
     self:UpdateScopeButton()
     self:UpdatePreview()
 end
--- Size each top-row button to its longest label in the font in use, so
--- nothing is cut off; the text shrinks a point only if the row would not fit.
-function MacroForge:LayoutTopBar()
-    if not self.bulkPanel then return end
-    local items = {
-        {self.scopeButton, {"Save to: Character", "Save to: General"}, 20},
-        {self.bulkMouseoverButton, {"Mouseover: Off", "Mouseover: On"}, 0},
-        {self.iconsButton, {"Icons: Off", "Icons: On"}, 0},
-        {self.bulkButton, {"Add all"}, 0},
-        {self.deleteButton, {"Delete character macros"}, 0},
-    }
-    local function measure(size)
-        local total = 0
-        for _, item in ipairs(items) do
-            local label, widest = item[1].label, 0
-            label:SetFont(KT.bodyFont, size, "")
-            local keep = label:GetText()
-            for _, text in ipairs(item[2]) do
-                label:SetText(text)
-                local width = label.GetUnboundedStringWidth and label:GetUnboundedStringWidth()
-                if type(width) ~= "number" then width = label:GetStringWidth() end
-                if type(width) == "number" and width > widest then widest = width end
-            end
-            label:SetText(keep or "")
-            -- icon (37) + text + right padding, plus the dropdown arrow where there is one
-            item.width = math.ceil(37 + widest + 14 + item[3]); total = total + item.width
-        end
-        return total
-    end
-    -- 832 wide: 14 at each end, three 8 px gaps, and at least 12 between the two groups.
-    local room, size = 832 - 28 - 24 - 12, 13
-    while measure(size) > room and size > 10 do size = size - 1 end
-    for _, item in ipairs(items) do item[1]:SetWidth(item.width) end
-    self.scopeButton.menuWidth = math.max(180, self.scopeButton:GetWidth() or 180)
-end
-function MacroForge:UpdateIconsButton()
-    if not self.iconsButton then return end
-    local on = KT.db.macroUnlearnedIcons == true
-    self.iconsButton.label:SetText("Icons: " .. (on and "On" or "Off"))
-    KT:SetSelected(self.iconsButton, on)
-end
-function MacroForge:UpdateBulkInfo()
-    self.bulkMouseover = KT.db.macroBulkMouseover == true
-    local _, count = GetNumMacros()
-    local free = math.max(0, (MAX_CHARACTER_MACROS or 30) - count)
-    local needed = 0
-    local oldRank, oldMouseover = self.selectedRank, self.mouseover
-    self.selectedRank, self.mouseover = "max", self.bulkMouseover == true
-    for _, entry in ipairs(self:AddableEntries()) do
-        self.mouseover = self:EntryMouseover(entry)
-        if not self:EntryExists(entry, self:BuildMacro(entry)) then needed = needed + 1 end
-    end
-    self.selectedRank, self.mouseover = oldRank, oldMouseover
-    local className = self:BulkClass()
-    local icon = classIcons[className] or "INV_Misc_QuestionMark"
-    self.bulkButton.label:SetText("Add all")
-    self.bulkButton.icon:SetTexture(self:ClassIcon(className))
-    self.bulkMouseoverButton.label:SetText(self.bulkMouseover and "Mouseover: On" or "Mouseover: Off")
-    KT:SetSelected(self.bulkMouseoverButton, self.bulkMouseover)
-    self.bulkInfo:SetText(""); self.bulkInfo:Hide()
-    self:UpdateIconsButton(); self:UpdateScopeButton()
-    return needed, free
-end
 function MacroForge:ConfirmBulk()
     local needed, free = self:UpdateBulkInfo()
     local className = self:BulkClass()
@@ -1187,336 +954,9 @@ function MacroForge:ConfirmBulk()
     StaticPopupDialogs.FOREVERTOOLS_BULK.text = "WARNING: You are a " .. classKey() .. ", not a " .. className .. ".\n\n" .. string.format("Add all %s macros to Character macros?", className)
     KT:ShowPopup("FOREVERTOOLS_BULK")
 end
-function MacroForge:CreateUI()
-    if self.uiReady then return end
-    if self.frame then self.frame:Hide() end
-    self.rows = {}
-    local frame = KT:Window("ForeverToolsMacros", "ForeverTools | Macros", 880, 744)
-    self.frame = frame
-    frame:HookScript("OnHide", function() self.entriesCache, self.entriesKey = nil, nil end)
-    local hint = KT:Label(frame, "", 14)
-    hint:SetPoint("TOPLEFT", 24, -57)
-    local bulkPanel = CreateFrame("Frame", nil, frame)
-    bulkPanel:SetSize(832, 58); bulkPanel:SetPoint("TOPLEFT", 24, -82); KT:Panel(bulkPanel)
-    -- One row. Left, how macros are made: Save to | Mouseover | Unlearned
-    -- icons. Right, what to do: Add all | Delete.
-    self.bulkStatus = KT:Label(bulkPanel, "", 15, true); self.bulkStatus:Hide()
-    self.scopeButton = KT:Dropdown(bulkPanel, 204, function() return self:ScopeChoices() end, function(value) self:ChooseScope(value) end, "character")
-    self.scopeButton:SetHeight(34); self.scopeButton.menuWidth = 204
-    self.scopeButton:SetPoint("LEFT", 14, 0)
-    KT:Tooltip(self.scopeButton, "Where macros are saved", "Character: this character's own macro tab. General: the tab shared by all your characters. Class and racial macros always go to Character.")
-    self.bulkMouseover = KT.db.macroBulkMouseover == true
-    self.bulkMouseoverButton = KT:QuietButton(bulkPanel, "", 150, 34, "mouseover")
-    self.bulkMouseoverButton:SetPoint("LEFT", self.scopeButton, "RIGHT", 8, 0)
-    self.bulkMouseoverButton:SetScript("OnClick", function()
-        self.bulkMouseover = not self.bulkMouseover; KT.db.macroBulkMouseover = self.bulkMouseover
-        -- The row sets every macro; single-macro exceptions start over.
-        KT.db.macroMouseover = nil
-        if self.selectedMacro then self:Select(self.selectedMacro) end
-        self:UpdateBulkInfo()
-    end)
-    KT:Tooltip(self.bulkMouseoverButton, "Mouseover for all macros", "Macros cast on the unit under your mouse and keep your target: heal or dispel a party member, hit or crowd-control an enemy beside you. Melee strikes stay on your target. Add all updates macros you already added. A macro's own Mouseover button can make an exception (marked *); changing this clears them. Tip: also turn on Mouseover Cast in the game's Combat settings.")
-    self.iconsButton = KT:QuietButton(bulkPanel, "", 180, 34, "classes")
-    self.iconsButton:SetPoint("LEFT", self.bulkMouseoverButton, "RIGHT", 8, 0)
-    self.iconsButton:SetScript("OnClick", function() KT.db.macroUnlearnedIcons = not (KT.db.macroUnlearnedIcons == true); self:UpdateIconsButton() end)
-    KT:Tooltip(self.iconsButton, "Icons for unlearned spells", "When on, macros for spells you have not learned yet get the spell's icon, so you can set up your action bars from level 1. Add all also gives macros you already added their icon. Once learned, they work as usual.")
-    self.bulkButton = KT:QuietButton(bulkPanel, "", 116, 34, "add")
-    self.bulkButton:SetScript("OnClick", function() self:ConfirmBulk() end)
-    KT:Tooltip(self.bulkButton, "Add all class macros", function() return "Add every " .. self:BulkClass() .. " macro to your Character macros. Macros you already added are updated, not copied." end)
-    self.deleteButton = KT:QuietButton(bulkPanel, "Delete character macros", 200, 34, "delete")
-    self.deleteButton:SetPoint("RIGHT", -14, 0)
-    self.bulkButton:SetPoint("RIGHT", self.deleteButton, "LEFT", -8, 0)
-    -- Two ways to clean up: only untouched ForeverTools macros, or everything.
-    self.deleteButton.options = function()
-        return {
-            {value = "unchanged", label = "Delete unchanged macros", icon = "Interface\\Icons\\INV_Misc_Note_01",
-                tooltip = "Delete Character macros that ForeverTools made and you have not changed: class, racial and generic ones. Macros you changed or made yourself are kept."},
-            {value = "all", label = "Delete ALL Character macros", icon = "Interface\\Icons\\Spell_Shadow_UnholyFrenzy",
-                tooltip = "Delete every macro in your Character tab, including ones you made or changed. General macros are not touched. Asks twice."},
-        }
-    end
-    self.deleteButton.onSelect = function(mode) self:RequestDeleteClass(mode) end
-    self.deleteButton.menuWidth = 260
-    self.deleteButton:SetScript("OnClick", function(owner) KT:ShowChoices(owner) end)
-    for _,button in ipairs({self.scopeButton,self.bulkMouseoverButton,self.iconsButton,self.bulkButton,self.deleteButton}) do
-        if button.label.SetWordWrap then button.label:SetWordWrap(false) end
-        button.label:SetFont(KT.bodyFont, 13, "")
-    end
-    self.bulkPanel = bulkPanel
-    KT:Tooltip(self.deleteButton, "Delete Character macros", "Choose: delete only the ForeverTools macros you have not changed, or every Character macro. Both ask before deleting.")
-    self.bulkInfo = KT:Label(bulkPanel, "", 12)
-    self.bulkInfo:SetPoint("TOPLEFT", 14, -53); self.bulkInfo:SetWidth(725); self.bulkInfo:Hide()
-    self.filterButtons = {}
-    local filters = {{"mine", "Character", "character"}, {"generic", "Generic", "generic"}}
-    for index, item in ipairs(filters) do
-        local key = item[1]
-        local button = KT:QuietButton(frame, item[2], index == 1 and 164 or 108, 28, item[3])
-        button:SetPoint("TOPLEFT", index == 1 and 24 or 196, -156)
-        button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        if button.label.SetWordWrap then button.label:SetWordWrap(false) end
-        button:SetScript("OnClick", function(owner, mouse)
-            if key == "mine" and mouse == "RightButton" then
-                -- Look at another class's macros (an alt's, for example).
-                owner.options = function()
-                    local list, names = {}, {}
-                    for name in pairs(classMacros) do names[#names + 1] = name end
-                    table.sort(names)
-                    for _, name in ipairs(names) do list[#list + 1] = {value = name, label = name .. (name == classKey() and " (this character)" or ""), icon = self:ClassIcon(name)} end
-                    return list
-                end
-                owner.value = self.filter == "class" and self.browsedClass or classKey(); owner.menuWidth = 220
-                owner.onSelect = function(name)
-                    self.showHidden = false
-                    if name == classKey() then self.filter, self.browsedClass = "mine", nil
-                    else self.filter, self.browsedClass = "class", name; self:Status("Previewing " .. name .. " macros. Click Character to go back to your own.") end
-                    self:Select(self:AllEntries()[1])
-                end
-                KT:ShowChoices(owner); return
-            end
-            self.filter = key; self.browsedClass = nil; self.showHidden = false; self:RenderList()
-        end)
-        self.filterButtons[key] = button
-        KT:Tooltip(button, item[2], key == "mine" and "Macros for this character's class and race. Right-click to preview another class's macros, for an alt." or "Useful macros that are not class-specific.")
-    end
-    self.newButton=KT:QuietButton(frame,"New macro",136,28,"add");self.newButton:SetPoint("TOPLEFT",312,-156)
-    self.newButton:SetScript("OnClick",function() self.newName:SetText("");self.newClass=false;self:RefreshNewPanel();self.newPanel:Show();if self.newName.SetFocus then self.newName:SetFocus() end end)
-    KT:Tooltip(self.newButton,"New macro","Create your own macro in My class or Generic, then edit its text and add it to WoW.")
-    self.hiddenButton = KT:QuietButton(frame, "Hidden (0)", 130, 28, "reset"); self.hiddenButton:SetPoint("TOPLEFT", 456, -156)
-    if self.hiddenButton.label.SetWordWrap then self.hiddenButton.label:SetWordWrap(false) end
-    if self.hiddenButton.SetMotionScriptsWhileDisabled then self.hiddenButton:SetMotionScriptsWhileDisabled(true) end
-    self.hiddenButton:SetScript("OnClick", function() self.showHidden = not self.showHidden; self:RenderList() end)
-    KT:Tooltip(self.hiddenButton, "Hidden and deleted macros", "List the macros you hid or deleted (from every list), so you can bring them back. They are never added by Add all. Click Character or Generic to go back to the normal list.")
-    self.search = CreateFrame("EditBox", nil, frame)
-    self.search:SetSize(196, 28); self.search:SetPoint("TOPRIGHT", -24, -156)
-    KT:Panel(self.search)
-    self.search:SetAutoFocus(false); self.search:SetFont(KT.bodyFont, 14, "")
-    self.search:SetTextInsets(10, 10, 0, 0)
-    -- Wait for a short pause in typing before filtering the list.
-    self.search:SetScript("OnTextChanged", function(_, userInput)
-        if not userInput then self:RenderList(); return end
-        KT:Coalesce("macroSearch", function() self:RenderList() end, 0.15)
-    end)
-    self.search:SetScript("OnEscapePressed", function(box) box:ClearFocus() end)
-    self.search.placeholder = KT:Label(self.search, "Search macros...", 14)
-    self.search.placeholder:SetPoint("LEFT", 10, 0)
-    self.search.placeholder:SetTextColor(.55,.49,.40)
-    self.search:SetScript("OnEditFocusGained", function() self.search.placeholder:Hide() end)
-    self.search:SetScript("OnEditFocusLost", function() self.search.placeholder:SetShown(self.search:GetText() == "") end)
-    local scroll = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", 24, -198); scroll:SetSize(308, 482); self.listScroll = scroll
-    self.list = CreateFrame("Frame", nil, scroll); self.list:SetWidth(300); scroll:SetScrollChild(self.list)
-    self.empty = KT:Label(self.list, "No matching macros.", 14); self.empty:SetPoint("TOPLEFT", 6, -8)
-    local detail = CreateFrame("Frame", nil, frame)
-    self.detail = detail
-    detail:SetSize(494, 482); detail:SetPoint("TOPRIGHT", -24, -198); KT:Panel(detail)
-    self.title = KT:Label(detail, "", 18, true); self.title:SetPoint("TOPLEFT", 52, -55); self.title:SetWidth(390)
-    if self.title.SetWordWrap then self.title:SetWordWrap(false) end
-    local newPanel=CreateFrame("Frame",nil,frame);self.newPanel=newPanel
-    newPanel:SetSize(420,250);newPanel:SetPoint("CENTER",frame,"CENTER");newPanel:SetFrameLevel(frame:GetFrameLevel()+40);KT:MakeDraggable(newPanel,frame);KT:Panel(newPanel);newPanel:Hide()
-    local newTitle=KT:Label(newPanel,"New macro",18,true);newTitle:SetPoint("TOPLEFT",16,-16)
-    KT:AddClose(newPanel,nil,8)
-    local nameHint=KT:Label(newPanel,"Name (up to 16 characters)",13);nameHint:SetPoint("TOPLEFT",18,-56)
-    self.newName=CreateFrame("EditBox",nil,newPanel,"InputBoxTemplate");self.newName:SetSize(370,28);self.newName:SetPoint("TOPLEFT",25,-79)
-    self.newName:SetFont(KT.bodyFont,14,"");self.newName:SetAutoFocus(false)
-    self.newName:SetScript("OnEscapePressed",function() newPanel:Hide() end)
-    self.newGeneric=KT:QuietButton(newPanel,"Generic",180,32,"generic");self.newGeneric:SetPoint("TOPLEFT",18,-122)
-    self.newGeneric:SetScript("OnClick",function() self.newClass=false;self:RefreshNewPanel() end)
-    self.newClassButton=KT:QuietButton(newPanel,"My class",180,32,"classes");self.newClassButton:SetPoint("LEFT",self.newGeneric,"RIGHT",16,0)
-    self.newClassButton:SetScript("OnClick",function() self.newClass=true;self:RefreshNewPanel() end)
-    KT:Tooltip(self.newClassButton,"My class","List the new macro with this character's class macros. It saves to Character macros in WoW.")
-    KT:Tooltip(self.newGeneric,"Generic","List the new macro under Generic. Save to in the top row sets whether it goes to General or Character macros.")
-    local createCustom=KT:AccentButton(newPanel,"Create macro",384,32,"add");createCustom:SetPoint("BOTTOM",0,20);self.createCustomButton=createCustom
-    createCustom:SetScript("OnClick",function() self:CreateCustom(self.newName:GetText(),self.newClass) end)
-    self.prevRank = KT:QuietButton(detail, "<", 28, 26); self.prevRank:SetPoint("TOPLEFT", 16, -88)
-    self.prevRank:SetScript("OnClick", function() self:StepRank(-1) end)
-    KT:Tooltip(self.prevRank, "Spell rank", "Pick a lower rank, for example to save mana.")
-    self.rankLabel = KT:Label(detail, "", 14); self.rankLabel:SetPoint("LEFT", self.prevRank, "RIGHT", 8, 0); self.rankLabel:SetWidth(84); self.rankLabel:SetJustifyH("CENTER")
-    self.nextRank = KT:QuietButton(detail, ">", 28, 26); self.nextRank:SetPoint("LEFT", self.rankLabel, "RIGHT", 8, 0)
-    self.nextRank:SetScript("OnClick", function() self:StepRank(1) end)
-    KT:Tooltip(self.nextRank, "Spell rank", "Pick a higher rank. Your highest rank is used by default.")
-    self.mouseoverButton = KT:QuietButton(detail, "", 168, 26, "mouseover"); self.mouseoverButton:SetPoint("LEFT", self.nextRank, "RIGHT", 20, 0)
-    self.mouseoverButton:SetScript("OnClick", function()
-        self.mouseover = not self.mouseover
-        -- Remember this macro's own choice; Add all respects it too.
-        -- Only a choice that differs from Mouseover in the Add all row is kept.
-        if type(KT.db.macroMouseover) ~= "table" then KT.db.macroMouseover = {} end
-        local own = nil
-        if self.mouseover ~= (self.bulkMouseover == true) then own = self.mouseover end
-        KT.db.macroMouseover[KT:MacroKey(self.selectedMacro)] = own
-        -- The preview follows the setting; no text is saved for a default.
-        local record = KT:MacroRecord(self.selectedMacro); record.body = false; record.dirty = nil
-        self:UpdatePreview() end)
-    KT:Tooltip(self.mouseoverButton, "Mouseover", "Cast on the unit under your mouse, keeping your target. Follows Mouseover in the Add all row; changing it here makes an exception for this macro only (marked *). Changing the row setting clears the exceptions.")
-    self.previewArea = CreateFrame("ScrollFrame", nil, detail, "UIPanelScrollFrameTemplate")
-    self.previewArea:SetSize(462, 300); self.previewArea:SetPoint("TOPLEFT", 16, -124)
-    KT:AutoHideScrollBar(self.previewArea, function(needed)
-        local width = needed and 440 or 462
-        self.previewArea:SetWidth(width); if self.preview then self.preview:SetWidth(width) end
-    end)
-    self.preview = CreateFrame("EditBox", nil, self.previewArea)
-    self.preview:SetMultiLine(true); self.preview:SetAutoFocus(false)
-    self.preview:SetFont(KT.bodyFont, 14, ""); self.preview:SetSize(462, 172)
-    self.preview:SetTextInsets(6,6,6,6); KT:Panel(self.preview)
-    self.previewArea:SetScrollChild(self.preview)
-    self.preview:SetScript("OnTextChanged", function(box, userInput)
-        local _, lines = box:GetText():gsub("\n", "")
-        box:SetHeight(math.max(self.previewArea:GetHeight() or 172, (lines + math.ceil(#box:GetText() / 60) + 1) * 17 + 12))
-        -- Only typing counts as an edit. Showing a macro must never save its
-        -- text, or the preview would stop following Mouseover and ranks.
-        if self.selectedMacro and userInput and not self.loadingPreview then
-            KT:StoreMacroBody(self.selectedMacro, box:GetText())
-            self:UpdateDefaultButton()
-            self:RefreshQuickButtons()
-        end
-    end)
-    self.preview:SetScript("OnEditFocusLost", function() KT:FlushMacroRevision(self.selectedMacro) end)
-    self.preview:SetScript("OnEscapePressed", function(box) box:ClearFocus() end)
-    self.preview:SetScript("OnCursorChanged", function(_, x, y, width, height)
-        local top = -y; local offset = self.previewArea:GetVerticalScroll()
-        if top < offset then self.previewArea:SetVerticalScroll(math.max(0, top))
-        elseif top + height > offset + self.previewArea:GetHeight() then self.previewArea:SetVerticalScroll(top + height - self.previewArea:GetHeight()) end
-    end)
-    -- A gold typing line where the cursor is, and clicks that move it there.
-    self.previewCaret = KT:TextCaret(self.preview, 6)
-    -- Top row: pick a learned spell and add it to the macro text.
-    self.spellChoice=KT:Dropdown(detail,330,function() return self:LearnedSpellChoices() end,function(value)
-        self.quickSpell=value
-        for _,spell in ipairs(self:LearnedSpellChoices()) do
-            if spell.value==value then self.spellChoice.label:SetText(spell.label);self.spellChoice.icon:SetTexture(spell.icon or 134400);break end
-        end
-    end,"add")
-    self.spellChoice:SetPoint("TOPLEFT",16,-12);self.spellChoice.label:SetText("Choose learned spell")
-    KT:Tooltip(self.spellChoice,"Learned spells","Pick a spell you have learned, then add it to the macro.")
-    local addSpell=KT:QuietButton(detail,"Add spell",122,28,"add");addSpell:SetPoint("LEFT",self.spellChoice,"RIGHT",10,0)
-    KT:PlusIcon(addSpell);self.addSpellButton=addSpell
-    addSpell:SetScript("OnClick",function() self:AddQuickSpell() end)
-    KT:Tooltip(addSpell,"Add learned spell","Add a /cast line for this spell to the macro.")
-    -- Gear in front of the macro name: extra lines (stop cast, start attack, gear).
-    self.advancedButton=KT:QuietButton(detail,"",28,28);self.advancedButton:SetPoint("TOPLEFT",16,-50)
-    KT:GearIcon(self.advancedButton)
-    self.advancedPanel=CreateFrame("Frame",nil,frame);self.advancedPanel:SetSize(462,232)
-    self.advancedPanel:SetPoint("TOPLEFT",frame,"TOPRIGHT",8,-198)
-    self.advancedPanel:SetFrameLevel(frame:GetFrameLevel()+20)
-    self.advancedPanel:SetFrameStrata("DIALOG");self.advancedPanel:SetClampedToScreen(true)
-    KT:MakeDraggable(self.advancedPanel,frame)
-    KT:Panel(self.advancedPanel);self.advancedPanel:Hide()
-    self.advancedButton:SetScript("OnClick",function()
-        if not self.advancedPanel:IsShown() then
-            self.advancedPanel:ClearAllPoints()
-            local right=frame.GetRight and frame:GetRight()
-            local screen=UIParent.GetWidth and UIParent:GetWidth()
-            if right and screen and screen-right<470 then
-                self.advancedPanel:SetPoint("TOPRIGHT",frame,"TOPLEFT",-8,-198)
-            else
-                self.advancedPanel:SetPoint("TOPLEFT",frame,"TOPRIGHT",8,-198)
-            end
-        end
-        self.advancedPanel:SetShown(not self.advancedPanel:IsShown())
-    end)
-    KT:Tooltip(self.advancedButton,"Advanced options","Extra lines for this macro: stop casting, start attacking, or use an equipped item such as a trinket.")
-    self.advancedPanel:HookScript("OnShow",function() KT:SetSelected(self.advancedButton,true) end)
-    self.advancedPanel:HookScript("OnHide",function() KT:SetSelected(self.advancedButton,false) end)
-    KT:AddClose(self.advancedPanel,nil,8)
-    local advancedTitle=KT:Label(self.advancedPanel,"Add or remove macro actions",15,true);advancedTitle:SetPoint("TOPLEFT",12,-14)
-    self.quickButtons={}
-    for i,entry in ipairs({{"Stop cast","/stopcasting","Interface\\Icons\\Spell_Holy_Silence"},{"Start attack","/startattack","Interface\\Icons\\Ability_MeleeDamage"}}) do
-        local line=entry[2];local button=KT:QuietButton(self.advancedPanel,entry[1],215,28,"generic")
-        button.icon:SetTexture(entry[3])
-        button:SetPoint("TOPLEFT",12+(i-1)*223,-50)
-        button:SetScript("OnClick",function() self:EditQuickLine(line) end)
-        KT:Tooltip(button,entry[1],"Add or remove this line in the macro.")
-        self.quickButtons[#self.quickButtons+1]={button=button,line=line}
-    end
-    local slots={{1,"Head","HeadSlot","Head"},{2,"Neck","NeckSlot","Neck"},{3,"Shoulders","ShoulderSlot","Shoulder"},{4,"Shirt","ShirtSlot","Shirt"},{5,"Chest","ChestSlot","Chest"},{6,"Waist","WaistSlot","Waist"},{7,"Legs","LegsSlot","Legs"},{8,"Feet","FeetSlot","Feet"},{9,"Wrist","WristSlot","Wrists"},{10,"Hands","HandsSlot","Hands"},{11,"Ring 1","Finger0Slot","Finger"},{12,"Ring 2","Finger1Slot","Finger"},{13,"Trinket 1","Trinket0Slot","Trinket"},{14,"Trinket 2","Trinket1Slot","Trinket"},{15,"Back","BackSlot","Chest"},{16,"Main hand","MainHandSlot","MainHand"},{17,"Off hand","SecondaryHandSlot","SecondaryHand"},{18,"Ranged","RangedSlot","Ranged"},{19,"Tabard","TabardSlot","Tabard"}}
-    local function slotIcon(slot)
-        local native=(C_PaperDollInfo and C_PaperDollInfo.GetInventorySlotInfo) or GetInventorySlotInfo
-        local placeholder="Interface\\PaperDoll\\UI-PaperDoll-Slot-"..slot[4]
-        if native then
-            local ok,_,texture=pcall(native,slot[3])
-            if ok and texture and (not issecretvalue or not issecretvalue(texture)) then placeholder=texture end
-        end
-        if GetInventoryItemTexture then
-            local ok,texture=pcall(GetInventoryItemTexture,"player",slot[1])
-            if ok and texture and (not issecretvalue or not issecretvalue(texture)) then return texture end
-        end
-        return placeholder
-    end
-    -- Every gear slot as its own button (three columns), each adding or
-    -- removing a /use line for that slot.
-    local gearTitle=KT:Label(self.advancedPanel,"Use equipped gear",13,true);gearTitle:SetPoint("TOPLEFT",12,-92);gearTitle:SetTextColor(1,.82,0)
-    self.slotButtons={}
-    for i,slot in ipairs(slots) do
-        local line="/use "..slot[1]
-        local button=KT:QuietButton(self.advancedPanel,slot[2],142,28,"generic")
-        button:SetPoint("TOPLEFT",12+((i-1)%3)*148,-114-math.floor((i-1)/3)*34)
-        button.label:SetFont(KT.bodyFont,13,""); if button.label.SetWordWrap then button.label:SetWordWrap(false) end
-        button:SetScript("OnClick",function() self:EditQuickLine(line) end)
-        KT:Tooltip(button,slot[2],"Add or remove /use "..slot[1].." in the macro: uses whatever you have equipped in this slot. Only items with a Use effect do anything.")
-        self.quickButtons[#self.quickButtons+1]={button=button,line=line}
-        self.slotButtons[i]={button=button,slot=slot}
-    end
-    -- Equip an item: pick a slot, then an item for it.
-    local equipTop=114+math.ceil(#slots/3)*34+8
-    local equipTitle=KT:Label(self.advancedPanel,"Equip an item",13,true);equipTitle:SetPoint("TOPLEFT",12,-equipTop);equipTitle:SetTextColor(1,.82,0)
-    self.equipSlot=KT:Dropdown(self.advancedPanel,142,function()
-        local list={}
-        for _,entry in ipairs(self.equipSlots) do
-            local used=self:EquipLine(entry[1])
-            list[#list+1]={value=entry[1],label=entry[2]..(used and " *" or ""),tooltipTitle=entry[2],tooltip=used and ("This macro equips "..used.." here.") or nil}
-        end
-        return list
-    end,function(value) self.equipSlotValue=value; self:RefreshEquip() end,"generic")
-    self.equipSlot:SetPoint("TOPLEFT",12,-equipTop-22)
-    KT:Tooltip(self.equipSlot,"Slot","The gear slot to put an item in. Slots this macro already equips are marked with *. In a fight the game only swaps weapons; other slots change out of combat.")
-    self.equipItem=KT:Dropdown(self.advancedPanel,290,function() return self:EquipChoices(self.equipSlotValue or 16) end,function(value) self:SetEquipLine(self.equipSlotValue or 16,value) end,"generic")
-    self.equipItem:SetPoint("TOPLEFT",160,-equipTop-22); self.equipItem.menuWidth=290
-    if self.equipItem.label.SetWordWrap then self.equipItem.label:SetWordWrap(false) end
-    KT:Tooltip(self.equipItem,"Item to equip","Adds an equip line to the macro, for example to swap weapons with the spell. Lists what you wear in this slot now and soulbound items in your bags that fit it. Pick None to remove the line. One item per slot; pick another slot to add more.")
-    self.advancedPanel:SetHeight(equipTop+22+28+12)
-    -- Show what is equipped right now each time the panel opens.
-    self.advancedPanel:HookScript("OnShow",function()
-        for _,entry in ipairs(self.slotButtons) do entry.button.icon:SetTexture(slotIcon(entry.slot)) end
-        self:RefreshQuickButtons()
-    end)
-    self.defaultButton = KT:QuietButton(detail, "Default", 100, 28, "reset")
-    self.defaultButton:SetPoint("TOPRIGHT", -16, -50); self.defaultButton:Hide()
-    self.defaultButton:SetScript("OnClick", function() KT:Confirm("Restore the original macro text? Your current edit will be replaced.",function() self:RestoreDefault() end) end)
-    KT:Tooltip(self.defaultButton, "Restore default", "You changed this macro. Go back to its original text. Asks first.")
-    local add = KT:AccentButton(detail, "Add selected macro", 462, 38, "macros"); add:SetPoint("BOTTOM", 0, 10); self.addButton = add
-    do local font, _, flags = add.label:GetFont(); add.label:SetFont(font or KT.bodyFont, 16, flags or "") end
-    add:SetScript("OnClick", function() if self.selectedMacro then KT.modules.MacroEditor:InstallEntry(self.selectedMacro, self:BuildMacro(self.selectedMacro)) end end)
-    KT:Tooltip(add, "Add selected macro", "Add the macro to the chosen tab. If it is already there, you can choose to replace it.")
-    self.status = KT:Label(frame, "", 14); self.status:SetPoint("BOTTOMLEFT", 24, 20); self.status:SetWidth(830)
-    -- Hover area over the status line: lists skipped macros after "Add all".
-    self.statusHover = CreateFrame("Frame", nil, frame); self.statusHover:SetAllPoints(self.status); self.statusHover:EnableMouse(true); self.statusHover:Hide()
-    self.statusHover:SetScript("OnEnter", function(owner)
-        if not self.skippedText then return end
-        GameTooltip:SetOwner(owner, "ANCHOR_TOP")
-        GameTooltip:SetText("Skipped macros", 1,.82,0)
-        GameTooltip:AddLine(self.skippedText, .96,.93,.86, true)
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("Make room in your Character macros (Esc > Macros), then use Add all again. Macros you already have are never added twice.", .66,.59,.48, true)
-        GameTooltip:Show()
-    end)
-    self.statusHover:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    StaticPopupDialogs.FOREVERTOOLS_BULK = { text = "", button1 = "Add class macros", button2 = "Cancel", OnAccept = function() local chosen = self.pendingBulkClass; self.pendingBulkClass = nil; if chosen then self:CreateBulk(chosen) end end, OnCancel = function() self.pendingBulkClass = nil end, timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3 }
-    frame:HookScript("OnHide", function() KT:FlushMacroRevision(self.selectedMacro) end)
-    self.scope = KT.db.macroScope == "account" and "account" or "character"
-    StaticPopupDialogs.FOREVERTOOLS_FOREIGN_SINGLE = {text = "", button1 = "Add anyway", button2 = "Cancel", timeout = 0, whileDead = true, hideOnEscape = true,
-        OnAccept = function() local entry = self.pendingEntry; self.pendingEntry = nil; if entry then self:CreateEntry(entry, true); self:UpdateBulkInfo() end end,
-        OnCancel = function() self.pendingEntry = nil end}
-    self:SetupDeleteDialogs()
-    self.uiReady = true
-end
-function MacroForge:Open()
-    self:CreateUI()
-    self.search:SetText("")
-    if not self.selectedMacro then self:Select(self:AllEntries()[1])
-    else self.bulkMouseover = KT.db.macroBulkMouseover == true; self.mouseover = self:EntryMouseover(self.selectedMacro) end
-    self:RenderList(); self:UpdatePreview(); self:UpdateBulkInfo(); self:LayoutTopBar()
-    self:Status("Select a macro to preview it, or use Add all " .. classKey() .. " macros above.")
-    self.frame:Show()
-end
+-- The window and its pages are built in MacroHub.lua from these.
+MacroForge.data = {classMacros = classMacros, racials = racials, genericMacros = genericMacros, addEntries = addEntries,
+    classKey = classKey, raceKey = raceKey, classIcons = classIcons, nameList = nameList, sameEntry = sameEntry, normalizeBody = normalizeBody}
 KT:RegisterModule("MacroForge", MacroForge)
 
 

@@ -1,12 +1,12 @@
 local _,FT=...
 local S=FT.modules.IconStyles
 S.artwork={};S.bagFills={};S.targetRims={};S.bagSlots={}
-S.extraOptions={{"minimap","Minimap"},{"stances","Stance / totem bars"},{"micro","Micro menu"},{"bags","Bag bar"},{"bagWindows","Bag menu"},{"gryphons","Gryphon frame"},{"player","Player frame"},{"pet","Pet frame"},{"target","Target frame"},{"tot","Target of target"},{"focus","Focus frame"},{"focustarget","Focus target"},{"party","Party frames"},{"personal","Personal resources"},{"castbar","Cast bars"},{"swing","Swing timers"},{"xp","XP / reputation"}}
+S.extraOptions={{"minimap","Minimap"},{"stances","Stance / totem bars"},{"micro","Micro menu"},{"bags","Bag bar"},{"bagWindows","Bag menu"},{"bank","Bank"},{"gryphons","Gryphon frame"},{"player","Player frame"},{"pet","Pet frame"},{"target","Target frame"},{"tot","Target of target"},{"focus","Focus frame"},{"focustarget","Focus target"},{"party","Party frames"},{"personal","Personal resources"},{"castbar","Cast bars"},{"swing","Swing timers"},{"xp","XP / reputation"}}
 function S:TintArtwork(texture,key,secondary)
     if not texture or type(texture.GetVertexColor)~="function" or type(texture.SetVertexColor)~="function" then return end
     local record=self.artwork[texture]
     if not record then
-        record={key=key,original={texture:GetVertexColor()},desaturated=texture.IsDesaturated and texture:IsDesaturated()}; self.artwork[texture]=record
+        record={key=key,original={texture:GetVertexColor()},desaturated=texture.IsDesaturated and texture:IsDesaturated(),bank=self.markingBank}; self.artwork[texture]=record
         if hooksecurefunc then hooksecurefunc(texture,"SetVertexColor",function(_,r,g,b,a)
             if self.paintingArtwork then return end
             record.original={r,g,b,a or 1}; self:PaintArtwork(texture,record)
@@ -118,7 +118,8 @@ function S:PaintArtwork(texture,record)
     local special=rare or elite
     local allowed=not special or (not ((rare or classification=="rare" or classification=="rareelite") and not s.rares)
         and not ((elite or classification=="elite" or classification=="worldboss" or classification=="rareelite") and not s.elites))
-    local active=s[record.key] and allowed
+    -- Bank pieces follow their own switch (Skins > Bank).
+    local active=self:SkinOn(record,s) and allowed
     if texture.SetDesaturated and (record.desaturate or record.key=="micro" or record.key=="bags" or record.key=="bagWindows" or record.key=="gryphons") then texture:SetDesaturated(active or record.desaturated or false) end
     if active and (record.bagSlotBorder or (record.hideDecoration and (record.key=="bagWindows" and s.hideSlotArt or record.key~="bagWindows" and s.hideArt))) then
         texture:SetVertexColor(1,1,1,0)
@@ -214,7 +215,7 @@ function S:BagSlot(button,key)
     if not button then return end
     local record=self.bagSlots[button]
     if not record then
-        record={key=key,edges={}};self.bagSlots[button]=record
+        record={key=key,edges={},bank=self.markingBank};self.bagSlots[button]=record
         for i=1,4 do
             local edge=button:CreateTexture(nil,"BORDER",nil,1);edge:SetTexture("Interface\\Buttons\\WHITE8x8")
             record.edges[i]=edge
@@ -281,7 +282,7 @@ function S:BagSlot(button,key)
         end
         local pref=self:Area(key)
         record.slotFill:SetVertexColor(pref.slotColor[1],pref.slotColor[2],pref.slotColor[3],pref.slotOpacity)
-        record.slotFill:SetShown(pref[key])
+        record.slotFill:SetShown(self:SkinOn(record,pref) or false)
         -- With the slot art hidden, frame each slot with the game's own soft
         -- action-button frame (like buffs), tinted in the border color,
         -- instead of thin square lines.
@@ -291,9 +292,28 @@ function S:BagSlot(button,key)
             record.frameArt:SetPoint("TOPLEFT",anchor,"TOPLEFT",-2,2); record.frameArt:SetPoint("BOTTOMRIGHT",anchor,"BOTTOMRIGHT",2,-2)
         end
         if record.frameArt then
-            local on=pref[key] and pref.hideSlotArt
+            local on=self:SkinOn(record,pref) and pref.hideSlotArt
             record.frameArt:SetShown(on and true or false)
             if on then record.frameArt:SetVertexColor(pref.borderColor[1],pref.borderColor[2],pref.borderColor[3],1); record.frameArt:SetAlpha(pref.borderOpacity) end
+        end
+    end
+    -- An equipped bag is a white (common) item, and the game draws a faint
+    -- white quality border around it. With the bag bar skin on, that border
+    -- is hidden for common and poor items (better bags keep their color).
+    if key=="bags" and button.IconBorder then
+        local function quiet(quality)
+            if not FT.dbReady or not self:Settings().bags then return end
+            if quality~=nil and (issecretvalue and issecretvalue(quality)) then return end
+            if quality==nil or (type(quality)=="number" and quality<=1) then button.IconBorder:Hide() end
+        end
+        if not record.qualityHooked and hooksecurefunc and button.SetItemButtonQuality then
+            record.qualityHooked=true
+            hooksecurefunc(button,"SetItemButtonQuality",function(_,quality) quiet(quality) end)
+        end
+        local border=button.IconBorder
+        if border:IsShown() and border.GetVertexColor then
+            local r,g,b=border:GetVertexColor()
+            if not (issecretvalue and issecretvalue(r)) and type(r)=="number" and r>.85 and g>.85 and b>.85 then quiet(1) end
         end
     end
     if key=="bags" and not record.updateHooked and hooksecurefunc and button.UpdateTextures then
@@ -305,7 +325,8 @@ function S:BagSlot(button,key)
         end)
     end
     local s=self:Area(key)
-    for _,edge in ipairs(record.edges) do edge:SetVertexColor(s.borderColor[1],s.borderColor[2],s.borderColor[3],s.borderOpacity);edge:SetShown(s[key] and ((key=="bags" and not record.frameArt) or (key~="bags" and s.hideSlotArt and not record.frameArt))) end
+    local areaOn=self:SkinOn(record,s)
+    for _,edge in ipairs(record.edges) do edge:SetVertexColor(s.borderColor[1],s.borderColor[2],s.borderColor[3],s.borderOpacity);edge:SetShown(areaOn and ((key=="bags" and not record.frameArt) or (key~="bags" and s.hideSlotArt and not record.frameArt))) end
     if key=="bagWindows" then
         if C_Container and C_Container.GetContainerItemInfo and button.GetBagID and button.GetID then
             local ok,info=pcall(C_Container.GetContainerItemInfo,button:GetBagID(),button:GetID())
@@ -318,15 +339,55 @@ function S:PaintEmptyBagSlot(button,record)
     local icon=button.icon or button.Icon
     if not icon or not icon.GetAlpha or not icon.SetAlpha then return end
     local s=self:Area(record.key)
-    local hide=s[record.key] and s.hideSlotArt and record.empty==true
+    local hide=self:SkinOn(record,s) and s.hideSlotArt and record.empty==true
     if hide and not record.iconHidden then record.iconAlpha=icon:GetAlpha();record.iconHidden=true;icon:SetAlpha(0)
     elseif not hide and record.iconHidden then icon:SetAlpha(record.iconAlpha or 1);record.iconHidden=false end
+end
+-- Bank pieces (records marked bank) follow Skins > Bank, with the Bag
+-- menu's look; everything else follows its own area's switch.
+function S:SkinOn(record,area)
+    if record.bank then return self:Settings().bank==true end
+    return area[record.key] and true or false
+end
+-- Forever's bank: its frame like a bag window, and its item slots like bag
+-- slots. The slots are made again whenever the bank shows another tab, so
+-- they are redone after that (once per burst, out of combat).
+function S:BankWindow()
+    local bank=_G.BankFrame
+    if not bank then return end
+    -- The game's bank is left alone until its own switch is turned on.
+    local on=self:Settings().bank==true
+    if not on and not self.bankTouched then return end
+    self.bankTouched=true
+    self.markingBank=true
+    self:BagWindow(bank)
+    local panel=bank.BankPanel
+    local pool=panel and panel.itemButtonPool
+    if pool and pool.EnumerateActive then
+        for button in pool:EnumerateActive() do self:BagSlot(button,"bagWindows") end
+    end
+    self.markingBank=nil
+    if panel and not self.bankHooked and hooksecurefunc then
+        self.bankHooked=true
+        local function again()
+            if not FT.dbReady or self:Settings().bank~=true then return end
+            FT:Coalesce("bankArt",function() if not InCombatLockdown() then self:BankWindow() end end,.1)
+        end
+        if panel.GenerateItemSlotsForSelectedTab then hooksecurefunc(panel,"GenerateItemSlotsForSelectedTab",again) end
+        if panel.RefreshBankPanel then hooksecurefunc(panel,"RefreshBankPanel",again) end
+        bank:HookScript("OnShow",again)
+    end
 end
 function S:ApplyBagWindows()
     self:BagWindow(ContainerFrameCombinedBags)
     for i=1,13 do self:BagWindow(_G["ContainerFrame"..i]) end
     self:BagWindow(KeyRingFrame)
     self:BagWindow(ReagentBagFrame)
+    -- The game's bank window gets the same look as the bags.
+    self:BankWindow()
+    -- ForeverTools' own view-only bag and bank windows.
+    local bags=FT.Bags
+    if bags and bags.views then for _,view in pairs(bags.views) do if view:IsShown() then pcall(bags.ApplySkin,bags,view) end end end
 end
 function S:ApplyGryphons()
     for _,name in ipairs({"MainActionBar","MainMenuBar","MainMenuBarArtFrame"}) do
