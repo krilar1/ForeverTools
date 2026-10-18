@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "0.80.0"
+FT.version = "0.90.0"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -103,10 +103,36 @@ function FT:OpenModule(name)
     if self:CombatOpenRequest() then return end
     local module = self.modules[name]
     if not module then return end
+    self:CloseChoices()
+    local homeShown = self.home and self.home:IsShown()
     if self.home then self.home:Hide() end
+    -- Opened from another group's page (a link like "Interrupt bar font"):
+    -- Back returns there. Opened from the main menu or its own group: Back
+    -- goes to the main menu as before.
+    self.backTo = self.backTo or {}
+    local from = self.lastPage
+    local fromModule = from and self.modules[from]
+    if self.goingBack then
+        -- Going back: keep where that page itself came from.
+    elseif from and from ~= name and fromModule and fromModule.frame and fromModule.frame:IsShown() and self.HubOf and self:HubOf(from) ~= self:HubOf(name) then
+        self.backTo[name] = from
+    elseif not (module.frame and module.frame:IsShown()) then
+        self.backTo[name] = nil
+    end
     -- Pages that share one window (Macros) switch without closing it, so
     -- nothing flickers and the window stays where you put it.
     local stays = module.frame and module.frame:IsShown()
+    -- The window this page replaces (the main menu or another page): the new
+    -- one opens on its spot, so a menu you moved aside stays aside.
+    local spot
+    if not stays then
+        local old = homeShown and self.home
+        if not old then for _, other in pairs(self.modules) do if other ~= module and other.frame and other.frame ~= module.frame and other.frame:IsShown() and self.controlWindows and self.controlWindows[other.frame] then old = other.frame; break end end end
+        spot = old and self:Spot(old)
+    end
+    -- A group opened from the main menu opens its first page through here
+    -- again; that page takes the spot the menu had.
+    spot = spot or (not stays and self.carrySpot) or nil
     -- Another page of the same group is open: the new page takes its place
     -- at once, without fading in (it would flash).
     local hub = self.HubOf and self:HubOf(name)
@@ -118,7 +144,10 @@ function FT:OpenModule(name)
         end
     end
     self.noFade = sameGroup or nil
+    local carried = self.carrySpot
+    self.carrySpot = spot or carried
     local ok, err = pcall(module.Open, module)
+    self.carrySpot = carried
     self.noFade = nil
     if not ok then error(err, 0) end
     if self.modules.Movers and self.modules.Movers.WatchPages then self.modules.Movers:WatchPages() end
@@ -127,6 +156,38 @@ function FT:OpenModule(name)
     if module.frame and not module.redirect then
         self.lastPage = name
         if self.Dock then self:Dock(name, stays) end
+        -- Within one group the sidebar stays put (Dock places the page);
+        -- from the main menu or another group, the page takes that spot.
+        if spot and not sameGroup then self:TakeSpot(module.frame, spot) end
+        if module.Peek then self:PeekSliders(module.frame) end
+    end
+end
+-- A setting changed on a page whose element is hidden right now (the
+-- battleground timer, the interrupt bar, ...): show it for a few seconds,
+-- so you see the change without pressing Preview. Pages say how with
+-- module:Peek(). A page's main switch turned off shows nothing.
+function FT:Peeked(control)
+    if not control or control.noPeek then return end
+    local module = self.lastPage and self.modules[self.lastPage]
+    if not module or type(module.Peek) ~= "function" or not module.frame or not module.frame:IsShown() then return end
+    if control.accent and control.switch and control.ftDimOn == false then return end
+    -- Only controls on that page.
+    local p, onPage = control, false
+    for _ = 1, 8 do p = p and p.GetParent and p:GetParent(); if p == module.frame then onPage = true; break end end
+    if not onPage then return end
+    FT:Coalesce("peek", function() if not InCombatLockdown() then pcall(module.Peek, module) end end, .1)
+end
+-- Sliders on a page count as settings too (only when moved by you).
+function FT:PeekSliders(frame, depth)
+    if not frame or (depth or 0) > 3 or not frame.GetChildren then return end
+    for _, child in ipairs({frame:GetChildren()}) do
+        if child.GetObjectType and child:GetObjectType() == "Slider" and not child.ftPeek then
+            child.ftPeek = true
+            child:HookScript("OnValueChanged", function(s)
+                if (s.IsDraggingThumb and s:IsDraggingThumb()) or (s.IsMouseOver and s:IsMouseOver()) then FT:Peeked(s) end
+            end)
+        end
+        self:PeekSliders(child, (depth or 0) + 1)
     end
 end
 -- Open ForeverTools where you left it this session: the page you last had
@@ -360,6 +421,8 @@ function FT:RoundIcon(texture)
 end
 function FT:SectionHeading(label, icon, lineWidth, iconSize)
     if not label or label.ftHeading then return label end
+    -- Icons live on the left side only (menu rework): headings are plain.
+    icon = nil
     local parent = label:GetParent()
     local _, size = label:GetFont()
     iconSize = iconSize or math.floor((size or 14) + 3)
@@ -381,7 +444,7 @@ function FT:SectionHeading(label, icon, lineWidth, iconSize)
         -- The icon is a real (rounded) texture over a see-through space
         -- in the text, so the text keeps its place.
         local heading = owner.ftHeading
-        if text and text ~= "" and heading.icon then
+        if text and text ~= "" and heading.icon and FT.headingIcons then
             shown = "|T" .. ROUNDED .. ":" .. iconSize .. ":" .. iconSize .. ":0:0:32:32:0:1:0:1|t  " .. text
             if not heading.texture then
                 heading.texture = FT:RoundIcon(parent:CreateTexture(nil, "ARTWORK"))
@@ -470,11 +533,16 @@ function FT:UpdateButton(button)
     end
     if button.outline then
         -- A different kind of button: an action rather than a page.
-        if button.hover then self:Paint(button, {0.16, 0.12, 0.07, 1}, {1, 0.84, 0.5, 1})
-        else self:Paint(button, {0.07, 0.06, 0.08, 1}, {0.78, 0.62, 0.34, 1}) end
+        -- The main action of a window (Start tour, Keep it): filled gold.
+        if button.primary then
+            if button.hover then self:Paint(button, {0.47, 0.35, 0.14, 1}, {1, 0.86, 0.52, 1})
+            else self:Paint(button, {0.38, 0.28, 0.11, 1}, {0.90, 0.72, 0.38, 1}) end
+        elseif button.hover then self:Paint(button, {0.16, 0.12, 0.07, 1}, {1, 0.84, 0.5, 1})
+        else self:Paint(button, {0.085, 0.07, 0.05, 1}, {0.70, 0.56, 0.30, 1}) end
         return
     end
-    if button.selected then
+    -- Switch rows show their state on the switch itself, not as a fill.
+    if button.selected and not button.switchMode then
         self:Paint(button, {0.33,0.25,0.11, 1}, {0.85,0.68,0.36, 1})
     elseif button.hover then
         self:Paint(button, {0.17,0.13,0.09, 1}, {0.79,0.64,0.35, 1})
@@ -511,6 +579,8 @@ function FT:FactionIcon()
 end
 function FT:ButtonIcon(button, icon, size)
     if not button.icon then button.icon = button:CreateTexture(nil, "ARTWORK") end
+    -- Called again on a made button (main menu tiles): its icon is wanted.
+    if button.icon.ftPlain and not button.keepIcon then button.keepIcon = true; button.icon:SetAlpha(1) end
     local pixels = size or math.min(20, button:GetHeight() - 8)
     button.icon:SetSize(pixels, pixels)
     button.icon:SetPoint("LEFT", 9, 0)
@@ -537,8 +607,15 @@ end
 function FT:PlusIcon(button)
     local icon = button.icon; if not icon then return end
     icon:SetTexture(nil); icon:SetAlpha(0)
-    local across = button:CreateTexture(nil, "ARTWORK"); across:SetColorTexture(1, .82, 0, 1); across:SetSize(12, 2); across:SetPoint("CENTER", icon, "CENTER")
-    local up = button:CreateTexture(nil, "ARTWORK"); up:SetColorTexture(1, .82, 0, 1); up:SetSize(2, 12); up:SetPoint("CENTER", icon, "CENTER")
+    local across = button:CreateTexture(nil, "ARTWORK"); across:SetColorTexture(1, .82, 0, 1); across:SetSize(12, 2)
+    local up = button:CreateTexture(nil, "ARTWORK"); up:SetColorTexture(1, .82, 0, 1); up:SetSize(2, 12)
+    -- Right before the text (an action button's text sits in the middle).
+    local function placePlus()
+        across:ClearAllPoints(); up:ClearAllPoints()
+        if button.actionStyled then across:SetPoint("RIGHT", button.label, "LEFT", -8, 0) else across:SetPoint("CENTER", icon, "CENTER") end
+        up:SetPoint("CENTER", across, "CENTER")
+    end
+    placePlus()
     button.plus = {across, up}
 end
 -- A small cog centred on a square button: "more options".
@@ -559,6 +636,12 @@ function FT:Tooltip(button, title, body)
         GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
         GameTooltip:SetText(type(title) == "function" and title() or title, 1,.82,0)
         GameTooltip:AddLine(type(body) == "function" and body() or body, .96,.93,.86, true)
+        -- A label cut off with "..." is shown in full here.
+        local label = owner.label
+        if label and label.IsTruncated and label:IsShown() then
+            local ok, cut = pcall(label.IsTruncated, label)
+            if ok and cut then GameTooltip:AddLine(" "); GameTooltip:AddLine(label:GetText() or "", 1, .82, 0, true) end
+        end
         GameTooltip.ftAddonHelp = true
         local tooltipModule = FT.modules.Tooltip
         if tooltipModule and tooltipModule.RestoreTooltipFont then tooltipModule:RestoreTooltipFont(GameTooltip) end
@@ -639,8 +722,208 @@ function FT:QuietButton(parent, label, width, height, icon)
         if owner.restColor then owner.label:SetTextColor(unpack(owner.restColor)); owner.restColor = nil end
     end)
     if icon and label~="+" and label~="-" and label~="-" then self:ButtonIcon(button, icon) end
+    self:RowStyle(button)
+    -- Changing a setting shows the thing it changes for a few seconds.
+    button:HookScript("OnClick", function(owner) FT:CloseChoices(owner); FT:Peeked(owner) end)
+    -- Wide rows lose their decorative icon; small square buttons keep theirs.
+    if icon and width >= 100 then self:PlainRow(button) end
     self:UpdateButton(button)
     return button
+end
+-- One look for every setting (2026-10-17 menu rework):
+--   * "Name: On" / "Name: Off" buttons are switches: the name on the left,
+--     a switch on the right (gold and to the right when on).
+--   * Buttons that open a list (button.options) show "Name" on the left and
+--     the chosen value in gold on the right, with a down arrow.
+--   * Rows have no decorative icon: only an icon the page sets itself
+--     (a spell, a class, a macro) is kept. Icons live on the left side.
+-- label:GetText() still returns the full text ("Name: On").
+local function switchParts(button)
+    if button.switch then return button.switch end
+    local sw = {}
+    -- Rows with a gear (buff reminders) keep the switch clear of it.
+    local inset = button.gear and 40 or 12
+    sw.inset = inset
+    sw.track = button:CreateTexture(nil, "ARTWORK", nil, 2); sw.track:SetTexture(ROUNDED); sw.track:SetSize(36, 18); sw.track:SetPoint("RIGHT", -inset, 0)
+    sw.knob = button:CreateTexture(nil, "ARTWORK", nil, 3); sw.knob:SetTexture(ROUNDED); sw.knob:SetSize(14, 14)
+    sw.text = FT:Label(button, "", 12); sw.text:SetPoint("RIGHT", sw.track, "LEFT", -8, 0)
+    button.switch = sw
+    return sw
+end
+local function valueParts(button)
+    if button.valueText then return button.valueText end
+    local value = FT:Label(button, "", 13); value:SetJustifyH("RIGHT"); value:SetTextColor(1, .82, 0)
+    if value.SetWordWrap then value:SetWordWrap(false) end
+    local arrow = button:CreateTexture(nil, "ARTWORK", nil, 2)
+    arrow:SetTexture("Interface\\Buttons\\Arrow-Down-Up"); arrow:SetSize(14, 14); arrow:SetPoint("RIGHT", -10, -3)
+    arrow:SetVertexColor(1, .82, 0)
+    value:SetPoint("RIGHT", arrow, "LEFT", -6, 3)
+    button.valueText, button.valueArrow = value, arrow
+    return value
+end
+function FT:ShowSwitch(button, on)
+    local sw = switchParts(button)
+    button.switchMode = true
+    sw.track:Show(); sw.knob:Show(); sw.text:Show()
+    if on then sw.track:SetVertexColor(.80, .62, .23, 1); sw.knob:SetVertexColor(1, .96, .86, 1); sw.text:SetText("On"); sw.text:SetTextColor(1, .82, 0)
+    else sw.track:SetVertexColor(.27, .25, .22, 1); sw.knob:SetVertexColor(.78, .74, .66, 1); sw.text:SetText("Off"); sw.text:SetTextColor(.62, .56, .46) end
+    sw.knob:ClearAllPoints(); sw.knob:SetPoint(on and "RIGHT" or "LEFT", sw.track, on and "RIGHT" or "LEFT", on and -2 or 2, 0)
+    -- Narrow rows: the switch alone shows the state, so the name has room.
+    local narrow = (button:GetWidth() or 300) < 260
+    sw.text:SetShown(not narrow)
+    FT:LeftLabel(button)
+    button.label:SetPoint("RIGHT", button, "RIGHT", -((narrow and 40 or 72) + sw.inset), 0)
+    self:UpdateButton(button)
+    if button.accent then self:DimUnder(button, on) end
+end
+-- A page's main switch (the highlighted one) greys out the settings under
+-- it while it is off, down to the next main switch. They still work, so
+-- you can set things up first.
+function FT:DimUnder(master, on)
+    local page = master:GetParent()
+    if not page or not page.GetChildren or not (self.controlWindows and self.controlWindows[page]) then return end
+    master.ftDimOn = on
+    if not page.ftDimHooked then
+        page.ftDimHooked = true
+        -- Each time the page shows, once it is laid out, grey again.
+        page:HookScript("OnShow", function() C_Timer.After(.05, function() FT:RedoDim(page) end) end)
+    end
+    local top = master:GetBottom()
+    if type(top) ~= "number" then
+        -- Not laid out yet (the page was just made): look again a moment later.
+        master.ftDimTries = (master.ftDimTries or 0) + 1
+        if master.ftDimTries <= 10 and not master.ftDimRetry then master.ftDimRetry = true; C_Timer.After(.05, function() master.ftDimRetry = nil; FT:DimUnder(master, master.ftDimOn) end) end
+        return
+    end
+    master.ftDimTries = nil
+    local skip = {[master] = true, [page.closeButton or 0] = true, [page.homeButton or 0] = true, [page.pageInfo or 0] = true,
+        [page.moveButton or 0] = true, [page.minButton or 0] = true, [page.ftSidebar or 0] = true, [page.titleText or 0] = true}
+    -- Where the next main switch starts.
+    local floor = -math.huge
+    for _, child in ipairs({page:GetChildren()}) do
+        if child ~= master and child.accent and child.switchMode and child:IsShown() then
+            local t = child:GetTop(); if type(t) == "number" and t <= top and t > floor then floor = t end
+        end
+    end
+    page.ftDimmed = page.ftDimmed or {}
+    local function visit(object)
+        if skip[object] then return end
+        local t = object.GetTop and object:GetTop()
+        local inside = type(t) == "number" and t <= top + 1 and t > floor + 1
+        if inside and not on then FT:Dim(object, true); page.ftDimmed[object] = master
+        elseif page.ftDimmed[object] == master then FT:Dim(object, false); page.ftDimmed[object] = nil end
+    end
+    for _, child in ipairs({page:GetChildren()}) do visit(child) end
+    for _, region in ipairs({page:GetRegions()}) do if region.GetObjectType and region:GetObjectType() == "FontString" then visit(region) end end
+end
+-- Greying keeps the page's own transparency for a control (a page may fade
+-- a setting itself): the two are multiplied.
+function FT:Dim(object, dimmed)
+    if not object.ftOwnAlpha then
+        object.ftOwnAlpha = object:GetAlpha() or 1
+        local setAlpha = object.SetAlpha
+        object.ftSetAlpha = setAlpha
+        object.SetAlpha = function(owner, a) owner.ftOwnAlpha = a; setAlpha(owner, a * (owner.ftDimmed and .45 or 1)) end
+    end
+    object.ftDimmed = dimmed or nil
+    object.ftSetAlpha(object, object.ftOwnAlpha * (dimmed and .45 or 1))
+end
+function FT:RedoDim(page)
+    for _, child in ipairs({page:GetChildren()}) do
+        if child.accent and child.switchMode and child:IsShown() then self:DimUnder(child, child.ftDimOn) end
+    end
+end
+-- Rows read left to right: the name starts at the left edge.
+function FT:LeftLabel(button)
+    local label = button.label
+    if not button.icon or button.icon:GetAlpha() == 0 then
+        if not label.ftLeft then label.ftLeft = true; label:ClearAllPoints(); label:SetPoint("LEFT", 14, 0) end
+    end
+    label:SetJustifyH("LEFT")
+end
+local function hideRowExtras(button)
+    if button.switch then button.switch.track:Hide(); button.switch.knob:Hide(); button.switch.text:Hide() end
+    if button.switchMode then button.switchMode = nil; FT:UpdateButton(button) end
+    if button.valueText then button.valueText:Hide(); button.valueArrow:Hide() end
+end
+function FT:RowStyle(button)
+    local label = button.label
+    if not label or label.ftRow then return end
+    label.ftRow = true
+    local setText, getText = label.SetText, label.GetText
+    label.GetText = function(owner) if owner.ftRaw ~= nil then return owner.ftRaw end; return getText(owner) end
+    label.SetText = function(owner, text)
+        owner.ftRaw = text
+        if button.rowStyle == false or type(text) ~= "string" or (issecretvalue and issecretvalue(text)) then hideRowExtras(button); return setText(owner, text) end
+        local name, value = text:match("^(.-):%s+(.+)$")
+        if name and name ~= "" and (value == "On" or value == "Off") then
+            if button.valueText then button.valueText:Hide(); button.valueArrow:Hide() end
+            setText(owner, name); FT:ShowSwitch(button, value == "On"); return
+        end
+        if name and name ~= "" and button.options then
+            hideRowExtras(button)
+            local v = valueParts(button); v:SetText(value); v:Show(); button.valueArrow:Show()
+            if button.arrow then button.arrow:Hide() end
+            setText(owner, name)
+            FT:LeftLabel(button)
+            label:SetPoint("RIGHT", v, "LEFT", -10, 0)
+            return
+        end
+        hideRowExtras(button)
+        if button.arrow then button.arrow:Show() end
+        setText(owner, text)
+        -- Buttons that do something (reset, move, copy, open a page) look like
+        -- actions: outlined, text in the middle, no icon.
+        if button.action == nil and not button.options and not button.keepIcon and (button:GetWidth() or 0) >= 100 and FT:ActionWord(text) then button.action = true end
+        if button.action == true and not button.actionStyled then
+            button.actionStyled = true; button.outline = true
+            if button.icon and not button.keepIcon then button.icon:SetAlpha(0) end
+            label:ClearAllPoints(); label:SetPoint("CENTER"); label:SetJustifyH("CENTER")
+            FT:UpdateButton(button)
+        end
+    end
+    -- Text given when the button was made goes through the same look.
+    local first = getText(label)
+    if type(first) == "string" and first ~= "" then label:SetText(first) end
+end
+local ACTIONS = {"^Reset", "^Revert", "^Move ", "^Copy", "^First%-time tour", "^Open ", "^Test", "^Clear", "^Import", "^Export", "^Delete", "^Add ", "^New ", "^Save", "^Lock", "^Unlock", "^Done", "^Restore", "^Undo", "^Show sample", "^Edit ", "^Rename", "^Choose ", " font$", "^Fonts$", "^Settings$", "^Back up", "^Make ", "^Use ", "^Enable ", "^Disable ", "^Apply ", "^Finish", "^Preview", "^Quick keybind", "^Backups", "^Item count settings", "^Set ", "^Start ", "^Stop "}
+function FT:ActionWord(text)
+    if type(text) ~= "string" or text == "" or text:find(":", 1, true) then return false end
+    for _, pattern in ipairs(ACTIONS) do if text:find(pattern) then return true end end
+    return false
+end
+-- A setting with a few fixed choices: click opens the list (never a
+-- hidden click-to-cycle). list: {{value, label, tooltip}, ...} or a function
+-- returning it; get() gives the current value, set(value) stores it.
+function FT:MakeChoice(button, list, get, set)
+    button.options = function()
+        local out = {}
+        for _, c in ipairs(type(list) == "function" and list() or list) do out[#out + 1] = {value = c[1], label = c[2], tooltip = c[3]} end
+        return out
+    end
+    button.onSelect = function(value) set(value) end
+    button:SetScript("OnClick", function() button.value = get(); button.menuWidth = math.max(button:GetWidth(), 200); FT:ShowChoices(button) end)
+    -- Show its value on the right now that it has a list.
+    local raw = button.label.ftRaw; if raw then button.label:SetText(raw) end
+    return button
+end
+-- Decorative row icons go; one the page sets itself (a spell, a class) stays.
+function FT:PlainRow(button)
+    local icon = button.icon
+    if not icon or button.keepIcon or icon.ftPlain then return end
+    icon.ftPlain = true
+    local w, h = icon:GetSize()
+    local setTexture = icon.SetTexture
+    icon:SetAlpha(0); icon:SetWidth(1)
+    icon.SetTexture = function(owner, ...)
+        if not button.keepIcon then
+            button.keepIcon = true; owner:SetAlpha(1); owner:SetSize(w or 20, h or 20)
+            -- The name moved to the left edge while the icon was hidden: back after it.
+            local label = button.label
+            if label and label.ftLeft then label.ftLeft = nil; label:ClearAllPoints(); label:SetPoint("LEFT", owner, "RIGHT", 8, 0); label:SetPoint("RIGHT", button, "RIGHT", button.switchMode and -84 or -8, 0) end
+        end
+        return setTexture(owner, ...)
+    end
 end
 function FT:AccentButton(parent, label, width, height, icon)
     local button = self:QuietButton(parent, label, width, height, icon)
@@ -690,9 +973,10 @@ function FT:Window(name, title, width, height)
     -- Pop-ups and dialogs have only the X.
     if name ~= "ForeverToolsHome" then
         local home = self:QuietButton(frame, "Back", 88, 28, "home")
+        home.keepIcon = true
         frame.homeButton = home
         home:SetPoint("RIGHT", close, "LEFT", -8, 0)
-        home:SetScript("OnClick", function() FT:OpenHome() end)
+        home:SetScript("OnClick", function() FT:Back() end)
         local arrow = GetFileIDFromPath and GetFileIDFromPath("Interface\\Icons\\misc_arrowleft")
         if type(arrow) == "number" and arrow > 0 then home.icon:SetTexture(arrow) end
     end
@@ -707,8 +991,29 @@ function FT:Window(name, title, width, height)
     frame:Hide()
     return frame
 end
+-- Where a ForeverTools window sits on screen: the middle of it (with its
+-- group's sidebar) and its top, in screen units.
+function FT:Spot(frame)
+    local l, r, t = frame:GetLeft(), frame:GetRight(), frame:GetTop()
+    if type(l) ~= "number" or type(r) ~= "number" or type(t) ~= "number" then return end
+    if frame.ftSidebar and frame.ftSidebar:IsShown() then l = l - (frame.ftDockWidth or 0) end
+    local s = frame:GetEffectiveScale()
+    return { x = (l + r) / 2 * s, top = t * s }
+end
+-- Open a window on that spot: same middle, same top.
+function FT:TakeSpot(frame, spot)
+    if not frame or not spot then return end
+    local s = frame:GetEffectiveScale()
+    if type(s) ~= "number" or s <= 0 then return end
+    local dock = frame.ftSidebar and frame.ftSidebar:IsShown() and (frame.ftDockWidth or 0) or 0
+    frame:ClearAllPoints()
+    frame:SetPoint("TOP", UIParent, "BOTTOMLEFT", spot.x / s + dock / 2, spot.top / s)
+end
 function FT:OpenHome()
     if self:CombatOpenRequest() then return end
+    self:CloseChoices()
+    local spot
+    for _, module in pairs(self.modules) do if module.frame and module.frame:IsShown() and self.controlWindows and self.controlWindows[module.frame] then spot = self:Spot(module.frame); break end end
     if self.modules.Movers and self.modules.Movers.WatchPages then self.modules.Movers:WatchPages() end
     -- Going to the main menu yourself (Back) forgets the last page.
     self.lastPage = nil
@@ -729,12 +1034,12 @@ function FT:OpenHome()
         -- whole row.
         local tools={
             {"Macros","MacrosHub","macros","Ready-made class macros, your own macros and macro room"},
-            {"Buff reminders","BuffsHub","buffs","Missing buffs, low ranks and cooldowns"},
-            {"Appearance","Appearance","skins","Fonts, unit frames, skins, chat and tooltip"},
-            {"Combat","SystemCombat","Ability_Warrior_DefensiveStance","Threat meter, rare alerts, totems and group role"},
+            {"Buff reminders","BuffsHub","Spell_Magic_GreaterBlessingofKings","Missing buffs, low ranks and cooldowns"},
+            {"Appearance","Appearance","Spell_Holy_MindVision","Fonts, unit frames, skins, chat and tooltip"},
+            {"Combat","SystemCombat","Ability_DualWield","Threat meter, rare alerts, interrupts and group role"},
             {"PvP","PvP",self:FactionIcon(),"Stealth alerts, marked players, nearby enemies"},
-            {"Keybinds","Keybinds","keybind","Quick keybind, spell binds, wheel casting and smart key"},
-            {"On-screen info","SystemDisplay","fps","FPS, leveling stats, flight timer, minimap and quests"},
+            {"Keybinds","Keybinds","INV_Misc_Key_14","Quick keybind, spell binds, wheel casting and smart key"},
+            {"On-screen info","SystemDisplay","INV_Misc_Spyglass_03","FPS, leveling stats, flight timer, minimap and quests"},
             {"System","System","generic","General settings, looting and merchant"},
             {"Bags","BagsHub","INV_Misc_Bag_08","Gold, bank view, other characters' bags, item counts"},
             {"Profiles","ProfilesHub","profiles","Save, load and share your setups"},
@@ -768,6 +1073,7 @@ function FT:OpenHome()
         end
     end
     if self.modules.Profiles then self.modules.Profiles:Attach(self.home) end
+    if spot and not self.home:IsShown() then self:TakeSpot(self.home, spot) end
     self.home:Show()
 end
 
@@ -813,12 +1119,38 @@ combatClose:SetScript("OnEvent", function(_,event)
     end
 end)
 
+-- Times you cannot play your character: on a flight path, in a vehicle or
+-- in a cutscene. Notices (buff reminders, cooldown reminders, rare and
+-- enemy alerts) wait until you are back, unless System > General > "Hide
+-- notices while you can't play" is turned off.
+local function yes(fn, ...)
+    if type(fn) ~= "function" then return false end
+    local ok, value = pcall(fn, ...)
+    return ok and not (issecretvalue and issecretvalue(value)) and value == true
+end
+function FT:NoControl()
+    if self.db and type(self.db.system) == "table" and self.db.system.quietNoControl == false then return false end
+    if yes(UnitOnTaxi, "player") or yes(UnitInVehicle, "player") or yes(UnitHasVehicleUI, "player") then return true end
+    if yes(InCinematic) or yes(IsInCinematicScene) then return true end
+    if MovieFrame and MovieFrame.IsShown and MovieFrame:IsShown() then return true end
+    if CinematicFrame and CinematicFrame.IsShown and CinematicFrame:IsShown() then return true end
+    return false
+end
+-- The game's addon menu (the button under the minimap's calendar): ForeverTools
+-- is listed there and opens its settings (named in ForeverTools.toc).
+function ForeverTools_OnAddonCompartmentClick() if FT.OpenHome then FT:OpenHome() end end
+function ForeverTools_OnAddonCompartmentEnter(_, button)
+    if not GameTooltip then return end
+    GameTooltip:SetOwner(button, "ANCHOR_LEFT"); GameTooltip:SetText("ForeverTools"); GameTooltip:AddLine("Click to open the settings. Also /ft.", 1, 1, 1); GameTooltip:Show()
+end
+function ForeverTools_OnAddonCompartmentLeave() if GameTooltip then GameTooltip:Hide() end end
 SLASH_FOREVERTOOLS1 = "/ft"
 SlashCmdList.FOREVERTOOLS = function(message)
     local command = string.lower((message or ""):match("^%s*(.-)%s*$"))
     if command == "macro" or command == "macros" then FT:OpenModule("MacrosHub")
     elseif command == "fps" then FT:OpenModule("QualityOfLife")
     elseif command == "move" then if FT.modules.Movers then FT.modules.Movers:Toggle() end
+    elseif command == "moveall" or command == "windows" or command == "movewindows" then if FT.modules.MoveWindows then FT.modules.MoveWindows:ToggleMoving() end
     elseif command == "fonts" or command == "font" then FT:OpenModule("FontManager")
     elseif command == "colors" then FT:OpenModule("UnitColors")
     elseif command == "icons" or command == "skins" then FT:OpenModule("IconStyles")
@@ -834,8 +1166,15 @@ SlashCmdList.FOREVERTOOLS = function(message)
     elseif command == "enemies" or command == "stealth" then FT:OpenModule("EnemyAlerts")
     elseif command == "screen" or command == "info" then FT:OpenModule("SystemDisplay")
     elseif command == "threat" then FT:OpenModule("Threat")
+    elseif command == "dr" then if FT.modules.Diminish then FT.modules.Diminish:Diagnose() end
+    elseif command == "launch" then local layout=FT.modules.EditModeLayout; if layout then layout:Remind(true) end
     elseif command == "editmode" or command == "editmode remind" then local layout=FT.modules.EditModeLayout; if layout then if command == "editmode remind" then layout:Remind(true) else layout:Show() end end
     elseif command == "newchar" or command == "newcharacter" then if FT.modules.Profiles then FT.modules.Profiles:AskNewCharacter() end
+    elseif command == "copy" then if FT.modules.Chat and FT.modules.Chat.OpenCopy then FT.modules.Chat:OpenCopy() end
+    elseif command == "skindebug" then if FT.modules.IconStyles and FT.modules.IconStyles.SkinDebug then FT.modules.IconStyles:SkinDebug() end
+    elseif command == "buffdebug" then if FT.modules.BuffReminder and FT.modules.BuffReminder.BuffDebug then FT.modules.BuffReminder:BuffDebug() end
+    elseif command == "powerdebug" then if FT.modules.BuffReminder and FT.modules.BuffReminder.PowerDebug then FT.modules.BuffReminder:PowerDebug() end
+    elseif command == "bagdebug" then if FT.modules.IconStyles and FT.modules.IconStyles.BagDebug then FT.modules.IconStyles:BagDebug() end
     elseif command == "start" then if FT.modules.Onboarding then FT.modules.Onboarding:ShowDemo() end
     elseif command == "setup" or command == "wizard" then if FT.modules.Onboarding then FT.modules.Onboarding:ShowSetup(true) end
     elseif command == "whatsnew" or command == "news" then if FT.modules.Onboarding then FT.modules.Onboarding:ShowWhatsNew() end
@@ -858,10 +1197,107 @@ function FT:Dropdown(parent, width, options, onSelect, icon)
     button.label:ClearAllPoints()
     button.label:SetPoint("LEFT", button.icon, "RIGHT", 8, 0)
     button.label:SetPoint("RIGHT", -26, 0)
-    local arrow = self:Label(button, "v", 12); arrow:SetPoint("RIGHT", -9, 0)
+    local arrow = button:CreateTexture(nil, "ARTWORK", nil, 2)
+    arrow:SetTexture("Interface\\Buttons\\Arrow-Down-Up"); arrow:SetSize(14, 14); arrow:SetPoint("RIGHT", -10, -3); arrow:SetVertexColor(1, .82, 0)
+    button.arrow = arrow
     button:SetScript("OnClick", function() FT:ShowChoices(button) end)
     parent:HookScript("OnHide", function() if FT.choiceMenu then FT.choiceMenu:Hide() end end)
     return button
+end
+-- A box on a page that tells you something you need to know (why a
+-- feature you switched on isn't showing, for example): amber edge, an icon
+-- and a line or two of text. callout:Say(text) shows it, Say(nil) hides it.
+function FT:Callout(parent, width, icon)
+    local box = CreateFrame("Frame", nil, parent)
+    box:SetSize(width, 48)
+    self:Panel(box); self:Paint(box, {.16, .11, .04, .95}, {.95, .66, .22, 1})
+    box.icon = box:CreateTexture(nil, "ARTWORK"); box.icon:SetSize(28, 28); box.icon:SetPoint("LEFT", 10, 0)
+    box.icon:SetTexture("Interface\\Icons\\" .. (icon or "INV_Misc_QuestionMark")); self:RoundIcon(box.icon)
+    box.text = self:Label(box, "", 13); box.text:SetPoint("LEFT", box.icon, "RIGHT", 10, 0); box.text:SetWidth(width - 62)
+    box.text:SetJustifyH("LEFT"); box.text:SetTextColor(1, .9, .72)
+    if box.text.SetWordWrap then box.text:SetWordWrap(true) end
+    function box:Say(text)
+        if not text or text == "" then self:Hide(); return end
+        self.text:SetText(text)
+        local h = self.text:GetStringHeight()
+        self:SetHeight(math.max(48, (type(h) == "number" and h or 16) + 22))
+        self:Show()
+    end
+    box:Hide()
+    return box
+end
+-- Headings that split a page into groups ("When", "Look", "Position"), so
+-- it is clear which settings belong together. sections: {{title, control},
+-- ...} top to bottom; each heading goes where its control was and everything
+-- from there down moves 28 px lower (controls placed TOPLEFT on the page).
+-- An on-screen element that is locked still opens its page on a right-click,
+-- while left clicks and the mouse-over go through to the world below.
+-- Unlocked (moving): it takes the mouse fully for dragging.
+function FT:MenuClick(frame, page)
+    if not frame or frame.ftMenuHooked or not frame.HookScript then return end
+    frame.ftMenuHooked = true
+    frame:HookScript("OnMouseUp", function(_, button)
+        if button ~= "RightButton" or InCombatLockdown() then return end
+        local movers = FT.modules.Movers
+        if movers and movers.active then movers:Stop() end
+        FT:OpenModule(page)
+    end)
+end
+function FT:LockedMouse(frame, locked, page)
+    if page then self:MenuClick(frame, page) end
+    if not frame or (InCombatLockdown and InCombatLockdown()) then return end
+    frame:EnableMouse(true)
+    if frame.SetMouseMotionEnabled then pcall(frame.SetMouseMotionEnabled, frame, not locked) end
+    if frame.SetPassThroughButtons then
+        if locked then pcall(frame.SetPassThroughButtons, frame, "LeftButton", "MiddleButton", "Button4", "Button5")
+        else pcall(frame.SetPassThroughButtons, frame) end
+    end
+end
+function FT:Sections(frame, sections, width)
+    local function topOf(region)
+        if not region or not region.GetNumPoints or region:GetNumPoints() == 0 then return end
+        local point, rel, _, x, y = region:GetPoint(1)
+        if point == "TOPLEFT" and (rel == frame or rel == nil) then return x, y end
+    end
+    local all = {}
+    for _, c in ipairs({frame:GetChildren()}) do all[#all + 1] = c end
+    for _, r in ipairs({frame:GetRegions()}) do all[#all + 1] = r end
+    frame.ftSectionHeads = frame.ftSectionHeads or {}
+    for _, entry in ipairs(sections) do
+        local title, control = entry[1], entry[2]
+        local x0, y0 = topOf(control)
+        if y0 then
+            for _, r in ipairs(all) do
+                local x, y = topOf(r)
+                if y and y <= y0 + 8 then
+                    local point, rel, relPoint = r:GetPoint(1)
+                    local n = r:GetNumPoints()
+                    if n == 1 then r:ClearAllPoints(); r:SetPoint(point, rel or frame, relPoint, x, y - 28)
+                    else
+                        local pts = {}
+                        for i = 1, n do pts[i] = {r:GetPoint(i)} end
+                        r:ClearAllPoints()
+                        for i, p in ipairs(pts) do
+                            if p[2] == frame or p[2] == nil then r:SetPoint(p[1], frame, p[3], p[4], (p[1]:find("TOP") and p[5] - 28) or p[5])
+                            else r:SetPoint(p[1], p[2], p[3], p[4], p[5]) end
+                        end
+                    end
+                end
+            end
+            local head = self:Label(frame, title, 14, true); head:SetPoint("TOPLEFT", frame, "TOPLEFT", x0, y0 - 4)
+            head:SetTextColor(.95, .90, .81); self:SectionHeading(head, nil, width or 300)
+            frame.ftSectionHeads[#frame.ftSectionHeads + 1] = head
+            all[#all + 1] = head
+        end
+    end
+end
+-- An open list closes when you click anything else in ForeverTools or
+-- switch pages, so it never covers the next page.
+function FT:CloseChoices(clicked)
+    local menu = self.choiceMenu
+    if not menu or not menu:IsShown() then return end
+    if clicked and (clicked == menu.owner or (clicked.GetParent and clicked:GetParent() == menu.list)) then return end
+    menu:Hide()
 end
 function FT:ShowChoices(owner)
     if self:CombatOpenRequest() then return end
@@ -895,10 +1331,15 @@ function FT:ShowChoices(owner)
     menu.list:SetWidth(width - inner); menu.list:SetHeight(math.max(1, #options * 30))
     menu.scroll:SetVerticalScroll(0)
     for _, row in ipairs(menu.rows) do row:Hide() end
+    local seen, kinds = {}, 0
+    for _, item in ipairs(options) do if item.icon and not seen[item.icon] then seen[item.icon] = true; kinds = kinds + 1 end end
+    menu.iconsDiffer = kinds > 1
     for index, item in ipairs(options) do
         local row = menu.rows[index]
         if not row then
             row = self:QuietButton(menu.list, "", width - inner, 28, "macros")
+            -- List items are plain choices: never a switch or an action look.
+            row.rowStyle = false; row.action = false
             -- Items may carry their own tooltip (for example a list of changes).
             row:HookScript("OnEnter", function(owner)
                 local item = owner.item
@@ -911,13 +1352,17 @@ function FT:ShowChoices(owner)
             row:HookScript("OnLeave", function() GameTooltip:Hide() end)
             row:SetScript("OnClick", function(clicked)
                 local current = menu.owner; local selected = clicked.item
-                menu:Hide(); current.onSelect(selected.value)
+                menu:Hide(); current.onSelect(selected.value); FT:Peeked(current)
             end)
             menu.rows[index] = row
         end
         row.item = item; row:SetWidth(width - inner); row:ClearAllPoints(); row:SetPoint("TOPLEFT", 0, -(index - 1) * 30)
         row.label:SetText(item.label)
-        row.icon:SetTexture(item.icon or "Interface\\Icons\\INV_Misc_Note_01")
+        -- A list item shows an icon only when it has one of its own, and
+        -- only when the icons tell items apart (spells, classes): a list
+        -- where every item has the same icon shows none.
+        if item.icon and menu.iconsDiffer then row.icon:SetTexture(item.icon); row.icon:SetAlpha(1); row.icon:SetSize(20, 20)
+        else row.icon:SetAlpha(0); row.icon:SetWidth(1) end
         self:SetSelected(row, owner.value == item.value)
         -- Unavailable choices stay visible (greyed) and explain themselves on hover.
         if row.SetMotionScriptsWhileDisabled then row:SetMotionScriptsWhileDisabled(true) end
@@ -946,13 +1391,13 @@ function FT:TitleTools(frame)
     if texture then move.icon:SetTexture(texture)
     else move.icon:SetTexture("Interface\\Icons\\" .. self.icons.move); move.icon:SetTexCoord(.07, .93, .07, .93); self:RoundIcon(move.icon) end
     move:SetScript("OnClick", function() if FT.modules.Movers then FT.modules.Movers:Toggle() end end)
-    self:Tooltip(move, "Move elements", "Unlock all ForeverTools elements on screen and drag them where you like. This window shrinks to its title bar meanwhile and opens again when you click Done (or this button again).")
+    self:Tooltip(move, "Move elements", "Drag ForeverTools' things on screen. This window shrinks until you click Done.")
     local min = self:QuietButton(frame, "", 28, 28)
     -- A gold dash; minimized, a second bar turns it into a plus.
     min.dash = min:CreateTexture(nil, "ARTWORK"); min.dash:SetColorTexture(1, .82, 0, 1); min.dash:SetSize(12, 2); min.dash:SetPoint("CENTER", 0, -4)
     min.bar = min:CreateTexture(nil, "ARTWORK"); min.bar:SetColorTexture(1, .82, 0, 1); min.bar:SetSize(2, 12); min.bar:SetPoint("CENTER"); min.bar:Hide()
     min:SetScript("OnClick", function() FT:SetMinimized(frame, not frame.minimized) end)
-    self:Tooltip(min, "Minimize", function() return frame.minimized and "Show the whole window again." or "Shrink this window to its title bar. Drag it anywhere." end)
+    self:Tooltip(min, "Minimize", function() return frame.minimized and "Show the whole window again." or "Shrink this window to its title bar." end)
     frame.moveButton, frame.minButton = move, min
     frame:HookScript("OnShow", function() FT:LayoutTitle(frame); FT:SetSelected(move, FT.modules.Movers and FT.modules.Movers.active) end)
     frame:HookScript("OnHide", function() if frame.minimized then FT:SetMinimized(frame, false) end end)
@@ -1240,6 +1685,19 @@ function FT:AutoHideScrollBar(scroll, onChange)
     scroll:HookScript("OnScrollRangeChanged", update)
     scroll:HookScript("OnShow", function() update() end)
     update()
+end
+-- Back: to the page this one was opened from (another group's page), else
+-- the main menu.
+function FT:Back()
+    local here = self.lastPage
+    local to = here and self.backTo and self.backTo[here]
+    if to and self.modules[to] then
+        self.backTo[here] = nil
+        self.goingBack = true; local ok, err = pcall(self.OpenModule, self, to); self.goingBack = nil
+        if not ok then error(err, 0) end
+        return
+    end
+    self:OpenHome()
 end
 function FT:BackTo(frame, moduleName)
     frame.homeButton:SetScript("OnClick", function() FT:OpenModule(moduleName) end)

@@ -87,7 +87,7 @@ function Marks:Press()
     -- Silent: the coin on the item is the feedback. Only a refusal is said
     -- out loud, since nothing on the item would show why the key did nothing.
     if self:Has(itemID) then self:Set(itemID,name,false)
-    elseif worthless then FT:Toast((name or "This item").." has no sell price, so a merchant won't buy it.",3)
+    elseif worthless then FT:Toast((name or "This item").." has no sell price.",3)
     else self:Set(itemID,name,true) end
 end
 
@@ -245,7 +245,7 @@ function Marks:Refresh()
     self.prev:SetShown(#list>PAGE); self.next:SetShown(#list>PAGE)
     local note
     if s.sellMarked~=true then note="Off: nothing is marked or sold."
-    elseif not key then note="|cffff9e59Choose a mark key to start marking items.|r"
+    elseif not key then note="|cffff9e59Choose a mark key first.|r"
     else note='Hover an item in your bags and press "'..keyText(key)..'" to mark or unmark it.' end
     self.status:SetText(note)
 end
@@ -263,27 +263,27 @@ function Marks:Propose(key)
     local action=GetBindingAction and GetBindingAction(key)
     local name=action and action~="" and ((GetBindingName and GetBindingName(action)) or action) or nil
     local text='Use "'..keyText(key)..'" as the mark key?'
-    if name then text=text.."\n\nIt is bound to "..name.." now. That still happens when you press it, so a free key or combination works best." end
+    if name then text=text.."\n\nIt is bound to "..name.." now. A free key works best." end
     FT:Confirm(text,function() FT.db.sellMarkKey=key; self:Apply() end)
 end
 function Marks:Open()
     if not self.frame then
         local frame=FT:Window("ForeverToolsSellMarks","Always-sell marks",520,572); self.frame=frame
         FT:BackTo(frame,"SystemMerchant")
-        FT:PageInfo(frame,"Always-sell marks","Mark the items you always want to sell. Hover an item in your bags and press your mark key: it gets a small coin, and every item of that kind is sold when you open a merchant. Press the key on it again to unmark.\n\nAt most 12 items are sold per merchant visit (greys, white gear and marked items together), so every one can be bought back. The rest is sold next time.\n\nThe marks stay on your account. They are never part of a profile or an export.")
+        FT:PageInfo(frame,"Always-sell marks","Mark items you always want sold. Hover an item in your bags and press your mark key; press again to unmark.\n\nAt most 12 items sold per visit, so all can be bought back. Marks stay on your account.")
         self.toggle=FT:AccentButton(frame,"",472,34,"INV_Misc_Coin_01"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function() local s=self:Settings(); s.sellMarked=not (s.sellMarked==true); self:Apply() end)
-        FT:Tooltip(self.toggle,"Sell marked items","When you open a merchant, sell the items you have marked. Works with or without Auto-sell grey items. Items with no sell price are skipped.")
+        FT:Tooltip(self.toggle,"Sell marked items","Sell marked items at merchants.")
         self.keyLabel=FT:Label(frame,"",15); self.keyLabel:SetPoint("TOPLEFT",24,-114); self.keyLabel:SetWidth(472)
         local change=FT:QuietButton(frame,"Choose a key",230,32,"keybind"); change:SetPoint("TOPLEFT",24,-142)
         change:SetScript("OnClick",function() if not InCombatLockdown() then self:Capture(true) end end)
-        FT:Tooltip(change,"Choose a key","Click, then press the key (with Shift, Ctrl or Alt if you like). You're asked to confirm. The key only marks while your mouse is on an item in your bags; everywhere else it does what it always did. Escape cancels.")
+        FT:Tooltip(change,"Choose a key","Click, then press the key. It only marks while hovering a bag item. Esc cancels.")
         self.clearKey=FT:QuietButton(frame,"Clear key",230,32,"reset"); self.clearKey:SetPoint("TOPLEFT",266,-142)
         self.clearKey:SetScript("OnClick",function() FT.db.sellMarkKey=nil; self:Apply() end)
-        FT:Tooltip(self.clearKey,"Clear key","Remove the mark key. Marked items are still sold; you just can't mark new ones until you choose a key again.")
+        FT:Tooltip(self.clearKey,"Clear key","Remove the mark key. Marked items still sell.")
         self.scope=FT:QuietButton(frame,"",472,32,"character"); self.scope:SetPoint("TOPLEFT",24,-182)
-        self.scope:SetScript("OnClick",function() local s=self:Settings(); s.sellMarksPerCharacter=not (s.sellMarksPerCharacter==true); self.page=1; self:Changed(); self:Apply() end)
-        FT:Tooltip(self.scope,"Who the marks are for","All characters: one list for your whole account. This character: each character has its own list. Switching deletes nothing. Click to switch.")
+        FT:MakeChoice(self.scope,{{false,"All characters","One list for your whole account."},{true,"This character","Each character has its own list."}},function() return self:Settings().sellMarksPerCharacter==true end,function(v) self:Settings().sellMarksPerCharacter=v; self.page=1; self:Changed(); self:Apply() end)
+        FT:Tooltip(self.scope,"Who the marks are for","One list for the account, or one per character.")
         self.listTitle=FT:Label(frame,"",16,true); self.listTitle:SetPoint("TOPLEFT",24,-232); FT:SectionHeading(self.listTitle,"INV_Misc_Coin_02",300)
         self.rows={}
         for i=1,PAGE do

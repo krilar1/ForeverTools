@@ -27,7 +27,7 @@ local function buffStatus(key)
     return ok and text or ""
 end
 local hubs = {
-    {key = "Appearance", width = 760, height = 560, title = "Appearance", pages = {
+    {key = "Appearance", width = 760, height = 610, title = "Appearance", pages = {
         {"FontManager", "Fonts", "fonts", function() local m = mod("FontManager"); return m and m.Summary and m:Summary() or "Fonts, sizes and outlines" end},
         {"UnitColors", "Unit frames", function()
             -- Your own class's icon, like the switches on the page.
@@ -39,23 +39,30 @@ local hubs = {
         end},
         {"DispelGlow", "Dispel glow", "Spell_Holy_DispelMagic", function() return onOff(settings("DispelGlow").enabled) end},
         {"DruidMana", "Druid mana bar", "Ability_Racial_BearForm", function() return onOff(settings("UnitColors").druidMana) end},
+        {"PersonalResource", "Game resource bars", "Ability_Rogue_SliceDice", function()
+            local m = mod("PersonalResource"); if not m or not FT.dbReady then return "" end
+            local s = m:Settings(); local text = 0
+            for _, v in pairs(s.text) do if v ~= "game" then text = text + 1 end end
+            return (s.order and "Own order" or "Game's order") .. (text > 0 and " · text changed" or "")
+        end},
         {"IconStyles", "Skins", "skins", function()
             local s = settings("IconStyles"); local n, total = 0, 0
             for _, entry in ipairs(mod("IconStyles").extraOptions or {}) do total = total + 1; if s[entry[1]] then n = n + 1 end end
             for _, key in ipairs({"actions", "buffs"}) do total = total + 1; if s[key] then n = n + 1 end end
             return n == 0 and "Off" or (n .. " of " .. total .. " areas on")
         end},
-        {"Chat", "Chat", "chat", function() return "Buttons, font and links" end},
-        {"Tooltip", "Tooltip", "tooltip", function() return "Layout, extras and position" end},
-        {"ItemCounts", "Item counts", "INV_Misc_Note_04", function()
+        {"Chat", "Chat", "Interface\\GossipFrame\\GossipGossipIcon", function() return "Buttons, font and links" end},
+        {"Tooltip", "Tooltip", "INV_Misc_Note_01", function() return "Layout, extras and position" end},
+        {"ItemCounts", "Item counts", "INV_Misc_Gem_01", function()
             local B = FT.Bags; if not B then return "" end
             local s = B:Settings(); return s.counts and ({each = "Each character", total = "Total only", both = "Each and total"})[s.countStyle] or "Off"
         end},
     }},
     {key = "SystemCombat", width = 540, height = 578, title = "Combat", pages = {
-        {"Threat", "Threat meter", "Ability_Warrior_DefensiveStance", function() local t = settings("Threat"); return (t.enabled and "Meter on" or "Meter off") .. " · threat % " .. onOff(t.text):lower() end},
-        {"RareAlert", "Rare alerts", "Ability_Hunter_SniperShot", function() return onOff(settings("RareAlert").enabled) end},
+        {"Threat", "Threat meter", "Spell_Nature_Reincarnation", function() local t = settings("Threat"); return (t.enabled and "Meter on" or "Meter off") .. " · threat % " .. onOff(t.text):lower() end},
+        {"RareAlert", "Rare alerts", "INV_Misc_Head_Dragon_01", function() return onOff(settings("RareAlert").enabled) end},
         {"Totems", "Totems", "Spell_Nature_StoneSkinTotem", function() local t = settings("Totems"); return onOff(t.range or t.leftBehind) end},
+        {"Interrupts", "Interrupt bar", "Ability_Kick", function() return onOff(settings("Interrupts").enabled) end},
         {"SystemGameplay", "Group role", "Ability_Warrior_DefensiveStance", function() return onOff(settings("System").autoRole) end},
         {"SystemDeath", "Death glow", "Spell_Holy_Resurrection", function()
             local get = (C_CVar and C_CVar.GetCVar) or GetCVar
@@ -64,7 +71,7 @@ local hubs = {
             return onOff(value ~= "0")
         end},
     }},
-    {key = "PvP", width = 540, height = 520, title = "PvP", pages = {
+    {key = "PvP", width = 540, height = 640, title = "PvP", pages = {
         {"EnemyAlerts", "Enemy alerts", "Ability_Stealth", function()
             local s = settings("Enemies")
             return (s.stealth and "Stealth on" or "Stealth off") .. " · marked " .. onOff(s.marks):lower()
@@ -75,20 +82,25 @@ local hubs = {
         end},
         {"EnemyNearby", "Nearby enemies", "INV_Misc_Spyglass_02", function() return onOff(settings("Enemies").nearby) end},
         {"QueueTimer", "Battleground timer", "INV_Misc_PocketWatch_01", function() return onOff(settings("QueueTimer").enabled) end},
+        {"Trinkets", "Trinket menu", function() return FT:FactionIcon() end, function() local on = settings("Trinkets").enabled; local T = FT.modules.Trinkets; if on and T and T.Worn and not T:Worn() then return "On · no trinket yet" end; return onOff(on) end},
+        {"Diminish", "Diminishing returns", "Spell_Frost_FrostNova", function() return onOff(settings("Diminish").enabled) end},
+        {"AutoRelease", "Auto release", "Spell_Holy_GuardianSpirit", function() return onOff(settings("AutoRelease").enabled) end},
     }},
     {key = "Keybinds", width = 520, height = 608, title = "Keybinds", pages = {
-        {"SystemKeybinds", "Keybind tools", "keybind", function() return "Quick keybind and backups" end},
+        {"SystemKeybinds", "Keybind tools", "INV_Misc_Key_03", function() return "Quick keybind and backups" end},
         {"SpellBinds", "Spell binds", "INV_Misc_Key_13", function() return onOff(settings("SpellBinds").enabled) end},
         {"CustomKeybinds", "Mouse-wheel casting", "mouseover", function() return onOff(settings("CustomKeybinds").enabled) end},
         {"SmartKey", "Smart interact key", "INV_Misc_Key_10", function() return onOff(settings("SmartKey").enabled) end},
     }},
     {key = "SystemDisplay", width = 540, height = 660, title = "On-screen info", pages = {
-        {"QualityOfLife", "FPS counter", "fps", function() return onOff(settings("QualityOfLife").enabled) end},
+        {"QualityOfLife", "FPS counter", "INV_Gizmo_01", function() return onOff(settings("QualityOfLife").enabled) end},
         {"Leveling", "Leveling stats", "Spell_ChargePositive", function() return onOff(settings("Leveling").enabled) end},
         {"FlightTimer", "Flight timer", function() return FT:FlightIcon() end, function() return onOff(settings("FlightTimer").enabled) end},
         {"SystemMinimap", "Minimap", "map", function() return "Button, coordinates, grouping" end},
-        {"SystemQuests", "Quests and loot rolls", "INV_Misc_Note_01", function() return "Tracker and roll position" end},
+        {"SystemQuests", "Quests and loot rolls", "INV_Misc_Book_08", function() return "Tracker and roll position" end},
+        {"SystemErrors", "Error messages", "Ability_Rogue_Disguise", function() local s = settings("System"); return s.hideErrors and (s.errorsInCombat and "Hidden in a fight" or "Hidden") or "Shown" end},
         {"Movers", "Move elements", "move", function() local m = mod("Movers"); return m and m.active and "Moving now" or "Drag things on screen" end},
+        {"MoveWindows", "Move game windows", "Ability_Hunter_Pathfinding", function() local s = settings("MoveWindows"); local n = 0; for _ in pairs(s.frames or {}) do n = n + 1 end; return s.enabled and (n > 0 and n .. " moved" or "On") or "Off" end},
     }},
     -- Starts to the right, clear of the game's own macro window (left side).
     {key = "MacrosHub", width = 600, height = 660, shiftX = 220, title = "Macros", pages = {
@@ -97,42 +109,43 @@ local hubs = {
             return "ClassIcon_" .. (class and (class:sub(1, 1) .. class:sub(2):lower()) or "Warrior")
         end, function() return macroCount("class", true) end},
         {"MacroRace", "My race", "INV_Misc_Head_Human_01", function() return macroCount("race", true) end},
-        {"MacroGeneric", "Generic", "generic", function() return macroCount("generic") end},
-        {"MacroOwn", "My own macros", "INV_Misc_Note_01", function()
+        {"MacroGeneric", "Generic", "INV_Misc_Gear_01", function() return macroCount("generic") end},
+        {"MacroOwn", "My own macros", "INV_Feather_05", function()
             local m = mod("MacroForge"); if not m or not m.ViewEntries then return "" end
             local n = #m:ViewEntries("own"); return n == 0 and "None yet" or (n .. " made by you")
         end},
         {"MacroOther", "Other classes", "classes", function() return "Look at an alt's macros" end},
-        {"MacroHidden", "Hidden", "reset", function()
+        {"MacroHidden", "Hidden", "Spell_Magic_LesserInvisibilty", function()
             local m = mod("MacroForge"); local n = m and m.HiddenCount and m:HiddenCount() or 0
             return n == 0 and "None" or (n .. " hidden")
         end},
-        {"MacroSettings", "Settings", "general", function()
+        {"MacroGuide", "Macro guide", "INV_Misc_Book_03", function() return "Examples, explained" end},
+        {"MacroSettings", "Settings", "INV_Misc_Wrench_01", function()
             local db = FT.db or {}
-            return (db.macroScope == "account" and "General" or "Character") .. " tab · mouseover " .. (db.macroBulkMouseover and "on" or "off")
+            return (db.macroScope == "account" and "General" or "Character") .. " · mouseover " .. (db.macroBulkMouseover and "on" or "off")
         end},
     }},
-    {key = "BuffsHub", width = 520, height = 640, title = "Buff reminders", pages = {
+    {key = "BuffsHub", width = 520, height = 720, title = "Buff reminders", pages = {
         {"BuffReminder", "Your buffs", "Spell_Holy_WordFortitude", function() return buffStatus("self") end},
         {"BuffGroup", "Group buffs", "Spell_Holy_PrayerOfFortitude", function() return buffStatus("group") end},
         {"BuffRanks", "Low ranks", "INV_Misc_Book_07", function() return buffStatus("rank") end},
-        {"BuffLook", "Look and position", "Ability_Rogue_Sprint", function() return buffStatus("look") end},
+        {"BuffLook", "Look and position", "Spell_Holy_MagicalSentry", function() return buffStatus("look") end},
         {"CooldownReminder", "Cooldown reminders", "Spell_Nature_TimeStop", function() return onOff(settings("CooldownReminder").enabled) end},
     }},
     {key = "ProfilesHub", width = 520, height = 560, title = "Profiles", pages = {
-        {"Profiles", "Profiles", "profiles", function() local m = mod("Profiles"); return m and m.SidebarStatus and m:SidebarStatus("list") or "" end},
-        {"ProfilesShare", "Export and import", "INV_Misc_Note_01", function() return "Backups and other computers" end},
-        {"ProfilesUndo", "Earlier versions", "Spell_Nature_TimeStop", function() local m = mod("Profiles"); return m and m.SidebarStatus and m:SidebarStatus("undo") or "" end},
-        {"ProfilesNew", "New characters", "INV_Misc_Head_Human_01", function() local m = mod("Profiles"); return m and m.SidebarStatus and m:SidebarStatus("new") or "" end},
-        {"ProfilesReset", "Default settings", "reset", function() return "Start over" end},
+        {"Profiles", "Profiles", "INV_Misc_Book_04", function() local m = mod("Profiles"); return m and m.SidebarStatus and m:SidebarStatus("list") or "" end},
+        {"ProfilesShare", "Export and import", "INV_Misc_Note_06", function() return "Backups and other computers" end},
+        {"ProfilesUndo", "Earlier versions", "INV_Misc_PocketWatch_02", function() local m = mod("Profiles"); return m and m.SidebarStatus and m:SidebarStatus("undo") or "" end},
+        {"ProfilesNew", "New characters", "INV_Misc_Toy_07", function() local m = mod("Profiles"); return m and m.SidebarStatus and m:SidebarStatus("new") or "" end},
+        {"ProfilesReset", "Default settings", "Spell_Holy_Purify", function() return "Start over" end},
     }},
     {key = "BagsHub", width = 540, height = 440, title = "Bags", pages = {
-        {"BagsGeneral", "Bags", "INV_Misc_Bag_08", function()
+        {"BagsGeneral", "Bags", "INV_Misc_Bag_09", function()
             local B = FT.Bags; if not B then return "" end
             local s = B:Settings(); local n = count({s.gold, s.view, s.counts})
             return n == 0 and "Off" or (n .. " of 3 on")
         end},
-        {"BagsCharacters", "Characters", "character", function()
+        {"BagsCharacters", "Characters", "Spell_Holy_PrayerofSpirit", function()
             local B = FT.Bags; if not B then return "" end
             local n = 0; local st = FT.db and FT.db.bagStore
             if type(st) == "table" and type(st.chars) == "table" then for _ in pairs(st.chars) do n = n + 1 end end
@@ -154,64 +167,81 @@ local hubs = {
 }
 -- What each section is, for its tooltip in the sidebar.
 local tips = {
-    FontManager = "Fonts, sizes and outlines for each kind of text on screen.",
-    UnitColors = "Class-colored health bars on the player, target and focus frames.",
-    DispelGlow = "A glow around unit frames that have a debuff you can remove.",
-    DruidMana = "For druids: your mana as a third bar while you are in bear, cat or another form.",
-    IconStyles = "Dark mode and other looks for action bars, buffs, bags, unit frames and more.",
-    Chat = "Show or hide the buttons around the chat, and set the chat font and clickable links.",
-    Tooltip = "What player tooltips show and in which order, text sizes, and where tooltips appear.",
-    ItemCounts = "How many of an item you have on each character and in your banks, on item tooltips.",
-    BagsGeneral = "Gold of all your characters, a view-only bank, and other characters' bags, from your bag.",
-    BagsCharacters = "The characters ForeverTools remembers for gold, item counts and the bag buttons.",
-    Threat = "A threat meter next to the damage meter, and your threat % above your target.",
-    RareAlert = "A notice, and a sound if you like, when a rare is nearby.",
-    Totems = "For shamans: totem range on the minimap, and a warning when you leave a totem behind.",
-    SystemGameplay = "Set your role (tank, healer or damage) by itself when you join a group.",
-    SystemDeath = "The glowing, washed-out screen while you are dead or a ghost.",
-    EnemyAlerts = "A warning when an enemy player near you goes into stealth, and a red one when a player you marked shows up.",
-    EnemyMarks = "Players you marked, so you are warned when they show up again.",
-    EnemyNearby = "A small row of class icons of the enemy players you have seen recently.",
-    QueueTimer = "A countdown of the time you have to enter when a battleground queue pops.",
-    SystemKeybinds = "Bind action buttons by hovering them (/kb), and put earlier keybinds back.",
-    SpellBinds = "Bind spells, items and macros straight to keys, without an action bar.",
-    CustomKeybinds = "Cast a spell by scrolling the mouse wheel over a unit.",
-    SmartKey = "One key for questing: it interacts, or uses RestedXP's quest item or target.",
+    FontManager = "Fonts, sizes and outlines.",
+    UnitColors = "Class colors on player, target and focus.",
+    DispelGlow = "A glow on frames with a debuff you can remove.",
+    PersonalResource = "The order and text of the game's resource bars.",
+    DruidMana = "Druids: mana as a third bar in forms.",
+    IconStyles = "Dark mode and other looks.",
+    Chat = "Chat buttons, font, links and copy.",
+    Tooltip = "What player tooltips show, and where.",
+    ItemCounts = "Item counts per character on tooltips.",
+    BagsGeneral = "Everyone's gold, bank anywhere, alts' bags.",
+    BagsCharacters = "The characters ForeverTools remembers.",
+    Threat = "Threat meter and threat % above your target.",
+    RareAlert = "A notice when a rare is nearby.",
+    Totems = "Shamans: totem range and left-behind warning.",
+    SystemGameplay = "Set your role when you join a group.",
+    SystemDeath = "The washed-out screen while dead.",
+    EnemyAlerts = "Alerts for stealth and marked players.",
+    EnemyMarks = "Players you marked.",
+    EnemyNearby = "Enemy players you saw recently.",
+    QueueTimer = "Time left to enter a battleground.",
+    Diminish = "When crowd control will be shorter, or won't land.",
+    SystemKeybinds = "Bind keys by hovering (/kb), and backups.",
+    SpellBinds = "Bind spells, items and macros to keys.",
+    CustomKeybinds = "Cast by scrolling over a unit.",
+    SmartKey = "One key to interact while questing.",
     QualityOfLife = "A small frames-per-second counter.",
-    Leveling = "XP per hour, time to level and more, on a small line and in the XP bar tooltip.",
-    FlightTimer = "Where you are flying and how long until you land.",
-    SystemMinimap = "The ForeverTools minimap button, coordinates, and grouping other addons' buttons.",
-    SystemQuests = "How the quest tracker starts at login, and where loot-roll windows appear.",
-    Movers = "Drag everything ForeverTools draws on screen, all at once.",
-    SystemGeneral = "Login message, what's new, first-time setup, resetting, Lua errors and the bug report.",
-    SystemMerchant = "Faster looting, and selling and repairing at merchants.",
-    SellMarks = "Mark items in your bags with a key; marked items are sold at merchants.",
-    MacroForge = "Ready-made macros for your class: add the missing ones, or open one to change it.",
+    Leveling = "XP per hour, time to level and more.",
+    FlightTimer = "Time until you land.",
+    SystemMinimap = "Minimap button, coordinates, button grouping.",
+    SystemQuests = "Quest tracker at login, loot-roll position.",
+    Interrupts = "Your group's interrupts and cooldowns.",
+    SystemErrors = "Hide the red error text.",
+    Movers = "Drag ForeverTools' things on screen.",
+    MoveWindows = "Drag the game's own windows.",
+    SystemGeneral = "Messages, setup, reset and bug report.",
+    SystemMerchant = "Faster looting, selling and repairing.",
+    SellMarks = "Mark bag items to sell at merchants.",
+    MacroForge = "Ready-made macros for your class.",
     MacroRace = "Macros for your race's own abilities.",
-    MacroGeneric = "Useful macros for any class: bandage, eat and drink, start attack and more.",
+    MacroGeneric = "Macros for any class.",
     MacroOwn = "Macros you made yourself.",
     MacroOther = "Look at another class's macros, for an alt.",
-    MacroHidden = "Macros you hid or removed from the lists; bring them back from here.",
-    BuffReminder = "A notice when one of your own buffs is missing: pick them for each talent tree, plus weapon buffs and food.",
-    BuffGroup = "A notice when someone in your group is missing one of your group buffs.",
-    BuffRanks = "Warnings and an action-bar marker for spells cast at a lower rank than you know.",
-    BuffLook = "Size, timing and place of the reminder notices.",
-    CooldownReminder = "A short notice to use a ready racial, trinket or long cooldown on tough targets and big pulls.",
-    Profiles = "Your profiles: switch, make a new one, copy, rename or delete.",
+    MacroHidden = "Macros you hid or removed.",
+    BuffReminder = "A notice when one of your buffs is missing.",
+    BuffGroup = "A notice when your group is missing your buff.",
+    BuffRanks = "Warnings for spells below your best rank.",
+    BuffLook = "Size, timing and place of notices.",
+    CooldownReminder = "A reminder to use a ready cooldown.",
+    Profiles = "Switch, make, copy or delete profiles.",
     ProfilesShare = "Export your setup as text, or import one.",
-    ProfilesUndo = "Copies of this profile saved by themselves; put one back.",
+    ProfilesUndo = "Put an earlier version back.",
     ProfilesNew = "Which profile a new character starts with.",
-    ProfilesReset = "Put everything ForeverTools changes back to the game's defaults.",
-    MacroSettings = "Which tab macros go to, mouseover for all, icons, and cleaning up your Character macros.",
+    ProfilesReset = "Back to the game's defaults.",
+    MacroGuide = "Every kind of macro, with examples.",
+    MacroSettings = "Where macros go, mouseover, icons, clean-up.",
 }
 FT.hubs = hubs
-local byPage = {}
-for _, hub in ipairs(hubs) do
-    for i, page in ipairs(hub.pages) do byPage[page[1]] = {hub = hub, index = i} end
+local byPage
+-- Built on first use (after login, when your class is known): pages for
+-- another class are left out of their group.
+local function index()
+    if byPage then return byPage end
+    byPage = {}
+    for _, hub in ipairs(hubs) do
+        local shown = {}
+        for _, page in ipairs(hub.pages) do if FT:ForMyClass(page[1]) then shown[#shown + 1] = page end end
+        hub.pages = shown
+        for i, page in ipairs(hub.pages) do byPage[page[1]] = {hub = hub, index = i} end
+    end
+    return byPage
 end
-function FT:HubOf(name) local entry = byPage[name]; return entry and entry.hub, entry and entry.index end
+function FT:HubOf(name) local entry = index()[name]; return entry and entry.hub, entry and entry.index end
 -- Open a group: the page of it you used last this session, or its first.
 function FT:OpenHub(key)
+    index()
     for _, hub in ipairs(hubs) do
         if hub.key == key then
             local target = hub.last and self.modules[hub.last] and hub.last or hub.pages[1][1]
@@ -227,7 +257,22 @@ for _, hub in ipairs(hubs) do
 end
 -- Older names of pages that moved.
 FT:RegisterModule("SystemTroubleshooting", {redirect = true, Open = function() FT:OpenModule("SystemGeneral") end})
+-- Pages for one class only: other classes never see them (menu or search).
+FT.classOnly = {Totems = "SHAMAN", DruidMana = "DRUID"}
+function FT:ForMyClass(name)
+    local class = self.classOnly[name]
+    if not class then return true end
+    local _, mine = UnitClass("player")
+    return mine == nil or mine == class
+end
+function FT:IconPath(icon)
+    icon = FT.icons[icon] or icon
+    -- A full path (a picture that is not a spell icon) is used as it is.
+    if type(icon) == "string" and icon:find("\\", 1, true) then return icon end
+    return "Interface\\Icons\\" .. icon
+end
 local function buildSidebar(frame, hub)
+    index()
     local side = CreateFrame("Frame", nil, frame)
     side:SetPoint("TOPRIGHT", frame, "TOPLEFT", OVER, 0)
     side:SetPoint("BOTTOMRIGHT", frame, "BOTTOMLEFT", OVER, 0)
@@ -252,7 +297,7 @@ local function buildSidebar(frame, hub)
         b:SetPoint("TOPLEFT", 14, -62 - (i - 1) * 50)
         b.icon = b:CreateTexture(nil, "ARTWORK"); b.icon:SetSize(28, 28); b.icon:SetPoint("LEFT", 9, 0)
         if type(icon) == "function" then icon = icon() end
-        b.icon:SetTexture("Interface\\Icons\\" .. (FT.icons[icon] or icon)); b.icon:SetTexCoord(.07, .93, .07, .93); FT:RoundIcon(b.icon)
+        b.icon:SetTexture(FT:IconPath(icon)); b.icon:SetTexCoord(.07, .93, .07, .93); FT:RoundIcon(b.icon)
         b.title = FT:Label(b, title, 14); b.title:SetPoint("TOPLEFT", 46, -7)
         b.meta = FT:Label(b, "", 11); b.meta:SetPoint("TOPLEFT", 46, -26); b.meta:SetWidth(SIDE - 24 - 52); b.meta:SetJustifyH("LEFT"); b.meta:SetTextColor(.72, .66, .55)
         if b.meta.SetWordWrap then b.meta:SetWordWrap(false) end
@@ -291,7 +336,7 @@ function FT:Dock(name, stays)
         frame.ftSidebar.hub, frame.ftSidebar.index = hub, index
         frame.ftDockWidth = SIDE
         if frame.SetClampRectInsets then frame:SetClampRectInsets(-SIDE, 0, 0, 0) end
-        if frame.homeButton then frame.homeButton:SetScript("OnClick", function() FT:OpenHome() end) end
+        if frame.homeButton then frame.homeButton:SetScript("OnClick", function() FT:Back() end) end
         if frame.titleLine then
             local gr, gg, gb = 0.79, 0.63, 0.29
             FT.GradientTexture(frame.titleLine[1], "HORIZONTAL", gr, gg, gb, 0.75, gr, gg, gb, 0.75)
@@ -313,7 +358,9 @@ function FT:Dock(name, stays)
     frame.ftSidebar.index = index
     -- Every page of a group has the group's size, so nothing jumps when you
     -- switch between them.
-    if not frame.minimized then frame:SetSize(hub.width, hub.height) end
+    -- (A page with few settings may be narrower: module.pageWidth. The
+    -- window's left edge and the sidebar stay where they are.)
+    if not frame.minimized then frame:SetSize(module.pageWidth or hub.width, hub.height) end
     -- Already open (another page of the same window): it stays put.
     if not stays then
         frame:ClearAllPoints()

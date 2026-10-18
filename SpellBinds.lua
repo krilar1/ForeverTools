@@ -109,14 +109,14 @@ function Binds:PickRoleSpell(role,owner)
         local options=self:RoleOptions(role)
         local auto=options[1]
         local list={{value=0,label="Automatic"..(auto and (" ("..auto.name..")") or ""),icon=auto and auto.icon or ("Interface\\Icons\\"..role.icon),
-            tooltipTitle="Automatic",tooltip="The first spell you know from this role's list. It changes by itself when you learn a better fit."}}
+            tooltipTitle="Automatic",tooltip="Your first known spell for this role. Updates when you learn a better one."}}
         for _,sp in ipairs(options) do list[#list+1]={value=sp.value,label=sp.name,icon=sp.icon,tooltipTitle=sp.name,tooltip="Use "..sp.name.." for "..role.label:lower().."."} end
         if type(chosen)=="table" then
             local listed=false; for _,sp in ipairs(options) do if sp.value==chosen.id then listed=true end end
             local name,icon=describe(chosen)
             if name and not listed then list[#list+1]={value=chosen.id,label=name,icon=icon,tooltipTitle=name,tooltip="Dragged here by you."} end
         end
-        if #options==0 then list[1].tooltip="You don't know a "..role.label:lower().." spell yet. Drag any spell onto the icon to use it here." end
+        if #options==0 then list[1].tooltip="You don't know a "..role.label:lower().." spell yet. Drag a spell onto the icon." end
         return list
     end
     owner.value=type(chosen)=="table" and chosen.id or 0
@@ -339,7 +339,7 @@ function Binds:Refresh()
         local row=self.roleRows[i]
         local entry,name,icon=self:RoleSpell(role)
         row.icon:SetTexture(icon or ("Interface\\Icons\\"..role.icon)); row.icon:SetDesaturated(not entry); row.icon:SetAlpha(entry and 1 or .4)
-        row.spell:SetText(name or "No "..role.label:lower().." spell known")
+        row.spell:SetText(name or "None known yet")
         local r=s.roles[role.key]; local label=row.keyButton.label
         -- The full name when it fits, else the short one.
         label:SetText(r.key and keyText(r.key) or "Set key")
@@ -379,14 +379,14 @@ function Binds:Popup()
         if InCombatLockdown() then FT:Toast("Leave combat to change keys.") return end
         if self.capturing then self:Capture(nil) else self:Capture(p.target) end
     end)
-    FT:Tooltip(p.keyButton,"Set key","Click, then press the key (with Shift, Ctrl or Alt if you like). You're told first if the key already does something.\n\nWhile this bind is on, the key does this instead of its action bar button. Turn the bind off or clear it to give the key back.")
+    FT:Tooltip(p.keyButton,"Set key","Click, then press the key (Shift, Ctrl, Alt allowed).\n\nThe key does this instead of its action bar button. Clear it to give the key back.")
     p.onButton=FT:QuietButton(p,"",200,32,"confirm"); p.onButton:SetPoint("TOPLEFT",24,-100)
     p.onButton:SetScript("OnClick",function()
         if InCombatLockdown() then FT:Toast("Leave combat to change keys.") return end
         local store=self:Store(p.target); if not store then return end
         store.off=not store.off or nil; self:Apply()
     end)
-    FT:Tooltip(p.onButton,"Bind on or off","Off keeps the key saved here but gives it back to what it did before, until you turn it on again.")
+    FT:Tooltip(p.onButton,"Bind on or off","Off gives the key back until you turn it on.")
     p.clear=FT:QuietButton(p,"Clear key",200,32,"reset"); p.clear:SetPoint("TOPLEFT",24,-140)
     p.clear:SetScript("OnClick",function()
         if InCombatLockdown() then FT:Toast("Leave combat to change keys.") return end
@@ -399,7 +399,7 @@ function Binds:Popup()
         local t=p.target; if not t or not t.slot then return end
         self:ClosePopup(); self:Settings().slots[t.slot]=nil; self:Apply()
     end)
-    FT:Tooltip(p.remove,"Remove from slot","Empty this slot. Its key gets its old action back.")
+    FT:Tooltip(p.remove,"Remove from slot","Empty this slot. The key gets its old action back.")
     p.hint=FT:Label(p,"Press a key now. Esc cancels.",12); p.hint:SetPoint("BOTTOM",0,12); p.hint:SetTextColor(1,.27,.22); p.hint:Hide()
     p:Hide()
     self.popup=p
@@ -442,14 +442,14 @@ function Binds:Open()
     if not self.frame then
         local frame=FT:Window("ForeverToolsSpellBinds","Spell binds",520,608); self.frame=frame
         FT:BackTo(frame,"SystemKeybinds")
-        FT:PageInfo(frame,"Spell binds","Bind spells, items and macros straight to keys, without an action bar.\n\nRole keys pick your class's spell for each job (interrupt, taunt, dispel and so on), so the same key does the same job on every character. Click a role's icon to choose another of your spells, or drag any spell onto it.\n\nA key used here does the spell bind instead of its normal action. Your normal key bindings are never changed: clear a key here and it gets its old action back. Keys can only change out of combat.")
+        FT:PageInfo(frame,"Spell binds","Bind spells, items and macros to keys, without an action bar.\n\nRole keys use your class's spell for each job (interrupt, taunt, dispel...), so a key does the same job on every character.\n\nYour normal bindings never change: clear a key here to give it back. Not in combat.")
         self.toggle=FT:AccentButton(frame,"",472,34,"INV_Misc_Key_13"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function()
             if InCombatLockdown() then FT:Toast("Leave combat to change this.") return end
             local s=self:Settings(); s.enabled=not s.enabled; self:Apply()
             if FT.modules.System then FT.modules.System:Refresh() end
         end)
-        FT:Tooltip(self.toggle,"Spell binds","Turn all spell binds and role keys on or off. Off gives every key back to what it did before.")
+        FT:Tooltip(self.toggle,"Spell binds","All spell binds and role keys on or off.")
         local head=FT:Label(frame,"Role keys",15,true); head:SetPoint("TOPLEFT",24,-112); FT:SectionHeading(head,"Ability_Kick",330)
         self.roleRows={}
         for i,role in ipairs(ROLES) do
@@ -471,7 +471,7 @@ function Binds:Open()
                 if mouse=="RightButton" then self:Settings().roles[role.key].spell=nil; self:Apply()
                 elseif not InCombatLockdown() then self:PickRoleSpell(role,cell) end
             end)
-            FT:Tooltip(cell,role.label,"Click to choose which of your spells to use (automatic picks the first one you know). You can also drag any spell here. Right-click goes back to automatic.")
+            FT:Tooltip(cell,role.label,"Click to pick a spell, or drag one here. Right-click: automatic.")
             row.name=FT:Label(frame,role.label,14); row.name:SetPoint("TOPLEFT",x+48,y-4)
             row.spell=FT:Label(frame,"",12); row.spell:SetPoint("TOPLEFT",x+48,y-21); row.spell:SetTextColor(.66,.59,.48)
             row.spell:SetWidth(112); row.spell:SetJustifyH("LEFT"); row.spell:SetWordWrap(false)
@@ -480,7 +480,7 @@ function Binds:Open()
                 if InCombatLockdown() then FT:Toast("Leave combat to change keys.") return end
                 self:OpenPopup({role=role},keyButton)
             end)
-            FT:Tooltip(keyButton,role.label.." key","Click to set the key, or turn it off or clear it.\n\nA key used here does this instead of what your action bars say; the key text on the action button stays, but that button no longer answers the key.")
+            FT:Tooltip(keyButton,role.label.." key","Click to set the key, turn it off or clear it.")
             row.keyButton=keyButton; row.role=role
             self.roleRows[i]=row
         end
@@ -490,18 +490,18 @@ function Binds:Open()
             local s=self:Settings(); s.bar=not s.bar; self:Apply()
             -- The bar belongs to spell binds: offer to turn them on with it.
             if s.bar and not s.enabled then
-                FT:Confirm("Spell binds are off, so the bar stays hidden.\n\nTurn spell binds on too?",function()
+                FT:Confirm("Spell binds are off, so the bar stays hidden.\n\nTurn spell binds on?",function()
                     s.enabled=true; self:Apply()
                     if FT.modules.System then FT.modules.System:Refresh() end
                 end)
             end
         end)
-        FT:Tooltip(self.barToggle,"Show on screen","A small bar with the role spells you gave a key: icon, key and cooldown. You can click them too. Move it with Move elements.")
+        FT:Tooltip(self.barToggle,"Show on screen","A small bar with your role spells, keys and cooldowns. Move it with Move elements.")
         self.askToggle=FT:QuietButton(frame,"",230,32,"character"); self.askToggle:SetPoint("TOPLEFT",266,-372)
         self.askToggle:SetScript("OnClick",function() local r=self:Root(); r.ask=not r.ask; self:Refresh() end)
-        FT:Tooltip(self.askToggle,"Ask on new characters","On a character that hasn't used spell binds yet, ask once whether to use your usual role keys.")
+        FT:Tooltip(self.askToggle,"Ask on new characters","On a new character, ask once to use your usual role keys.")
         local grid=FT:Label(frame,"Your binds",15,true); grid:SetPoint("TOPLEFT",24,-420); FT:SectionHeading(grid,"INV_Misc_Key_03",330)
-        local hint=FT:Label(frame,"Drag a spell, item or macro onto a slot, then click it to set its key.",12); hint:SetPoint("TOPLEFT",24,-444); hint:SetTextColor(.66,.59,.48)
+        local hint=FT:Label(frame,"Drag a spell, item or macro onto a slot, then click it to set a key.",12); hint:SetPoint("TOPLEFT",24,-444); hint:SetTextColor(.66,.59,.48)
         self.cells={}
         for i=1,SLOTS do
             local cell=CreateFrame("Button",nil,frame); cell:SetSize(40,40)
@@ -543,7 +543,7 @@ function Binds:Open()
                 else
                     if slot.kind=="spell" then GameTooltip:SetSpellByID(slot.id) elseif slot.kind=="item" then GameTooltip:SetItemByID(slot.id) else GameTooltip:SetText(slot.name,1,.82,0) end
                     GameTooltip:AddLine(" ")
-                    GameTooltip:AddLine((slot.key and ("Key: "..keyText(slot.key)..(slot.off and " (off)" or "")) or "No key yet").."\nClick to set its key or turn it off. Drag it off to remove it.",1,.82,0,true)
+                    GameTooltip:AddLine((slot.key and ("Key: "..keyText(slot.key)..(slot.off and " (off)" or "")) or "No key yet").."\nClick to set its key. Drag it off to remove.",1,.82,0,true)
                 end
                 GameTooltip:Show()
             end)

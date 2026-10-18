@@ -28,7 +28,7 @@ function Q:Open()
     self.startedHere=true
     frame:Show()
     self:ShowPanel()
-    FT:Toast("Snapshot taken: your keybinds from before this session are saved.",4)
+    FT:Toast("Snapshot taken.",4)
 end
 function Q:Hook()
     local frame=native()
@@ -158,7 +158,7 @@ function Q:Finish(save)
     if save then
         SaveBindings(GetCurrentBindingSet())
         self:RecordSession()
-        FT:Toast("Keybinds saved. Go back any time with Backups and restore in Keybinds.",4)
+        FT:Toast("Keybinds saved. Undo any time in Keybinds > Backups and restore.",4)
     else
         LoadBindings(GetCurrentBindingSet())
         FT:Toast("Changes discarded.",2)
@@ -175,14 +175,14 @@ function Q:RestoreChoices()
         list[#list+1]={value=i,label=date("%d %b %H:%M",entry.time).." · "..entry.label.." · "..n.." change"..(n==1 and "" or "s"),
             icon="Interface\\Icons\\"..FT.icons.keybind,
             tooltipTitle="Before "..entry.label:lower().." ("..date("%d %b %H:%M",entry.time)..")",
-            tooltip=function() return "This session changed:\n"..self:ChangeText(entry.changes).."\n\nChoose to put back the keybinds you had before it." end}
+            tooltip=function() return "This session changed:\n"..self:ChangeText(entry.changes).."\n\nClick to put back the keybinds from before it." end}
     end
     return list
 end
 function Q:Restore(index)
     local entry=self:History()[index]
     if not entry or InCombatLockdown() then if InCombatLockdown() then FT:Toast("Change keybinds outside combat.") end; return end
-    FT:Confirm("Restore the keybinds from before this session ("..date("%d %b %H:%M",entry.time)..")?\n\nYour current keybinds are replaced. The restore itself can be undone from the same list.",function()
+    FT:Confirm("Restore the keybinds from before this session ("..date("%d %b %H:%M",entry.time)..")?\n\nYour current keybinds are replaced. This can be undone.",function()
         local current=capture()
         if FT.modules.Profiles:ApplyBindings(entry.before,false,true) then
             self:Record(current,"Restore")
@@ -208,11 +208,11 @@ function Q:ShowPanel()
         FT:TitleBand(panel,46); FT:FadeIn(panel); FT:MakeDraggable(panel)
         FT:AddClose(panel,function() self:Finish(false) end)
         panel.closeButton:HookScript("OnEnter",function() GameTooltip:AddLine("Closing discards unsaved changes.",.96,.93,.86,true); GameTooltip:Show() end)
-        local help=FT:Label(panel,"Hover any slot and press a key to bind it. Escape on a bound slot unbinds it.",12)
+        local help=FT:Label(panel,"Hover a slot and press a key. Esc unbinds.",12)
         help:SetPoint("TOPLEFT",20,-54); help:SetWidth(260); help:SetTextColor(.85,.80,.70)
         local take=FT:QuietButton(panel,"Take snapshot",260,32,"add"); take:SetPoint("TOPLEFT",20,-100)
         take:SetScript("OnClick",function() self:TakeSnapshot() end)
-        FT:Tooltip(take,"Take snapshot","Remember your keybinds as they are right now, so you can come back to this point while you keep editing.")
+        FT:Tooltip(take,"Take snapshot","Save this point so you can come back to it.")
         self.revert=FT:Dropdown(panel,260,function()
             local list={}
             for i=#self.snapshots,1,-1 do
@@ -224,14 +224,14 @@ function Q:ShowPanel()
             return list
         end,function(index) self:Revert(index) end,"reset")
         self.revert:SetPoint("TOPLEFT",20,-140); self.revert:SetHeight(32); self.revert.menuWidth=260
-        FT:Tooltip(self.revert,"Revert to snapshot","Put your keybinds back to a snapshot. Nothing is saved yet: keep editing, then Save or Discard.")
+        FT:Tooltip(self.revert,"Revert to snapshot","Go back to a snapshot. Then Save or Discard.")
         self.status=FT:Label(panel,"",12); self.status:SetPoint("TOPLEFT",20,-182); self.status:SetWidth(260); self.status:SetTextColor(.66,.59,.48)
         local discard=FT:QuietButton(panel,"Discard",124,34,"reset"); discard:SetPoint("BOTTOMLEFT",20,20)
         discard:SetScript("OnClick",function() self:Finish(false) end)
-        FT:Tooltip(discard,"Discard & exit","Leave quick keybind mode and go back to the keybinds you had before this session.")
+        FT:Tooltip(discard,"Discard & exit","Leave and restore the keybinds from before.")
         local save=FT:AccentButton(panel,"Save",124,34,"confirm"); save:SetPoint("BOTTOMRIGHT",-20,20)
         save:SetScript("OnClick",function() self:Finish(true) end)
-        FT:Tooltip(save,"Save & exit","Keep your new keybinds and leave quick keybind mode. You can go back later with Backups and restore in Keybinds.")
+        FT:Tooltip(save,"Save & exit","Keep your new keybinds and leave.")
         panel:Hide()
     end
     self:Place()
@@ -251,7 +251,7 @@ function Q:RefreshPanel()
     if not self.panel then return end
     local count=#self.snapshots
     self.revert.label:SetText("Revert to snapshot")
-    self.status:SetText(count<=1 and "Snapshot taken when you started. Take more while you edit." or (count.." snapshots this session, including the one from before you started."))
+    self.status:SetText(count<=1 and "Taken when you started." or (count.." snapshots this session."))
 end
 FT:RegisterModule("QuickBind",Q)
 local events=CreateFrame("Frame")

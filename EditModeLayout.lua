@@ -8,7 +8,7 @@ local _,FT=...
 -- beta asks players to export their layout.
 local Layout={}
 local LIMIT=60000
-local HOWTO="Save: press Esc > Edit Mode, open the layout list, choose Share (copy to clipboard), and paste it here and click Import layout, or into its own text file.\n\nPut it back: Esc > Edit Mode > the layout list > Import Layout, paste the string, name it and import it.\n\nThis is not a ForeverTools string. Never paste one into the other, and keep each in its own text file. Menu names can differ a little between game versions."
+local HOWTO="Save: Esc > Edit Mode > layout list > Share, then paste it here or in a text file.\n\nBack: Esc > Edit Mode > layout list > Import Layout.\n\nNot a ForeverTools string: keep them apart."
 function Layout:Saved()
     local text=FT.db and FT.db.editModeLayout
     return type(text)=="string" and text or ""
@@ -75,8 +75,8 @@ function Layout:Refresh()
     local text=self:Saved()
     frame.loading=true; frame.box:SetText(text); frame.loading=false
     frame.hint:SetShown(text=="")
-    frame.intro:SetText(text=="" and "Paste an Edit Mode string below. Import layout keeps it on your account and offers to use it in the game."
-        or "Your saved Edit Mode layout. Press Ctrl+C to copy it, or apply it on this character.")
+    frame.intro:SetText(text=="" and "Paste an Edit Mode string, then Import layout."
+        or "Your saved layout. Ctrl+C to copy, or use it here.")
     frame.status:SetText(text=="" and "Nothing saved yet." or "Saved on this account.")
     frame.status:SetTextColor(.66,.59,.48)
     frame.read:SetShown(self:CanRead())
@@ -87,7 +87,7 @@ function Layout:Save()
     local frame=self.window; if not frame then return end
     local text=frame.box:GetText() or ""
     text=text:match("^%s*(.-)%s*$")
-    if looksLikeProfile(text) then FT:Toast("That is a ForeverTools profile string. It goes in Profiles > Import, not here.",5); return end
+    if looksLikeProfile(text) then FT:Toast("That is a ForeverTools string. It goes in Profiles > Import.",5); return end
     if #text>LIMIT then FT:Toast("That is too long for an Edit Mode string.",4); return end
     FT.db.editModeLayout=text~="" and text or nil
     self:Refresh()
@@ -123,17 +123,17 @@ function Layout:Show(copy)
         apply:SetScript("OnClick",function()
             local text=(box:GetText() or ""):match("^%s*(.-)%s*$")
             if text=="" then FT:Toast("Paste an Edit Mode string first.",4); return end
-            if looksLikeProfile(text) then FT:Toast("That is a ForeverTools profile string. It goes in Profiles > Import, not here.",5); return end
+            if looksLikeProfile(text) then FT:Toast("That is a ForeverTools string. It goes in Profiles > Import.",5); return end
             if #text>LIMIT then FT:Toast("That is too long for an Edit Mode string.",4); return end
             self:Save()
             -- Kept on the account; whether to switch to it now is the player's call.
-            FT:Confirm("Your Edit Mode layout is saved on this account.\n\nUse it in the game now? It is added to your Edit Mode layouts and switched to. Choose Cancel to only keep it.",function()
+            FT:Confirm("Layout saved on this account.\n\nUse it in the game now? Cancel only keeps it.",function()
                 local ok,result=self:Apply(text)
                 if ok then FT:Toast('Edit Mode layout "'..result..'" is now active.',5); frame.status:SetText('Applied as "'..result..'".'); frame.status:SetTextColor(.55,.85,.45); frame:Hide()
                 else FT:Toast(result,7); frame.status:SetText(result); frame.status:SetTextColor(1,.6,.45) end
             end)
         end)
-        FT:Tooltip(apply,"Import layout","Keeps the string on your account, then asks if you want to use it in the game now. If the game does not allow an addon to switch layouts, you are told and can import it in Edit Mode instead. Not during combat.")
+        FT:Tooltip(apply,"Import layout","Keep the string, then offer to use it now. Not in combat.")
         local read=FT:QuietButton(frame,"Read from game",190,30,"reset"); read:SetPoint("LEFT",apply,"RIGHT",8,0); frame.read=read
         read:SetScript("OnClick",function()
             local text,reason=self:Read()
@@ -142,7 +142,7 @@ function Layout:Show(copy)
             frame.loading=true; box:SetText(text); frame.loading=false; hint:SetShown(false)
             frame.status:SetText("Not saved yet. Click Import layout."); frame.status:SetTextColor(.85,.80,.70)
         end)
-        FT:Tooltip(read,"Read from game","Fills the box with your active Edit Mode layout, then click Import layout. It only reads; nothing in the game changes. Shown only when your active layout is one of your own.")
+        FT:Tooltip(read,"Read from game","Fill the box with your active layout. Changes nothing.")
         local clear=FT:QuietButton(frame,"Clear",100,30,"delete"); clear:SetPoint("LEFT",read,"RIGHT",8,0); frame.clear=clear
         clear:SetScript("OnClick",function() frame.loading=true; box:SetText(""); frame.loading=false; self:Save() end)
         FT:Tooltip(clear,"Clear","Remove the saved string from your account.")
@@ -170,21 +170,63 @@ function Layout:Remind(force)
     if not UIParent:IsShown() then C_Timer.After(5,function() self:Remind(force) end); return end
     local frame=self.reminder
     if not frame then
-        frame=FT:Window("ForeverToolsEditModeReminder","Export your Edit Mode layout",446,230); self.reminder=frame
+        -- "Get ready for launch": the two strings to keep, each one click away.
+        frame=FT:Window("ForeverToolsEditModeReminder","Get ready for launch",470,360); self.reminder=frame
         frame.ignorePlacement=true; frame.noSavePrompt=true; frame.homeButton:Hide()
         frame:SetFrameStrata("FULLSCREEN_DIALOG")
-        frame:ClearAllPoints(); frame:SetPoint("TOPRIGHT",UIParent,"TOPRIGHT",-40,-160)
-        local text=FT:Label(frame,"The beta ends on October 21. Your Edit Mode layout (where your bars and frames sit) is saved by the game for the beta only and does not carry over to the live game.\n\nExport it now: Esc > Edit Mode > layout list > Share, and keep the text in a file. Then import it the same way when the game is out.",13)
-        text:SetPoint("TOPLEFT",24,-58); text:SetWidth(398); text:SetTextColor(.85,.80,.70)
-        local open=FT:AccentButton(frame,"Open layout window",182,30,"INV_Scroll_03"); open:SetPoint("BOTTOMLEFT",24,20)
-        open:SetScript("OnClick",function() frame:Hide(); self:Show() end)
-        local close=FT:QuietButton(frame,"Close",66,30); close:SetPoint("LEFT",open,"RIGHT",8,0)
+        local text=FT:Label(frame,"The beta ends October 21. Nothing here carries over, so save these two strings in a text file. Paste them back on launch day.",13)
+        text:SetPoint("TOPLEFT",24,-58); text:SetWidth(422); text:SetTextColor(.85,.80,.70)
+        local function step(top,number,title,detail,buttonText,icon,onClick,doneKey)
+            local num=FT:Label(frame,number,20,true); num:SetPoint("TOPLEFT",24,top); num:SetTextColor(1,.82,0)
+            local head=FT:Label(frame,title,14,true); head:SetPoint("TOPLEFT",52,top); head:SetTextColor(.95,.90,.81)
+            local sub=FT:Label(frame,detail,12); sub:SetPoint("TOPLEFT",52,top-20); sub:SetWidth(394); sub:SetTextColor(.66,.59,.48)
+            local b=FT:AccentButton(frame,buttonText,200,30,icon); b:SetPoint("TOPLEFT",52,top-54)
+            b:SetScript("OnClick",function() FT.db[doneKey]=true; frame:Refresh(); onClick() end)
+            local done=frame:CreateTexture(nil,"ARTWORK"); done:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready"); done:SetSize(20,20); done:SetPoint("LEFT",b,"RIGHT",10,0)
+            local doneText=FT:Label(frame,"Done",12); doneText:SetPoint("LEFT",done,"RIGHT",4,0); doneText:SetTextColor(.55,.85,.45)
+            return {done=done,doneText=doneText,key=doneKey}
+        end
+        frame.steps={
+            step(-112,"1","Your ForeverTools settings","On launch: /ft > Profiles > Export and import.","Export settings","INV_Misc_Note_06",
+                function()
+                    frame:Hide()
+                    local P=FT.modules.Profiles; if not P then return end
+                    P:Transfer(false)
+                    -- Closing the export brings this window back once, for step 2.
+                    self:WaitForExportClosed()
+                end,"launchExported"),
+            step(-206,"2","Your Edit Mode layout","On launch: Esc > Edit Mode > Import.","Export layout","INV_Scroll_03",
+                function() frame:Hide(); self:Show() end,"launchLayoutShown"),
+        }
+        function frame:Refresh()
+            for _,st in ipairs(self.steps) do local on=FT.db[st.key]==true; st.done:SetShown(on); st.doneText:SetShown(on) end
+        end
+        local close=FT:QuietButton(frame,"Later",96,30); close:SetPoint("BOTTOMRIGHT",-24,18)
         close:SetScript("OnClick",function() frame:Hide() end)
-        local never=FT:QuietButton(frame,"Don't remind me",134,30); never:SetPoint("LEFT",close,"RIGHT",8,0)
-        never:SetScript("OnClick",function() FT.db.editModeReminderOff=true; frame:Hide(); FT:Toast("Reminder turned off.",3) end)
+        FT:Tooltip(close,"Later","Shows again tomorrow until the beta ends.")
+        local never=FT:QuietButton(frame,"Don't remind me",150,30); never:SetPoint("RIGHT",close,"LEFT",-8,0)
+        never:SetScript("OnClick",function() FT.db.editModeReminderOff=true; frame:Hide(); FT:Toast("Reminder turned off. /ft launch shows it again.",4) end)
     end
+    frame:Refresh()
     if not force then FT.db.editModeReminderDay=tonumber(date("%Y%m%d")) end
     frame:Show(); frame:ClearAllPoints(); frame:SetPoint("TOPRIGHT",UIParent,"TOPRIGHT",-40,-160)
+end
+-- Watch the export window: once it has been shown and is gone again (closed
+-- any way: X, Escape, another window), this window comes back once.
+function Layout:WaitForExportClosed()
+    local watch=self.exportWatch or CreateFrame("Frame"); self.exportWatch=watch
+    watch.seen=false; watch.waited=0; watch.wait=0
+    watch:SetScript("OnUpdate",function(f,dt)
+        f.wait=f.wait+dt; if f.wait<.25 then return end
+        f.waited=f.waited+f.wait; f.wait=0
+        local P=FT.modules.Profiles; local t=P and P.transfer
+        local open=t and t:IsShown()
+        if open then f.seen=true end
+        if (f.seen and not open) or f.waited>900 then
+            f:SetScript("OnUpdate",nil)
+            if f.seen and not open then self:Remind(true) end
+        end
+    end)
 end
 FT:RegisterModule("EditModeLayout",Layout)
 local events=CreateFrame("Frame")

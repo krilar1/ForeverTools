@@ -165,19 +165,19 @@ function Key:Refresh()
     if not s.enabled then now="Off."
     elseif not key then now="|cffff9e59Choose a key first.|r"
     elseif st.dialog then now="A dialog is open: the key interacts."
-    elseif st.item then now="RestedXP shows a quest item: the key uses it. With a friendly or dead target it interacts instead."
-    elseif st.target then now="RestedXP shows a target: with no target, the key targets it; otherwise it interacts."
+    elseif st.item then now="RestedXP shows a quest item: the key uses it."
+    elseif st.target then now="RestedXP shows a target: the key targets it."
     else now="The key interacts with your target." end
     local lines={"Right now: "..now}
     if s.enabled and key then lines[#lines+1]=self:Doing(key) end
-    if not rxp then lines[#lines+1]="RestedXP is not loaded, so the key is just Interact with target." end
+    if not rxp then lines[#lines+1]="RestedXP not loaded: the key is Interact with target." end
     self.status:SetText(table.concat(lines,"\n"))
 end
 -- What the game has on the key at this moment, in plain words, so a key
 -- that another addon or binding took over shows up here.
 function Key:Doing(key)
     local action=GetBindingAction and GetBindingAction(key,true)
-    if type(action)~="string" or action=="" then return "|cffff9e59The key has nothing on it. Turn the smart key off and on again, out of combat.|r" end
+    if type(action)~="string" or action=="" then return "|cffff9e59The key has nothing on it. Turn it off and on again, out of combat.|r" end
     if action=="INTERACTTARGET" then return "The key is set to: Interact with target"..((self.state and self.state.native) and " (your own key binding)." or ".") end
     local button=action:match("^CLICK ([^:]+)")
     if button then
@@ -208,7 +208,7 @@ function Key:Open()
     if not self.frame then
         local frame=FT:Window("ForeverToolsSmartKey","Smart interact key",520,262); self.frame=frame
         FT:BackTo(frame,"SystemKeybinds")
-        FT:PageInfo(frame,"Smart interact key","One key for questing. It picks the first that fits:\n1. A dialog is open, or your target is friendly or dead: Interact with target (talk, loot).\n2. RestedXP shows a quest item: use it.\n3. RestedXP shows a target and you have none: target it.\n4. Otherwise: Interact with target.\n\nWorks in combat; RestedXP buttons that appear in combat count once it ends. You choose the key yourself and confirm it. The page shows what the key is set to right now.")
+        FT:PageInfo(frame,"Smart interact key","One key for questing. In order:\n1. Dialog open, or friendly or dead target: interact.\n2. RestedXP quest item: use it.\n3. RestedXP target and none of yours: target it.\n4. Otherwise: interact.\n\nWorks in combat.")
         self.toggle=FT:AccentButton(frame,"",472,34,"INV_Misc_Key_10"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function()
             if InCombatLockdown() then FT:Toast("Leave combat to change this."); return end
@@ -217,18 +217,18 @@ function Key:Open()
             s.enabled=not s.enabled; self:Apply()
             if FT.modules.System then FT.modules.System:Refresh() end
         end)
-        FT:Tooltip(self.toggle,"Smart interact key","One key for questing: it talks and loots, uses RestedXP's quest item, or targets what RestedXP wants. Choose a key first. Off, your key works exactly as before. The (i) has the full order.")
+        FT:Tooltip(self.toggle,"Smart interact key","One key to talk, loot, and use RestedXP's quest items. Choose a key first.")
         self.keyLabel=FT:Label(frame,"",15); self.keyLabel:SetPoint("TOPLEFT",24,-114); self.keyLabel:SetWidth(472)
         local change=FT:QuietButton(frame,"Choose a key",230,32,"keybind"); change:SetPoint("TOPLEFT",24,-140)
         change:SetScript("OnClick",function() if not InCombatLockdown() then self:Capture(true) end end)
-        FT:Tooltip(change,"Choose a key","Click, then press the key (with Shift, Ctrl or Alt if you like). You're asked to confirm, and told what the key does now. Escape cancels.")
+        FT:Tooltip(change,"Choose a key","Click, then press the key. Esc cancels.")
         self.useInteract=FT:QuietButton(frame,"Use my Interact key",230,32,"reset"); self.useInteract:SetPoint("TOPLEFT",266,-140)
         self.useInteract:SetScript("OnClick",function()
             local key=GetBindingKey and GetBindingKey("INTERACTTARGET")
             if not key then FT:Toast("Interact with target has no key in the game's key bindings.",3); return end
             self:Propose(key)
         end)
-        FT:Tooltip(self.useInteract,"Use my Interact key","Use the key you already have on Interact with target in the game's key bindings (asks first).")
+        FT:Tooltip(self.useInteract,"Use my Interact key","Use your Interact with target key (asks first).")
         -- Key capture: the next key pressed becomes the smart key.
         local capture=CreateFrame("Frame",nil,frame); capture:SetAllPoints(frame); capture:EnableKeyboard(false); capture:Hide()
         capture:SetScript("OnKeyDown",function(_,key)

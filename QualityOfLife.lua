@@ -156,7 +156,7 @@ function QoL:Apply()
     self:SetReading(string.format("%d FPS", math.floor(GetFramerate() + 0.5)))
     -- Behind game windows (like buff reminders); on top only while you move it.
     self.counter:SetFrameStrata(self.moving and "HIGH" or "LOW")
-    self.counter:EnableMouse(self.moving or false)
+    FT:LockedMouse(self.counter,not self.moving,"QualityOfLife")
     for _, texture in ipairs(self.counter.fillTextures) do texture:SetShown(self.moving or false) end
     for _, texture in ipairs(self.counter.borderTextures) do texture:SetShown(self.moving or false) end
     self.counter.hint:SetShown(self.moving or false)
@@ -165,13 +165,14 @@ function QoL:Apply()
     local visible = settings.enabled or self.moving
     self.counter:SetShown(visible)
     if visible then
-        self.counter.elapsed = 0
+        self.counter.elapsed = 0; self.counter.lastFps = nil
         self.counter:SetScript("OnUpdate", function(owner, elapsed)
             self:UpdateDrag()
             owner.elapsed = owner.elapsed + elapsed
             if owner.elapsed >= 0.5 then
                 owner.elapsed = 0
-                self:SetReading(string.format("%d FPS", math.floor(GetFramerate() + 0.5)))
+                local fps = math.floor(GetFramerate() + 0.5)
+                if fps ~= owner.lastFps then owner.lastFps = fps; self:SetReading(fps .. " FPS") end
             end
         end)
     end
@@ -196,7 +197,7 @@ function QoL:Open()
     if not self.frame then
         self.frame = FT:Window("ForeverToolsFPSSettings", "FPS counter", 540, 240)
         FT:BackTo(self.frame,"SystemDisplay")
-        FT:PageInfo(self.frame, "FPS counter", "A small frames-per-second counter. Unlock it, drag it anywhere (right up to the screen edge), then lock it. Moving it turns the counter on.")
+        FT:PageInfo(self.frame, "FPS counter", "A small FPS counter. Unlock and drag it anywhere.")
         self.toggle = FT:AccentButton(self.frame, "", 492, 34, "fps")
         self.toggle:SetPoint("TOPLEFT", 24, -62)
         self.toggle:SetScript("OnClick", function()
@@ -221,17 +222,17 @@ function QoL:Open()
         reset:SetScript("OnClick", function() self:ResetPosition() end)
         FT:Tooltip(reset, "Reset position", "Put the counter back in the top-left corner.")
         FT:Tooltip(self.toggle, "FPS counter", "Show or hide the frames-per-second counter.")
-        FT:Tooltip(self.moveButton, "Move counter", "Click to unlock, drag the counter where you want it, then click again to lock it. Moving turns the counter on.")
+        FT:Tooltip(self.moveButton, "Move counter", "Unlock, drag the counter, then click again to lock.")
         FT:Tooltip(self.smaller, "Smaller", "Make the counter's text smaller.")
         FT:Tooltip(self.larger, "Larger", "Make the counter's text larger.")
         local icon = "Interface\\Icons\\INV_Misc_PocketWatch_01"
         self.alignChoice = FT:Dropdown(self.frame, 492, function()
-            return {{value="left",label="Line up: left",icon=icon,tooltip="Text lines up on the left; the counter grows to the right."},
+            return {{value="left",label="Line up: left",icon=icon,tooltip="Line up on the left."},
                 {value="center",label="Line up: center",icon=icon,tooltip="Text is centered."},
-                {value="right",label="Line up: right",icon=icon,tooltip="Text lines up on the right; good next to the right screen edge."}}
+                {value="right",label="Line up: right",icon=icon,tooltip="Line up on the right."}}
         end, function(value) self:SetAlign(value) end, "move")
         self.alignChoice:SetPoint("TOPLEFT", 24, -184); self.alignChoice.menuWidth = 492
-        FT:Tooltip(self.alignChoice, "Line up", "Which side the counter lines up on, the same as the leveling stats. It stays anchored on that side, so it can sit flush against a screen edge.")
+        FT:Tooltip(self.alignChoice, "Line up", "Which side the counter lines up on.")
         self.frame:HookScript("OnHide", function() if self.moving then self:SetMoving(false) end end)
     end
     self:Apply()

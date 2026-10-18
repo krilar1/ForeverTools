@@ -1,3 +1,64 @@
+# ForeverTools 0.90.0 (2026-10-18)
+
+## New: PvP and combat
+- **Interrupt bar** (Combat → Interrupt bar): your group's interrupts with their cooldowns, ready ones first. Group members with ForeverTools share theirs exactly. Show in a group, in fights or always; grow up or down; a limit on rows so a battleground never fills the screen; its own font. Preview shows made-up players while you set it up.
+- **Trinket menu** (PvP → Trinket menu): two buttons for your trinket slots, usable in combat, with cooldowns. Hover them to see every trinket you carry; click one to put it on (in a fight the swap waits until it ends). Optional: only show on mouseover, hide while you have no trinkets.
+- **Diminishing returns** (PvP → Diminishing returns): an icon per kind of crowd control (stuns, fears, roots, silences…) next to your target, focus and, if you like, your own frame; each row on its own side of its frame or dragged anywhere, with timer size and place. Yellow: the next one lasts half; orange: a quarter; red: immune. The swipe counts down to the reset (18.5 s). Tracked from the debuffs you can see and your and your pet's casts (unseen casts are a guess, shown slightly faded); uses the game's own DR data instead when the game sends it. `/ft dr` shows what the game sends.
+- **Auto release** (PvP → Auto release): releases your spirit in battlegrounds, but waits when you can come back yourself (soulstone, Reincarnation).
+- **Buff reminders in combat for all buffs:** Your buffs → "Also in combat: All buffs" reminds about every self buff during a fight, not only the ones you pick.
+- **Wait for rage, mana or energy:** a buff reminder only shows once you can cast the buff.
+- **Text only look for buff notices:** besides Bar, Icon and text, and Icon only, a buff's own notice can now be just its words (the gear on a buff → Look).
+
+## New: windows and looks
+- **Move game windows** (On-screen info → Move game windows): drag the character panel, spellbook, quest log, map, calendar, social, vendor, bank and other game windows by their title bar; they open there again. "Drag them any time" lets you skip the move mode. Windows Edit Mode can place are left to Edit Mode. Also `/ft moveall`.
+- **Game windows skin** (Skins → Windows): character panel, spellbook and talents, quest log, social, guild, group finder, collections and more get a dark frame; their pictures stay.
+- **Calendar skin**, **Dialog windows skin** (NPC chat, quests, vendor, mail, trainer, flight map, loot, trade, pop-ups, with optional dark parchment) and **Tooltips skin**.
+- **Skins for pets and class bars:** pet frame, party pets, pet cast bar, combo points and other class bars.
+- **Skins page in groups:** each group has a switch per part and one shared look.
+- **Nine bundled fonts** (Inter, Roboto Condensed, Barlow Condensed, Oswald, Rajdhani, Teko, Fira Sans Condensed, Noto Sans, PT Sans Narrow), plus the game's own fonts this client has.
+- **Updated for the new game art:** unit frames, bag bar (two styles, also the reagent bag and keyring), minimap buttons and zone box, main action bar border.
+
+## New: other
+- **Macro guide** (Macros → Macro guide): about 50 kinds of macro explained with an example each; Make a macro adds one to My own macros.
+- **Game resource bars** (Appearance): order the parts of the game's personal resource display and pick the text on each bar, with a preview in your own bar colors.
+- **Chat copy:** a copy button on each chat window, with timestamps (off, hours and minutes, or with seconds).
+- **Error messages:** hide the red error text, always or only in a fight.
+- **Thank for buffs:** a /thank to whoever buffs you, at most once a minute, never in a fight or dungeon.
+- **Quiet login** (hide other addons' login messages) and **no notices while you can't play** (flight path, vehicle, cinematic).
+- ForeverTools in the minimap's **addon list**.
+
+## Changed: menus
+- **Less to read:** texts and tooltips are shorter everywhere.
+- **Clear sections:** pages with several things to set split them under small headings (for example Look, Position, Sound).
+- **Right-click any on-screen element** (interrupt bar, battleground timer, FPS counter, leveling stats, flight timer, DR icons…) to open its settings; left clicks still go through to the world.
+- **Move elements** only unlocks what you have switched on.
+- **Simpler settings:** every on/off setting is a switch; settings with a few options open a list with the value shown; actions look like buttons. Explanations are in the tooltips.
+- **Greyed out while off:** settings under a page's main switch are greyed while it is off.
+- **See it while you change it:** changing a setting on a page whose element is hidden shows that element for a few seconds.
+- **Pages open where the menu was:** move the menu aside and every page opens on the same spot.
+- **Back** returns to the page you came from after following a link.
+- **Preview is a switch** everywhere (Battleground timer, Rare alerts, Enemy alerts, Nearby enemies, Cooldown reminders, Buff reminders, Interrupt bar): the example stays until you switch it off or close the page. Every example says "preview".
+- **Fonts show the element:** editing the threat meter's or the interrupt bar's font shows the meter or bar on screen while you edit.
+- **Narrower pages** where there is little to set (Dispel glow, Druid mana bar, Unit frames); the group's list on the left stays where it is.
+- **Trinket menu** says plainly when the buttons wait for a trinket.
+- **Grouped minimap buttons:** the gear sits in the game's round minimap ring now, and goes dark with Skins > Minimap like the other buttons.
+- Quest objectives is now "Quest tracker at login" (Game's default, Collapsed, Open, Always hidden); "Revert to default position" for loot rolls.
+- Shaman and druid pages only show on that class. Every page has its own icon. Characters are grouped by ruleset.
+
+## Fixed
+- The target's health bar sometimes stayed green with class colors on.
+- Dispel glow after a reload or when someone joins mid-fight.
+- Skins sliders that would not drag.
+- Nearby enemies: picking an anchor no longer moves the list; one window in a fight.
+- Text cut off on several pages; profile rows now list every character in their tooltip.
+- **Get ready for launch:** until the beta ends, a window once a day reminds you to export your ForeverTools settings and your Edit Mode layout, each one click away (also `/ft launch`). After you close the settings export, the window comes back once for the layout step.
+- **Imports never fail on one bad part:** a string from an earlier version imports everything it can; a part that can't be read keeps its defaults and is named after the import. Long strings (all keybinds and action bars) import too.
+- **Tour:** new stops for the interrupt bar, trinket menu, auto release, error messages, moving game windows and thanks; one simple counter; Keep it and Start tour stand out; the start screen points returning players to Import profile.
+- Buff notices never sit on top of each other: one with its own look moves just below the others.
+- **Macros you made yourself count as added:** a macro that casts the same spell (any name, text, rank or conditions, General or Character) shows as added, and Add the missing never adds a second one.
+- Lists: no item looks like a button any more ("Open on login", "Morpheus"), and an open list closes when you click elsewhere or switch pages.
+- Faster: fewer checks per second for buff reminders, the threat meter, the flight timer and the dispel glow.
+
 # ForeverTools 0.80.0 (2026-10-10)
 
 ## New: Bags (main menu → Bags)

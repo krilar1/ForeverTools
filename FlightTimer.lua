@@ -148,6 +148,15 @@ function Flight:Tick()
     if not FT.dbReady or not self.display or self.suspended then return end
     local flying=read(UnitOnTaxi,"player")==true
     local now=GetTime and GetTime() or 0
+    -- On the ground with nothing to show: nothing to do (this runs five
+    -- times a second).
+    if not flying and not self.flying and not self.preview then
+        if self.display:IsShown() then self.display:Hide() end
+        if self.groundCleared then return end
+        self.groundCleared=true
+    else
+        self.groundCleared=nil
+    end
     local history=self:History();local character=self:Character()
     if flying and not self.flying then
         local saved=history.active[character]
@@ -211,7 +220,7 @@ function Flight:Apply()
     d.measuredFor=nil
     -- Behind game windows; on top only while you preview and move it.
     self.display:SetFrameStrata(self.preview and "HIGH" or "LOW")
-    self.display:EnableMouse(self.preview==true);self.display.hint:SetShown(self.preview==true)
+    FT:LockedMouse(self.display,self.preview~=true,"FlightTimer");self.display.hint:SetShown(self.preview==true)
     for _,texture in ipairs(self.display.fillTextures) do texture:SetShown(self.preview==true) end
     for _,texture in ipairs(self.display.borderTextures) do texture:SetShown(self.preview==true) end
     self:Position();self:Tick()
@@ -237,10 +246,10 @@ function Flight:Open()
         self.fontChoice=FT:Dropdown(frame,492,function() return FT.modules.FontManager:Catalogue() end,function(value) self:Settings().font=value;self:Apply() end,"fonts")
         self.fontChoice:SetPoint("TOPLEFT",24,-146)
         FT:Tooltip(self.fontChoice,"Font","The font of the flight timer.")
-        FT:Tooltip(self.toggle,"Flight timer","Show where you are flying and how long until you land, while you are on a flight.")
+        FT:Tooltip(self.toggle,"Flight timer","Show how long until you land.")
         self.outlineChoice=FT:Dropdown(frame,492,function() return {{value="",label="No outline"},{value="OUTLINE",label="Outline"},{value="THICKOUTLINE",label="Thick outline"}} end,function(value) self:Settings().outline=value;self:Apply() end,"fonts")
         self.outlineChoice:SetPoint("TOPLEFT",24,-186)
-        FT:Tooltip(self.outlineChoice,"Outline","A dark edge around the text, so it stays readable over bright ground.")
+        FT:Tooltip(self.outlineChoice,"Outline","A dark edge so the text stays readable.")
         self.sizeLabel=FT:Label(frame,"",13);self.sizeLabel:SetPoint("TOPLEFT",24,-234)
         self.slider=CreateFrame("Slider",nil,frame,"OptionsSliderTemplate");self.slider:SetSize(300,18);self.slider:SetPoint("TOPLEFT",216,-234)
         self.slider:SetMinMaxValues(10,48);self.slider:SetValueStep(1);self.slider:SetObeyStepOnDrag(true)
@@ -258,10 +267,11 @@ function Flight:Open()
         FT:Tooltip(color,"Text color","The color of the flight timer's text.")
         FT:Tooltip(self.slider,"Font size","Text size of the flight timer (10 to 48).")
         local reset=FT:QuietButton(frame,"Reset position to center",492,34,"reset");reset:SetPoint("TOPLEFT",24,-310)
-        FT:Tooltip(reset,"Reset position","Put the flight timer back in the middle of the screen. Asks first.")
+        FT:Tooltip(reset,"Reset position","Back to the middle of the screen. Asks first.")
         reset:SetScript("OnClick",function() FT:Confirm("Return the flight timer to the screen center?",function() local s=self:Settings();s.x=.5;s.y=.5;self:Apply() end) end)
-        FT:PageInfo(frame,"Flight timer","Shows where you are flying and how long until you land. Times start as estimates and get more exact with each flight you finish.")
-        FT:Tooltip(self.previewButton,"Preview and move","While this page is open a sample timer shows. Drag it where you want it, then click here to lock it.")
+        FT:Sections(frame,{{"Look",self.fontChoice},{"Position",reset}})
+        FT:PageInfo(frame,"Flight timer","How long until you land. Times get more exact with every flight.")
+        FT:Tooltip(self.previewButton,"Preview and move","A sample timer shows while this page is open. Drag it, then click to lock.")
         frame:HookScript("OnHide",function() self:Drag();self.dragging=false;self.preview=false;self:Apply() end)
     end
     self.preview=true;self:Apply();self.frame:Show()

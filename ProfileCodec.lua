@@ -19,21 +19,21 @@ function FT:EncodeProfile(value)
     return "FT1:"..raw:gsub(".",function(c) return string.format("%02x",c:byte()) end)
 end
 function FT:DecodeProfile(text)
-    if type(text)~="string" or #text>200000 then return nil,"Profile is too large." end
+    if type(text)~="string" or #text>4000000 then return nil,"Profile is too large." end
     local encoded=text:gsub("%s",""):match("^FT1:(.*)$")
     if not encoded or #encoded%2~=0 or encoded:find("[^%x]") then return nil,"Invalid ForeverTools profile string." end
     local raw=encoded:gsub("..",function(pair) return string.char(tonumber(pair,16)) end)
     local pos,nodes=1,0
     local function read(depth)
-        nodes=nodes+1; assert(nodes<10000 and depth<20,"Profile exceeds limits")
+        nodes=nodes+1; assert(nodes<400000 and depth<20,"Profile exceeds limits")
         local tag=raw:sub(pos,pos); pos=pos+1
         if tag=="z" then return nil elseif tag=="t" then return true elseif tag=="f" then return false end
         assert(tag=="n" or tag=="s" or tag=="m","Invalid value")
         local ending=assert(raw:find(":",pos,true)); local digits=raw:sub(pos,ending-1)
-        assert(digits:match("^%d+$") and #digits<7,"Invalid length")
+        assert(digits:match("^%d+$") and #digits<9,"Invalid length")
         local count=tonumber(digits); pos=ending+1
         if tag=="m" then
-            assert(count<5000); local result={}
+            assert(count<100000); local result={}
             for i=1,count do local key=read(depth+1); assert(type(key)=="string" or type(key)=="number"); assert(result[key]==nil,"Duplicate key"); result[key]=read(depth+1) end
             return result
         end

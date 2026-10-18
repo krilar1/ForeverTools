@@ -1,8 +1,12 @@
 ## Interface: 16001
 ## Title: ForeverTools
 ## Notes: A toolkit of customizable quality-of-life tools for WoW: Forever.
-## Version: 0.80.0
+## Version: 0.90.0
 ## SavedVariables: ForeverToolsDB, KrilarToolsDB
+## IconTexture: Interface\AddOns\ForeverTools\Media\MinimapIcon.tga
+## AddonCompartmentFunc: ForeverTools_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: ForeverTools_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: ForeverTools_OnAddonCompartmentLeave
 
 Core.lua
 ProfileCodec.lua
@@ -15,6 +19,7 @@ MacroActions.lua
 MacroRoom.lua
 MacroEditor.lua
 MacroHub.lua
+MacroGuide.lua
 Bandage.lua
 FoodWater.lua
 HiddenUI.lua
@@ -27,6 +32,7 @@ CooldownStyle.lua
 Chat.lua
 UnitColors.lua
 DruidMana.lua
+PersonalResource.lua
 IconStyles.lua
 
 
@@ -60,12 +66,17 @@ FastLoot.lua
 QuestTracker.lua
 RareAlert.lua
 QueueTimer.lua
+Trinkets.lua
+Diminish.lua
+Interrupts.lua
+AutoRelease.lua
 Enemies.lua
 Threat.lua
 Totems.lua
 ChatLinks.lua
 BugReport.lua
 Movers.lua
+MoveWindows.lua
 Hubs.lua
 Search.lua
 Changelog.lua

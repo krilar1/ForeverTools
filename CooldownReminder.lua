@@ -294,6 +294,7 @@ function CD:Place()
     if badge then f:SetPoint("TOP",badge,"BOTTOM",0,-6) else f:SetPoint("TOP",UIParent,"TOP",0,-155) end
 end
 function CD:Show(list,reason,preview)
+    if not preview and FT:NoControl() then return end
     local f=self:Notice(); self:Place()
     local names={}
     for i=1,3 do
@@ -311,7 +312,7 @@ function CD:Show(list,reason,preview)
     f:SetAlpha(quiet and .8 or 1)
     f:Show()
     self.token=(self.token or 0)+1; local token=self.token
-    C_Timer.After(preview and 8 or quiet and 4 or SHOW,function() if self.token==token then f:Hide() end end)
+    if not (preview and self.previewOn) then C_Timer.After(preview and 8 or quiet and 4 or SHOW,function() if self.token==token then f:Hide() end end) end
     if self:Settings().sound and not preview and not quiet and PlaySound and SOUNDKIT and SOUNDKIT.MAP_PING then pcall(PlaySound,SOUNDKIT.MAP_PING,"SFX") end
 end
 
@@ -456,9 +457,23 @@ local function needLabel(need)
     local parts={}; for word in need:gmatch("%S+") do parts[#parts+1]=needText[word] or word:lower() end
     return "when you have "..table.concat(parts," or ")
 end
+-- The Preview switch: an example notice with your cooldowns until switched off.
+function CD:SetPreview(on)
+    if on and InCombatLockdown() then on=false end
+    self.previewOn=on and true or nil
+    if on then
+        local list={}
+        for _,e in ipairs(self:Trinkets()) do if self:Role(e)~="off" then list[#list+1]=e end end
+        for _,e in ipairs(self:Candidates()) do if self:Role(e)~="off" then list[#list+1]=e end end
+        if #list==0 then list={{name="Blood Fury",icon="Interface\\Icons\\Racial_Orc_BerserkerStrength"}} end
+        self:Show(list,"tough",true)
+    elseif self.notice then self.token=(self.token or 0)+1; self.notice:Hide() end
+    if self.frame then self:Refresh() end
+end
 function CD:Refresh()
     if not self.frame then return end
     local s=self:Settings()
+    if self.previewButton then self.previewButton.label:SetText("Preview: "..(self.previewOn and "On" or "Off")) end
     self.toggle.label:SetText("Cooldown reminders: "..(s.enabled and "On" or "Off")); FT:SetSelected(self.toggle,s.enabled)
     self.toughToggle.label:SetText("Tough targets: "..(s.tough and "On" or "Off")); FT:SetSelected(self.toughToggle,s.tough)
     self.pullToggle.label:SetText("Big pulls: "..(s.pulls and "On" or "Off")); FT:SetSelected(self.pullToggle,s.pulls)
@@ -480,9 +495,9 @@ function CD:Refresh()
             FT:Tooltip(row,"Cooldown",function()
                 local e=row.entry; if not e then return "" end
                 local role=self:Role(e)
-                local when=role=="offensive" and "Reminded on tough targets and big pulls, once per fight." or role=="defensive" and ("Reminded "..needLabel(e.need)..", at most every 30 seconds.") or "Never reminded."
+                local when=role=="offensive" and "Reminded on tough targets and big pulls." or role=="defensive" and ("Reminded "..needLabel(e.need)..", at most every 30 seconds.") or "Never reminded."
                 local state=self:Ready(e) and "Ready now." or "On cooldown now."
-                return e.name..(e.trinket and " (trinket)" or e.racial and " (racial)" or "").."\n"..when.."\n"..state.."\n\nClick to change it: Offensive, then Defensive, then Off."
+                return e.name..(e.trinket and " (trinket)" or e.racial and " (racial)" or "").."\n"..when.."\n"..state.."\n\nClick to change: Offensive, Defensive, Off."
             end)
             self.rows[i]=row
         end
@@ -504,38 +519,35 @@ function CD:Open()
         self.rows={}
         self.toggle=FT:AccentButton(frame,"",472,34,"Spell_Nature_TimeStop"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function() local s=self:Settings(); s.enabled=not s.enabled; self:Apply() end)
-        FT:Tooltip(self.toggle,"Cooldown reminders","A short notice to use a ready cooldown when it matters. Offensive ones on tough targets and big pulls (once per fight, once a minute, not if you already used one). Defensive ones when you're in trouble. Nothing is used for you.")
+        FT:Tooltip(self.toggle,"Cooldown reminders","A short reminder to use a ready cooldown when it matters. Nothing is used for you.")
         self.toughToggle=FT:QuietButton(frame,"",230,32,"Ability_Warrior_Sunder"); self.toughToggle:SetPoint("TOPLEFT",24,-106)
         self.toughToggle:SetScript("OnClick",function() local s=self:Settings(); s.tough=not s.tough; self:Refresh() end)
-        FT:Tooltip(self.toughToggle,"Tough targets","Offensive reminder when your target is elite, rare, a boss, or 3 or more levels above you. Checked 2 seconds into the fight.")
+        FT:Tooltip(self.toughToggle,"Tough targets","When your target is elite, rare, a boss, or 3+ levels above you.")
         self.pullToggle=FT:QuietButton(frame,"",230,32,"Ability_Whirlwind"); self.pullToggle:SetPoint("TOPLEFT",266,-106)
         self.pullToggle:SetScript("OnClick",function() local s=self:Settings(); s.pulls=not s.pulls; self:Refresh() end)
-        FT:Tooltip(self.pullToggle,"Big pulls","Offensive reminder when 3 or more enemies are in combat with you, 4 seconds into the fight (so a pull for AoE has time to gather). Needs enemy nameplates turned on.")
+        FT:Tooltip(self.pullToggle,"Big pulls","When 3 or more enemies fight you. Needs enemy nameplates on.")
         self.defToggle=FT:QuietButton(frame,"",230,32,"Ability_Warrior_ShieldWall"); self.defToggle:SetPoint("TOPLEFT",24,-146)
         self.defToggle:SetScript("OnClick",function() local s=self:Settings(); s.defensive=not s.defensive; self:Refresh() end)
-        FT:Tooltip(self.defToggle,"In trouble","Defensive reminders: when you lose a third of your health within 5 seconds, or have an effect your cooldown removes (Stoneform and poison, Will of the Forsaken and fear, and so on). The game hides your exact health, so this goes by the damage you take.")
-        self.soundToggle=FT:QuietButton(frame,"",230,32,"INV_Misc_Bell_01"); self.soundToggle:SetPoint("TOPLEFT",266,-146)
+        FT:Tooltip(self.defToggle,"In trouble","When you lose a third of your health in 5 seconds, or have an effect your cooldown removes (like poison for Stoneform).")
+        self.soundToggle=FT:QuietButton(frame,"",230,32,"INV_Misc_Bell_01"); self.soundToggle:SetPoint("TOPLEFT",24,-186)
         self.soundToggle:SetScript("OnClick",function() local s=self:Settings(); s.sound=not s.sound; if s.sound and PlaySound and SOUNDKIT and SOUNDKIT.MAP_PING then PlaySound(SOUNDKIT.MAP_PING,"SFX") end; self:Refresh() end)
-        FT:Tooltip(self.soundToggle,"Sound","Also play a soft chime with the notice (effects volume).")
-        self.levelToggle=FT:QuietButton(frame,"",472,32,"fps"); self.levelToggle:SetPoint("TOPLEFT",24,-186)
+        FT:Tooltip(self.soundToggle,"Sound","Play a soft chime with the reminder.")
+        self.levelToggle=FT:QuietButton(frame,"",230,32,"fps"); self.levelToggle:SetPoint("TOPLEFT",266,-146)
         self.levelToggle:SetScript("OnClick",function() local s=self:Settings(); s.leveling=not s.leveling; self:Apply() end)
-        FT:Tooltip(self.levelToggle,"Remind while leveling","Leveling fights are rarely tough enough for the other reminders. After about 8 kills without using a ready offensive cooldown, the next fight gets a quiet notice: slightly see-through, no sound, at most once every 5 minutes.")
-        local preview=FT:QuietButton(frame,"Preview",472,32,"buffs"); preview:SetPoint("TOPLEFT",24,-226)
-        preview:SetScript("OnClick",function()
-            local list={}
-            for _,e in ipairs(self:Trinkets()) do if self:Role(e)~="off" then list[#list+1]=e end end
-            for _,e in ipairs(self:Candidates()) do if self:Role(e)~="off" then list[#list+1]=e end end
-            if #list==0 then list={{name="Blood Fury",icon="Interface\\Icons\\Racial_Orc_BerserkerStrength"}} end
-            self:Show(list,"tough",true)
-        end)
-        FT:Tooltip(preview,"Preview","Show an example notice with your cooldowns.")
-        local head=FT:Label(frame,"Your cooldowns",15,true); head:SetPoint("TOPLEFT",24,-276)
+        FT:Tooltip(self.levelToggle,"Remind while leveling","While leveling: a quiet reminder after about 8 kills without using a ready cooldown. At most every 5 minutes.")
+        local preview=FT:QuietButton(frame,"Preview: Off",230,32,"buffs"); preview:SetPoint("TOPLEFT",266,-186)
+        preview:SetScript("OnClick",function() self:SetPreview(not self.previewOn) end)
+        FT:Tooltip(preview,"Preview","Show an example reminder until switched off.")
+        self.previewButton=preview
+        frame:HookScript("OnHide",function() if self.previewOn then self:SetPreview(false) end end)
+        local head=FT:Label(frame,"Your cooldowns",15,true); head:SetPoint("TOPLEFT",24,-232)
         FT:SectionHeading(head,"Spell_Nature_TimeStop",280)
-        FT:PageInfo(frame,"Cooldown reminders","A short notice to use a ready cooldown when it matters; nothing is used for you. Offensive cooldowns on tough targets and big pulls, defensive ones when you're in trouble.\n\nThe list shows your on-use trinkets and every spell you know with a cooldown of a minute or more. Known cooldowns get their role automatically (for example Blood Fury is offensive, Stoneform defensive); others start Off. Click a row to change its role, hover it to see when it is reminded.")
-        local box=CreateFrame("Frame",nil,frame); box:SetSize(472,280); box:SetPoint("TOPLEFT",24,-306); FT:Panel(box)
+        FT:PageInfo(frame,"Cooldown reminders","A short reminder to use a ready cooldown when it matters. Nothing is used for you.\n\nThe list shows your on-use trinkets and spells with a cooldown of a minute or more. Click a row to change its role.")
+        local box=CreateFrame("Frame",nil,frame); box:SetSize(472,280); box:SetPoint("TOPLEFT",24,-262); FT:Panel(box)
         local scroll=CreateFrame("ScrollFrame",nil,box,"UIPanelScrollFrameTemplate"); scroll:SetPoint("TOPLEFT",8,-8); scroll:SetPoint("BOTTOMRIGHT",-28,8)
         self.list=CreateFrame("Frame",nil,scroll); self.list:SetSize(440,1); scroll:SetScrollChild(self.list)
-        self.empty=FT:Label(box,"No on-use trinkets or long cooldowns found yet.",13); self.empty:SetPoint("CENTER")
+        self.empty=FT:Label(box,"No on-use trinkets or long cooldowns yet.",13); self.empty:SetPoint("CENTER")
+        FT:Sections(frame,{{"When to remind",self.toughToggle},{"Reminder",self.soundToggle}})
     end
     -- Read the spellbook again: a cooldown missed earlier shows up now.
     if not InCombatLockdown() then self.cache=nil end

@@ -27,7 +27,7 @@ function Skins:Settings()
         local old=type(s.areas)=="table" and type(s.areas.bagWindows)=="table" and s.areas.bagWindows.bank==true
         s.bank=(old and s.bagWindows==true) and true or false
     end
-    for _,key in ipairs({"minimap","bags","bagWindows","micro","xp","player","target","tot","focus","focustarget","pet","party","personal","castbar","swing"}) do
+    for _,key in ipairs({"minimap","bags","bagWindows","micro","xp","player","target","tot","focus","focustarget","pet","party","personal","castbar","swing","tooltip","dialogs","gameWindows","calendar","trinkets","nearby","enemyAlert","bgTimer"}) do
         if type(s[key])~="boolean" then s[key]=false end
     end
     if type(s.stances)~="boolean" then s.stances=false end
@@ -58,7 +58,8 @@ function Skins:Area(key)
     end
     if type(s)~="table" then
         s={preset=root.preset,opacity=root.opacity,shadow=root.shadow,color={unpack(root.color)},borderColor={unpack(root.borderColor)},thickness=1,borderOpacity=1,rares=false,elites=false,hideSecondary=key=="micro"}
-        if key=="bags" or key=="bagWindows" then s.opacity=1 end
+        if key=="bags" or key=="bagWindows" or key=="dialogs" or key=="gameWindows" or key=="calendar" or key=="nearby" or key=="enemyAlert" or key=="bgTimer" then s.opacity=1 end
+        if key=="trinkets" then s.thickness=2; s.opacity=1 end
         if key=="gryphons" then s.preset="soft";s.color={.04,.04,.05};s.borderColor={.26,.21,.17};s.opacity=.34 end
         root.areas[key]=s
     end
@@ -67,6 +68,8 @@ function Skins:Area(key)
         s.solidBagDefaults=true
     end
     if key=="bags" then s.hideArt=false elseif s.hideArt==nil then s.hideArt=false end
+    if key=="dialogs" and type(s.darkParchment)~="boolean" then s.darkParchment=false end
+    if key=="bags" and s.barStyle~="game" and s.barStyle~="action" then s.barStyle="game" end
     -- Bag menu: window art and empty-slot art can be hidden separately.
     -- Older saves had one switch for both; start from that.
     if key=="bagWindows" and type(s.hideSlotArt)~="boolean" then s.hideSlotArt=s.hideArt==true end
@@ -203,6 +206,7 @@ local function onePixel(frame)
     if type(scale)~="number" or scale<=0 or (issecretvalue and issecretvalue(scale)) then scale=1 end
     return factor/scale
 end
+Skins.OnePixel=onePixel
 function Skins:PaintShadow(rec,s,on)
     local layers=rec.shadows; if not layers then return end
     if not on then for _,t in ipairs(layers) do t:Hide() end; rec.shadowKey=nil; return end
@@ -328,6 +332,11 @@ function Skins:Apply()
         -- The spell binds role bar looks like your action bars.
         local roleBar=_G.ForeverToolsRoleBar
         if roleBar and roleBar.buttons then for _,b in ipairs(roleBar.buttons) do self:Track(b,"actions") end end
+    end
+    -- The trinket menu has its own part (Skins > PvP).
+    if s.trinkets then
+        local trinkets=_G.ForeverToolsTrinkets
+        if trinkets and trinkets.buttons then for _,b in ipairs(trinkets.buttons) do self:Track(b,"trinkets") end end
     end
     if FT.modules.SpellBinds then FT.modules.SpellBinds:PaintRim() end
     if s.stances then

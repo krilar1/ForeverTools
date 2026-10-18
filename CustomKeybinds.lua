@@ -306,7 +306,7 @@ end
 function B:Refresh()
     if not self.frame then return end
     local s=self:Settings()
-    self.npcToggle.label:SetText("Cast on friendly NPCs: "..(s.npcs==true and "On" or "Off")); FT:SetSelected(self.npcToggle,s.npcs==true)
+    self.npcToggle.label:SetText("Friendly NPCs: "..(s.npcs==true and "On" or "Off")); FT:SetSelected(self.npcToggle,s.npcs==true)
     self.npcToggle:SetAlpha(s.enabled and not self.unavailable and 1 or .5)
     self.toggle.label:SetText(self.unavailable and "Wheel casting: Unavailable" or ("Mouse-wheel casting: "..(s.enabled and "On" or "Off")))
     self.toggle:SetEnabled(not self.unavailable); FT:SetSelected(self.toggle,s.enabled and not self.unavailable)
@@ -318,7 +318,7 @@ function B:Refresh()
         picker.icon:SetTexture(spell and spell.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
     end
     if self.spellRows then self:RenderSpellRows() end
-    self.status:SetText(self.unavailable and "Wheel casting isn't available on this game version. Your wheel works as usual, and your spell choices are kept." or self.pending and "Saved. Bindings update after combat." or "")
+    self.status:SetText(self.unavailable and "Wheel casting doesn't work in this game version. Your choices are kept." or self.pending and "Saved. Bindings update after combat." or "")
 end
 function B:Open()
     if not self.frame then
@@ -329,7 +329,7 @@ function B:Open()
         self.npcToggle=FT:QuietButton(self.frame,"",230,34,"character"); self.npcToggle:SetPoint("TOPLEFT",266,-62)
         self.npcToggle.icon:SetTexture("Interface\\Icons\\INV_Misc_Coin_02")
         self.npcToggle:SetScript("OnClick",function() local s=self:Settings(); s.npcs=not (s.npcs==true); self:Apply() end)
-        FT:Tooltip(self.npcToggle,"Cast on friendly NPCs","Off (the default): scrolling over a vendor, quest giver or other friendly NPC zooms the camera, so you don't cast on them by accident. On: they are cast on like players.\n\nTotems and other summoned helpers are always skipped. In combat the wheel casts on everything, because the game does not allow this to change during a fight.")
+        FT:Tooltip(self.npcToggle,"Cast on friendly NPCs","Also cast on vendors and other friendly NPCs. Off: the wheel zooms over them.")
         for _,b in ipairs({self.toggle,self.npcToggle}) do if b.label.SetWordWrap then b.label:SetWordWrap(false) end end
         self.search=CreateFrame("EditBox",nil,self.frame,"InputBoxTemplate")
         self.search:SetSize(460,28); self.search:SetPoint("TOPLEFT",30,-268)
@@ -349,7 +349,7 @@ function B:Open()
             local picker=FT:Dropdown(self.frame,472,function() return self:SpellOptions() end,function(id) self:SelectSpell(key,id) end,"mouseover")
             picker:SetPoint("TOPLEFT",24,-132-(i-1)*70); picker:SetHeight(32)
             self.pickers[key]=picker
-            FT:Tooltip(picker,d[2],"Pick a spell you have learned. It is cast on the unit under your mouse, friend or enemy as the spell allows. A dispel is only cast when there is something to remove. Choose None to scroll normally again.")
+            FT:Tooltip(picker,d[2],"A learned spell to cast on the unit under your mouse. None scrolls normally.")
         end
         self.status=FT:Label(self.frame,"",13); self.status:SetPoint("TOPLEFT",24,-534); self.status:SetSize(472,42)
         self.spellRows={}
@@ -359,7 +359,7 @@ function B:Open()
             row:EnableMouseWheel(true)
             row:SetScript("OnMouseWheel",function(_,delta) self:TurnPage(delta>0 and -1 or 1) end)
             row:SetScript("OnClick",function(owner) if owner.spell then self:StartBinding(owner.spell) end end)
-            FT:Tooltip(row,"Bind this spell","Click, then scroll up or down to choose the wheel direction. Click again or press Esc to cancel. Your choice saves immediately.")
+            FT:Tooltip(row,"Bind this spell","Click, then scroll up or down to bind. Esc cancels.")
             self.spellRows[i]=row
         end
         self:CreateBindOverlay()
@@ -370,8 +370,8 @@ function B:Open()
         prev:SetScript("OnClick",function() self:TurnPage(-1) end)
         next:SetScript("OnClick",function() self:TurnPage(1) end)
         self.pageLabel=FT:Label(self.frame,"",12); self.pageLabel:SetPoint("TOP",0,-506)
-        FT:PageInfo(self.frame,"Mouse-wheel casting","Bind a spell to scrolling up or down. Scroll over a unit frame or a character in the world to cast it on them. Anywhere else the wheel zooms the camera as usual.\n\nPick a spell in the Scroll up or Scroll down menu. Or click a spell in the list, then scroll up or down to bind it.\n\nFriendly NPCs are skipped unless you turn on Cast on friendly NPCs. Totems are always skipped.\n\nDispels are only cast when the unit has something to remove, and never on a player's character in the world: scroll over their unit frame instead.\n\nThese checks work out of combat. In a fight the wheel casts on whatever is under the mouse.")
-        FT:Tooltip(self.toggle,"Enable mouse-wheel casting","Turn mouse-wheel casting on or off. Off gives the wheel back to the camera. Each scroll casts once.")
+        FT:PageInfo(self.frame,"Mouse-wheel casting","Bind a spell to scrolling up or down. Scroll over a unit to cast on it; elsewhere the wheel zooms.\n\nFriendly NPCs and totems are skipped. Dispels only cast when there is something to remove.")
+        FT:Tooltip(self.toggle,"Enable mouse-wheel casting","Turn wheel casting on or off.")
     end
     self:Refresh(); self.frame:Show()
 end

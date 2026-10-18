@@ -51,7 +51,7 @@ function Editor:FindInstalled()
     end
     local matches = #trackedMatches > 0 and trackedMatches or (#exactMatches > 0 and exactMatches or alternatives)
     if #matches == 1 then return matches[1] end
-    if #matches > 1 then return nil, "Several matching macros exist. Remove duplicates in Blizzard's Macro window before replacing." end
+    if #matches > 1 then return nil, "Several matching macros exist. Remove duplicates in the game's macro window first." end
 end
 function Editor:SaveToWoW()
     if InCombatLockdown() then self:Message("Leave combat before saving to WoW.", true); return end
@@ -61,7 +61,7 @@ function Editor:SaveToWoW()
     local request = {entry = copy(self.entry), body = body, scope = self.scope, target = target, key = self:Key(self.entry)}
     self.pendingSave = request
     if target then
-        StaticPopupDialogs.FOREVERTOOLS_REPLACE.text = "Replace the existing " .. self.entry.name .. " macro with this edited version?\n\nThe current version will be recorded in your save log."
+        StaticPopupDialogs.FOREVERTOOLS_REPLACE.text = "Replace the existing " .. self.entry.name .. " macro with this version?\n\nThe current one is kept in your save log."
         FT:ShowPopup("FOREVERTOOLS_REPLACE")
     elseif self.entry.class and self.entry.class ~= Macros:PlayerClass() then
         StaticPopupDialogs.FOREVERTOOLS_EDITOR_FOREIGN.text = "This is a " .. self.entry.class .. " macro, but you are a " .. Macros:PlayerClass() .. ". Add it to Character macros anyway?"
@@ -76,7 +76,7 @@ function Editor:CommitSave()
         local target = request.target
         local name, _, oldBody = GetMacroInfo(target.index)
         if name ~= target.name or normal(oldBody) ~= normal(target.body) then
-            self:Message("The existing macro changed. Nothing was replaced; open it again and retry.", true); return
+            self:Message("The macro changed meanwhile. Nothing replaced; open it again.", true); return
         end
         self:SaveVersion("Before replacement", oldBody)
         local index = EditMacro(target.index, Macros:MacroName(request.entry), Macros:MacroIcon(request.entry), request.body)
@@ -291,7 +291,7 @@ function Editor:CreateUI()
         button.remove:SetPoint("TOPRIGHT", -3, -3)
         button.remove.label:SetTextColor(1, 0.35, 0.42)
         button.remove:SetScript("OnClick", function(owner) self:DeleteVersion(owner:GetParent().historyIndex) end)
-        FT:Tooltip(button.remove, "Remove revision", "Delete this saved version from the history. Your macro in WoW does not change.")
+        FT:Tooltip(button.remove, "Remove revision", "Delete this saved version. Your WoW macro doesn't change.")
         self.historyButtons[index] = button
     end
     local prev = FT:QuietButton(frame, "<", 32, 28); prev:SetPoint("TOPLEFT", 606, -500)
@@ -336,7 +336,7 @@ function Editor:PrepareEntry(entry, body)
     self.code:SetText(FT:MacroBody(entry, self.sourceBody))
     self.loading = false
     self.historyPage = 1; self:RefreshControls(); self:RenderHistory()
-    self:Message(problem or "Changes save locally as you type. Back returns to the normal macro view.", problem ~= nil)
+    self:Message(problem or "Changes save as you type.", problem ~= nil)
 end
 function Editor:OpenEntry(entry, body)
     if not entry then return end

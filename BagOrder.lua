@@ -142,7 +142,7 @@ Order.cornerText=cornerText
 function Order:CornerTooltip(corner)
     local t=cornerText[corner]
     if not self:Combined() then
-        return "Each bag window puts its first slot in the "..t.label:lower().." corner. Its slots run "..t.runs:gsub("^runs ","")..", and its last slot ends in the "..t.ends.." corner. The backpack and every bag work the same way."
+        return "Each bag window puts its first slot in the "..t.label:lower().." corner. Its slots run "..t.runs:gsub("^runs ","")..", and its last slot ends in the "..t.ends.." corner."
     end
     return "Your backpack's first slot sits in the "..t.label:lower().." corner. The line "..t.runs..", so your last bag ends in the "..t.ends.." corner."
 end
@@ -240,8 +240,8 @@ function Order:Refresh()
     end
     local combined=self:Combined()
     page.startHeading:SetText(combined and "Where your backpack starts" or "Where each bag starts")
-    page.before:SetText(combined and "Before the game update on October 8, bags started in the top left."
-        or "Separate bag windows: each bag starts in this corner. Before the October 8 update: top left.")
+    page.before:SetText(combined and "Before the October 8 update, bags started top left."
+        or "Each bag starts in this corner.")
     for i=n+1,#p.cells do p.cells[i]:Hide() end
     p.caption:ClearAllPoints(); p.caption:SetPoint("TOPLEFT",p.grid,"BOTTOMLEFT",0,-8)
     if FT.RefreshDock and page.frame:IsShown() then FT:RefreshDock(page.frame) end
@@ -252,8 +252,8 @@ function page:Open()
     if not self.frame then
         local hub=FT:HubOf("BagsOrder"); local width=hub and hub.width or 540
         local frame=FT:Window("ForeverToolsBagsOrder","Bag order",width,440); self.frame=frame
-        FT:PageInfo(frame,"Bag order","Your bag slots are one long line: your backpack's slots first, then bag 1, bag 2, bag 3 and bag 4. This page sets where that line starts in the bag window, where new loot goes, and which end Clean Up packs your items into.\n\nYour last bag is bag 4: the one furthest left on the bag bar.")
-        local hint=FT:Label(frame,"Your slots run in one line: backpack first, then bags 1 to 4. Pick where the line starts, where new loot goes, and which end Clean Up fills. The example shows each choice.",12)
+        FT:PageInfo(frame,"Bag order","Your bag slots run in one line: backpack, then bags 1 to 4. Pick where it starts, where loot goes, and where Clean Up packs.")
+        local hint=FT:Label(frame,"Pick where your bag slots start, where loot goes, and where Clean Up packs. The example shows each choice.",12)
         hint:SetPoint("TOPLEFT",24,-62); hint:SetWidth(width-48); hint:SetTextColor(.66,.59,.48)
         local L,COL=24,280
         local function heading(text,y,icon)
@@ -264,7 +264,7 @@ function page:Open()
         self.startHeading=heading("Where your backpack starts",-104,"INV_Misc_Bag_08")
         self.game=FT:QuietButton(frame,"Game's own",COL,26); self.game:SetPoint("TOPLEFT",L,-130)
         self.game:SetScript("OnClick",function() Order:Set("order","game") end)
-        FT:Tooltip(self.game,"Game's own","Leave the layout to the game. Since its update on October 8, the game starts your backpack in the bottom right corner.")
+        FT:Tooltip(self.game,"Game's own","Let the game decide (bottom right since October 8).")
         self.corners={}
         for i,corner in ipairs(CORNERS) do
             local b=FT:QuietButton(frame,cornerText[corner].label,136,26)
@@ -286,16 +286,16 @@ function page:Open()
                 self[key][o[1]]=b
             end
         end
-        local remembered=" This is the game's own setting; once you pick it here, every character using this profile gets it when it logs in."
+        local remembered=" A game setting: every character on this profile gets it."
         pair("insert",-266,"New loot goes into",{
-            {"backpack","Backpack first","New items go to the first free slot in your backpack. When it is full: bag 1, then bag 2, and so on. This is the game's normal way."..remembered},
-            {"lastbag","Last bag first","New items go to your last bag (bag 4) first, then bag 3, and so on, ending with your backpack."..remembered},
+            {"backpack","Backpack first","Backpack first, then bag 1, 2... The game's normal way."..remembered},
+            {"lastbag","Last bag first","Last bag first, backpack last."..remembered},
         })
         pair("cleanup",-326,"Clean Up packs into",{
-            {"lastbag","Last bag first","The Clean Up button (next to the search box) packs your items toward your last bag, so your free slots end up in your backpack. This is the game's normal way."..remembered},
-            {"backpack","Backpack first","The Clean Up button (next to the search box) packs your items toward your backpack, so your free slots end up in your last bag."..remembered},
+            {"lastbag","Last bag first","Clean Up packs toward your last bag. Free slots end in the backpack."..remembered},
+            {"backpack","Backpack first","Clean Up packs toward your backpack. Free slots end in the last bag."..remembered},
         })
-        local note=FT:Label(frame,"Only the order changes: your items stay where they are, and the game's bag window keeps its look.",12)
+        local note=FT:Label(frame,"Only the order changes. Items and the bag's look stay.",12)
         note:SetPoint("TOPLEFT",L,-388); note:SetWidth(width-48); note:SetTextColor(.66,.59,.48)
         -- The example, on the right.
         local R=L+COL+26
@@ -311,7 +311,7 @@ function page:Open()
             local c=BAG_COLORS[i]; sq:SetColorTexture(c[1],c[2],c[3],1)
             local l=FT:Label(p.caption,name,11); l:SetPoint("TOPLEFT",x+14,y); l:SetTextColor(.85,.80,.70)
         end
-        local keyText=FT:Label(p.caption,"Bright: your items after Clean Up (half full).\n1: your backpack's first slot.\nWhite outline: where the next item you loot goes.",11)
+        local keyText=FT:Label(p.caption,"Bright: items after Clean Up.\n1: backpack's first slot.\nOutline: where loot goes next.",11)
         keyText:SetPoint("TOPLEFT",0,-50); keyText:SetWidth(width-R-24); keyText:SetTextColor(.66,.59,.48)
         self.preview=p
     end

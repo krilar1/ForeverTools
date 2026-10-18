@@ -6,7 +6,7 @@ local _,FT=...
 -- The glow is the frame's own glow art, the one the game lights up for aggro
 -- and combat: we draw a copy of it (referenced, not bundled) in the debuff's
 -- color and never touch Blizzard's. Frames without such art get plain rings.
-local Glow={holders={}}
+local Glow={holders={},pageWidth=540}
 local frameKeys={"player","target","focus","party","raid"}
 Glow.frameKeys=frameKeys
 Glow.labels={player="Player",target="Target",focus="Focus",party="Party",raid="Raid"}
@@ -87,7 +87,10 @@ end
 function Glow:Holder(frame,kind,unitFn,style)
     local holder=self.holders[frame]
     if holder then return holder end
-    if InCombatLockdown() then return end
+    -- Allowed in combat too: the glow is a plain frame of our own with
+    -- textures, laid over the unit frame. Nothing protected is moved, shown
+    -- or changed, so a reload or a new group member in a fight lights up
+    -- right away.
     style=style or kind
     local top,bottom=bars(frame,style)
     top=top or frame
@@ -169,9 +172,10 @@ function Glow:PaintColor(holder,r,g,b)
 end
 -- Show one type's glow on every frame that is on screen for a few seconds,
 -- so a color can be judged without waiting for a debuff.
+function Glow:Peek() if not self.preview then self:Preview("Magic",3) end end
 function Glow:Preview(name,seconds)
     if not self:Settings().enabled then return end
-    if not InCombatLockdown() then self:Collect() end
+    self:Collect()
     self.preview=name; self.previewToken=(self.previewToken or 0)+1
     local token=self.previewToken
     self:UpdateAll()
@@ -232,7 +236,7 @@ function Glow:Update(holder)
     elseif holder.pulse:IsPlaying() then holder.pulse:Stop() end
 end
 local function unitOf(frame) return function() return frame.displayedUnit or frame.unit end end
--- Finds the frames each option covers. New holders are only made out of combat.
+-- Finds the frames each option covers (in combat too).
 function Glow:Collect()
     if PlayerFrame then self:Holder(PlayerFrame,"player",function() return "player" end) end
     if TargetFrame then self:Holder(TargetFrame,"target",function() return "target" end) end
@@ -258,7 +262,7 @@ end
 function Glow:Apply()
     if not FT.dbReady then return end
     local s=self:Settings()
-    if s.enabled and not InCombatLockdown() then self:Collect() end
+    if s.enabled then self:Collect() end
     self:UpdateAll()
     self:SetEvents(s.enabled)
 end
@@ -284,36 +288,36 @@ function Glow:Refresh()
 end
 function Glow:Open()
     if not self.frame then
-        local frame=FT:Window("ForeverToolsDispelGlow","Dispel glow",760,560); self.frame=frame
+        local frame=FT:Window("ForeverToolsDispelGlow","Dispel glow",540,560); self.frame=frame
         local page={frames={},colors={}}; self.page=page
-        FT:PageInfo(frame,"Dispel glow","A soft glow around a unit frame while that unit has a debuff you can remove, in the debuff's color (magic, curse, disease or poison). Only dispels you have learned count, so nothing lights up before you train them. No icons are added.")
-        local hint=FT:Label(frame,"A glow on unit frames that have a debuff you can remove.",12); hint:SetPoint("TOPLEFT",24,-66); hint:SetWidth(712); hint:SetTextColor(.66,.59,.48)
-        page.toggle=FT:AccentButton(frame,"",712,34,"Spell_Holy_DispelMagic"); page.toggle:SetPoint("TOPLEFT",24,-94)
+        FT:PageInfo(frame,"Dispel glow","A glow around a unit frame that has a debuff you can remove, in the debuff's color. Only dispels you know count.")
+        local hint=FT:Label(frame,"A glow on unit frames that have a debuff you can remove.",12); hint:SetPoint("TOPLEFT",24,-66); hint:SetWidth(492); hint:SetTextColor(.66,.59,.48)
+        page.toggle=FT:AccentButton(frame,"",492,34,"Spell_Holy_DispelMagic"); page.toggle:SetPoint("TOPLEFT",24,-94)
         page.toggle:SetScript("OnClick",function() local s=self:Settings(); s.enabled=not s.enabled; self:Apply(); self:Refresh() end)
-        FT:Tooltip(page.toggle,"Dispel glow","A soft glow around a unit frame when it has a debuff you can dispel, in that debuff type's color. It uses the same glow art the game lights up for aggro. Choose the frames and colors below.")
+        FT:Tooltip(page.toggle,"Dispel glow","Glow on unit frames that have a debuff you can dispel.")
         local framesHead=FT:Label(frame,"Show on",15,true); framesHead:SetPoint("TOPLEFT",24,-146); FT:SectionHeading(framesHead,"INV_Misc_Head_Human_01",300)
         for i,key in ipairs(self.frameKeys) do
-            local b=FT:QuietButton(frame,self.labels[key],136,32)
-            b:SetPoint("TOPLEFT",24+(i-1)*144,-174)
+            local b=FT:QuietButton(frame,self.labels[key],92,32)
+            b:SetPoint("TOPLEFT",24+(i-1)*100,-174)
             b:SetScript("OnClick",function() local s=self:Settings(); s[key]=not s[key]; self:Apply(); self:Refresh() end)
-            FT:Tooltip(b,self.labels[key].." frames",key=="raid" and "Raid frames. The game has its own dispel highlight for these in Edit Mode; use one or the other."
-                or key=="party" and "Show the glow on your party's frames, both the normal ones and the raid-style ones."
+            FT:Tooltip(b,self.labels[key].." frames",key=="raid" and "The game has its own dispel highlight for raid frames in Edit Mode. Use one or the other."
+                or key=="party" and "Normal and raid-style party frames."
                 or "Show the glow on the "..self.labels[key]:lower().." frame.")
             page.frames[key]=b
         end
         local lookHead=FT:Label(frame,"Look",15,true); lookHead:SetPoint("TOPLEFT",24,-226); FT:SectionHeading(lookHead,"Spell_Holy_DispelMagic",300)
-        page.strength=FT:Dropdown(frame,350,function()
+        page.strength=FT:Dropdown(frame,240,function()
             local icon="Interface\\Icons\\Spell_Holy_DispelMagic"
             return {{value="soft",label="Glow: Soft",icon=icon},{value="medium",label="Glow: Medium",icon=icon},{value="strong",label="Glow: Strong",icon=icon}}
         end,function(value) self:Settings().strength=value; self:Apply(); self:Refresh() end,"Spell_Holy_DispelMagic")
         page.strength:SetPoint("TOPLEFT",24,-254); page.strength:SetHeight(32)
         FT:Tooltip(page.strength,"Glow strength","How bright the glow is.")
-        page.pulse=FT:QuietButton(frame,"",350,32,"Spell_Holy_DispelMagic"); page.pulse:SetPoint("TOPLEFT",386,-254)
+        page.pulse=FT:QuietButton(frame,"",240,32,"Spell_Holy_DispelMagic"); page.pulse:SetPoint("TOPLEFT",276,-254)
         page.pulse:SetScript("OnClick",function() local s=self:Settings(); s.pulse=not s.pulse; self:Apply(); self:Refresh() end)
-        FT:Tooltip(page.pulse,"Gentle pulse","Let the glow slowly fade in and out so it catches the eye.")
+        FT:Tooltip(page.pulse,"Gentle pulse","Slowly fade the glow in and out.")
         -- One color per debuff type. Picking a color shows it on your frames for a moment.
         for i,name in ipairs(self.typeNames) do
-            local b=FT:QuietButton(frame,name,172,32); b:SetPoint("TOPLEFT",24+(i-1)*180,-294)
+            local b=FT:QuietButton(frame,name,240,32); b:SetPoint("TOPLEFT",24+((i-1)%2)*252,-294-math.floor((i-1)/2)*40)
             b.label:ClearAllPoints(); b.label:SetPoint("LEFT",12,0)
             b.swatch=b:CreateTexture(nil,"ARTWORK"); b.swatch:SetTexture("Interface\\Buttons\\WHITE8X8"); b.swatch:SetSize(18,18); b.swatch:SetPoint("RIGHT",-10,0)
             b:RegisterForClicks("LeftButtonUp","RightButtonUp")
@@ -329,25 +333,30 @@ function Glow:Open()
                 if ColorPickerFrame.SetupColorPickerAndShow then FT:TrackColorPicker(); ColorPickerFrame:SetupColorPickerAndShow({r=old[1],g=old[2],b=old[3],hasOpacity=false,swatchFunc=pick,cancelFunc=cancel})
                 else ColorPickerFrame:SetColorRGB(unpack(old)); ColorPickerFrame.func=pick; ColorPickerFrame.cancelFunc=cancel; ColorPickerFrame:Show() end
             end)
-            FT:Tooltip(b,name.." glow color","The glow color for "..name:lower().." debuffs. Click to change it: the glow shows on your frames for a few seconds so you can judge it. Right-click puts the default color back.")
+            FT:Tooltip(b,name.." glow color","The glow color for "..name:lower().." debuffs. Click to change, right-click for the default.")
             page.colors[name]=b
         end
     end
     self:Refresh(); self.frame:Show()
 end
 FT:RegisterModule("DispelGlow",Glow)
+-- Units whose auras changed, looked at together a tenth of a second later.
+Glow.dueUnits={}
+function Glow.FlushUnits()
+    for unit in pairs(Glow.dueUnits) do Glow.dueUnits[unit]=nil; Glow:UpdateUnit(unit) end
+end
 Glow.events=CreateFrame("Frame")
 Glow.events:RegisterEvent("PLAYER_LOGIN")
 Glow.events:SetScript("OnEvent",function(_,event,unit)
     if not FT.dbReady then return end
     if event=="UNIT_AURA" then
         -- Auras can change many times a second in a group: look once per unit per tenth of a second.
-        if type(unit)=="string" and not secret(unit) then FT:Coalesce("glow:"..unit,function() Glow:UpdateUnit(unit) end,.1) end
+        if type(unit)=="string" and not secret(unit) and not Glow.dueUnits[unit] then Glow.dueUnits[unit]=true; FT:Coalesce("glowUnits",Glow.FlushUnits,.1) end
     elseif event=="PLAYER_TARGET_CHANGED" then Glow:UpdateUnit("target")
     elseif event=="PLAYER_FOCUS_CHANGED" then Glow:UpdateUnit("focus")
     elseif event=="PLAYER_LOGIN" then Glow:Apply()
     elseif event=="GROUP_ROSTER_UPDATE" or event=="PLAYER_REGEN_ENABLED" or event=="PLAYER_ENTERING_WORLD" then
-        -- Raid-style frames can appear with the group; collect them when allowed.
+        -- Raid-style frames can appear with the group: collect them (in combat too).
         C_Timer.After(.2,function() Glow:Apply() end)
     else Glow:UpdateAll() end
 end)

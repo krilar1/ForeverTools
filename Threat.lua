@@ -14,13 +14,23 @@ local function number(v,default,low,high)
     if type(v)~="number" or v~=v then return default end
     return math.max(low,math.min(high,v))
 end
-local function hasAtlas(name) return C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name)~=nil end
+-- Asked once per art name (the answer never changes in a session).
+local atlasKnown={}
+local function hasAtlas(name)
+    local known=atlasKnown[name]
+    if known==nil then known=(C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(name)~=nil) or false; atlasKnown[name]=known end
+    return known
+end
 local shows={{"combat","In combat"},{"group","In a group"},{"always","Always"}}
 local MIN_W,MIN_H,MAX_W,MAX_H=180,80,600,500
 
+-- Checked once per settings table (a profile switch, import or reset puts a
+-- new table in place); the meter reads its settings many times a second.
+local checkedSettings=setmetatable({},{__mode="k"})
 function Threat:Settings()
-    if type(FT.db.threat)~="table" then FT.db.threat={} end
     local s=FT.db.threat
+    if checkedSettings[s] then return s end
+    if type(s)~="table" then s={}; FT.db.threat=s end
     if type(s.enabled)~="boolean" then s.enabled=false end
     local known=false; for _,e in ipairs(shows) do if e[1]==s.show then known=true end end
     if not known then s.show="combat" end
@@ -41,6 +51,7 @@ function Threat:Settings()
     if type(c)~="table" or type(c[1])~="number" or type(c[2])~="number" or type(c[3])~="number" then s.backgroundColor={0,0,0} end
     s.backgroundAlpha=number(s.backgroundAlpha,.6,0,1)
     s.textX=number(s.textX,0,-400,400); s.textY=number(s.textY,2,-400,400)
+    checkedSettings[s]=true
     return s
 end
 
@@ -95,16 +106,18 @@ function Threat:DamageMeter()
     if type(meter)~="table" or not meter.GetWidth then return nil end
     return meter
 end
+-- One table, filled again on each look (read several times a second).
+local style={}
+local function readStyle(meter,method,key,low,high)
+    if type(meter[method])~="function" then return end
+    local ok,v=pcall(meter[method],meter)
+    if ok and type(v)=="number" and not secret(v) then style[key]=math.max(low,math.min(high,v)) end
+end
 function Threat:Style()
-    local style={barHeight=22,spacing=3,background=.8}
+    style.barHeight,style.spacing,style.background=22,3,.8
     local meter=self:DamageMeter()
     if meter then
-        local function read(method,key,low,high)
-            if type(meter[method])~="function" then return end
-            local ok,v=pcall(meter[method],meter)
-            if ok and type(v)=="number" and not secret(v) then style[key]=math.max(low,math.min(high,v)) end
-        end
-        read("GetBarHeight","barHeight",14,40); read("GetBarSpacing","spacing",0,10); read("GetBackgroundAlpha","background",0,1)
+        readStyle(meter,"GetBarHeight","barHeight",14,40); readStyle(meter,"GetBarSpacing","spacing",0,10); readStyle(meter,"GetBackgroundAlpha","background",0,1)
     end
     return style
 end
@@ -146,7 +159,7 @@ function Threat:Meter()
     end
     f.hide:SetScript("OnEnter",function(b)
         GameTooltip:SetOwner(b,"ANCHOR_TOP"); GameTooltip:SetText(self:Settings().collapsed and "Show bars" or "Hide bars",1,1,1)
-        GameTooltip:AddLine("Only the title bar stays. Turn the meter off in its settings.",.8,.8,.8,true); GameTooltip:Show()
+        GameTooltip:AddLine("Only the title bar stays.",.8,.8,.8,true); GameTooltip:Show()
     end)
     f.gear:SetScript("OnEnter",function(b)
         GameTooltip:SetOwner(b,"ANCHOR_TOP"); GameTooltip:SetText("Threat meter settings",1,1,1)
@@ -198,7 +211,7 @@ function Threat:Meter()
         if not self.sizing then return end
         self.sizing=false; f:StopMovingOrSizing()
         local s=self:Settings()
-        s.width=math.floor(f:GetWidth()+.5); s.height=math.floor(f:GetHeight()+.5)
+        s.width=number(math.floor(f:GetWidth()+.5),260,MIN_W,MAX_W); s.height=number(math.floor(f:GetHeight()+.5),150,MIN_H,MAX_H)
         -- Sizing can move the anchor; keep a moved meter where it now is.
         if s.x and s.y then s.x,s.y=f:GetLeft(),f:GetTop() end
         self:Place(); self:Update(); hover()
@@ -293,9 +306,13 @@ function Threat:UpdateMeter()
     local shown=s.collapsed and 0 or math.min(#entries,fit)
     for i=1,shown do
         local e=entries[i]; local row=self:Row(i)
-        row:ClearAllPoints()
-        row:SetPoint("TOPLEFT",f,"TOPLEFT",4,-34-(i-1)*(style.barHeight+style.spacing))
-        row:SetPoint("RIGHT",f,"RIGHT",-4,0); row:SetHeight(style.barHeight)
+        local y=-34-(i-1)*(style.barHeight+style.spacing)
+        if row.placedY~=y or row.placedH~=style.barHeight then
+            row.placedY,row.placedH=y,style.barHeight
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT",f,"TOPLEFT",4,y)
+            row:SetPoint("RIGHT",f,"RIGHT",-4,0); row:SetHeight(style.barHeight)
+        end
         local color
         if e.unit then
             row.name:SetText(UnitName(e.unit)); color=classColor(e.unit)
@@ -315,7 +332,10 @@ function Threat:UpdateMeter()
     self:UpdateGrip()
     if f.hide.art then
         local expand=s.collapsed and "ui-questtrackerbutton-expand-all" or "ui-questtrackerbutton-collapse-all"
-        if hasAtlas(expand) then f.hide:SetNormalAtlas(expand); if hasAtlas(expand.."-pressed") then f.hide:SetPushedAtlas(expand.."-pressed") end end
+        if f.hide.shownAtlas~=expand and hasAtlas(expand) then
+            f.hide.shownAtlas=expand
+            f.hide:SetNormalAtlas(expand); if hasAtlas(expand.."-pressed") then f.hide:SetPushedAtlas(expand.."-pressed") end
+        end
     end
     f.body:SetShown(not s.collapsed)
     f:Show()
@@ -349,7 +369,7 @@ function Threat:TextFrame()
         if x and bottom and px and top then
             local s=self:Settings()
             local ratio=owner:GetEffectiveScale()/portrait:GetEffectiveScale()
-            s.textX=math.floor(x*ratio-px+.5); s.textY=math.floor(bottom*ratio-top+.5)
+            s.textX=number(math.floor(x*ratio-px+.5),0,-400,400); s.textY=number(math.floor(bottom*ratio-top+.5),2,-400,400)
         end
         self:PlaceText()
     end)
@@ -428,7 +448,7 @@ end)
 local function showText(v) for _,e in ipairs(shows) do if e[1]==v then return e[2] end end return "In combat" end
 function Threat:SetMovingText(on)
     if on and InCombatLockdown() then return end
-    if on and not yes(UnitExists("target")) then FT:Toast("Target something first, so the target frame is on screen.",3); on=false end
+    if on and not yes(UnitExists("target")) then FT:Toast("Target something first.",3); on=false end
     self.movingText=on==true
     self:Apply()
 end
@@ -469,35 +489,35 @@ function Threat:Open()
     if not self.frame then
         local frame=FT:Window("ForeverToolsThreat","Threat",540,578); self.frame=frame
         FT:BackTo(frame,"SystemCombat")
-        FT:PageInfo(frame,"Threat","A threat meter that looks like the game's damage meter, and your threat % above your target. 100% means you have aggro, or are about to.\n\nIn some dungeons and raids the game keeps threat numbers private. The meter still shows them there, but can't sort or color them.")
+        FT:PageInfo(frame,"Threat","A threat meter like the game's damage meter, and your threat % above your target. 100% means you have aggro.\n\nIn some dungeons the numbers can't be sorted or colored.")
         self.toggle=FT:AccentButton(frame,"",492,34,ICON); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function() local s=self:Settings(); s.enabled=not s.enabled; self:Apply() end)
-        FT:Tooltip(self.toggle,"Threat meter","Show a list of your group's threat on your target, next to the damage meter.")
+        FT:Tooltip(self.toggle,"Threat meter","Your group's threat on your target, next to the damage meter.")
         self.showChoice=FT:Dropdown(frame,240,function()
             local list={}; for _,e in ipairs(shows) do list[#list+1]={value=e[1],label=e[2],icon="Interface\\Icons\\"..ICON} end; return list
         end,function(value) self:Settings().show=value; self:Apply() end,ICON)
         self.showChoice:SetPoint("TOPLEFT",24,-108)
-        FT:Tooltip(self.showChoice,"Show","When the meter is on screen. It always shows while this page is open, as a preview.")
+        FT:Tooltip(self.showChoice,"Show","When the meter shows. Always shown on this page.")
         local reset=FT:QuietButton(frame,"Reset position and size",240,32,"reset"); reset:SetPoint("TOPLEFT",276,-108)
         reset:SetScript("OnClick",function() local s=self:Settings(); s.x,s.y,s.width,s.height=nil,nil,nil,nil; self:Apply() end)
-        FT:Tooltip(reset,"Reset position and size","Put the meter back next to the damage meter (above it, or below when there is no room), at its starting size.")
+        FT:Tooltip(reset,"Reset position and size","Back next to the damage meter, at its starting size.")
         self.lock=FT:QuietButton(frame,"",240,32,"move"); self.lock:SetPoint("TOPLEFT",24,-148)
         self.lock:SetScript("OnClick",function() local s=self:Settings(); s.locked=not s.locked; self:Apply() end)
-        FT:Tooltip(self.lock,"Lock meter","Locked: the meter can't be moved or resized and the resize corner is hidden. Unlock to change it.")
+        FT:Tooltip(self.lock,"Lock meter","Can't be moved or resized while locked.")
         self.gripChoice=FT:Dropdown(frame,240,function()
             local icon="Interface\\Icons\\"..ICON
-            return {{value="always",label="Resize corner: always",icon=icon,tooltip="Always show the resize corner while the meter is unlocked."},
-                {value="hover",label="Resize corner: on mouseover",icon=icon,tooltip="Show the resize corner only while the mouse is over the meter."}}
+            return {{value="always",label="Resize corner: always",icon=icon,tooltip="Always show the resize corner when unlocked."},
+                {value="hover",label="Resize corner: on mouseover",icon=icon,tooltip="Show the resize corner on mouseover."}}
         end,function(value) self:Settings().grip=value; self:Apply() end,"move")
         self.gripChoice:SetPoint("TOPLEFT",276,-148)
-        FT:Tooltip(self.gripChoice,"Resize corner","When the resize corner shows on the meter. On this page it always shows, so you can size the preview.")
+        FT:Tooltip(self.gripChoice,"Resize corner","When the resize corner shows.")
         local function fontButton(label,area,x,tip)
             local b=FT:QuietButton(frame,label,240,32,"fonts"); b:SetPoint("TOPLEFT",x,-188)
             b:SetScript("OnClick",function() local fonts=FT.modules.FontManager; fonts.selected=area; FT:OpenModule("FontManager") end)
             FT:Tooltip(b,label,tip)
         end
-        fontButton("Threat meter font","threatMeter",24,"Choose the font, size and outline of the threat meter's text (opens Fonts).")
-        fontButton("Damage meter font","damageMeter",276,"Choose the font, size and outline of the game's own damage meter bars (opens Fonts).")
+        fontButton("Threat meter font","threatMeter",24,"Font of the threat meter (opens Fonts).")
+        fontButton("Damage meter font","damageMeter",276,"Font of the game's damage meter (opens Fonts).")
         self.placeNote=FT:Label(frame,"",12); self.placeNote:SetPoint("TOPLEFT",24,-228); self.placeNote:SetWidth(492); self.placeNote:SetTextColor(.66,.59,.48)
 
         local heading=FT:Label(frame,"Threat % above target",15,true); heading:SetPoint("TOPLEFT",24,-278)
@@ -511,15 +531,15 @@ function Threat:Open()
         self.textPreview.label=self.textPreview.box:CreateFontString(nil,"OVERLAY"); self.textPreview.label:SetPoint("CENTER")
         self.textPreview.label:SetFont("Fonts\\FRIZQT__.TTF",14,"OUTLINE")
         self.textPreview:EnableMouse(true)
-        FT:Tooltip(self.textPreview,"Preview","How the threat % looks with your settings (here at 72%, close to pulling aggro).")
+        FT:Tooltip(self.textPreview,"Preview","Your threat % with these settings.")
         self.textToggle:SetScript("OnClick",function() local s=self:Settings(); s.text=not s.text; self:Apply() end)
-        FT:Tooltip(self.textToggle,"Threat % above target","Your threat on your target, above its portrait. The color turns yellow, orange and red as you get close to pulling aggro.")
+        FT:Tooltip(self.textToggle,"Threat % above target","Your threat % above your target. Turns yellow, orange and red near aggro.")
         self.fontChoice=FT:Dropdown(frame,240,function() return FT.modules.FontManager:Catalogue() end,function(value) self:Settings().font=value; self:Apply() end,"fonts")
         self.fontChoice:SetPoint("TOPLEFT",24,-354)
         FT:Tooltip(self.fontChoice,"Font","The font of the threat %.")
         self.outlineChoice=FT:Dropdown(frame,240,function() return {{value="",label="No outline"},{value="OUTLINE",label="Outline"},{value="THICKOUTLINE",label="Thick outline"}} end,function(value) self:Settings().outline=value; self:Apply() end,"fonts")
         self.outlineChoice:SetPoint("TOPLEFT",276,-354)
-        FT:Tooltip(self.outlineChoice,"Outline","A dark edge around the threat %, so it stays readable over bright ground.")
+        FT:Tooltip(self.outlineChoice,"Outline","A dark edge so the text stays readable.")
         local function slider(top,min,max,step,title,tip,onChange)
             local text=FT:Label(frame,"",14); text:SetPoint("TOPLEFT",24,top-2); text:SetWidth(160)
             local bar=CreateFrame("Slider",nil,frame,"OptionsSliderTemplate"); bar:SetSize(300,18); bar:SetPoint("TOPLEFT",196,top)
@@ -546,14 +566,14 @@ function Threat:Open()
                 cancelFunc=function() s.backgroundColor=old; self:Apply() end})
             self:Apply()
         end)
-        FT:Tooltip(self.bgColor,"Background color","Choose the background color. Choosing a color turns the background on.")
-        self.alphaLabel,self.alphaSlider=slider(-478,0,100,5,"Transparency","How see-through the background is (0% solid, 100% invisible).",function(v) self:Settings().backgroundAlpha=1-math.floor(v+.5)/100; FT:Coalesce("threatSlider",function() self:Apply() end,.05) end)
+        FT:Tooltip(self.bgColor,"Background color","Background color.")
+        self.alphaLabel,self.alphaSlider=slider(-478,0,100,5,"Transparency","0% solid, 100% invisible.",function(v) self:Settings().backgroundAlpha=1-math.floor(v+.5)/100; FT:Coalesce("threatSlider",function() self:Apply() end,.05) end)
         self.moveText=FT:QuietButton(frame,"",240,32,"move"); self.moveText:SetPoint("TOPLEFT",24,-512)
         self.moveText:SetScript("OnClick",function() self:SetMovingText(not self.movingText) end)
-        FT:Tooltip(self.moveText,"Move threat %","Target something, click to unlock, drag the number, then click again to lock it. It stays attached to the target frame.")
+        FT:Tooltip(self.moveText,"Move threat %","Target something, unlock, drag the number, then lock.")
         local resetText=FT:QuietButton(frame,"Reset position",240,32,"reset"); resetText:SetPoint("TOPLEFT",276,-512)
         resetText:SetScript("OnClick",function() local s=self:Settings(); s.textX,s.textY=0,2; self:Apply() end)
-        FT:Tooltip(resetText,"Reset position","Put the threat % back just above the target portrait.")
+        FT:Tooltip(resetText,"Reset position","Back just above the target portrait.")
         frame:SetHeight(578)
         frame:HookScript("OnShow",function() self.previewing=not InCombatLockdown(); self:Apply() end)
         frame:HookScript("OnHide",function() self.previewing=false; if self.movingText then self.movingText=false end; self:Apply() end)

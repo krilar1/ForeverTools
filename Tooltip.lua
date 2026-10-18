@@ -384,13 +384,13 @@ function Tip:Open()
     if not self.frame then
         local frame=FT:Window("ForeverToolsTooltip","Tooltip",760,560)
         self.frame=frame
-        FT:PageInfo(frame,"Tooltip","Left: build your player tooltip. Turn parts on or off, order them with the arrows, and use Same line to join a part to the one above. Faction has three settings: Off, Icon and Text. The preview uses your own character; other players' tooltips follow the same layout.\n\nRight: extras (guild color, health bar, IDs), text sizes, and where tooltips appear on screen.")
+        FT:PageInfo(frame,"Tooltip","Left: build your player tooltip. Turn parts on or off, order them, and join parts with Same line.\n\nRight: extras, text sizes and position.")
         local sectionIcons={Layout="INV_Misc_Note_01",Extras="INV_Misc_Book_07",["Text size"]="INV_Inscription_Tradeskill01",Position="Ability_Rogue_Sprint"}
         local function section(x,y,title,hint)
             local h=FT:Label(frame,title,16,true); h:SetPoint("TOPLEFT",x,y); h:SetTextColor(1,.82,0)
             FT:SectionHeading(h,sectionIcons[title],200)
         end
-        section(24,-66,"Layout","Turn parts on or off, order them, and use Same line to join the part above.")
+        section(24,-66,"Layout","Turn parts on or off, order them, join them with Same line.")
         self.layoutTop=96
         self.rows={}
         for _,key in ipairs(partKeys) do
@@ -398,7 +398,7 @@ function Tip:Open()
             local label=self.partLabels[key]
             row.toggle=FT:QuietButton(frame,"",190,34,key=="target" and "Ability_Hunter_SniperShot" or key=="guild" and "INV_Shirt_GuildTabard_01" or key=="class" and "classes" or key=="faction" and FT:FactionIcon() or "tooltip")
             row.toggle:SetScript("OnClick",function() self:TogglePart(key) end)
-            FT:Tooltip(row.toggle,label,({name="The player's name.",guild="The player's guild, if they have one.",level="The player's level.",race="The player's race.",class="The player's class, in class color.",faction="Click to switch: Off, Icon (a small Horde or Alliance badge, right after the name) or Text (the faction's name in its color, on its own line). You can move either one with the arrows and Same line, like any other part.",target="Who the player is targeting. Always on its own line."})[key])
+            FT:Tooltip(row.toggle,label,({name="The player's name.",guild="The player's guild, if they have one.",level="The player's level.",race="The player's race.",class="The player's class, in class color.",faction="Off, Icon (a small badge) or Text (the faction's name).",target="Who the player targets. Own line."})[key])
             -- Blizzard's own friends-list arrow, referenced from the game, not bundled.
             row.up=FT:QuietButton(frame,"",30,34)
             row.up.arrow=row.up:CreateTexture(nil,"ARTWORK"); row.up.arrow:SetPoint("CENTER")
@@ -416,7 +416,7 @@ function Tip:Open()
             row.join:SetPoint("LEFT",row.down,"RIGHT",6,0)
             if row.join.SetMotionScriptsWhileDisabled then row.join:SetMotionScriptsWhileDisabled(true) end
             row.join:SetScript("OnClick",function() self:ToggleJoin(key) end)
-            FT:Tooltip(row.join,"Same line or new line",key=="target" and "The target always gets its own line." or "Same line puts "..label:lower().." on the line above, after what is already there. New line starts a new line.")
+            FT:Tooltip(row.join,"Same line or new line",key=="target" and "The target always gets its own line." or "Same line puts "..label:lower().." on the line above. New line starts a new line.")
             self.rows[key]=row
         end
         local previewTop=self.layoutTop+#partKeys*38+6
@@ -433,16 +433,16 @@ function Tip:Open()
         section(R,-66,"Extras","Guild color, health bar and IDs.")
         self.guildColor=FT:QuietButton(frame,"",314,34,"INV_Shirt_GuildTabard_01"); self.guildColor:SetPoint("TOPLEFT",R,-96)
         self.guildColor:SetScript("OnClick",function() local s=self:Settings();s.guildFactionColor=not s.guildFactionColor;self:Refresh() end)
-        FT:Tooltip(self.guildColor,"Faction-colored guild name","Color the guild name red for Horde and blue for Alliance. Off keeps it white.")
+        FT:Tooltip(self.guildColor,"Faction-colored guild name","Guild name in red (Horde) or blue (Alliance).")
         self.health=FT:QuietButton(frame,"",314,34,"Spell_Holy_Heal"); self.health:SetPoint("TOPLEFT",R,-134)
         self.health:SetScript("OnClick",function() local s=self:Settings();s.healthBar=not s.healthBar;self:Refresh();if GameTooltip then self:ApplyTooltip(GameTooltip) end end)
-        FT:Tooltip(self.health,"Tooltip health bar","Show or hide the small health bar under unit tooltips.")
+        FT:Tooltip(self.health,"Tooltip health bar","Small health bar under unit tooltips.")
         -- Stored under System for profile compatibility; it belongs with tooltips.
         self.ids=FT:QuietButton(frame,"",314,34,"spellID"); self.ids:SetPoint("TOPLEFT",R,-172)
         self.ids:SetScript("OnClick",function() local s=FT.modules.System:Settings();s.spellID=not s.spellID;self:Refresh() end)
-        FT:Tooltip(self.ids,"Show tooltip IDs","Show spell, item, quest and achievement IDs at the bottom of tooltips.")
+        FT:Tooltip(self.ids,"Show tooltip IDs","Spell, item, quest and achievement IDs.")
         local line=frame:CreateTexture(nil,"ARTWORK"); line:SetColorTexture(.61,.51,.31,.6); line:SetSize(314,1); line:SetPoint("TOPLEFT",R,-218)
-        section(R,-230,"Text size","0 keeps Blizzard's size. The preview shows your sizes.")
+        section(R,-230,"Text size","0 keeps the game's size.")
         self.sizes={}
         for i,entry in ipairs({{"name","Name line"},{"details","Other lines"},{"targetSize","Target line"}}) do
             local part=entry[1]; local y=-262-(i-1)*38
@@ -465,13 +465,13 @@ function Tip:Open()
                     s[part]=0;self:Refresh();if GameTooltip then self:ApplyTooltip(GameTooltip) end
                 end)
             end)
-            FT:Tooltip(value,entry[2].." size","Use + and - to change the size. Click the number to go back to Blizzard's size (asks first).")
+            FT:Tooltip(value,entry[2].." size","+ and - change the size. Click the number for the game's size.")
         end
         local line2=frame:CreateTexture(nil,"ARTWORK"); line2:SetColorTexture(.61,.51,.31,.6); line2:SetSize(314,1); line2:SetPoint("TOPLEFT",R,-378)
         section(R,-390,"Position","Where tooltips appear on screen.")
         self.moveButton=FT:QuietButton(frame,"",314,34,"move");self.moveButton:SetPoint("TOPLEFT",R,-422)
         self.moveButton:SetScript("OnClick",function() self:SetMoving(not self.moving) end)
-        FT:Tooltip(self.moveButton,"Move tooltip","Click to unlock, drag the preview where tooltips should appear, then click again to lock it.")
+        FT:Tooltip(self.moveButton,"Move tooltip","Unlock, drag the preview, then click again to lock.")
         frame:SetHeight(math.max(previewTop+30+150,518)+30)
         frame:HookScript("OnHide",function() self:SetMoving(false) end)
     end

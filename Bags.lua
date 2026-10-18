@@ -28,7 +28,7 @@ function Bags:Settings()
     if type(FT.db.bags)~="table" then FT.db.bags={} end
     local s=FT.db.bags
     for _,key in ipairs({"gold","view","counts","locked","buttons"}) do if type(s[key])~="boolean" then s[key]=false end end
-    for key,default in pairs({countSplit=true,countSelf=true,countGuild=true,countShift=false,countSpacer=true}) do
+    for key,default in pairs({countSplit=true,countSelf=true,countGuild=true,countShift=false,countSpacer=true,countFullNames=false}) do
         if type(s[key])~="boolean" then s[key]=default end
     end
     if s.countStyle~="each" and s.countStyle~="total" and s.countStyle~="both" then s.countStyle="each" end
@@ -76,11 +76,30 @@ function Bags:Ruleset()
     end
     return "?","?"
 end
+-- The player's full name (first and last), or nil when the game shows no
+-- more than the first name. Only accepted when it starts with that name.
+function Bags:FullName(first)
+    if type(first)~="string" or first=="" or first=="?" then return end
+    local function check(v)
+        v=text(v)
+        if v and v~=first and v:sub(1,#first+1)==first.." " then return v end
+    end
+    local full=GetUnitName and check(GetUnitName("player",false))
+    if not full then
+        local label=_G.PlayerName or (PlayerFrame and PlayerFrame.name)
+        if label and label.GetText then full=check(label:GetText()) end
+    end
+    return full
+end
 function Bags:Record(create)
     local guid=self:Me(); if not guid then return end
     local st=self:Store(); local c=st.chars[guid]
     if not c then if not create then return end; c={}; st.chars[guid]=c end
     local name=UnitName and UnitName("player"); c.name=text(name) or c.name or "?"
+    -- Forever characters have a last name too. UnitName gives the first
+    -- name only; the full one is what the game shows on its own frames.
+    local full=self:FullName(c.name)
+    if full then c.fullName=full end
     local _,class=UnitClass("player"); c.class=text(class) or c.class
     local faction=UnitFactionGroup and UnitFactionGroup("player"); c.faction=text(faction) or c.faction
     local realm,shown=self:Ruleset()
@@ -327,8 +346,8 @@ function Bags:Rulesets()
     table.sort(list,function(a,b) if a==self:Ruleset() then return true elseif b==self:Ruleset() then return false end return a<b end)
     return list
 end
-function Bags:ClassName(c,guid)
-    local name=(c and c.name) or "?"
+function Bags:ClassName(c,guid,full)
+    local name=(full and c and c.fullName) or (c and c.name) or "?"
     local color=c and c.class and (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS or {})[c.class]
     if color and color.r then name=string.format("|cff%02x%02x%02x%s|r",color.r*255,color.g*255,color.b*255,name) end
     -- The other faction gets its banner, so it is never mistaken for a mail target.
@@ -416,11 +435,11 @@ function Bags:AddBagButtons(frame)
     FT:Tooltip(bank,"Bank (view only)",function()
         local who=self:BankWho()
         local whose=who==self:Me() and "your bank" or (self:WhoName(who).."'s bank")
-        return "Open "..whose.." as it was at the last visit. You can look and link items, not move them."
+        return "Open "..whose.." from your last visit. View and link only."
     end)
     local chars=self:SmallButton(frame,self:ClassIcon(self:Record()))
     chars:SetScript("OnClick",function(owner) self:ChooseCharacter(owner) end)
-    FT:Tooltip(chars,"Characters","Show another character's bags and bank. Switching here switches both. Only characters on this ruleset that have logged in once are listed.")
+    FT:Tooltip(chars,"Characters","Show another character's bags and bank. Characters on this ruleset only.")
     frame.ftBagButtons={bank=bank,chars=chars}
     if hooksecurefunc and frame.UpdateSearchBox then hooksecurefunc(frame,"UpdateSearchBox",function() self:PlaceBagButtons(frame,true) end) end
     frame:HookScript("OnShow",function() self:PlaceBagButtons(frame) end)
@@ -698,7 +717,7 @@ function Bags:MakeView(kind)
             if kind=="bags" then self:ToggleBank() else self:ShowView("bags") end
         else self:ChooseCharacter(owner) end
     end)
-    FT:Tooltip(chars,"Characters",kind=="bank" and "Click to show another character's bank (the bag view switches too). Right-click to open the bag view." or "Click to show another character's bags (the bank view switches too). Right-click to open the bank view.")
+    FT:Tooltip(chars,"Characters",kind=="bank" and "Click: another character's bank. Right-click: bag view." or "Click: another character's bags. Right-click: bank view.")
     view.chars=chars
     if kind=="bank" then
         -- One button per bank tab, in the row under the search box.
@@ -1121,11 +1140,11 @@ end)
 FT.Bags=Bags
 -- Settings pages: Bags (switches) and Characters (who is remembered) ---------
 local switches={
-    {"gold","Gold tooltip","INV_Misc_Coin_02","Hover the gold in your bag to see how much gold each of your characters on this ruleset has, and the total. Each character must log in once to be counted."},
-    {"view","Bank and other characters","INV_Misc_Bag_08","Right-click the bag's portrait (top left) to see your bank as it was at your last visit, from anywhere: you can look and link items, not move them. Left-click the portrait for the bag menu, which also lists your other characters. Each view window's own portrait switches character; bag and bank switch together."},
-    {"buttons","Extra buttons on the bag","INV_Misc_Bag_10","Also put two small buttons next to the bag's sort button: Bank, and a character picker. Needs Bank and other characters on."},
-    {"locked","Lock bag and bank views","INV_Misc_Key_03","Keep the view-only bag and bank windows where they are. Off: drag them anywhere by their title."},
-    {"counts","Item counts in tooltips","INV_Misc_Note_04","Add how many of an item you have in bags, bank and on your other characters (and in the guild bank) to item tooltips. Change how it looks under Appearance > Item counts."},
+    {"gold","Gold tooltip","INV_Misc_Coin_02","Hover your bag's gold to see every character's gold and the total."},
+    {"view","Bank and other characters","INV_Misc_Bag_08","Right-click your bag's portrait to see your bank from anywhere (view only). Left-click it for other characters' bags."},
+    {"buttons","Extra buttons on the bag","INV_Misc_Bag_10","Bank and character buttons next to the sort button."},
+    {"locked","Lock bag and bank views","INV_Misc_Key_03","Keep the view windows in place."},
+    {"counts","Item counts in tooltips","INV_Misc_Note_04","Item counts on tooltips. Look: Appearance > Item counts."},
 }
 function Bags:Refresh()
     local page=self.page
@@ -1139,7 +1158,7 @@ function Bags:Refresh()
     local st=FT.db.bagStore
     local count=0
     if type(st)=="table" and type(st.chars)=="table" then for _ in pairs(st.chars) do count=count+1 end end
-    page.status:SetText(self:Recording() and (count==1 and "1 character remembered. Log in on your others once to add them." or (count.." characters remembered.")) or "Not remembering characters (Characters page).")
+    page.status:SetText(self:Recording() and (count==1 and "1 character remembered. Log in on others once to add them." or (count.." characters remembered.")) or "Not remembering characters.")
     if self.list and self.list.frame and self.list.frame:IsShown() then self.list:Refresh() end
     if FT.RefreshDock and page.frame and page.frame:IsShown() then FT:RefreshDock(page.frame) end
 end
@@ -1149,8 +1168,8 @@ function page:Open()
     if not self.frame then
         local hub=FT:HubOf("BagsGeneral"); local width=hub and hub.width or 540
         local frame=FT:Window("ForeverToolsBagsGeneral","Bags",width,420); self.frame=frame
-        FT:PageInfo(frame,"Bags","Extras for the game's own bag window, which keeps its look. Every character is remembered when it logs in (bags, gold, and its bank when you visit a banker), for this account only. Nothing is shared with anyone.")
-        local hint=FT:Label(frame,"Gold, bank and other characters' bags, right from your bag.",12); hint:SetPoint("TOPLEFT",24,-66); hint:SetWidth(width-48); hint:SetTextColor(.66,.59,.48)
+        FT:PageInfo(frame,"Bags","Extras for the game's bag window. Characters are remembered at login, on this account only.")
+        local hint=FT:Label(frame,"Gold, bank and alts' bags from your bag.",12); hint:SetPoint("TOPLEFT",24,-66); hint:SetWidth(width-48); hint:SetTextColor(.66,.59,.48)
         self.buttons={}
         for i,entry in ipairs(switches) do
             local key=entry[1]
@@ -1165,8 +1184,9 @@ function page:Open()
         end
         local more=FT:QuietButton(frame,"Item count settings",width-48,32,"tooltip"); more:SetPoint("TOPLEFT",24,-96-#switches*40)
         more:SetScript("OnClick",function() FT:OpenModule("ItemCounts") end)
-        FT:Tooltip(more,"Item count settings","Choose what item counts show (each character, a total or both) and where they appear on the tooltip.")
+        FT:Tooltip(more,"Item count settings","What counts show and where.")
         self.status=FT:Label(frame,"",12); self.status:SetPoint("TOPLEFT",24,-96-(#switches+1)*40-6); self.status:SetWidth(width-48); self.status:SetTextColor(.66,.59,.48)
+        FT:Sections(frame,{{"In your bag",self.buttons.gold},{"Item counts",self.buttons.counts}})
     end
     Bags:Refresh(); self.frame:Show()
 end
@@ -1182,11 +1202,19 @@ function list:Refresh()
     local on=Bags:Recording()
     self.remember.label:SetText("Remember my characters: "..(on and "On" or "Off")); FT:SetSelected(self.remember,on)
     local rows={}
+    -- One section per ruleset you have characters on; click its title to
+    -- open or close it. Your current ruleset starts open, the others closed.
+    self.open=self.open or {}
     for _,ruleset in ipairs(Bags:Rulesets()) do
-        rows[#rows+1]={heading=ruleset}
-        for _,entry in ipairs(Bags:Characters(ruleset)) do rows[#rows+1]={guid=entry.guid,c=entry.c,me=entry.me} end
+        local members={}
+        for _,entry in ipairs(Bags:Characters(ruleset)) do members[#members+1]={guid=entry.guid,c=entry.c,me=entry.me} end
         for key,guild in pairs(st.guilds) do
-            if type(guild)=="table" and sameRealm(guild.realm)==ruleset then rows[#rows+1]={guild=key,g=guild} end
+            if type(guild)=="table" and sameRealm(guild.realm)==ruleset then members[#members+1]={guild=key,g=guild} end
+        end
+        if #members>0 then
+            if self.open[ruleset]==nil then self.open[ruleset]=ruleset==Bags:Ruleset() end
+            rows[#rows+1]={heading=ruleset,count=#members}
+            if self.open[ruleset] then for _,m in ipairs(members) do rows[#rows+1]=m end end
         end
     end
     local width=self.content:GetWidth()
@@ -1195,32 +1223,48 @@ function list:Refresh()
         if not r then
             r=CreateFrame("Frame",nil,self.content); r:SetSize(width,ROW-4); self.rows[i]=r
             r.icon=r:CreateTexture(nil,"ARTWORK"); r.icon:SetSize(26,26); r.icon:SetPoint("LEFT",6,0); FT:RoundIcon(r.icon)
-            r.name=FT:Label(r,"",14); r.name:SetPoint("TOPLEFT",40,-3); r.name:SetWidth(width-150); r.name:SetJustifyH("LEFT")
-            r.meta=FT:Label(r,"",11); r.meta:SetPoint("TOPLEFT",40,-20); r.meta:SetWidth(width-150); r.meta:SetJustifyH("LEFT"); r.meta:SetTextColor(.72,.66,.55)
+            r.name=FT:Label(r,"",14); r.name:SetPoint("TOPLEFT",40,-3); r.name:SetWidth(width-80); r.name:SetJustifyH("LEFT")
+            r.meta=FT:Label(r,"",11); r.meta:SetPoint("TOPLEFT",40,-20); r.meta:SetWidth(width-80); r.meta:SetJustifyH("LEFT"); r.meta:SetTextColor(.72,.66,.55)
             if r.meta.SetWordWrap then r.meta:SetWordWrap(false) end
-            r.heading=FT:Label(r,"",15,true); r.heading:SetPoint("BOTTOMLEFT",4,4); r.heading:SetTextColor(1,.82,0)
-            r.forget=FT:QuietButton(r,"Forget",104,28,"delete"); r.forget:SetPoint("RIGHT",-2,0)
+            r.heading=FT:Label(r,"",15,true); r.heading:SetPoint("BOTTOMLEFT",28,6); r.heading:SetTextColor(1,.82,0)
+            r.toggle=r:CreateTexture(nil,"ARTWORK"); r.toggle:SetSize(16,16); r.toggle:SetPoint("BOTTOMLEFT",4,7)
+            -- Forget: a small red circle with a cross.
+            r.forget=CreateFrame("Button",nil,r); r.forget:SetSize(24,24); r.forget:SetPoint("RIGHT",-6,0)
+            r.forget:SetNormalTexture("Interface\\RaidFrame\\ReadyCheck-NotReady")
+            r.forget:SetHighlightTexture("Interface\\RaidFrame\\ReadyCheck-NotReady","ADD")
             FT:Tooltip(r.forget,"Forget",function() return r.forgetTip or "" end)
+            -- The full line when it doesn't fit.
+            r:EnableMouse(true)
+            r:SetScript("OnEnter",function(owner)
+                if owner.headingKey then return end
+                GameTooltip:SetOwner(owner,"ANCHOR_RIGHT"); GameTooltip:SetText(owner.fullName or "",1,.82,0); GameTooltip:AddLine(owner.fullMeta or "",.96,.93,.86,true); GameTooltip:Show()
+            end)
+            r:SetScript("OnLeave",function() GameTooltip:Hide() end)
+            r:SetScript("OnMouseUp",function(owner) if owner.headingKey then list.open[owner.headingKey]=not list.open[owner.headingKey]; list:Refresh() end end)
         end
         r:ClearAllPoints(); r:SetPoint("TOPLEFT",0,-(i-1)*ROW)
         local heading=row.heading~=nil
-        r.heading:SetShown(heading); r.icon:SetShown(not heading); r.name:SetShown(not heading); r.meta:SetShown(not heading); r.forget:SetShown(not heading)
+        r.heading:SetShown(heading); r.toggle:SetShown(heading); r.icon:SetShown(not heading); r.name:SetShown(not heading); r.meta:SetShown(not heading); r.forget:SetShown(not heading)
+        r.headingKey=heading and row.heading or nil
         if heading then
             local shown=(Bags.realmNames and Bags.realmNames[row.heading]) or row.heading
-            r.heading:SetText(row.heading==Bags:Ruleset() and (shown.." (this ruleset)") or shown)
+            r.heading:SetText((row.heading==Bags:Ruleset() and (shown.." (this ruleset)") or shown).."  |cffb8ab8a("..row.count..")|r")
+            r.toggle:SetTexture(list.open[row.heading] and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up")
         elseif row.guid then
             local c=row.c
             r.icon:SetTexture(Bags:ClassIcon(c))
             r.name:SetText(Bags:ClassName(c,row.guid)..(row.me and "  |cffb8ab8a(you)|r" or ""))
             r.meta:SetText("Level "..(c.level or "?").." · "..Bags:Money(c.money).." · bags "..Bags:Ago(row.me and now() or c.seen).." · bank "..Bags:Ago(c.bankSeen))
-            r.forgetTip="Remove "..(c.name or "this character").." from the gold list, item counts and the character buttons."..(row.me and " You are on it now: it is added again when your bags change." or " It is added again the next time it logs in.")
+            r.fullName=c.name; r.fullMeta=r.meta:GetText()
+            r.forgetTip="Remove "..(c.name or "this character").." from gold, item counts and character buttons."..(row.me and " You are on it now: it comes back when your bags change." or " It is added again the next time it logs in.")
             r.forget:SetScript("OnClick",function() FT:Confirm("Forget "..(c.name or "this character").."?",function() Bags:Forget(row.guid); list:Refresh(); Bags:Refresh() end) end)
         elseif row.guild then
             r.icon:SetTexture("Interface\\Icons\\INV_Shirt_GuildTabard_01")
             r.name:SetText("<"..(row.g.name or "?")..">  guild bank")
             local tabs=0; for _ in pairs(row.g.tabs or {}) do tabs=tabs+1 end
             r.meta:SetText(tabs.." tab"..(tabs==1 and "" or "s").." read · seen "..Bags:Ago(row.g.seen))
-            r.forgetTip="Remove this guild bank from item counts. It is read again when you open it."
+            r.fullName="<"..(row.g.name or "?")..">"; r.fullMeta=r.meta:GetText()
+            r.forgetTip="Remove this guild bank. Read again when opened."
             r.forget:SetScript("OnClick",function() FT:Confirm("Forget the guild bank of <"..(row.g.name or "?")..">?",function() Bags:ForgetGuild(row.guild); list:Refresh() end) end)
         end
         r:Show()
@@ -1233,21 +1277,21 @@ function list:Open()
     if not self.frame then
         local hub=FT:HubOf("BagsCharacters"); local width=hub and hub.width or 540
         local frame=FT:Window("ForeverToolsBagsCharacters","Characters",width,420); self.frame=frame
-        FT:PageInfo(frame,"Characters","Every character that has logged in since bag features were turned on, grouped by ruleset. Gold, item counts and the character buttons only show characters on the ruleset you are playing.\n\nForget removes a character; it comes back when it logs in again, unless remembering is off.")
+        FT:PageInfo(frame,"Characters","Characters remembered, by ruleset. Forget removes one until it logs in again.")
         self.remember=FT:QuietButton(frame,"",width-48,32,"profiles"); self.remember:SetPoint("TOPLEFT",24,-66)
         self.remember:SetScript("OnClick",function()
             local st=Bags:Store()
             if Bags:Recording() then
-                FT:Confirm("Stop remembering characters? What is saved stays until you forget it.",function() st.off=true; list:Refresh(); Bags:Refresh() end)
+                FT:Confirm("Stop remembering characters? Saved data stays.",function() st.off=true; list:Refresh(); Bags:Refresh() end)
             else st.off=nil; st.started=true; Bags:Record(true); Bags:ScanBags(); list:Refresh(); Bags:Refresh() end
         end)
-        FT:Tooltip(self.remember,"Remember my characters","Save each character's gold and bags when it logs in, and its bank and guild bank when you open them. Off: nothing new is saved.")
+        FT:Tooltip(self.remember,"Remember my characters","Remember gold, bags and banks of your characters.")
         local scroll=CreateFrame("ScrollFrame","ForeverToolsBagsCharactersScroll",frame,"UIPanelScrollFrameTemplate")
         scroll:SetPoint("TOPLEFT",24,-110); scroll:SetPoint("BOTTOMRIGHT",-40,20)
         self.content=CreateFrame("Frame",nil,scroll); self.content:SetSize(width-72,1); scroll:SetScrollChild(self.content)
         FT:AutoHideScrollBar(scroll)
         self.rows={}
-        self.none=FT:Label(frame,"No characters yet. Turn on a bag feature, then log in on each character once.",12)
+        self.none=FT:Label(frame,"No characters yet. Log in on each once.",12)
         self.none:SetPoint("TOPLEFT",24,-116); self.none:SetWidth(width-48); self.none:SetTextColor(.66,.59,.48)
     end
     self:Refresh(); self.frame:Show()

@@ -1,5 +1,12 @@
 # Third-party notices
 
+## Fonts (Media/Fonts)
+
+Inter, PT Sans Narrow, Roboto Condensed, Barlow Condensed, Oswald, Rajdhani,
+Teko, Fira Sans Condensed and Noto Sans, each under the SIL Open Font License
+1.1. The full license of each font is next to it (<Name>-LICENSE.txt); sources
+and changes are listed in Media/Fonts/README.txt.
+
 ## InFlight Classic flight-duration data
 
 FlightDefaults.lua contains only the global_classic table from Defaults.lua.

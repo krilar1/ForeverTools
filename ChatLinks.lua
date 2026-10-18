@@ -44,7 +44,7 @@ end
 function Links:Open(index)
     local url=self.urls[tonumber(index) or 0]
     if not url then FT:Toast("That link is no longer available."); return end
-    FT:CopyBox("Copy link",url,"Press Ctrl+C to copy the link, then paste it into your browser. Escape closes this box.")
+    FT:CopyBox("Copy link",url,"Ctrl+C to copy, then paste in your browser. Esc closes.")
 end
 FT:RegisterModule("ChatLinks",Links)
 local register=(ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter) or ChatFrame_AddMessageEventFilter

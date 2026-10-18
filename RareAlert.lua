@@ -45,9 +45,9 @@ local function cvar(name)
 end
 -- A short warning when the game would make the alert sound hard to hear.
 function Rare:VolumeWarning()
-    if cvar("Sound_EnableAllSound")=="0" then return "Game sound is turned off (the game's sound on/off key), so the alert is silent." end
+    if cvar("Sound_EnableAllSound")=="0" then return "Game sound is off, so the alert is silent." end
     local master=tonumber(cvar("Sound_MasterVolume"))
-    if master and master<.25 then return string.format("Your master volume is %d%%, so the alert may be hard to hear.",math.floor(master*100+.5)) end
+    if master and master<.25 then return string.format("Master volume is %d%%: the alert may be hard to hear.",math.floor(master*100+.5)) end
     return nil
 end
 local function glowRings(frame)
@@ -100,9 +100,18 @@ function Rare:Notice()
         self:Position()
     end)
     FT:Tooltip(f,"Rare alert","Left-click to dismiss, right-click for settings.")
-    -- Click to target: a game "secure" button over the notice that runs
-    -- /targetexact with the rare's name. The game only lets addons set it up
-    -- out of combat, so in combat the notice just dismisses on click.
+    f:HookScript("OnHide",function() self:UpdateTarget() end)
+    f:Hide()
+    self.notice=f
+    self:TargetButton()
+    return f
+end
+-- Click to target: a game "secure" button over the notice that runs
+-- /targetexact with the rare's name. The game only lets addons set it up
+-- out of combat, so it is made then; in combat the notice just dismisses.
+function Rare:TargetButton()
+    if self.target or InCombatLockdown() or not self.notice then return self.target end
+    local f=self.notice
     do
         local ok,t=pcall(CreateFrame,"Button","ForeverToolsRareTarget",UIParent,"SecureActionButtonTemplate")
         if ok and t then
@@ -123,15 +132,14 @@ function Rare:Notice()
             self.target=t
         end
     end
-    f:HookScript("OnHide",function() self:UpdateTarget() end)
-    f:Hide()
-    self.notice=f
-    return f
+    return self.target
 end
+
 -- Shows the target button over the notice (out of combat only). It sits on
 -- its own at the same spot, so the notice itself never becomes protected.
 function Rare:UpdateTarget()
-    local t=self.target; if not t or InCombatLockdown() then return end
+    if InCombatLockdown() then return end
+    local t=self:TargetButton(); if not t then return end
     local f=self.notice
     local name=self.targetName
     if f and f:IsShown() and name and not self.moving and not self.previewing then
@@ -157,19 +165,32 @@ function Rare:PaintGlow()
     for _,t in ipairs(f.glow) do t:SetVertexColor(c[1],c[2],c[3],t.strength) end
 end
 function Rare:Show(name,preview)
+    if not preview and FT:NoControl() then return end
     local f=self:Notice(); local s=self:Settings()
     self:Position()
     self:PaintGlow()
     f.name:SetText(name or "Unknown rare")
-    f.title:SetText(preview and "Rare nearby (preview)" or "Rare nearby")
+    f.title:SetText(preview and "Rare nearby — preview" or "Rare nearby")
     self.targetName=(not preview) and name or nil; self.previewing=preview and true or false
     f:Show(); f.pulse:Stop(); f.pulse:Play()
     self:UpdateTarget()
     C_Timer.After(2.7,function() if f.pulse then f.pulse:Stop() end end)
     self.token=(self.token or 0)+1
     local token=self.token
-    if s.duration>0 and not self.moving then C_Timer.After(s.duration,function() if self.token==token and not self.moving and not self.pickingGlow then f:Hide() end end) end
+    if s.duration>0 and not self.moving and not (preview and self.previewOn) then C_Timer.After(s.duration,function() if self.token==token and not self.moving and not self.pickingGlow and not (self.previewing and self.previewOn) then f:Hide() end end) end
     if s.sound and not preview then self:PlaySound() end
+end
+-- The Preview switch: an example notice until switched off (or the page closes).
+function Rare:SetPreview(on)
+    self.previewOn=on and true or nil
+    if on then self:Show("Example rare",true); if self:Settings().sound then self:PlaySound() end
+    elseif self.notice and self.previewing and not self.moving then self.notice:Hide() end
+    self:Refresh()
+end
+function Rare:Peek()
+    if self.previewOn then self:Show("Example rare",true); return end
+    if self.notice and self.notice:IsShown() then return end
+    self:Show("Example rare",true)
 end
 function Rare:Found(key,name)
     if not self:Settings().enabled or not key or self.seen[key] then return end
@@ -214,7 +235,7 @@ events:SetScript("OnEvent",function(_,event,a,b)
 end)
 function Rare:SetMoving(on,text)
     self.moving=on
-    if on then self:Show(text or "Drag me, then click Lock",true) elseif self.notice then self.notice:Hide() end
+    if on then self:Show(text or "Drag me, then click Lock",true) elseif self.previewOn then self:Show("Example rare",true) elseif self.notice then self.notice:Hide() end
     self:Refresh()
 end
 
@@ -231,6 +252,7 @@ function Rare:Refresh()
     self.sizeLabel:SetText(string.format("Size: %d%%",math.floor(s.size*100+.5)))
     self.settingSize=true; self.sizeSlider:SetValue(s.size); self.settingSize=false
     self.glowSwatch:SetVertexColor(unpack(s.glow)); self:PaintGlow()
+    if self.previewButton then self.previewButton.label:SetText("Preview: "..(self.previewOn and "On" or "Off")) end
     local warn=s.sound and self:VolumeWarning()
     if warn then self.volumeNote:SetText(warn); self.volumeNote:SetTextColor(1,.62,.35)
     else self.volumeNote:SetText("") end
@@ -240,29 +262,29 @@ function Rare:Open()
     if not self.frame then
         local frame=FT:Window("ForeverToolsRareAlerts","Rare alerts",540,366); self.frame=frame
         FT:BackTo(frame,"SystemCombat")
-        FT:PageInfo(frame,"Rare alerts","A notice (and a sound, if you like) when a rare appears on your minimap or nearby. Each rare alerts once. Click the notice to target the rare (out of combat). Right-click it for these settings.")
+        FT:PageInfo(frame,"Rare alerts","A notice, and a sound if you like, when a rare is nearby. Each rare alerts once. Click it to target the rare (out of combat).")
         self.toggle=FT:AccentButton(frame,"",492,34,"Ability_Hunter_SniperShot"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function() local s=self:Settings(); s.enabled=not s.enabled; self:Apply() end)
-        FT:Tooltip(self.toggle,"Rare alerts","Show a notice when a rare appears on your minimap or nearby. Each rare alerts once.")
+        FT:Tooltip(self.toggle,"Rare alerts","Show a notice when a rare is nearby.")
         self.soundToggle=FT:QuietButton(frame,"",240,32,"INV_Misc_Bell_01"); self.soundToggle:SetPoint("TOPLEFT",24,-108)
         self.soundToggle:SetScript("OnClick",function() local s=self:Settings(); s.sound=not s.sound; self:Refresh() end)
-        FT:Tooltip(self.soundToggle,"Sound","Also play a sound. It plays at your master volume; turning game sound off mutes it.")
+        FT:Tooltip(self.soundToggle,"Sound","Also play a sound (at your master volume).")
         self.soundChoice=FT:Dropdown(frame,240,function()
-            local list={}; for _,e in ipairs(sounds) do list[#list+1]={value=e.value,label=e.label,icon="Interface\\Icons\\INV_Misc_Bell_01",tooltip="A sound from the game itself. Choosing it plays a short preview."} end; return list
+            local list={}; for _,e in ipairs(sounds) do list[#list+1]={value=e.value,label=e.label,icon="Interface\\Icons\\INV_Misc_Bell_01",tooltip="A game sound. Choosing it plays it."} end; return list
         end,function(value) self:Settings().soundKey=value; self:PlaySound(); self:Refresh() end,"INV_Misc_Bell_01")
         self.soundChoice:SetPoint("TOPLEFT",276,-110)
-        FT:Tooltip(self.soundChoice,"Alert sound","Which sound plays. Choosing one plays a short preview.")
+        FT:Tooltip(self.soundChoice,"Alert sound","Choosing a sound plays it.")
         self.durationChoice=FT:Dropdown(frame,492,function()
             local list={}; for _,d in ipairs(durations) do list[#list+1]={value=d[1],label=d[2],icon="Interface\\Icons\\INV_Misc_PocketWatch_01"} end; return list
         end,function(value) self:Settings().duration=value; self:Refresh() end,"fps")
         self.volumeNote=FT:Label(frame,"",12); self.volumeNote:SetPoint("TOPLEFT",24,-148); self.volumeNote:SetWidth(492)
         self.durationChoice:SetPoint("TOPLEFT",24,-174); self.durationChoice.menuWidth=492
-        FT:Tooltip(self.durationChoice,"Hide after","How long the notice stays. Click it to dismiss it sooner.")
+        FT:Tooltip(self.durationChoice,"Hide after","How long the notice stays. Click it to dismiss.")
         self.sizeLabel=FT:Label(frame,"",14); self.sizeLabel:SetPoint("TOPLEFT",24,-222)
         self.sizeSlider=CreateFrame("Slider",nil,frame,"OptionsSliderTemplate"); self.sizeSlider:SetSize(320,18); self.sizeSlider:SetPoint("TOPLEFT",196,-220)
         self.sizeSlider:SetMinMaxValues(.7,1.5); self.sizeSlider:SetValueStep(.05); self.sizeSlider:SetObeyStepOnDrag(true)
         self.sizeSlider:SetScript("OnValueChanged",function(_,v) if self.settingSize then return end self:Settings().size=math.floor(v*20+.5)/20; self:Position(); self:Refresh() end)
-        FT:Tooltip(self.sizeSlider,"Size","Make the notice smaller or bigger (70% to 150%).")
+        FT:Tooltip(self.sizeSlider,"Size","Notice size (70% to 150%).")
         self.glowButton=FT:QuietButton(frame,"Glow color",240,32,"fonts"); self.glowButton:SetPoint("TOPLEFT",24,-260)
         self.glowSwatch=self.glowButton:CreateTexture(nil,"ARTWORK"); self.glowSwatch:SetTexture("Interface\\Buttons\\WHITE8x8"); self.glowSwatch:SetSize(16,16); self.glowSwatch:SetPoint("RIGHT",-10,0)
         self.glowButton:SetScript("OnClick",function()
@@ -285,18 +307,21 @@ function Rare:Open()
                 swatchFunc=function() s.glow={ColorPickerFrame:GetColorRGB()}; self:Refresh() end,
                 cancelFunc=function() s.glow=old; self:Refresh() end})
         end)
-        FT:Tooltip(self.glowButton,"Glow color","The color of the soft glow around the notice.")
-        local preview=FT:QuietButton(frame,"Preview",240,32,"Ability_Hunter_SniperShot"); preview:SetPoint("TOPLEFT",276,-260)
-        preview:SetScript("OnClick",function() self:Show("Example rare",true); if self:Settings().sound then self:PlaySound() end end)
-        FT:Tooltip(preview,"Preview","Show an example notice (and play the sound if it is on).")
+        FT:Tooltip(self.glowButton,"Glow color","Glow color around the notice.")
+        local preview=FT:QuietButton(frame,"Preview: Off",240,32,"Ability_Hunter_SniperShot"); preview:SetPoint("TOPLEFT",276,-260)
+        preview:SetScript("OnClick",function() self:SetPreview(not self.previewOn) end)
+        FT:Tooltip(preview,"Preview","Show an example notice until switched off.")
+        self.previewButton=preview
         self.move=FT:QuietButton(frame,"",240,32,"move"); self.move:SetPoint("TOPLEFT",24,-302)
         self.move:SetScript("OnClick",function() self:SetMoving(not self.moving) end)
-        FT:Tooltip(self.move,"Move alert","Click to unlock, drag the notice where you want it, then click again to lock it.")
+        FT:Tooltip(self.move,"Move alert","Unlock, drag the notice, then click again to lock.")
         local reset=FT:QuietButton(frame,"Reset position",240,32,"reset"); reset:SetPoint("TOPLEFT",276,-302)
         reset:SetScript("OnClick",function() local s=self:Settings(); s.x,s.y=nil,nil; self:Position() end)
         FT:Tooltip(reset,"Reset position","Put the notice back at the top of the screen.")
+        FT:Sections(frame,{{"Sound",self.soundToggle},{"Notice",self.durationChoice},{"Position",self.move}})
         frame:HookScript("OnHide",function()
             if self.moving then self:SetMoving(false) end
+            if self.previewOn then self:SetPreview(false) end
             if self.pickingGlow and ColorPickerFrame and ColorPickerFrame:IsShown() then ColorPickerFrame:Hide() end
         end)
     end

@@ -1,5 +1,5 @@
 local _, FT = ...
-local Colors = { tracked={}, hooks={}, active={} }
+local Colors = { tracked={}, hooks={}, active={}, pageWidth=540 }
 local groups = {{"player","Player"}, {"target","Target"}, {"focus","Focus"}}
 function Colors:Settings()
     if type(FT.db.unitColors) ~= "table" then FT.db.unitColors = {} end
@@ -16,6 +16,7 @@ local function groupFor(unit)
     if unit=="focustarget" then return "focus" end
     if unit == "player" or unit == "target" or unit == "focus" then return unit end
 end
+local healthBar
 local nativeAtlas = {player = "UI-HUD-UnitFrame-Player-PortraitOn-Bar-Health"}
 function Colors:Paint(bar, force)
     local info = self.tracked[bar]
@@ -41,7 +42,7 @@ function Colors:Paint(bar, force)
     end
     -- Same color as last time and Blizzard hasn't changed the bar since
     -- (it calls back when it does): nothing to redo.
-    if not force and not info.art and info.lastColor==color and info.colored==(color~=nil) then return end
+    if not force and not info.art and info.lastColor==color and info.colored==(color~=nil) and not self:Stale(bar,info,color) then return end
     info.lastColor=color
     self.painting = true
     -- Keep Blizzard's own health artwork (its shading, edges and masks) and
@@ -76,6 +77,37 @@ function Colors:Paint(bar, force)
     for _,rim in ipairs(info.rim or {}) do rim:Hide() end
     info.colored = color ~= nil
     self.painting = false
+end
+-- True when the game put its own fill or color back on a bar we colored
+-- without telling us (seen on a target of the same class as the last one:
+-- the bar stayed green). Then the early "nothing changed" exit is wrong.
+function Colors:Stale(bar,info,color)
+    if not color or not info.colored then return false end
+    local secret=issecretvalue
+    local texture=bar.GetStatusBarTexture and bar:GetStatusBarTexture()
+    if info.native and texture and texture.GetAtlas then
+        local atlas=texture:GetAtlas()
+        if type(atlas)=="string" and not (secret and secret(atlas)) and not atlas:find("%-Status$") then return true end
+    end
+    if bar.GetStatusBarColor then
+        local r,g,b=bar:GetStatusBarColor()
+        if type(r)=="number" and not (secret and (secret(r) or secret(g) or secret(b)))
+            and (math.abs(r-color.r)>.02 or math.abs(g-color.g)>.02 or math.abs(b-color.b)>.02) then return true end
+    end
+    return false
+end
+-- One line for the bug report: what the target frame's color is based on.
+function Colors:Report()
+    if not self.active.target then return end
+    if not UnitExists("target") then return "Target color: on, no target" end
+    local function show(v) if issecretvalue and issecretvalue(v) then return "hidden" end return tostring(v) end
+    local _,class=UnitClass("target")
+    local bar=healthBar and healthBar(TargetFrame) or nil
+    local info=bar and self.tracked[bar]
+    local texture=bar and bar.GetStatusBarTexture and bar:GetStatusBarTexture()
+    local atlas=texture and texture.GetAtlas and texture:GetAtlas()
+    return "Target color: player="..show(UnitIsPlayer("target")).." connected="..show(UnitIsConnected("target")).." dead="..show(UnitIsDeadOrGhost("target"))
+        .." class="..show(class).." level="..show(UnitLevel("target")).." tracked="..tostring(info~=nil).." colored="..tostring(info and info.colored).." fill="..show(atlas)
 end
 -- Undo the plain fill used by older versions (only matters within a session
 -- that started before an update; kept so nothing is left behind).
@@ -138,7 +170,7 @@ function Colors:PaintLoss(loss)
     loss:SetAlpha(self.active[data.group] and 0 or data.alpha)
     self.paintingLoss=false
 end
-local function healthBar(frame)
+healthBar=function(frame)
     if not frame then return end
     if frame.healthBar or frame.healthbar then return frame.healthBar or frame.healthbar end
     local container = frame.PlayerFrameContainer or frame.TargetFrameContainer or frame.FocusFrameContainer
@@ -296,12 +328,12 @@ function Colors:Refresh()
 end
 function Colors:Open()
     if not self.frame then
-        self.frame=FT:Window("ForeverToolsUnitColors", "Unit frames", 760, 560)
+        self.frame=FT:Window("ForeverToolsUnitColors", "Unit frames", 540, 560)
         FT:AppearanceBack(self.frame)
-        FT:PageInfo(self.frame,"Unit frames","Health bars colored by class on the player, target and focus frames. NPCs, dead and offline units keep the game's colors.\n\nParty and raid class colors are set in the game's Edit Mode.")
-        local hint=FT:Label(self.frame,"Color health bars by class. NPCs, dead and offline units keep the game's colors.",12); hint:SetPoint("TOPLEFT",24,-66); hint:SetWidth(712); hint:SetTextColor(.66,.59,.48)
-        self.all=FT:AccentButton(self.frame, "", 712, 34, "classes"); self.all:SetPoint("TOPLEFT",24,-94)
-        FT:Tooltip(self.all,"All unit frames","Turn class colors on or off for the player, target and focus frames at once.")
+        FT:PageInfo(self.frame,"Unit frames","Class colors on player, target and focus health bars. NPCs keep the game's colors.\n\nParty and raid colors are set in Edit Mode.")
+        local hint=FT:Label(self.frame,"Color health bars by class.",12); hint:SetPoint("TOPLEFT",24,-66); hint:SetWidth(492); hint:SetTextColor(.66,.59,.48)
+        self.all=FT:AccentButton(self.frame, "", 492, 34, "classes"); self.all:SetPoint("TOPLEFT",24,-94)
+        FT:Tooltip(self.all,"All unit frames","Turn all three on or off.")
         self.all:SetScript("OnClick",function()
             local s=self:Settings(); local all=true
             for _, entry in ipairs(groups) do all=all and s[entry[1]] == true end
@@ -311,15 +343,15 @@ function Colors:Open()
         self.buttons={}
         for i,entry in ipairs(groups) do
             local key=entry[1]
-            local button=FT:QuietButton(self.frame,"",712,32,"character")
+            local button=FT:QuietButton(self.frame,"",492,32,"character")
             button:SetPoint("TOPLEFT",24,-136-(i-1)*40)
             button:SetScript("OnClick",function() local s=self:Settings(); s[key]=not s[key]; self:Apply() end)
-            FT:Tooltip(button,entry[2].." class colors","Color the "..entry[2]:lower().." frame's health bar by class. NPCs, dead and offline units keep the game's colors.")
+            FT:Tooltip(button,entry[2].." class colors","Color the "..entry[2]:lower().." health bar by class.")
             self.buttons[key]=button
         end
-        local partyInfo=FT:QuietButton(self.frame,"Party and raid: set in the game's Edit Mode",712,32,"party")
+        local partyInfo=FT:QuietButton(self.frame,"Party and raid: set in the game's Edit Mode",492,32,"party")
         partyInfo:SetPoint("TOPLEFT",24,-136-#groups*40)
-        FT:Tooltip(partyInfo,"Party class colors","Party and raid class colors are the game's own setting. Click to open Edit Mode, select the party frame and turn on class colors.")
+        FT:Tooltip(partyInfo,"Party class colors","Party and raid colors are set in Edit Mode. Click to open it.")
         partyInfo:SetScript("OnClick",function()
             if InCombatLockdown() then return end
             local manager=_G.EditModeManagerFrame
@@ -329,7 +361,7 @@ function Colors:Open()
                 manager:Show()
             end
         end)
-        self.note=FT:Label(self.frame,"",13); self.note:SetPoint("TOPLEFT",24,-298); self.note:SetSize(712,34)
+        self.note=FT:Label(self.frame,"",13); self.note:SetPoint("TOPLEFT",24,-298); self.note:SetSize(492,34)
         self.note:SetJustifyV("TOP")
     end
     self:Apply(); self.frame:Show()
@@ -348,5 +380,13 @@ events:SetScript("OnEvent",function(_,event,unit)
         if ours[unit] then Colors:QueuePaint(unit) end
     elseif event=="PLAYER_REGEN_ENABLED" then
         if Colors.deferred then Colors:Queue() else Colors:QueuePaint() end
-    else Colors:Queue() end
+    else
+        Colors:Queue()
+        -- The game can finish drawing a new target or focus a moment later
+        -- (and reset its fill then): look once more shortly after.
+        if (event=="PLAYER_TARGET_CHANGED" or event=="PLAYER_FOCUS_CHANGED") and Colors:Busy() then
+            local which=event=="PLAYER_TARGET_CHANGED" and "target" or "focus"
+            C_Timer.After(.3,function() Colors:QueuePaint(which) end)
+        end
+    end
 end)

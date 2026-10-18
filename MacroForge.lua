@@ -52,7 +52,7 @@ end
 -- text follows your health, mana and bags, so it keeps its own name.
 table.insert(classMacros.Mage,1,{"Eat & Drink",1,"generic","inv_misc_food_73",
     function() return KT.modules.FoodWater and KT.modules.FoodWater:Body() or "#showtooltip" end,nil,
-    "One button for your conjured food and water. Hurt and low on mana: it eats and drinks at once. Full health: it only drinks. Full mana: it only eats. It always uses the best you have conjured, and when you run out it conjures more (water first). Buff food is never touched. ForeverTools keeps it up to date after you add it, also if you rename it (a blank name hides the text on your bar). Change its text yourself and it is left alone.",named=true})
+    "One button for conjured food and water: eats when hurt, drinks when low on mana, conjures more when you run out. Kept up to date, also if renamed. Edit it yourself and it is left alone.",named=true})
 -- Teleports and portals are spells you click from the spellbook once in a
 -- while; they never need a macro, so the list leaves them out.
 local function isTravelSpell(name) return type(name)=="string" and (name:find("^Teleport") or name:find("^Portal")) ~= nil end
@@ -83,7 +83,7 @@ local genericMacros = {
     {"Target nearest enemy", 1, "generic", "ability_hunter_assassinate2", "#showtooltip\n/targetenemy [noharm][dead]\n/startattack"},
     -- Text and note from Bandage.lua: it follows the bandages in your bags.
     {"Bandage", 1, "generic", "inv_misc_bandage_12", function() return KT.modules.Bandage and KT.modules.Bandage:Body() or "#showtooltip\n/stopattack" end, nil,
-        "Stops your attack, then bandages you with the best bandage in your bags. The macro lists the bandages you carry, best first, so the next one takes over when one runs out. After you add it, ForeverTools keeps it up to date as your bags change (out of combat). Change the macro's text yourself and it is left alone."},
+        "Stops your attack and uses your best bandage. Kept up to date as your bags change. Edit it yourself and it is left alone."},
 }
 
 local function raceKey()
@@ -276,7 +276,7 @@ function MacroForge:CreateCustom(name,forClass)
     self.browsedClass=nil; self.showHidden=false
     self.newPanel:Hide();self:Select(entry)
     if self.listScroll and self.listScroll.SetVerticalScroll then self.listScroll:SetVerticalScroll(0) end
-    self:Status("Macro created at the top of the list. Add spells or edit its text, then click Add selected macro.")
+    self:Status("Macro created at the top. Add spells or edit it, then Add.")
 end
 function MacroForge:RefreshNewPanel()
     KT:SetSelected(self.newGeneric,not self.newClass)
@@ -353,6 +353,58 @@ function MacroForge:LegacyBodies(entry, body)
     end
     return list
 end
+-- The spells (and items) a macro casts, whatever its conditions, ranks,
+-- tooltip line or extra lines like /startattack: "/cast [@mouseover,harm]
+-- [] Lightning Bolt(Rank 3)" and "/cast Lightning Bolt" both cast
+-- {lightning bolt}. Slot numbers (/use 13) don't count.
+local CAST = {cast = true, use = true, castsequence = true, castrandom = true}
+local function castSpells(body)
+    local set, count = {}, 0
+    for line in ((body or "") .. "\n"):gmatch("([^\n]*)\n") do
+        local command, rest = line:match("^%s*/(%a+)%s*(.*)$")
+        if command and CAST[command:lower()] then
+            command = command:lower()
+            if command == "castsequence" then rest = rest:gsub("reset=%S+%s*", "") end
+            for option in rest:gmatch("[^;]+") do
+                option = option:gsub("%b[]", "")
+                -- Only sequences and random casts list several spells with commas
+                -- (an item name may have a comma of its own).
+                local pattern = (command == "castsequence" or command == "castrandom") and "[^,]+" or ".+"
+                for spell in option:gmatch(pattern) do
+                    spell = spell:gsub("^%s*!?%s*", ""):gsub("%s*%([^%)]*%)%s*$", ""):gsub("%s+$", "")
+                    if spell ~= "" and not spell:match("^%d+%s*%d*$") and not set[spell:lower()] then set[spell:lower()] = true; count = count + 1 end
+                end
+            end
+        end
+    end
+    return set, count
+end
+MacroForge.CastSpells = castSpells
+-- A macro of yours (General or Character, any name) that casts exactly what
+-- this template casts: it counts as this macro, even with your own text.
+-- Returns its index. Never used to change a macro, only to know it is there.
+function MacroForge:SameAction(entry, body)
+    if not GetNumMacros or not GetMacroInfo or entry.name == "1-shot combo" then return nil end
+    local wanted, count = castSpells(body)
+    if count == 0 then return nil end
+    local account, character = GetNumMacros()
+    local first = (MAX_ACCOUNT_MACROS or 120) + 1
+    local ranges = {{1, account or 0}, {first, first + (character or 0) - 1}}
+    for _, range in ipairs(ranges) do
+        for index = range[1], range[2] do
+            local _, _, existing = GetMacroInfo(index)
+            if type(existing) == "string" and not (issecretvalue and issecretvalue(existing)) then
+                local have, n = castSpells(existing)
+                if n == count then
+                    local same = true
+                    for spell in pairs(wanted) do if not have[spell] then same = false; break end end
+                    if same then return index end
+                end
+            end
+        end
+    end
+    return nil
+end
 function MacroForge:EntryExists(entry, body)
     if entry.name=="1-shot combo" then
         local account,character=GetNumMacros()
@@ -414,9 +466,17 @@ function MacroForge:CreateEntry(entry, confirmed)
     end
     local body = self:BuildMacro(entry)
     local icon = self:MacroIcon(entry)
-    if #body > 255 then self.skipReason = "long"; self:Status("This macro is too long for WoW's 255-character limit.", true); return false end
+    if #body > 255 then self.skipReason = "long"; self:Status("Too long for WoW's 255-character limit.", true); return false end
     local name = self:MacroName(entry)
     local exists, existingIndex = self:EntryExists(entry, body)
+    -- You already have your own macro for it (another text or name): keep
+    -- yours, never add a second one.
+    -- (Adding one macro yourself still adds it: you asked for that one.)
+    if not exists and self.bulkAdding and self:SameAction(entry, body) then
+        self.skipReason = "exists"
+        self:Status(entry.name .. " is already in your macros (your own version).")
+        return false
+    end
     if exists then
         if entry.class and existingIndex then
             EditMacro(existingIndex, " ", icon, body)
@@ -441,7 +501,7 @@ function MacroForge:CreateEntry(entry, confirmed)
         return true
     end
     self.skipReason = "full"
-    self:Status("WoW could not create that macro. Check space in the selected macro tab.", true)
+    self:Status("WoW couldn't create the macro. Is the tab full?", true)
     return false
 end
 
@@ -671,7 +731,7 @@ function MacroForge:CreateBulk(className, chosen)
     if total == 0 then
         self:Status(string.format("%d class macros added to Character.", created))
     else
-        self:Status(string.format("%d class macros added to Character; %d skipped. Hover here to see which.", created, total), #skipped.full + #skipped.long > 0)
+        self:Status(string.format("%d class macros added; %d skipped. Hover to see which.", created, total), #skipped.full + #skipped.long > 0)
     end
     self.statusHover:SetShown(total > 0)
     if created > 0 then KT:Toast(string.format("Added %d character macros", created)) end

@@ -4,7 +4,7 @@ local _,FT=...
 -- gives classes with a second resource), so it reads as part of the frame.
 -- The bar is ours; Blizzard's own alternate power bar is never touched.
 -- Only textures and our own bar change, so everything here is safe in combat.
-local Mana={}
+local Mana={pageWidth=540}
 local MANA=0
 local secret=issecretvalue or function() return false end
 local BAR_ATLAS="UI-HUD-UnitFrame-Player-PortraitOn-Bar-Mana"
@@ -181,21 +181,21 @@ function Mana:Refresh()
     local on=self:On()
     self.toggle.label:SetText("Mana bar while shapeshifted: "..(on and "On" or "Off")); FT:SetSelected(self.toggle,on)
     local _,class=UnitClass("player")
-    self.note:SetText(class=="DRUID" and "" or "This character is not a druid, so the bar does not show here. The setting is kept for your druids.")
+    self.note:SetText(class=="DRUID" and "" or "Only druids see this bar. The setting is kept for your druids.")
 end
 function Mana:Open()
     if not self.frame then
-        local frame=FT:Window("ForeverToolsDruidMana","Druid mana bar",760,560); self.frame=frame
-        FT:PageInfo(frame,"Druid mana bar","In bear, cat and other forms that hide your mana, a third bar under your rage or energy shows it, using the game's own three-bar player frame. Hover it for the numbers (or always, with the game's status text option). Only druids see it.")
-        local hint=FT:Label(frame,"Your mana as a third bar on the player frame while you are in bear, cat or another form.",12); hint:SetPoint("TOPLEFT",24,-66); hint:SetWidth(712); hint:SetTextColor(.66,.59,.48)
-        self.toggle=FT:AccentButton(frame,"",712,34,"Ability_Racial_BearForm"); self.toggle:SetPoint("TOPLEFT",24,-94)
+        local frame=FT:Window("ForeverToolsDruidMana","Druid mana bar",540,560); self.frame=frame
+        FT:PageInfo(frame,"Druid mana bar","Your mana as a third bar under rage or energy while in bear, cat and other forms. Hover it for numbers. Druids only.")
+        local hint=FT:Label(frame,"Your mana as a third bar on the player frame while you are in bear, cat or another form.",12); hint:SetPoint("TOPLEFT",24,-66); hint:SetWidth(492); hint:SetTextColor(.66,.59,.48)
+        self.toggle=FT:AccentButton(frame,"",492,34,"Ability_Racial_BearForm"); self.toggle:SetPoint("TOPLEFT",24,-94)
         self.toggle:SetScript("OnClick",function()
             local colors=FT.modules.UnitColors; if not colors then return end
             local s=colors:Settings(); s.druidMana=not (s.druidMana==true)
             self:Apply(); self:Refresh()
         end)
-        FT:Tooltip(self.toggle,"Druid mana bar","Show your mana as a third bar on the player frame while you are in bear, cat or another form that hides it. It uses the game's own three-bar frame art. Hover the bar for the numbers. Does nothing on other classes.")
-        self.note=FT:Label(frame,"",12); self.note:SetPoint("TOPLEFT",24,-140); self.note:SetWidth(712); self.note:SetTextColor(.66,.59,.48)
+        FT:Tooltip(self.toggle,"Druid mana bar","Show your mana as a third bar while in a form that hides it.")
+        self.note=FT:Label(frame,"",12); self.note:SetPoint("TOPLEFT",24,-140); self.note:SetWidth(492); self.note:SetTextColor(.66,.59,.48)
     end
     self:Refresh(); self.frame:Show()
 end

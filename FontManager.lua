@@ -8,6 +8,27 @@ local stock = {
     { value = "skurri", label = "Skurri", path = "Fonts\\SKURRI.TTF" },
     { value = "inter", label = "Inter", path = media .. "Inter-Regular.ttf" },
     { value = "expressway", label = "Expressway", path = media .. "expressway.otf" },
+    -- Bundled (SIL Open Font License, see Media/Fonts/README.txt).
+    { value = "robotocondensed", label = "Roboto Condensed", path = media .. "RobotoCondensed-Medium.ttf" },
+    { value = "barlowcondensed", label = "Barlow Condensed", path = media .. "BarlowCondensed-SemiBold.ttf" },
+    { value = "oswald", label = "Oswald", path = media .. "Oswald-Medium.ttf" },
+    { value = "rajdhani", label = "Rajdhani", path = media .. "Rajdhani-SemiBold.ttf" },
+    { value = "teko", label = "Teko", path = media .. "Teko-Medium.ttf" },
+    { value = "firasanscondensed", label = "Fira Sans Condensed", path = media .. "FiraSansCondensed-Medium.ttf" },
+    { value = "notosans", label = "Noto Sans", path = media .. "NotoSans-Medium.ttf" },
+    { value = "ptsansnarrow", label = "PT Sans Narrow", path = media .. "PTSansNarrow-Bold.ttf" },
+}
+-- More fonts the game itself ships with (for other languages; all have
+-- Latin letters). Listed only when this client has the file.
+local gameExtra = {
+    { value = "game:2002", label = "2002", path = "Fonts\\2002.TTF" },
+    { value = "game:2002b", label = "2002 Bold", path = "Fonts\\2002B.TTF" },
+    { value = "game:arhei", label = "AR Hei", path = "Fonts\\ARHei.ttf" },
+    { value = "game:arkai", label = "AR Kai", path = "Fonts\\ARKai_T.ttf" },
+    { value = "game:kdamage", label = "K Damage", path = "Fonts\\K_Damage.TTF" },
+    { value = "game:kpage", label = "K Pagetext", path = "Fonts\\K_Pagetext.TTF" },
+    { value = "game:nimrod", label = "Nimrod", path = "Fonts\\NIM_____.ttf" },
+    { value = "game:bold", label = "The Bold Font", path = "Fonts\\theboldfont.ttf" },
 }
 -- WoW draws two outline widths (Outline, Thick). Thin outline (saved as THIN)
 -- is the outline without the text's drop shadow, so it reads much lighter.
@@ -39,6 +60,7 @@ end
 function Fonts:Catalogue()
     local list = {}
     for _, entry in ipairs(stock) do list[#list+1] = entry end
+    for _, entry in ipairs(gameExtra) do if self:ValidFont(entry.path) then list[#list+1] = entry end end
     local shared = LibStub and LibStub("LibSharedMedia-3.0", true)
     if shared then
         local extra = {}
@@ -78,7 +100,7 @@ function Fonts:Resolve(s)
 end
 function Fonts:ValidFont(path)
     if type(path) ~= "string" or path == "" then return false end
-    -- Files cannot appear or vanish without restarting the game, so one check per session is enough.
+    -- A file added or removed shows up after a /reload (which starts this cache over), so one check per session is enough.
     self.validCache = self.validCache or {}
     if self.validCache[path] ~= nil then return self.validCache[path] end
     local result = self:ProbeFont(path)
@@ -102,10 +124,10 @@ end
 local function named(list, names)
     for name in names:gmatch("%S+") do add(list, _G[name]) end
 end
-Fonts:RegisterArea("general","General","Pick one font for all areas; each area keeps its own size and outline. To add your own font, put a .ttf or .otf file in ForeverTools/Media/Fonts, restart WoW, then type its file name below. Fonts from SharedMedia addons are listed too.",function() end)
+Fonts:RegisterArea("general","General","One font for every area; each keeps its own size and outline. Own font: put a .ttf or .otf in ForeverTools/Media/Fonts, /reload, then type its name below.",function() end)
 local bars = {"ActionButton", "MultiBarBottomLeftButton", "MultiBarBottomRightButton", "MultiBarRightButton",
     "MultiBarLeftButton", "MultiBar5Button", "MultiBar6Button", "MultiBar7Button", "PetActionButton", "StanceButton", "PossessButton"}
-Fonts:RegisterArea("actions", "Action bars", "Key bindings, stack counts and macro labels on Blizzard action bars and the spell binds bar.", function(list)
+Fonts:RegisterArea("actions", "Action bars", "Key bindings, stack counts and macro names on action bars.", function(list)
     for _, prefix in ipairs(bars) do for i=1,12 do
         local name = prefix .. i; local button = _G[name]
         for _, field in ipairs({"HotKey", "Count", "Name"}) do
@@ -115,14 +137,14 @@ Fonts:RegisterArea("actions", "Action bars", "Key bindings, stack counts and mac
     local roleBar = _G.ForeverToolsRoleBar
     if roleBar and roleBar.buttons then for _, b in ipairs(roleBar.buttons) do add(list, b.key) end end
 end)
-Fonts:RegisterArea("cooldowns", "Cooldown numbers", "Cooldown numbers on action buttons (turn them on in the game's settings). Other cooldown addons use their own fonts.", function(list)
+Fonts:RegisterArea("cooldowns", "Cooldown numbers", "Cooldown numbers on action buttons (turn them on in game settings).", function(list)
     for _, prefix in ipairs(bars) do for i=1,12 do
         local button = _G[prefix .. i]
         local cooldown = button and (button.cooldown or button.Cooldown) or _G[prefix .. i .. "Cooldown"]
         if cooldown and cooldown.GetRegions then for _, region in ipairs({cooldown:GetRegions()}) do add(list, region) end end
     end end
 end)
-Fonts:RegisterArea("units", "Unit frame text", "Names and health and mana numbers on the player, target, focus, pet and party frames.", function(list)
+Fonts:RegisterArea("units", "Unit frame text", "Names and numbers on unit frames.", function(list)
     for _, prefix in ipairs({"PlayerFrame", "TargetFrame", "FocusFrame", "PetFrame", "TargetFrameToT", "FocusFrameToT",
         "PartyMemberFrame1", "PartyMemberFrame2", "PartyMemberFrame3", "PartyMemberFrame4"}) do
         for _, suffix in ipairs({"Name", "HealthBarText", "HealthBarTextLeft", "HealthBarTextRight", "ManaBarText", "ManaBarTextLeft", "ManaBarTextRight"}) do add(list, _G[prefix .. suffix]) end
@@ -144,27 +166,27 @@ Fonts:RegisterArea("units", "Unit frame text", "Names and health and mana number
         end
     end
 end)
-Fonts:RegisterArea("hits", "Unit frame hits", "The damage and healing numbers that flash on your player and pet portraits.", function(list)
+Fonts:RegisterArea("hits", "Unit frame hits", "Damage numbers on your player and pet portraits.", function(list)
     named(list, "PlayerHitIndicator PetHitIndicator TargetHitIndicator")
     for _, frame in ipairs({PlayerFrame or false, PetFrame or false, TargetFrame or false}) do
         if frame then add(list, frame.hitIndicator); add(list, frame.HitIndicator) end
     end
 end)
-Fonts:RegisterArea("incoming", "Scrolling combat text", "Scrolling combat text around your character (turn it on in the game's settings). Damage and healing use the same font.", function(list)
+Fonts:RegisterArea("incoming", "Scrolling combat text", "Scrolling combat text around you (turn it on in game settings).", function(list)
     named(list, "CombatTextFont")
     for i=1,30 do add(list, _G["CombatText" .. i]) end
 end)
-Fonts:RegisterArea("world", "World damage/healing", "Damage and healing numbers above characters. They share one font. Log out and back in after changing it.", nil, "DAMAGE_TEXT_FONT")
-Fonts:RegisterArea("chat", "Chat", "Text inside Blizzard chat windows. Keeps their existing colors and spacing.", function(list)
+Fonts:RegisterArea("world", "World damage/healing", "Damage numbers above characters. Relog after changing.", nil, "DAMAGE_TEXT_FONT")
+Fonts:RegisterArea("chat", "Chat", "Text in chat windows.", function(list)
     for i=1,(NUM_CHAT_WINDOWS or 10) do add(list, _G["ChatFrame" .. i]) end
 end)
-Fonts:RegisterArea("tooltip", "Tooltips", "Blizzard tooltip headings and body text, including item and spell tooltips.", function(list)
+Fonts:RegisterArea("tooltip", "Tooltips", "Tooltip text.", function(list)
     named(list, "GameTooltipHeaderText GameTooltipText GameTooltipTextSmall")
     for _, prefix in ipairs({"GameTooltip", "ItemRefTooltip", "ShoppingTooltip1", "ShoppingTooltip2"}) do
         for i=1,30 do add(list, _G[prefix .. "TextLeft" .. i]); add(list, _G[prefix .. "TextRight" .. i]) end
     end
 end)
-Fonts:RegisterArea("quests", "Quest text", "Quest titles and quest text. Original size keeps titles bigger than the text.", function(list)
+Fonts:RegisterArea("quests", "Quest text", "Quest titles and text.", function(list)
     named(list, "QuestFont QuestFontNormal QuestFontHighlight QuestFont_Shadow_Small QuestFont_Large QuestFont_Huge QuestTitleFont QuestTitleFontBlack QuestFontNormalSmall QuestFontHighlightSmall")
 end)
 
@@ -175,12 +197,12 @@ local function collectTree(list,frame,depth)
     if frame.GetRegions then for _,region in ipairs({frame:GetRegions()}) do add(list,region) end end
     if depth>0 and frame.GetChildren then for _,child in ipairs({frame:GetChildren()}) do collectTree(list,child,depth-1) end end
 end
-Fonts:RegisterArea("restedxp","RestedXP","Text in the RestedXP guide addon, when it is installed.",function(list)
+Fonts:RegisterArea("restedxp","RestedXP","The RestedXP guide, when installed.",function(list)
     for _,name in ipairs({"RXPFrame","RXPV2GuideWindow","RXPG_ARROW","RXPItemFrame","RXPTargetFrame"}) do collectTree(list,_G[name],7) end
 end)
 for _,entry in ipairs({{"swingMain","Main-hand swing","SwingTimerMainHandFrame"},{"swingOff","Off-hand swing","SwingTimerOffHandFrame"},{"swingRanged","Ranged swing","SwingTimerRangedFrame"}}) do
     local frameName=entry[3]
-    Fonts:RegisterArea(entry[1],entry[2],"The weapon name and countdown on Forever's swing timer (turn it on in the game's settings).",function(list)
+    Fonts:RegisterArea(entry[1],entry[2],"The swing timer's text.",function(list)
         local frame=_G[frameName]; local bar=frame and frame.StatusBar
         if bar then add(list,bar.TypeLabel); add(list,bar.TimeLabel) end
     end)
@@ -192,11 +214,16 @@ Fonts:RegisterArea("objectives","Quest objectives","Quest tracker titles and obj
     collectTree(list,QuestWatchFrame,5)
 end)
 -- The ForeverTools threat meter: title, target and each bar's name and number.
-Fonts:RegisterArea("threatMeter","Threat meter","Title and bar text on the ForeverTools threat meter (Combat).",function(list)
+Fonts:RegisterArea("threatMeter","Threat meter","Text on the threat meter.",function(list)
     local threat=FT.modules.Threat; local meter=threat and threat.meter
     if not meter then return end
     add(list,meter.title); add(list,meter.target); add(list,meter.empty)
     for _,row in ipairs(threat.rows or {}) do add(list,row.name); add(list,row.value) end
+end)
+-- The ForeverTools interrupt bar: each row's name and time.
+Fonts:RegisterArea("interrupts","Interrupt bar","Names and times on the interrupt bar.",function(list)
+    local bar=FT.modules.Interrupts
+    for _,row in ipairs(bar and bar.rows or {}) do add(list,row.name); add(list,row.time) end
 end)
 -- The game's own damage meter: the name and number on every bar, in each of
 -- its windows. Bars are reused as the list scrolls, so new ones are picked up
@@ -210,7 +237,7 @@ local function damageMeterEntry(list,frame)
     local bar=frame and frame.StatusBar
     if bar then add(list,bar.Name); add(list,bar.Value) end
 end
-Fonts:RegisterArea("damageMeter","Damage meter","Names and numbers on the bars of the game's own damage meter. Its text size in Edit Mode still scales them.",function(list)
+Fonts:RegisterArea("damageMeter","Damage meter","Text on the game's damage meter.",function(list)
     for _,window in ipairs(damageMeterWindows()) do
         local container=window.MinimizeContainer
         local box=container and container.ScrollBox
@@ -359,7 +386,7 @@ function Fonts:WarnMissing()
     table.sort(files)
     self.warned = self.warned or {}
     for _, file in ipairs(files) do self.warned[file] = true end
-    local text = "Font file missing: " .. table.concat(files, ", ") .. ". Put it back in Interface\\AddOns\\ForeverTools\\Media\\Fonts and restart WoW, or choose another font in Appearance > Fonts. Until then the game's own font is used."
+    local text = "Font file missing: " .. table.concat(files, ", ") .. ". Put it back in Interface\\AddOns\\ForeverTools\\Media\\Fonts and /reload, or pick another font. The game's font is used until then."
     print("|cffffd100ForeverTools:|r " .. text)
     FT:Toast("A chosen font file is missing. Details are in chat.", 5)
 end
@@ -368,7 +395,7 @@ function Fonts:ChooseFont(value)
     local candidate = {font=value}
     local path = self:Resolve(candidate)
     if not self:ValidFont(path) then
-        self.notice = value == "expressway" and "Expressway could not load. Use expressway.ttf or expressway.otf in ForeverTools/Media/Fonts, then fully restart WoW. Both formats are supported." or "This font is unavailable in your client. Choose another font."
+        self.notice = value == "expressway" and "Expressway could not load. Put expressway.ttf or .otf in ForeverTools/Media/Fonts, then /reload." or "This font doesn't work here. Pick another."
         self:Refresh(); return
     end
     s.font, s.path, s.pathFor = value, path, value
@@ -427,15 +454,39 @@ function Fonts:Refresh()
     for _,control in ipairs({self.toggle,self.sizeChoice,self.outlineChoice,self.resetButton,self.reapplyButton}) do control:SetShown(not general) end
     self.allButton:SetShown(general); self.customFont:SetShown(general); self.customFontAdd:SetShown(general)
     local status = not s.enabled and "Off — this area keeps its original font." or
-        (area.engine and "Font saved. Log out and back in to see it on damage numbers." or
-        ((self.counts[id] or 0) == 0 and "Nothing from this area is on screen yet. Your font applies when it appears." or "Changes apply right away."))
+        (area.engine and "Saved. Relog to see it on damage numbers." or
+        (Fonts.showsElement and Fonts.showsElement[id] and "Shown on screen while you edit this area." or
+        ((self.counts[id] or 0) == 0 and "Not on screen yet. Applies when it appears." or "Changes apply right away.")))
     self.status:Hide()
     self.status:SetText(self.notice or (self.deferred and "Saved. Applies after you leave combat.") or self.errors[id] or status)
+    self:ShowElement()
+end
+-- Areas for ForeverTools' own elements that are often hidden: while you edit
+-- the area's font, the element itself is on screen as a preview (with
+-- made-up rows), so you see the font where it is used.
+local SHOW = {
+    threatMeter = {
+        on = function() local T = FT.modules.Threat; if T then T.previewing = true; T:Apply() end end,
+        off = function() local T = FT.modules.Threat; if T and not (T.frame and T.frame:IsShown()) then T.previewing = false; T:Apply() end end,
+    },
+    interrupts = {
+        on = function() local I = FT.modules.Interrupts; if I and not I.preview then I.fontPreview = true; I:SetPreview(true) end end,
+        off = function() local I = FT.modules.Interrupts; if I and I.fontPreview then I.fontPreview = nil; I:SetPreview(false) end end,
+    },
+}
+Fonts.showsElement = SHOW
+function Fonts:ShowElement()
+    local want = self.frame and self.frame:IsShown() and not InCombatLockdown() and SHOW[self.selected] and self.selected or nil
+    if want == self.shownElement then return end
+    if self.shownElement then pcall(SHOW[self.shownElement].off) end
+    self.shownElement = want
+    if want then pcall(SHOW[want].on) end
 end
 function Fonts:Open()
     self.selected = self.selected or "general"
     if not self.frame then
         self.frame = FT:Window("ForeverToolsFontManager", "Fonts", 760, 530)
+        self.frame:HookScript("OnHide", function() self:ShowElement() end)
         FT:AppearanceBack(self.frame)
         self.areaButtons = {}
         local areaScroll=CreateFrame("ScrollFrame",nil,self.frame,"UIPanelScrollFrameTemplate")
@@ -469,13 +520,13 @@ function Fonts:Open()
         local all=FT:QuietButton(self.frame,"Apply selected font to all",494,32,"fonts")
         all:SetPoint("TOPLEFT",240,-406)
         self.allButton=all
-        all:SetScript("OnClick",function() local font=self:Settings(self.selected).font; FT:Confirm("Apply the selected font to every area? This enables font management for all areas; sizes and outlines stay unchanged.",function() self:ApplyAllFonts(font) end) end)
-        FT:Tooltip(all,"Apply font to all areas","Use this font everywhere. Each area keeps its own size and outline. World damage numbers need a relog to change.")
+        all:SetScript("OnClick",function() local font=self:Settings(self.selected).font; FT:Confirm("Use this font in every area? Sizes and outlines stay.",function() self:ApplyAllFonts(font) end) end)
+        FT:Tooltip(all,"Apply font to all areas","Use this font everywhere. Sizes and outlines stay.")
         self.customFont=CreateFrame("EditBox",nil,self.frame,"InputBoxTemplate"); self.customFont:SetSize(350,28); self.customFont:SetPoint("TOPLEFT",246,-212); self.customFont:SetFont(FT.bodyFont,14,""); self.customFont:SetAutoFocus(false)
         self.customFontAdd=FT:QuietButton(self.frame,"Add font",128,28,"add"); self.customFontAdd:SetPoint("LEFT",self.customFont,"RIGHT",12,0)
-        FT:Tooltip(self.customFontAdd,"Add font","Add the font file named in the box to the list of fonts.")
-        self.customFontAdd:SetScript("OnClick",function() local file=self.customFont:GetText(); local path=self:Resolve({font="file:"..file}); if not path then FT:Toast("Font not found. Put the file in Interface\\AddOns\\ForeverTools\\Media\\Fonts, then fully restart WoW."); return end; FT.db.customFonts=FT.db.customFonts or {}; local found=false; for _,v in ipairs(FT.db.customFonts) do if v==file then found=true end end; if not found then table.insert(FT.db.customFonts,file) end; self:ChooseFont("file:"..file) end)
-        FT:Tooltip(self.customFont,"Font filename","Type the file name, for example MyFont.ttf. Put the file in ForeverTools/Media/Fonts while WoW is closed, then start WoW. Only use fonts you are allowed to use.")
+        FT:Tooltip(self.customFontAdd,"Add font","Add the font file named in the box.")
+        self.customFontAdd:SetScript("OnClick",function() local file=self.customFont:GetText(); local path=self:Resolve({font="file:"..file}); if not path then FT:Toast("Font not found. Put the file in Interface\\AddOns\\ForeverTools\\Media\\Fonts, then /reload."); return end; FT.db.customFonts=FT.db.customFonts or {}; local found=false; for _,v in ipairs(FT.db.customFonts) do if v==file then found=true end end; if not found then table.insert(FT.db.customFonts,file) end; self:ChooseFont("file:"..file) end)
+        FT:Tooltip(self.customFont,"Font filename","File name, like MyFont.ttf, placed in ForeverTools/Media/Fonts. Only fonts you may use.")
         self.status = FT:Label(self.frame, "", 13); self.status:SetPoint("TOPLEFT", 240, -392); self.status:SetSize(494, 62); self.status:SetJustifyV("TOP")
         local reset = FT:QuietButton(self.frame, "Reset this area", 238, 32, "reset"); reset:SetPoint("BOTTOMLEFT", 240, 30)
         self.resetButton=reset
@@ -484,14 +535,14 @@ function Fonts:Open()
         self.reapplyButton=apply
         apply:SetScript("OnClick", function() self.notice=nil; self:Apply() end)
         FT:PageInfo(self.frame, "Fonts", function()
-            return "Pick an area on the left, turn it on, then choose its font, size and outline. General sets one font for every area at once (each area keeps its own size and outline).\n\nThis area: " .. self.areas[self.selected].description .. ((self.status:GetText() or "") ~= "" and ("\n\n" .. self.status:GetText()) or "")
+            return "Pick an area on the left, turn it on, then choose its font, size and outline.\n\nThis area: " .. self.areas[self.selected].description .. ((self.status:GetText() or "") ~= "" and ("\n\n" .. self.status:GetText()) or "")
         end)
-        FT:Tooltip(self.toggle, "Enable font changes", "Turn on to use your chosen font in this area.")
-        FT:Tooltip(self.fontChoice, "Current font", "The font this area uses now. Pick a font to change it; this also turns the area on. \"Mixed fonts\" means the area uses more than one.")
+        FT:Tooltip(self.toggle, "Enable font changes", "Use your font in this area.")
+        FT:Tooltip(self.fontChoice, "Current font", "Picking a font also turns the area on.")
         local function controlHelp()
             return self.areas[self.selected].engine
-                and "The game controls the size and outline of world damage numbers. Only the font can be changed here."
-                or "Change the text size and outline for this area. Original keeps Blizzard's setting."
+                and "The game sets the size of damage numbers. Only the font can change."
+                or "Text size and outline. Original keeps the game's."
         end
         for _,control in ipairs({self.sizeChoice,self.outlineChoice}) do
             FT:Tooltip(control,"Font appearance",controlHelp)
@@ -501,8 +552,8 @@ function Fonts:Open()
                 FT:Tooltip(button,"Font appearance",controlHelp)
             end
         end
-        FT:Tooltip(reset, "Reset area", "Restore the original font settings for this area.")
-        FT:Tooltip(apply, "Reapply fonts", "Apply your font settings again to everything on screen, in case something did not update.")
+        FT:Tooltip(reset, "Reset area", "Back to the original font for this area.")
+        FT:Tooltip(apply, "Reapply fonts", "Apply your fonts again, if something didn't update.")
     end
     self:Apply(); self.frame:Show(); self:Refresh()
 end

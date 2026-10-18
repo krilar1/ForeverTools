@@ -2,6 +2,16 @@ local _,FT=...
 -- Short player-facing notes for the "What's new" window. Newest first.
 FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
+    {version="0.90.0",notes={
+        {icon="Spell_Frost_FrostNova",title="Diminishing returns",text="See when crowd control will be shorter. PvP."},
+        {icon="Ability_Kick",title="Interrupt bar",text="Your group's interrupts and their cooldowns."},
+        {icon="INV_Jewelry_Talisman_07",title="Trinket menu",text="Use and swap trinkets, also in a fight. PvP."},
+        {icon="Ability_Hunter_Pathfinding",title="Move game windows",text="Drag the character panel, map, bags and more."},
+        {icon="Spell_Shadow_Twilight",title="Darker game windows",text="Character, talents, calendar, NPC windows."},
+        {icon="INV_Misc_Book_03",title="Macro guide",text="About 50 kinds of macro, with examples."},
+        {icon="INV_Misc_Note_06",title="Nine new fonts",text="Bundled fonts that look sharp in game."},
+        {icon="INV_Misc_Gear_01",title="Simpler menus",text="Switches, lists and a live look at changes."},
+    }},
     {version="0.80.0",notes={
         {icon="INV_Misc_Bag_08",title="Bags",text="Everyone's gold, bank anywhere, alts' bags."},
         {icon="INV_Misc_Note_04",title="Item counts",text="See every character's count in item tooltips."},

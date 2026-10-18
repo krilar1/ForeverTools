@@ -1,8 +1,13 @@
 # Distribution review for CurseForge
 
-The public ZIP contains addon code, original UI artwork, and one third-party
-font: Inter-Regular.ttf with its full SIL Open Font License 1.1 notice in
-Media/Fonts/Inter-LICENSE.txt. Inter is redistributed unmodified.
+The public ZIP contains addon code, original UI artwork, and nine third-party
+fonts in Media/Fonts, each under the SIL Open Font License 1.1 with its full
+license next to it (<Name>-LICENSE.txt). Media/Fonts/README.txt says where each
+comes from and which were reduced to fewer letters or one weight. PT Sans
+Narrow (Reserved Font Names "PT Sans", "ParaType") and Inter are redistributed
+unmodified; the reduced fonts have no Reserved Font Names, so their names may
+stay. The OFL allows bundling with software; the fonts are never sold on
+their own.
 
 User-supplied Expressway font files were removed from the addon and tracked
 repository because no license granting redistribution with a game addon was
@@ -16,11 +21,12 @@ addon data; no website article text is bundled. Classic flight-time data is adap
 
 ForeverTools' own code is released under the MIT License (see LICENSE); the
 CurseForge project license should match. Third-party components keep their own
-licenses and are not relicensed by it. Keep the
-Inter OFL notice with every distributed copy and confirm any future bundled
+licenses and are not relicensed by it. Keep each
+font's OFL notice with every distributed copy and confirm any future bundled
 font or image comes with redistribution rights for addon users.
 
 Primary sources: https://support.curseforge.com/support/solutions/articles/9000197279
 https://typodermicfonts.com/license/
 https://typodermicfonts.com/desktop/
 https://github.com/rsms/inter/blob/master/LICENSE.txt
+https://openfontlicense.org/open-font-license-official-text/

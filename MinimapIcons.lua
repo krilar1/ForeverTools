@@ -85,14 +85,21 @@ end
 function Icons:Create()
     if self.launcher or not Minimap then return end
     local button=CreateFrame("Button","ForeverToolsMinimapIcons",Minimap);self.launcher=button
-    button:SetSize(32,32);self:PositionLauncher()
+    button:SetSize(31,31);self:PositionLauncher()
     button:RegisterForDrag("LeftButton")
     if button.SetDontSavePosition then button:SetDontSavePosition(true) end
     button:SetFrameLevel(Minimap:GetFrameLevel()+12);button:RegisterForClicks("LeftButtonUp")
-    local icon=button:CreateTexture(nil,"ARTWORK");icon:SetSize(21,21);icon:SetPoint("CENTER")
-    icon:SetTexture("Interface\\Icons\\INV_Misc_Gear_01")
+    -- A gear in the round minimap ring, built like the ForeverTools button
+    -- and other addons' minimap buttons (the game's dark backing, ring and
+    -- highlight). Skins > Minimap darkens its ring like the game's own buttons.
+    local back=button:CreateTexture(nil,"BACKGROUND");back:SetSize(24,24);back:SetPoint("CENTER")
+    back:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    local icon=button:CreateTexture(nil,"ARTWORK");icon:SetSize(19,19);icon:SetPoint("CENTER")
+    icon:SetTexture("Interface\\Icons\\INV_Misc_Gear_01");icon:SetTexCoord(.08,.92,.08,.92);FT:RoundIcon(icon)
+    button.icon=icon
     local ring=button:CreateTexture(nil,"OVERLAY");ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-    ring:SetTexCoord(0,.625,0,.625);ring:SetSize(34,34);ring:SetPoint("CENTER",button,"CENTER",0,0);ring:SetVertexColor(.08,.08,.08)
+    ring:SetSize(50,50);ring:SetPoint("TOPLEFT",button,"TOPLEFT",0,0);button.ring=ring
+    button:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
     local panel=CreateFrame("Frame","ForeverToolsMinimapIconMenu",UIParent);self.panel=panel
     panel:SetFrameStrata("DIALOG");panel:SetClampedToScreen(true);panel:EnableMouse(true)
     panel:SetPoint("TOPRIGHT",button,"BOTTOMRIGHT",0,-8);panel:Hide()
@@ -118,7 +125,7 @@ function Icons:Create()
         -- blocked); new icons are sorted in after the fight.
         if panel:IsShown() and not panel.closing then self:CloseMenu(true) else self:OpenMenu() end
     end)
-    FT:Tooltip(button,"Grouped minimap buttons","Click to open or close. The menu closes by itself a few seconds after your mouse leaves it. Drag this icon to move it around the minimap. The buttons inside keep their normal clicks and tooltips.")
+    FT:Tooltip(button,"Grouped minimap buttons","Click to open. Drag to move it around the minimap.")
 end
 function Icons:Eligible(button,known)
     if not button or button==self.launcher or (self.records[button] and self.records[button].active) or protected(button) then return false end
@@ -250,7 +257,10 @@ function Icons:Apply()
     if not FT.dbReady or not FT.profilesReady or InCombatLockdown() then return end
     self.active=self:Enabled()
     if not self.active then self:Restore();return end
+    local fresh=not self.launcher
     self:Create();if not self.launcher then return end
+    -- A new button joins the minimap's dark look at once.
+    if fresh and FT.modules.IconStyles and FT.modules.IconStyles.Apply then FT:Coalesce("skinsAfterLauncher",function() pcall(FT.modules.IconStyles.Apply,FT.modules.IconStyles) end,.1) end
     -- Reuse hooks, but capture current positions again on each new enable.
     for button,record in pairs(self.records) do
         if not record.active then self:Collect(button,true) end

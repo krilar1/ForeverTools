@@ -64,8 +64,8 @@ function Macros:RequestDeleteClass(mode)
     end
     self.deleteRequest = {stage = 1, candidates = candidates, mode = mode}
     StaticPopupDialogs.FOREVERTOOLS_DELETE_FIRST.text = mode == "all"
-        and string.format("Delete ALL %d Character macros, including ones you made or changed yourself?\n\nGeneral macros are not touched.", #candidates)
-        or string.format("Delete %d Character macros that ForeverTools made and you have not changed?\n\nMacros you changed and General macros are kept.", #candidates)
+        and string.format("Delete ALL %d Character macros, including your own?\n\nGeneral macros stay.", #candidates)
+        or string.format("Delete %d unchanged ForeverTools Character macros?\n\nYour changed macros and General macros stay.", #candidates)
     FT:ShowPopup("FOREVERTOOLS_DELETE_FIRST")
 end
 function Macros:ShowFinalDelete()
@@ -78,7 +78,7 @@ function Macros:ShowFinalDelete()
         if self.deleteRequest ~= request or request.stage ~= 2 then return end
         if InCombatLockdown() then self:CancelDelete(); self:Status("Deletion cancelled: you entered combat.", true); return end
         StaticPopupDialogs.FOREVERTOOLS_DELETE_FINAL.text = string.format(
-            "FINAL CONFIRMATION\n\nPermanently delete %d Character macros%s?\nTheir action-bar buttons will stop working.\n\nClick Delete macros to proceed, or Cancel to keep them.", #request.candidates, request.mode == "all" and " (all of them)" or "")
+            "FINAL CONFIRMATION\n\nDelete %d Character macros%s for good?\nTheir action-bar buttons stop working.", #request.candidates, request.mode == "all" and " (all of them)" or "")
         request.stage = 3
         FT:ShowPopup("FOREVERTOOLS_DELETE_FINAL")
     end)

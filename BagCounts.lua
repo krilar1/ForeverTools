@@ -31,7 +31,7 @@ function Counts:Lines(id,s)
     for _,entry in ipairs(B:Characters()) do
         if not entry.me or s.countSelf then
             local e=B:Index(entry.guid)[id]
-            if e and e.total>0 then rows[#rows+1]={B:ClassName(entry.c,entry.guid),right(e)}; total=total+e.total end
+            if e and e.total>0 then rows[#rows+1]={B:ClassName(entry.c,entry.guid,s.countFullNames),right(e)}; total=total+e.total end
         end
     end
     local st=B:Store()
@@ -142,16 +142,17 @@ watcher:SetScript("OnEvent",function(_,event)
 end)
 -- Settings page --------------------------------------------------------------
 local SAMPLE={
-    {name="Krilar",class="SHAMAN",me=true,e={bags=12,bank=8,worn=0,total=20}},
-    {name="Frostbolt",class="MAGE",e={bags=5,bank=0,worn=0,total=5}},
-    {name="Shadowmeld",class="ROGUE",e={bags=0,bank=3,worn=0,total=3}},
+    {name="Krilar",full="Krilar Stormcaller",class="SHAMAN",me=true,e={bags=12,bank=8,worn=0,total=20}},
+    {name="Frostbolt",full="Frostbolt Emberwake",class="MAGE",e={bags=5,bank=0,worn=0,total=5}},
+    {name="Shadowmeld",full="Shadowmeld Nightveil",class="ROGUE",e={bags=0,bank=3,worn=0,total=3}},
 }
 function Counts:SampleLines(s)
     local rows,total={},0
     local function colored(entry)
+        local name=(s.countFullNames and entry.full) or entry.name
         local c=(CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS or {})[entry.class]
-        if c and c.r then return string.format("|cff%02x%02x%02x%s|r",c.r*255,c.g*255,c.b*255,entry.name) end
-        return entry.name
+        if c and c.r then return string.format("|cff%02x%02x%02x%s|r",c.r*255,c.g*255,c.b*255,name) end
+        return name
     end
     for _,entry in ipairs(SAMPLE) do
         if not entry.me or s.countSelf then
@@ -168,22 +169,23 @@ function Counts:SampleLines(s)
     return self:Build(rows,total,s)
 end
 local styles={
-    {value="each",label="Each character",tooltip="One line per character (and the guild bank) that has the item."},
+    {value="each",label="Each character",tooltip="One line per character that has it."},
     {value="total",label="Total only",tooltip="One line with how many you have in all."},
     {value="both",label="Each character and total",tooltip="One line per character, then the total."},
 }
 local places={
-    {value="inside",label="Inside, at the bottom",tooltip="Added to the bottom of the item's own tooltip."},
-    {value="above",label="Box above the tooltip",tooltip="A small box just above the tooltip, so the item's own lines stay as they are."},
-    {value="below",label="Box below the tooltip",tooltip="A small box just below the tooltip, so the item's own lines stay as they are."},
+    {value="inside",label="Inside, at the bottom",tooltip="At the bottom of the tooltip."},
+    {value="above",label="Box above the tooltip",tooltip="A small box above the tooltip."},
+    {value="below",label="Box below the tooltip",tooltip="A small box below the tooltip."},
 }
 local function labelOf(list,value) for _,item in ipairs(list) do if item.value==value then return item.label end end end
 local toggles={
-    {"countSplit","Bags and bank apart","INV_Misc_Bag_10","Show where the items are next to each count: bags, bank or worn."},
-    {"countSelf","This character too","character","Include the character you are playing. Off: only your other characters and banks."},
-    {"countGuild","Guild bank","INV_Shirt_GuildTabard_01","Count the guild bank too. It is read when you open it; tabs you cannot see are not counted."},
-    {"countShift","Only while Shift is held","INV_Misc_Key_03","Keep tooltips short: counts only show while you hold Shift."},
-    {"countSpacer","Empty line before","INV_Misc_Note_01","Leave an empty line between the item's own text and the counts (inside the tooltip only)."},
+    {"countSplit","Bags and bank apart","INV_Misc_Bag_10","Show where: bags, bank or worn."},
+    {"countSelf","This character too","character","Include the character you play."},
+    {"countGuild","Guild bank","INV_Shirt_GuildTabard_01","Include the guild bank (read when you open it)."},
+    {"countFullNames","Full character names","character","First and last names. Alts need one login."},
+    {"countShift","Only while Shift is held","INV_Misc_Key_03","Show counts only while holding Shift."},
+    {"countSpacer","Empty line before","INV_Misc_Note_01","An empty line before the counts."},
 }
 function Counts:Refresh()
     if not self.frame then return end
@@ -237,7 +239,7 @@ function Counts:Open()
     if not self.frame then
         local hub=FT:HubOf("ItemCounts"); local width=hub and hub.width or 760
         local frame=FT:Window("ForeverToolsItemCounts","Item counts",width,560); self.frame=frame
-        FT:PageInfo(frame,"Item counts","How many of an item you have, added to item tooltips: in your bags, bank and worn gear, on your other characters on this ruleset, and in the guild bank.\n\nEach character must log in once, and banks are read when you open them. The data is the same the Bags page uses.")
+        FT:PageInfo(frame,"Item counts","How many you have of an item, on its tooltip: bags, bank, other characters on this ruleset and the guild bank.\n\nEach character needs one login; banks are read when opened.")
         local function section(x,y,title,icon)
             local h=FT:Label(frame,title,16,true); h:SetPoint("TOPLEFT",x,y); h:SetTextColor(1,.82,0)
             FT:SectionHeading(h,icon,200)
@@ -245,7 +247,7 @@ function Counts:Open()
         section(24,-66,"What to show","INV_Misc_Note_04")
         self.toggle=FT:AccentButton(frame,"",364,34,"INV_Misc_Note_04"); self.toggle:SetPoint("TOPLEFT",24,-96)
         self.toggle:SetScript("OnClick",function() local s=settings(); s.counts=not s.counts; bags():Apply(); self:Refresh() end)
-        FT:Tooltip(self.toggle,"Item counts","Add how many of an item you have, and where, to item tooltips.")
+        FT:Tooltip(self.toggle,"Item counts","Show how many of an item you have, and where.")
         self.style=FT:QuietButton(frame,"",364,32,"classes"); self.style:SetPoint("TOPLEFT",24,-138)
         self.style.options=function() local out={}; for _,o in ipairs(styles) do out[#out+1]={value=o.value,label=o.label,tooltip=o.tooltip,icon="Interface\\Icons\\INV_Misc_Note_04"} end; return out end
         self.style.onSelect=function(value) settings().countStyle=value; self:Refresh() end
@@ -268,7 +270,7 @@ function Counts:Open()
         self.place.options=function() local out={}; for _,o in ipairs(places) do out[#out+1]={value=o.value,label=o.label,tooltip=o.tooltip,icon="Interface\\Icons\\Ability_Rogue_Sprint"} end; return out end
         self.place.onSelect=function(value) settings().countPlace=value; self:Refresh() end
         self.place:SetScript("OnClick",function(owner) owner.value=settings().countPlace; owner.menuWidth=316; FT:ShowChoices(owner) end)
-        FT:Tooltip(self.place,"Place","Inside the item's tooltip at the bottom, or in a small box just above or below it.")
+        FT:Tooltip(self.place,"Place","Where the counts show.")
         local ph=FT:Label(frame,"Preview",16,true); ph:SetPoint("TOPLEFT",R,-146); ph:SetTextColor(1,.82,0); FT:SectionHeading(ph,"INV_Misc_Note_01",200)
         local p=CreateFrame("Frame",nil,frame); p:SetPoint("TOPLEFT",R,-178); p:SetSize(300,300)
         local function box()

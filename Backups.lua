@@ -154,14 +154,14 @@ function Backups:Restore(index)
     local entry=self:List()[index]
     if not entry or InCombatLockdown() then if InCombatLockdown() then FT:Toast("Restore outside combat.") end; return end
     local sameClass=entry.class==playerClass()
-    FT:Confirm("Put back the backup from "..date("%d %b %H:%M",entry.time).." ("..(entry.label or "Backup")..")?\n\nKeybinds"..(sameClass and ", action bars" or "").." and spell binds are replaced. Your current setup is backed up first, so this can be undone."..(sameClass and "" or "\n\nThis backup is from another class, so action bars are left as they are."),function()
+    FT:Confirm("Put back the backup from "..date("%d %b %H:%M",entry.time).." ("..(entry.label or "Backup")..")?\n\nKeybinds"..(sameClass and ", action bars" or "").." and spell binds are replaced. Your current setup is backed up first."..(sameClass and "" or "\n\nThis backup is from another class, so action bars are left as they are."),function()
         self:Take("Before restore",true)
         local profiles=FT.modules.Profiles
         if entry.bindings and profiles then profiles:ApplyBindings(entry.bindings,false,true) end
         local placed,skipped
         if sameClass and entry.bars then placed,skipped=self:ApplyBars(entry.bars) end
         if sameClass and entry.spellBinds then self:ApplySpellBinds(entry.spellBinds) end
-        FT:Toast("Backup restored."..(skipped and #skipped>0 and (" "..#skipped.." action bar slot(s) skipped: not learned or not in your bags.") or ""),5)
+        FT:Toast("Backup restored."..(skipped and #skipped>0 and (" "..#skipped.." action bar slot(s) skipped: not learned or not in bags.") or ""),5)
     end)
 end
 -- One list for putting things back: your backups (keybinds, action bars and
@@ -172,13 +172,13 @@ function Backups:Count()
 end
 function Backups:Choices()
     local list={{value="new",label="Save a backup now",icon="Interface\\Icons\\INV_Misc_Book_09",tooltipTitle="Save a backup now",
-        tooltip="A copy of your keybinds, action bars and spell binds that you can put back later."}}
+        tooltip="A copy of your keybinds, action bars and spell binds."}}
     local entries={}
     for i,entry in ipairs(self:List()) do
         local bars=entry.bars and entry.bars.count or 0
         entries[#entries+1]={time=entry.time or 0,value="b"..i,label=date("%d %b %H:%M",entry.time).." · "..(entry.label or "Backup")..(entry.character and (" · "..entry.character:match("^[^%-]+")) or ""),
             icon="Interface\\Icons\\INV_Misc_Book_09",tooltipTitle=(entry.label or "Backup").." (full backup)",
-            tooltip=(entry.character or "").."\n"..bars.." action bar slots, "..(entry.bindings and "keybinds" or "no keybinds")..(entry.spellBinds and ", spell binds" or "").."\n\nChoose to put it back (your current setup is backed up first)."}
+            tooltip=(entry.character or "").."\n"..bars.." action bar slots, "..(entry.bindings and "keybinds" or "no keybinds")..(entry.spellBinds and ", spell binds" or "").."\n\nClick to put it back (your setup is backed up first)."}
     end
     local quick=FT.modules.QuickBind
     if quick then
@@ -186,7 +186,7 @@ function Backups:Choices()
             local n=#quick:ChangeLines(entry.changes)
             entries[#entries+1]={time=entry.time or 0,value="k"..i,label=date("%d %b %H:%M",entry.time).." · Before "..(entry.label or "keybind session"):lower().." · "..n.." change"..(n==1 and "" or "s"),
                 icon="Interface\\Icons\\"..FT.icons.keybind,tooltipTitle="Before "..(entry.label or "keybind session"):lower().." (keybinds only)",
-                tooltip=function() return "This session changed:\n"..quick:ChangeText(entry.changes).."\n\nChoose to put back the keybinds you had before it. Action bars and spell binds stay as they are." end}
+                tooltip=function() return "This session changed:\n"..quick:ChangeText(entry.changes).."\n\nClick to put back the keybinds from before it." end}
         end
     end
     table.sort(entries,function(a,b) return a.time>b.time end)

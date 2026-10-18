@@ -1,6 +1,6 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 0.80.0.**
+**Quality-of-life tools for WoW: Forever — version 0.90.0.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
 one place. Everything starts **off**, so the game looks like Blizzard's until you
@@ -15,11 +15,14 @@ the home window. Use **`/rl`** to reload the UI.
 - **Skins and dark mode:** Style action bars, buffs and debuffs, bags, micro
   menu, minimap, XP/reputation bars, stance and totem bars, gryphons, unit
   frames (player, pet, target, focus, party), the personal resource display,
-  cast bars and swing timers. Choose a preset for all areas or adjust each area separately, with
+  cast bars and swing timers, pets and class bars, tooltips, the calendar,
+  NPC and dialog windows and your own game windows (character panel, talents,
+  quest log and more; their pictures are kept). Choose a preset for all areas or adjust each area separately, with
   border, fill and transparency controls and separate rare/elite switches.
   Save your own looks as skin templates and switch between them.
 - **Fonts and cooldowns:** Adjust supported fonts, sizes, outlines and colors,
-  including cooldown numbers.
+  including cooldown numbers. Nine fonts are bundled, and the game's own fonts
+  can be picked too.
 - **Unit-frame colors:** Class-colored health bars for player, target,
   target-of-target, focus and focus-target frames. Party colors link to
   Blizzard's Edit Mode settings.
@@ -32,7 +35,8 @@ the home window. Use **`/rl`** to reload the UI.
   its color. Also text sizes, position, health bar, buff sources and tooltip
   IDs.
 - **Chat:** Show, hide or mouseover-reveal chat controls, change the chat font,
-  and optional clickable links that open a copy box.
+  optional clickable links that open a copy box, and a copy button on each
+  chat window (with timestamps if you like).
 - **Macros:** Browse class, racial and general templates, each with its state
   (added or not); open one in the list to select ranks, add mouseover support
   and more lines; and build custom macros with spell and equipment actions.
@@ -40,7 +44,8 @@ the home window. Use **`/rl`** to reload the UI.
   Add all fits your macro tab (Make room), hides macros you never use, and can
   give unlearned spells their icon so bars can be set up from level 1.
   A macro can also equip items (a weapon swap, for example): pick a slot and an
-  item you wear or carry.
+  item you wear or carry. The **Macro guide** explains about 50 kinds of macro
+  with an example each, ready to add to your own macros.
 - **Buff reminders:** Self and group buff notices with talent-based choices,
   weapon enchants, low-rank alerts and an optional low-rank marker on action
   bars, with per-spell exceptions. Choose where notices appear and how long
@@ -50,7 +55,8 @@ the home window. Use **`/rl`** to reload the UI.
   from kills in Forever, while leveling or always) and stat food, each only
   while you carry that food.
   Notices hide in combat, except for buffs you set to also remind in combat
-  (Battle Shout, for example).
+  (Battle Shout, for example), or all of them at once. A notice can wait until
+  you have the rage, mana or energy to cast the buff.
 - **Leveling stats:** XP per hour, time to level, kills to level, XP progress and
   rested XP. Pick which to show and their order, one per line or on a single
   line, with an optional rounded background; font size and transparency
@@ -58,6 +64,12 @@ the home window. Use **`/rl`** to reload the UI.
 - **Totems (shamans):** each placed totem's 30-yard reach as a soft circle on
   the minimap, and a left-behind warning that pulses the totem's icon red when
   you move too far from it (Combat → Totems).
+- **Move game windows** (On-screen info, off by default): drag the character
+  panel, spellbook, map, calendar, vendor, bank and other game windows by their
+  title bar, and they open there again. Windows Edit Mode can place are left to
+  Edit Mode. Also `/ft moveall`.
+- **Game resource bars** (Appearance): order the parts of the game's personal
+  resource display and choose the text on each bar.
 - **Move elements:** The move button in any window's title bar unlocks every on-screen
   element (FPS, leveling stats, flight timer, threat meter, rare alert,
   reminders, loot rolls, tooltip) to drag them all at once, with an option to
@@ -66,6 +78,9 @@ the home window. Use **`/rl`** to reload the UI.
 - **Flight countdown:** A one-line countdown next to your destination, for
   example "0:24 - Crossroads, The Barrens". Completed
   flights teach new routes and replace bundled estimates.
+- **Interrupt bar:** your group's interrupts with their cooldowns, ready ones
+  first; members with ForeverTools share theirs exactly. A row limit keeps
+  battlegrounds tidy, and a preview helps you set it up (Combat).
 - **Threat:** a threat meter styled like and placed next to the game's damage
   meter, and your threat % above your target (Combat). Fonts
   can change the threat meter's and the damage meter's text.
@@ -89,6 +104,16 @@ the home window. Use **`/rl`** to reload the UI.
 - **PvP awareness** (off by default): stealth alert, marked players with a
   reason and a red alert when they show up, and a nearby enemies list that
   targets on click and works in combat (PvP).
+- **Trinket menu** (PvP, off by default): two buttons for your trinket slots
+  that work in combat, with cooldowns; hover for every trinket you carry and
+  click one to put it on (in a fight the swap waits until it ends).
+- **Diminishing returns** (PvP, off by default): an icon per kind of crowd
+  control next to your target, focus and (optionally) your own frame, each
+  placed on its own; yellow/orange/red for half, quarter, immune, and a swipe
+  to the reset. Tracked from visible debuffs and your own casts, or from the
+  game's own DR data when it sends it.
+- **Auto release** (PvP, off by default): releases your spirit in
+  battlegrounds, unless you can come back yourself (soulstone, Reincarnation).
 - **Battleground timer:** when a battleground queue pops, a bar counts down
   the time you have left to enter (PvP). Off by default, movable.
 - **Rare alerts:** a glowing notice and optional sound when a rare appears.
@@ -121,22 +146,30 @@ the home window. Use **`/rl`** to reload the UI.
 - **Poison reminder:** rogues get a notice when a weapon has no poison on it,
   per hand (Buff reminders → Your buffs, off by default).
 - **More:** FPS counter, movable loot rolls, group-role helper, custom
-  mouse-wheel casting on mouseover, a Lua-error toggle and a copyable bug report.
+  mouse-wheel casting on mouseover, hiding error messages, a /thank for buffs,
+  quiet login (other addons' login messages hidden), an entry in the minimap's
+  addon list, a Lua-error toggle and a copyable bug report.
 - **Where things are** (the main menu):
-  - **Appearance:** Fonts, Unit frames, Dispel glow, Druid mana bar, Skins,
-    Chat and Tooltip.
-  - **Combat:** Threat meter, Rare alerts, Totems, Group role, Death glow.
-  - **PvP:** Enemy alerts, Marked players, Nearby enemies, Battleground timer.
+  - **Appearance:** Fonts, Unit frames, Dispel glow, Druid mana bar, Game
+    resource bars, Skins, Chat and Tooltip.
+  - **Combat:** Threat meter, Interrupt bar, Rare alerts, Totems, Group role,
+    Death glow.
+  - **PvP:** Enemy alerts, Marked players, Nearby enemies, Battleground timer,
+    Trinket menu, Diminishing returns, Auto release.
   - **Keybinds:** Keybind tools (Quick keybind, Backups), Spell binds,
     Mouse-wheel casting, Smart interact key.
   - **On-screen info:** FPS counter, Leveling stats, Flight timer, Minimap,
-    Quests and loot rolls, Move elements.
+    Quests and loot rolls, Move elements, Move game windows.
   - **System:** General, Loot and merchant, Always-sell marks.
   - **Macros, Buff reminders, Bags and Profiles** are groups of their own.
 - **Menus:** every page of a group shows the group's sections on the left,
   each with its current state; click one to see its options on the right. The
-  window keeps its size and place while you switch. Every page has Back (to
-  the main menu), a close X, move and minimize buttons, and an (i) icon
+  window keeps its size and place while you switch, and a page opens where the
+  menu was. On/off settings are switches, settings with a few options open a
+  list, and explanations are in the tooltips. Settings under a page's main
+  switch are greyed while it is off, and changing a setting shows a hidden
+  element for a few seconds. Every page has Back (to
+  the page you came from, or the main menu), a close X, move and minimize buttons, and an (i) icon
   explaining the page; pop-ups have only the X. `/ft` and the minimap button
   reopen the page you last used this session (`/ft home` opens the main
   menu). A short What's new panel appears after each update (can be turned off
@@ -300,10 +333,14 @@ the home window. Use **`/rl`** to reload the UI.
 
 ## Fonts, artwork, and third-party notices
 
-- **Inter** is bundled under the SIL Open Font License 1.1. Its notice is in
-  [Media/Fonts/Inter-LICENSE.txt](Media/Fonts/Inter-LICENSE.txt).
+- **Inter**, **Roboto Condensed**, **Barlow Condensed**, **Oswald**,
+  **Rajdhani**, **Teko**, **Fira Sans Condensed**, **Noto Sans** and **PT Sans
+  Narrow** are bundled under the SIL Open Font License 1.1. Each license is
+  next to its font in `Media/Fonts` (`<Name>-LICENSE.txt`); what was changed
+  (Latin and Cyrillic subset, one weight) is listed in
+  [Media/Fonts/README.txt](Media/Fonts/README.txt).
 - **Expressway** is optional and is not bundled. Supply your own licensed `.ttf`
-  or `.otf` copy in `Media/Fonts` and restart WoW.
+  or `.otf` copy in `Media/Fonts` and type `/reload` in game.
 - Classic flight-duration data comes from **InFlight** under the MIT license.
   The source revision and full notice are in
   [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
@@ -316,7 +353,7 @@ the home window. Use **`/rl`** to reload the UI.
 ## License
 
 ForeverTools' own code is released under the [MIT License](LICENSE).
-Bundled third-party components (the Inter font and InFlight flight data) keep
+Bundled third-party components (the fonts and InFlight flight data) keep
 their own licenses, listed above.
 
 ## Beta limitations
@@ -329,7 +366,6 @@ their own licenses, listed above.
 - Some fonts, frame skins, and protected-frame positioning depend on the client
   build and require in-game verification. Hiding Lua errors does not fix errors
   or suppress Blizzard's blocked-action warnings.
-- Bank inventory browsing and bank item counts are not included.
 
 ForeverTools is an unofficial addon and is not endorsed by Blizzard Entertainment.
 Game names and referenced game assets belong to their respective owners.

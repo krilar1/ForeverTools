@@ -10,7 +10,7 @@ function Report:Features()
     local function add(label,on) if on then out[#out+1]=label end end
     local skins=db.iconStyles or {}
     local areas={}
-    for _,key in ipairs({"actions","buffs","stances","minimap","bags","bagWindows","bank","micro","xp","player","target","tot","focus","focustarget","pet","party","personal","castbar","swing","gryphons"}) do if skins[key] then areas[#areas+1]=key end end
+    for _,key in ipairs({"actions","buffs","stances","minimap","bags","bagWindows","bank","micro","xp","player","target","tot","focus","focustarget","pet","party","personal","castbar","swing","gryphons","tooltip","dialogs","gameWindows","calendar","trinkets","nearby","enemyAlert","bgTimer"}) do if skins[key] then areas[#areas+1]=key end end
     if #areas>0 then out[#out+1]="skins("..table.concat(areas,",")..")" end
     local fonts={}
     for id,pref in pairs(db.fonts or {}) do if type(pref)=="table" and pref.enabled then fonts[#fonts+1]=id end end
@@ -35,7 +35,7 @@ function Report:Features()
     add("totemRange",db.totems and db.totems.range); add("totemWarning",db.totems and db.totems.leftBehind)
     local bags=db.bags or {}
     local enemies=db.enemies or {}
-    add("stealthAlerts",enemies.stealth); add("markedAlerts",enemies.marks); add("nearbyEnemies",enemies.nearby)
+    add("stealthAlerts",enemies.stealth); add("markedAlerts",enemies.marks); add("nearbyEnemies",enemies.nearby); add("trinketMenu",type(db.trinkets)=="table" and db.trinkets.enabled); add("diminish",type(db.diminish)=="table" and db.diminish.enabled); add("autoRelease",type(db.autoRelease)=="table" and db.autoRelease.enabled); add("interruptBar",type(db.interrupts)=="table" and db.interrupts.enabled); add("thankForBuffs",type(db.thanks)=="table" and db.thanks.enabled)
     add("bagGold",bags.gold); add("bagView",bags.view); add("itemCounts",bags.counts)
     return #out>0 and table.concat(out,", ") or "none (all defaults)"
 end
@@ -99,6 +99,12 @@ function Report:Text()
     local smart=FT.modules and FT.modules.SmartKey
     if smart and smart.Report then
         local ok,line=pcall(smart.Report,smart)
+        if ok and type(line)=="string" then table.insert(lines,7,line) end
+    end
+    -- Why the target's health bar has (or lacks) its class color.
+    local colors=FT.modules and FT.modules.UnitColors
+    if colors and colors.Report then
+        local ok,line=pcall(colors.Report,colors)
         if ok and type(line)=="string" then table.insert(lines,7,line) end
     end
     local profiles=FT.modules and FT.modules.Profiles

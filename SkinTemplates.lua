@@ -77,25 +77,25 @@ function S:Refresh()
         -- The template list: built-in templates first, then your own.
         self.allPresetChoice.options=function()
             local list={}
-            for _,p in ipairs(self.presets) do if p.value~="custom" then list[#list+1]={value=p.value,label=p.label,icon="Interface\\Icons\\"..FT.icons.skins,tooltip="Built-in template. Sets colors and transparency for every area."} end end
+            for _,p in ipairs(self.presets) do if p.value~="custom" then list[#list+1]={value=p.value,label=p.label,tooltip="Built-in template."} end end
             for _,name in ipairs(self:TemplateNames()) do
-                list[#list+1]={value=PREFIX..name,label=name.."  (your template)",icon="Interface\\Icons\\INV_Misc_Note_02",tooltip="Your template. Applying it restores every skin setting exactly as you saved it."}
+                list[#list+1]={value=PREFIX..name,label=name.."  (your template)",tooltip="Your saved template."}
             end
             return list
         end
         local w=118
         self.saveTemplate=FT:QuietButton(frame,"Save new",w,32,"add"); self.saveTemplate:SetPoint("TOPLEFT",222,-244)
         self.saveTemplate:SetScript("OnClick",function() self:SaveCurrentAsTemplate() end)
-        FT:Tooltip(self.saveTemplate,"Save as new template","Save your current skin settings (every area) as a new template with a name you choose.")
+        FT:Tooltip(self.saveTemplate,"Save as new template","Save your current skins as a template.")
         self.updateTemplate=FT:QuietButton(frame,"Update",w,32,"INV_Scroll_03"); self.updateTemplate:SetPoint("LEFT",self.saveTemplate,"RIGHT",12,0)
         self.updateTemplate:SetScript("OnClick",function() self:UpdateTemplate() end)
-        FT:Tooltip(self.updateTemplate,"Update template","Replace the selected template with your current skin settings. Asks first. Only your own templates can be updated.")
+        FT:Tooltip(self.updateTemplate,"Update template","Replace this template with your current skins. Asks first.")
         self.renameTemplate=FT:QuietButton(frame,"Rename",w,32,"INV_Misc_Note_01"); self.renameTemplate:SetPoint("LEFT",self.updateTemplate,"RIGHT",12,0)
         self.renameTemplate:SetScript("OnClick",function() self:RenameTemplate() end)
-        FT:Tooltip(self.renameTemplate,"Rename template","Give the selected template a new name. Only your own templates can be renamed.")
+        FT:Tooltip(self.renameTemplate,"Rename template","Rename this template.")
         self.deleteTemplate=FT:QuietButton(frame,"Delete",w,32,"delete"); self.deleteTemplate:SetPoint("LEFT",self.renameTemplate,"RIGHT",12,0)
         self.deleteTemplate:SetScript("OnClick",function() self:DeleteTemplate() end)
-        FT:Tooltip(self.deleteTemplate,"Delete template","Delete the selected template. Asks first. Only your own templates can be deleted.")
+        FT:Tooltip(self.deleteTemplate,"Delete template","Delete this template. Asks first.")
         for _,b in ipairs({self.saveTemplate,self.updateTemplate,self.renameTemplate,self.deleteTemplate}) do
             if b.SetMotionScriptsWhileDisabled then b:SetMotionScriptsWhileDisabled(true) end
             b.label:SetFont(FT.bodyFont,13,""); if b.label.SetWordWrap then b.label:SetWordWrap(false) end
@@ -107,7 +107,7 @@ function S:Refresh()
             if not name then return builtIn(...) end
             FT:Confirm('Apply your template "'..name..'"? It replaces all current skin settings.',function() self:ApplyTemplate(name) end)
         end)
-        FT:Tooltip(self.allPresetChoice,"Templates","Built-in templates and your own. Choose one, then use the button below to apply it to every area. Save your own look as a template to switch back to it any time; your templates are shared by all characters.")
+        FT:Tooltip(self.allPresetChoice,"Templates","Pick a template, then apply it to every area. Your templates are shared by all characters.")
     end
     local everything=(self.selected or "everything")=="everything"
     local mine=userName(self.allPreset)

@@ -52,7 +52,7 @@ function F:UpdateScene(path)
         self.scene.icon=self.scene:CreateTexture(nil,"ARTWORK"); self.scene.icon:SetSize(64,64); self.scene.icon:SetPoint("LEFT",16,0)
         self.scene.icon:SetTexture("Interface\\Icons\\Spell_Frost_FrostBolt02")
         self.scene.text=FT:Label(self.scene,"",24); self.scene.text:SetPoint("LEFT",98,0); self.scene.text:SetWidth(380)
-        FT:Tooltip(self.scene,"Simulated preview","Sample text in your chosen font. Real combat numbers may look a little different in the game.")
+        FT:Tooltip(self.scene,"Simulated preview","Sample text. Real numbers may look a little different.")
         self.frame:HookScript("OnHide",function() self.scene:SetScript("OnUpdate",nil) end)
     end
     local sameArea=self.scene.area==self.selected
@@ -96,6 +96,7 @@ function F:UpdateScene(path)
     elseif id=="swingMain" or id=="swingOff" or id=="swingRanged" then self.scene.text:SetText((id=="swingMain" and "Main hand" or id=="swingOff" and "Off hand" or "Ranged").."     2.4 s")
     elseif id=="units" then self.scene.text:SetText("Player\n2,450 / 3,000")
     elseif id=="threatMeter" then self.scene.text:SetText("Tankadin          100%\nYou                   82%")
+    elseif id=="interrupts" then self.scene.text:SetText("Kickington       Ready\nFrostina            12")
     elseif id=="damageMeter" then self.scene.text:SetText("Yourname        12.4K\nPartymember      9.8K")
     else
         local elapsed=self.scene.elapsed or 0

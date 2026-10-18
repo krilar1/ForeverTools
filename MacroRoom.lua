@@ -13,7 +13,8 @@ function Macros:NewBulkEntries(className)
     self.selectedRank, self.mouseover = "max", self.bulkMouseover == true
     for _, entry in ipairs(self:AddableEntries(className)) do
         self.mouseover = self:EntryMouseover(entry)
-        if not self:EntryExists(entry, self:BuildMacro(entry)) then list[#list + 1] = entry end
+        local body = self:BuildMacro(entry)
+        if not self:EntryExists(entry, body) and not self:SameAction(entry, body) then list[#list + 1] = entry end
     end
     self.selectedRank, self.mouseover = rank, mouseover
     return list
@@ -109,7 +110,7 @@ function Macros:CreateRoomUI()
     self.roomFrame = frame
     frame.intro = FT:Label(frame, "", 14); frame.intro:SetPoint("TOPLEFT", 24, -56); frame.intro:SetWidth(650)
     frame.left = makeColumn(frame, 24, "Delete from Character macros", "Click a macro to tick it for deleting. General macros are never touched.")
-    frame.right = makeColumn(frame, 358, "Add", "Spells you know come first, then by the level you learn them.")
+    frame.right = makeColumn(frame, 358, "Add", "Spells you know first, then by learn level.")
     local toggle = function() self:RefreshRoom() end
     frame.tickUnchanged = FT:QuietButton(frame, "Tick unchanged", 154, 28, "macros"); frame.tickUnchanged:SetPoint("TOPLEFT", frame.left.box, "BOTTOMLEFT", 0, -8)
     frame.tickUnchanged:SetScript("OnClick", function()
@@ -117,7 +118,7 @@ function Macros:CreateRoomUI()
         for _, item in ipairs(self.room.current) do if bodies[normalized(item.body)] then item.ticked = true end end
         toggle()
     end)
-    FT:Tooltip(frame.tickUnchanged, "Tick unchanged", "Tick every macro ForeverTools made that you have not changed. You can still untick any of them.")
+    FT:Tooltip(frame.tickUnchanged, "Tick unchanged", "Tick every unchanged ForeverTools macro.")
     frame.clearLeft = FT:QuietButton(frame, "Clear", 154, 28, "reset"); frame.clearLeft:SetPoint("LEFT", frame.tickUnchanged, "RIGHT", 10, 0)
     frame.clearLeft:SetScript("OnClick", function() for _, item in ipairs(self.room.current) do item.ticked = false end; toggle() end)
     frame.allRight = FT:QuietButton(frame, "Tick all", 154, 28, "add"); frame.allRight:SetPoint("TOPLEFT", frame.right.box, "BOTTOMLEFT", 0, -8)
@@ -129,7 +130,7 @@ function Macros:CreateRoomUI()
     frame.go = FT:AccentButton(frame, "", 210, 34, "confirm"); frame.go:SetPoint("BOTTOMRIGHT", -24, 24)
     if frame.go.SetMotionScriptsWhileDisabled then frame.go:SetMotionScriptsWhileDisabled(true) end
     frame.go:SetScript("OnClick", function() self:ConfirmRoom() end)
-    FT:Tooltip(frame.go, "Make room and add", "Deletes the ticked Character macros, then adds the ticked new ones. Asks once first.")
+    FT:Tooltip(frame.go, "Make room and add", "Delete the ticked macros, then add the new ones. Asks first.")
     frame.cancel = FT:QuietButton(frame, "Cancel", 110, 34, "home"); frame.cancel:SetPoint("RIGHT", frame.go, "LEFT", -10, 0)
     frame.cancel:SetScript("OnClick", function() frame:Hide() end)
     frame:HookScript("OnHide", function() self.room = nil end)
@@ -151,7 +152,7 @@ function Macros:OpenMakeRoom(className)
     self.room = {className = className, current = current, new = new}
     local foreign = className ~= self:PlayerClass()
     frame.intro:SetText((foreign and ("|cffff6b6bYou are a " .. self:PlayerClass() .. ", not a " .. className .. ".|r ") or "")
-        .. string.format("%d new %s macros, but only %d free slots. Delete some Character macros, or add fewer.", #new, className, free))
+        .. string.format("%d new %s macros, %d free slots. Delete some, or add fewer.", #new, className, free))
     -- An empty Character tab has nothing to delete: only the Add side matters.
     local hasCurrent = #current > 0
     for _, widget in ipairs({frame.left.title, frame.left.hint, frame.left.box, frame.tickUnchanged, frame.clearLeft}) do widget:SetShown(hasCurrent) end
@@ -167,7 +168,7 @@ function Macros:ConfirmRoom()
     local used, deleting, adding, max = self:RoomCounts()
     if used - deleting + adding > max then return end
     local message = deleting > 0
-        and string.format("Delete %d Character macros and add %d new %s macros?\n\nDeleted macros cannot be restored, and their action-bar buttons stop working.", deleting, adding, room.className)
+        and string.format("Delete %d Character macros and add %d new %s macros?\n\nDeleted macros can't be restored.", deleting, adding, room.className)
         or string.format("Add %d new %s macros?", adding, room.className)
     FT:Confirm(message, function() self:ApplyRoom(room) end)
 end

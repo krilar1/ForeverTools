@@ -33,6 +33,7 @@ function E:Settings()
     if type(s.nearCollapsed)~="boolean" then s.nearCollapsed=false end
     if type(s.nearShowEmpty)~="boolean" then s.nearShowEmpty=false end
     if type(s.nearAlong)~="number" then s.nearAlong=nil end
+    if s.nearCorner~="TOPLEFT" and s.nearCorner~="BOTTOMLEFT" and s.nearCorner~="TOPRIGHT" then s.nearCorner=nil end
     s.nearRows=math.max(1,math.min(20,math.floor(tonumber(s.nearRows) or 8)))
     if type(s.nearFade)~="boolean" then s.nearFade=false end
     for _,pair in ipairs({{"x","y"},{"nearX","nearY"}}) do
@@ -155,6 +156,11 @@ function E:Cast(unit,spellID)
     self:Saw(info,unit)
     self:Alert(info,"stealth")
 end
+-- Skins > PvP: the panel takes the skin's colors when that part is on.
+local function skinPanel(f,key,fill,border,opts)
+    local skins=FT.modules.IconStyles
+    if skins and skins.SkinPanel then skins:SkinPanel(f,key,fill,border,opts) elseif f.fillTextures then FT:Paint(f,fill,border) end
+end
 -- The alert --------------------------------------------------------------------
 local GOLD,RED={1,.78,.25},{1,.22,.18}
 function E:Notice()
@@ -162,6 +168,7 @@ function E:Notice()
     local f=CreateFrame("Button","ForeverToolsEnemyAlert",UIParent)
     f:SetSize(320,48); f:SetFrameStrata("HIGH"); f:SetClampedToScreen(true)
     FT:Panel(f); FT:Paint(f,{.06,.045,.02,.95},{.85,.66,.25,1}); FT:MeterSkin(f)
+    skinPanel(f,"enemyAlert",{.06,.045,.02,.95},{.85,.66,.25,1})
     f.icon=f:CreateTexture(nil,"ARTWORK"); f.icon:SetSize(32,32); f.icon:SetPoint("LEFT",9,0); FT:RoundIcon(f.icon)
     f.title=FT:Label(f,"",11,true); f.title:SetPoint("TOPLEFT",f,"TOPLEFT",50,-8)
     f.name=FT:Label(f,"",15,true); f.name:SetPoint("TOPLEFT",f.title,"BOTTOMLEFT",0,-2); f.name:SetWidth(258)
@@ -228,6 +235,7 @@ end
 local titles={stealth="Enemy went into stealth",faded="Enemy dropped from view",marked="Marked player nearby"}
 function E:Alert(info,kind,preview)
     local s=self:Settings()
+    if not preview and FT:NoControl() then return end
     if not preview then
         if kind=="marked" and not s.marks then return end
         if kind~="marked" and not s.stealth then return end
@@ -247,9 +255,9 @@ function E:Alert(info,kind,preview)
     local danger=kind=="marked" or (self:IsMarked(info) and true or false)
     local f=self:Notice(); self:Position()
     local color=danger and RED or GOLD
-    FT:Paint(f,{.06,.045,.02,.95},{color[1]*.85,color[2]*.85,color[3]*.85,1})
+    skinPanel(f,"enemyAlert",{.06,.045,.02,.95},{color[1]*.85,color[2]*.85,color[3]*.85,1},{semantic=danger})
     f.icon:SetTexture(self:ClassIcon(info.class))
-    f.title:SetText((danger and kind~="marked") and ("Marked player · "..titles[kind]:lower()) or titles[kind] or "Enemy nearby")
+    f.title:SetText(((danger and kind~="marked") and ("Marked player · "..titles[kind]:lower()) or titles[kind] or "Enemy nearby")..(preview and not self.moving and " — preview" or ""))
     f.title:SetTextColor(color[1],color[2],color[3])
     local r,g,b=self:ClassColor(info.class)
     f.name:SetText(string.format("|cff%02x%02x%02x%s|r  |cffb8ab8a%s%s|r",r*255,g*255,b*255,info.name or "?",self:Describe(info),info.spell and (" · "..info.spell) or ""))
@@ -261,17 +269,27 @@ function E:Alert(info,kind,preview)
     self.token=(self.token or 0)+1
     local token=self.token
     C_Timer.After(danger and 3 or 1.8,function() if self.token==token and f.pulse then f.pulse:Stop() end end)
-    C_Timer.After(danger and 12 or 7,function() if self.token==token and not self.moving then f:Hide() end end)
+    C_Timer.After(danger and 12 or 7,function() if self.token==token and not self.moving and not self.previewKind then f:Hide() end end)
     if s.flash and not self.moving then self:Flash(color) end
     if s.sound and not preview and SOUNDKIT and SOUNDKIT.RAID_WARNING and PlaySound then pcall(PlaySound,SOUNDKIT.RAID_WARNING,"Master") end
 end
 function E:Preview(kind)
     self:Alert({guid="preview",name=kind=="marked" and "Gankalot" or "Sneakyboi",class="ROGUE",level=24,spell=kind=="stealth" and "Stealth" or nil},kind or "stealth",true)
 end
+-- Preview switch on the page: the alert stays on screen until switched off
+-- (or the page closes). One kind at a time.
+function E:SetPreviewKind(kind)
+    if kind and InCombatLockdown() then kind=nil end
+    self.previewKind=kind
+    if kind then self:Preview(kind)
+    elseif self.notice and not self.moving then self.notice:Hide() end
+    self:Refresh()
+end
 function E:SetMoving(on)
     self.moving=on and true or false
     local f=self:Notice()
-    if self.moving then self:Position(); self:Preview("stealth"); f.title:SetText("Drag me, then click Lock") else f:Hide() end
+    if self.moving then self:Position(); self:Preview("stealth"); f.title:SetText("Drag me, then click Lock")
+    elseif self.previewKind then self:Preview(self.previewKind) else f:Hide() end
     self:Refresh()
 end
 function E:ResetPosition() local s=self:Settings(); s.x,s.y=nil,nil; self:Position() end
@@ -350,7 +368,7 @@ local function rowTooltip(owner)
     end
     local mark=E:IsMarked(e)
     if mark then GameTooltip:AddLine("Marked"..(mark.note and (": "..mark.note) or " by you"),1,.3,.25,true) end
-    if owner.secure then GameTooltip:AddLine(owner.combatNew and "Seen during this fight: click to target after it." or "Click to target.",.1,1,.1) end
+    if owner.secure then GameTooltip:AddLine(owner.combatNew and "Seen in this fight. Click to target after it." or "Click to target.",.1,1,.1) end
     GameTooltip:Show()
 end
 local function makeRow(parent,secure)
@@ -403,7 +421,7 @@ function E:Strip()
         local v=self.view or "near"
         GameTooltip:SetText(VIEW_TITLE[v])
         GameTooltip:AddLine("Click to show: "..VIEW_TITLE[VIEW_NEXT[v]]:lower()..".",1,1,1,true)
-        GameTooltip:AddLine("Nearby → seen before → marked → nearby.",.72,.66,.55)
+        GameTooltip:AddLine("Order: nearby, seen before, marked.",.72,.66,.55)
         if v~="near" then GameTooltip:AddLine("Scroll with the mouse wheel.",.72,.66,.55) end
         GameTooltip:Show()
     end)
@@ -415,15 +433,29 @@ function E:Strip()
     f.move:SetScript("OnEnter",function(owner)
         GameTooltip:SetOwner(owner,"ANCHOR_RIGHT")
         GameTooltip:SetText(self.movingStrip and "Lock the list" or "Move the list")
-        GameTooltip:AddLine(self.movingStrip and "Click to lock it where it is." or "Click, then drag the list from anywhere on it. Click again to lock it.",1,1,1,true)
+        GameTooltip:AddLine(self.movingStrip and "Click to lock it where it is." or "Click, then drag the list. Click again to lock.",1,1,1,true)
         GameTooltip:Show()
     end)
     f.move:SetScript("OnLeave",function() GameTooltip:Hide() end)
     f.rows={}
     for i=1,MAXROWS do local row=makeRow(f,true); row:Hide(); f.rows[i]=row end
-    -- Players first seen during a fight (plain rows, under or above the list).
-    local extra=plainFrame(nil,UIParent); extra:SetSize(WIDTH,HEADER); extra:SetFrameStrata("MEDIUM"); extra:Hide()
-    extra.title=extra:CreateFontString(nil,"OVERLAY","GameFontNormalSmall"); extra.title:SetPoint("TOPLEFT",8,-6); extra.title:SetText("New in this fight")
+    -- One window, always: the background and border are a frame of their own
+    -- behind the list, so in a fight it can grow over the rows added below
+    -- (the list itself holds click-to-target buttons the game does not let
+    -- us move or resize in combat). The list and the extra rows draw none.
+    f:SetFrameLevel(10)
+    local panel=plainFrame(nil,f); panel:SetFrameLevel(9); panel:SetAllPoints(f); f.panel=panel
+    skinPanel(panel,"nearby",{0,0,0,.82},{.6,.6,.6,1})
+    local function clear(frame)
+        if frame.SetBackdropColor then pcall(frame.SetBackdropColor,frame,0,0,0,0) end
+        if frame.SetBackdropBorderColor then pcall(frame.SetBackdropBorderColor,frame,0,0,0,0) end
+        if frame.NineSlice and frame.NineSlice.Hide then frame.NineSlice:Hide() end
+    end
+    clear(f)
+    -- Players first seen during a fight: plain rows straight under (or above)
+    -- the list, inside the same window.
+    local extra=CreateFrame("Frame",nil,UIParent); extra:SetSize(WIDTH,HEADER); extra:SetFrameStrata("MEDIUM"); extra:SetFrameLevel(10); extra:Hide()
+    extra:SetScript("OnShow",function() self:FitPanel() end); extra:SetScript("OnHide",function() self:FitPanel() end)
     extra.rows={}
     for i=1,5 do local row=makeRow(extra,false); row.secure=true; row.combatNew=true; row:Hide(); extra.rows[i]=row end
     f.extra=extra
@@ -445,33 +477,71 @@ function E:Strip()
     self.strip=f
     return f
 end
--- Where the list was dropped, kept per edge: along the edge for an attached
--- list, the top left corner for a free one.
+-- Which corner of the list stays put. The anchor only says which way the
+-- list grows: from the bottom it grows upwards, otherwise downwards. Picking
+-- an anchor never moves the list.
+local CORNER={free="TOPLEFT",top="TOPLEFT",left="TOPLEFT",bottom="BOTTOMLEFT",right="TOPRIGHT"}
+E.CORNER=CORNER
+-- Where the list is: its anchor corner, in screen units (x from the left,
+-- y from the bottom).
 function E:SavePlace()
     local f=self.strip; if not f then return end
     local s=self:Settings(); local scale=f:GetScale() or 1
     local left,top,right,bottom=f:GetLeft(),f:GetTop(),f:GetRight(),f:GetBottom()
-    if not (number(left) and number(top)) then return end
-    local W,H=UIParent:GetWidth()/scale,UIParent:GetHeight()/scale
-    if s.nearDock=="top" or s.nearDock=="bottom" then s.nearAlong=math.max(0,math.min(left,W-WIDTH))*scale
-    elseif s.nearDock=="left" or s.nearDock=="right" then s.nearAlong=math.max(0,math.min(H-top,H-HEADER))*scale
-    else s.nearX,s.nearY=left*scale,top*scale end
+    if not (number(left) and number(top) and number(right) and number(bottom)) then return end
+    local corner=CORNER[s.nearDock] or "TOPLEFT"
+    local x=corner=="TOPRIGHT" and right or left
+    local y=corner=="BOTTOMLEFT" and bottom or top
+    s.nearX,s.nearY,s.nearCorner,s.nearAlong=x*scale,y*scale,corner,nil
 end
 function E:PlaceStrip()
     if busy() then self.pendingLayout=true; return end
     local f=self:Strip(); local s=self:Settings()
     local scale=s.nearSize
     f:SetScale(scale); f:ClearAllPoints()
-    local along=(s.nearAlong or 250)/scale
-    if s.nearDock=="top" then f:SetPoint("TOPLEFT",UIParent,"TOPLEFT",along,0)
-    elseif s.nearDock=="bottom" then f:SetPoint("BOTTOMLEFT",UIParent,"BOTTOMLEFT",along,0)
-    elseif s.nearDock=="left" then f:SetPoint("TOPLEFT",UIParent,"TOPLEFT",0,-along)
-    elseif s.nearDock=="right" then f:SetPoint("TOPRIGHT",UIParent,"TOPRIGHT",0,-along)
-    elseif s.nearX and s.nearY then f:SetPoint("TOPLEFT",UIParent,"BOTTOMLEFT",s.nearX/scale,s.nearY/scale)
-    else f:SetPoint("TOPLEFT",UIParent,"TOPLEFT",250/scale,-200/scale) end
-    -- Players seen in a fight are listed on the side away from the edge.
+    local corner=s.nearCorner or "TOPLEFT"
+    if s.nearAlong and not s.nearX then
+        -- Saved by an older version, when an anchor glued the list to that
+        -- screen edge: keep it where it was.
+        local along=s.nearAlong/scale
+        if s.nearDock=="top" then f:SetPoint("TOPLEFT",UIParent,"TOPLEFT",along,0)
+        elseif s.nearDock=="bottom" then f:SetPoint("BOTTOMLEFT",UIParent,"BOTTOMLEFT",along,0)
+        elseif s.nearDock=="left" then f:SetPoint("TOPLEFT",UIParent,"TOPLEFT",0,-along)
+        else f:SetPoint("TOPRIGHT",UIParent,"TOPRIGHT",0,-along) end
+    elseif s.nearX and s.nearY then f:SetPoint(corner,UIParent,"BOTTOMLEFT",s.nearX/scale,s.nearY/scale)
+    else
+        -- First time: a little right of and above the middle of the screen,
+        -- clear of the default action bars and of your character.
+        corner=CORNER[s.nearDock] or "TOPLEFT"
+        local x=corner=="TOPRIGHT" and 180+WIDTH or 180
+        local y=corner=="BOTTOMLEFT" and 40 or 200
+        f:SetPoint(corner,UIParent,"CENTER",x/scale,y/scale)
+    end
+    -- Players seen in a fight are listed on the side the list grows to.
     local extra=f.extra; extra:SetScale(scale); extra:ClearAllPoints()
-    if s.nearDock=="bottom" then extra:SetPoint("BOTTOMLEFT",f,"TOPLEFT",0,2) else extra:SetPoint("TOPLEFT",f,"BOTTOMLEFT",0,-2) end
+    self:PlaceExtra()
+end
+-- New rows continue the list with the same spacing: over the list's end
+-- padding when it shows rows, right after the title bar when it shows none.
+function E:PlaceExtra()
+    local f=self.strip; if not f or not f.extra then return end
+    local pad=(f.shownRows or 0)>0 and 6 or 0
+    f.extra:ClearAllPoints()
+    if self:Settings().nearDock=="bottom" then f.extra:SetPoint("BOTTOMLEFT",f,"TOPLEFT",0,-pad) else f.extra:SetPoint("TOPLEFT",f,"BOTTOMLEFT",0,pad) end
+    self:FitPanel()
+end
+-- The window's background covers the list and, in a fight, the rows under it.
+function E:FitPanel()
+    local f=self.strip; if not f or not f.panel then return end
+    local panel,extra=f.panel,f.extra
+    panel:ClearAllPoints()
+    if extra and extra:IsShown() then
+        if self:Settings().nearDock=="bottom" then
+            panel:SetPoint("BOTTOMLEFT",f,"BOTTOMLEFT"); panel:SetPoint("TOPRIGHT",extra,"TOPRIGHT")
+        else
+            panel:SetPoint("TOPLEFT",f,"TOPLEFT"); panel:SetPoint("BOTTOMRIGHT",extra,"BOTTOMRIGHT")
+        end
+    else panel:SetAllPoints(f) end
 end
 function E:ToggleCollapsed()
     if busy() then FT:Toast("Collapse or open the list after the fight.",3); return end
@@ -516,10 +586,13 @@ function E:LayoutHeader(f,count,compact)
 end
 function E:UpdateStrip()
     local s=self:Settings()
-    if not s.nearby and not self.movingStrip then
+    if not s.nearby and not self.movingStrip and not self.previewStrip then
         if self.strip and not busy() then self.strip:Hide(); self.strip.extra:Hide() end
         return
     end
+    -- Its rows are secure buttons: they can only be made out of a fight
+    -- (after a /reload in a fight the list comes when it ends).
+    if not self.strip and busy() then self.pendingLayout=true; return end
     local f=self:Strip()
     local log=(self.view=="log" or self.view=="marked") and not self.previewStrip
     local list=self.previewStrip or (log and (self.view=="marked" and self:MarkEntries() or self:LogEntries())) or self:StripEntries()
@@ -547,7 +620,7 @@ function E:UpdateStrip()
         else row.guid=nil; row.entry=nil; row:SetAttribute("macrotext",nil); row:Hide() end
     end
     -- Collapsed (or empty) it is just the header, as wide as the list.
-    f:SetSize(WIDTH,HEADER+(shown>0 and (shown*ROW+6) or 0))
+    f:SetSize(WIDTH,HEADER+(shown>0 and (shown*ROW+6) or 0)); f.shownRows=shown
     -- While moving, the rows let the mouse through: drag the box anywhere.
     for i=1,MAXROWS do f.rows[i]:EnableMouse(not self.movingStrip) end
     f.extra:Hide()
@@ -556,7 +629,7 @@ function E:UpdateStrip()
     -- The list stays in place (hidden from view while empty) so it can
     -- appear in a fight too, when frames like it may not be shown anew.
     local want=active and (s.nearby or self.movingStrip) and (count>0 or self.movingStrip or s.nearShowEmpty or s.nearFade or log)
-    local present=(self:Active() or self.movingStrip or self.previewStrip) and (s.nearby or self.movingStrip) and true or false
+    local present=(self:Active() or self.movingStrip or self.previewStrip) and (s.nearby or self.movingStrip or self.previewStrip) and true or false
     if present then if not f:IsShown() then self:PlaceStrip(); f:Show() end else f:Hide() end
     self.stripDormant=present and not want
     self.fightCount=nil
@@ -570,10 +643,11 @@ function E:FadeStrip(count)
     local f=self.strip; if not f then return end
     local s=self:Settings()
     if count then self.stripCount=count end
-    if self.stripDormant and not self.fightCount then f:SetAlpha(0); return end
+    if self.stripDormant and not self.fightCount then f:SetAlpha(0); if f.extra then f.extra:SetAlpha(0) end; return end
     local visible=not s.nearFade or self.movingStrip or self.previewStrip or (self.view or "near")~="near" or f.wasOver
         or (self.stripCount or 0)>0 or now()<(self.wakeUntil or 0)
     f:SetAlpha(visible and 1 or 0)
+    if f.extra then f.extra:SetAlpha(f:GetAlpha()) end
 end
 -- An alert (stealth, marked player) brings the bar up for a while.
 function E:Wake(seconds) self.wakeUntil=now()+(seconds or 10); self:FadeStrip() end
@@ -649,11 +723,14 @@ function E:UpdateInFight(f,list,log)
         if not listed[key] and n<#extra.rows then
             n=n+1; local row=extra.rows[n]
             fillRow(row,e)
-            row:ClearAllPoints(); row:SetPoint("TOPLEFT",6,-20-(n-1)*ROW); row:Show()
+            row:ClearAllPoints()
+            if self:Settings().nearDock=="bottom" then row:SetPoint("BOTTOMLEFT",6,(n-1)*ROW) else row:SetPoint("TOPLEFT",6,-(n-1)*ROW) end
+            row:Show()
         end
     end
     for i=n+1,#extra.rows do extra.rows[i]:Hide() end
-    if n>0 and f:IsShown() then extra:SetSize(WIDTH,20+n*ROW+6); extra:Show() else extra:Hide() end
+    if n>0 and f:IsShown() then extra:SetSize(WIDTH,n*ROW+6); self:PlaceExtra(); extra:Show() else extra:Hide() end
+    self:FitPanel()
 end
 local SAMPLE={{name="Sneakyboi",class="ROGUE",level=24,unit="nameplate1"},{name="Gankalot",class="WARRIOR",level=30},{name="Moonfury",class="DRUID",level=22,unit="nameplate2"},{name="Pewpew",class="HUNTER",level=25}}
 -- Enough sample players to fill the longest list.
@@ -664,7 +741,7 @@ function E:SetMovingStrip(on)
     if busy() then return end
     self.movingStrip=on and true or false
     self:Strip()
-    self.previewStrip=self.movingStrip and SAMPLE or nil
+    self.previewStrip=(self.movingStrip or self.stripPreviewOn) and SAMPLE or nil
     for _,e in ipairs(SAMPLE) do e.last=now() end
     self:PlaceStrip(); self:UpdateStrip(); self:Refresh()
 end
@@ -673,12 +750,24 @@ function E:PreviewStrip()
     for _,e in ipairs(SAMPLE) do e.last=now() end
     self.previewStrip=SAMPLE; self:PlaceStrip(); self:UpdateStrip()
     local token={}; self.previewToken=token
-    C_Timer.After(6,function() if self.previewToken==token and not self.movingStrip then self.previewStrip=nil; self:UpdateStrip() end end)
+    -- A quick look (a setting changed) ends by itself; the Preview switch stays on.
+    C_Timer.After(6,function() if self.previewToken==token and not self.movingStrip and not self.stripPreviewOn then self.previewStrip=nil; self:UpdateStrip() end end)
 end
-function E:ResetStrip() local s=self:Settings(); s.nearX,s.nearY,s.nearAlong=nil,nil,nil; self:PlaceStrip() end
+function E:SetStripPreview(on)
+    if on and busy() then on=false end
+    self.stripPreviewOn=on and true or nil
+    if on then self:PreviewStrip()
+    elseif not self.movingStrip then self.previewStrip=nil; self.previewToken=nil; if not busy() then self:UpdateStrip() end end
+    self:Refresh()
+end
+function E:ResetStrip() local s=self:Settings(); s.nearX,s.nearY,s.nearAlong,s.nearCorner=nil,nil,nil,nil; self:PlaceStrip() end
 function E:SetDock(dock)
     local s=self:Settings(); if not DOCKS[dock] then dock="free" end
-    s.nearDock=dock; s.nearAlong=nil
+    -- The list stays where it is: only the corner it grows from changes.
+    if self.strip and self.strip:GetLeft() and not busy() then
+        if not (s.nearX or s.nearAlong) then self:PlaceStrip() end
+        s.nearDock=dock; self:SavePlace()
+    else s.nearDock=dock end
     self:PlaceStrip(); self:UpdateStrip(); self:Refresh()
 end
 -- After a fight the list is laid out again (new players get their own row).
@@ -714,7 +803,7 @@ function E:MarkUnit(unit)
     local key=self:Key(info)
     if self:Marks()[key] then FT:Toast(info.name.." is already marked.",3); return key end
     key=self:Mark(info); FT:Toast("Marked "..info.name..". You will be alerted when they are near.",4)
-    if not self:Settings().marks then FT:Toast("Marked "..info.name..". Turn on Marked player alerts to be warned when they are near.",5) end
+    if not self:Settings().marks then FT:Toast("Marked "..info.name..". Turn on Marked player alerts to be warned.",5) end
     self:AskReason(key)
     return key
 end
@@ -782,12 +871,12 @@ FT.Enemies=E
 -- Settings pages ---------------------------------------------------------------------
 local function width(name) local hub=FT:HubOf(name); return hub and hub.width or 540 end
 local alertSwitches={
-    {"stealth","Stealth alerts","Ability_Stealth","When an enemy player near you goes into stealth (Stealth, Prowl, Vanish, Shadowmeld or Invisibility), show who it was and play a warning."},
-    {"fade","Also when a rogue or druid drops from view","Ability_Vanish","Also alert when an enemy rogue, druid or night elf disappears without dying. They may have stealthed, or just walked out of sight, so this alerts more often. Needs Stealth alerts on."},
-    {"marks","Marked player alerts","Ability_Hunter_SniperShot","When a player you marked shows up, show a red alert. Mark players on the Marked players page or by right-clicking their portrait."},
-    {"flash","Screen-edge flash","Spell_Holy_SearingLight","With every alert, the edges of the screen glow briefly: gold for stealth, red for a marked player."},
+    {"stealth","Stealth alerts","Ability_Stealth","Alert when an enemy player near you goes into stealth."},
+    {"fade","Also when a rogue or druid drops from view","Ability_Vanish","Also alert when an enemy rogue, druid or night elf vanishes without dying. Alerts more often."},
+    {"marks","Marked player alerts","Ability_Hunter_SniperShot","Red alert when a player you marked shows up."},
+    {"flash","Screen-edge flash","Spell_Holy_SearingLight","The screen edges glow briefly with every alert."},
     {"sound","Sound","INV_Misc_Bell_01","Play the raid warning sound with every alert."},
-    {"instances","Also in battlegrounds and arenas","INV_BannerPVP_01","Alerts and the nearby list normally rest in battlegrounds and arenas, where enemies are everywhere. Turn on to keep them on there too."},
+    {"instances","Also in battlegrounds and arenas","INV_BannerPVP_01","Keep alerts and the list on in battlegrounds and arenas."},
 }
 function E:Refresh()
     local page=self.alertPage
@@ -801,6 +890,10 @@ function E:Refresh()
         page.sizeLabel:SetText(string.format("Size: %d%%",math.floor(s.size*100+.5)))
         page.settingSize=true; page.sizeSlider:SetValue(s.size); page.settingSize=false
         page.move.label:SetText(self.moving and "Lock position" or "Move alert"); FT:SetSelected(page.move,self.moving)
+        if page.previewStealth then
+            page.previewStealth.label:SetText("Preview stealth: "..(self.previewKind=="stealth" and "On" or "Off"))
+            page.previewMarked.label:SetText("Preview marked: "..(self.previewKind=="marked" and "On" or "Off"))
+        end
         page.plates:SetText(self:NameplateNote())
         if FT.RefreshDock and page.frame:IsShown() then FT:RefreshDock(page.frame) end
     end
@@ -808,6 +901,7 @@ function E:Refresh()
     if near and near.frame then
         local s=self:Settings()
         near.toggle.label:SetText("Nearby enemies: "..(s.nearby and "On" or "Off")); FT:SetSelected(near.toggle,s.nearby)
+        if near.preview then near.preview.label:SetText("Preview: "..(self.stripPreviewOn and "On" or "Off")) end
         near.keep.label:SetText("Keep for: "..s.nearTime.." seconds")
         near.dock.label:SetText("Anchor to: "..(E.dockLabels[s.nearDock] or "None"))
         near.fade.label:SetText("Title bar: "..(s.nearFade and "On mouseover" or "Always")); FT:SetSelected(near.fade,s.nearFade)
@@ -826,8 +920,8 @@ end
 function E:NameplateNote()
     local get=(C_CVar and C_CVar.GetCVar) or GetCVar
     local ok,value=pcall(function() return get and get("nameplateShowEnemies") end)
-    if ok and value=="0" then return "|cffff9f5aEnemy nameplates are off|r, so only players you target or hover are seen. Turn them on in the game's options (Interface > Nameplates) or with your nameplate key." end
-    return "Players are seen through their nameplates, your target and your mouseover."
+    if ok and value=="0" then return "|cffff9f5aEnemy nameplates are off|r, so only players you target or hover are seen." end
+    return "Players are seen through nameplates, target and mouseover."
 end
 local function slider(frame,y,onChange)
     local s=CreateFrame("Slider",nil,frame,"OptionsSliderTemplate"); s:SetSize(300,18); s:SetPoint("TOPLEFT",216,y)
@@ -841,7 +935,7 @@ function alertPage:Open()
     if not self.frame then
         local w=width("EnemyAlerts")
         local frame=FT:Window("ForeverToolsEnemyAlerts","Enemy alerts",w,520); self.frame=frame
-        FT:PageInfo(frame,"Enemy alerts","A warning when an enemy player near you goes into stealth, and a stronger red one when a player you marked shows up.\n\nThe game keeps the combat log from addons, so ForeverTools only knows what you can see: nameplates, your target and mouseover, and spells cast in front of you. A rogue who was already stealthed before you saw them cannot be noticed.")
+        FT:PageInfo(frame,"Enemy alerts","A warning when an enemy player near you goes into stealth, and a red one when a player you marked shows up.\n\nOnly players you can see count: nameplates, target, mouseover. Someone already stealthed is not noticed.")
         self.buttons={}
         for i,entry in ipairs(alertSwitches) do
             local key=entry[1]
@@ -854,26 +948,29 @@ function alertPage:Open()
         local y=-66-#alertSwitches*38-8
         self.sizeLabel=FT:Label(frame,"",14); self.sizeLabel:SetPoint("TOPLEFT",24,y-2)
         self.sizeSlider=slider(frame,y,function(v) if self.settingSize then return end E:Settings().size=v; E:Position(); E:Refresh() end)
-        FT:Tooltip(self.sizeSlider,"Size","Make the alert smaller or bigger (70% to 150%).")
-        local stealth=FT:QuietButton(frame,"Preview stealth",(w-60)/2,32,"Ability_Stealth"); stealth:SetPoint("TOPLEFT",24,y-36)
-        stealth:SetScript("OnClick",function() E:Preview("stealth") end)
-        FT:Tooltip(stealth,"Preview stealth","Show the stealth alert once, without sound.")
-        local marked=FT:QuietButton(frame,"Preview marked",(w-60)/2,32,"Ability_Hunter_SniperShot"); marked:SetPoint("LEFT",stealth,"RIGHT",12,0)
-        marked:SetScript("OnClick",function() E:Preview("marked") end)
-        FT:Tooltip(marked,"Preview marked","Show the red alert for a marked player once, without sound.")
+        FT:Tooltip(self.sizeSlider,"Size","Alert size (70% to 150%).")
+        local stealth=FT:QuietButton(frame,"Preview stealth: Off",(w-60)/2,32,"Ability_Stealth"); stealth:SetPoint("TOPLEFT",24,y-36)
+        stealth:SetScript("OnClick",function() E:SetPreviewKind(E.previewKind~="stealth" and "stealth" or nil) end)
+        FT:Tooltip(stealth,"Preview stealth","Show the stealth alert until switched off.")
+        local marked=FT:QuietButton(frame,"Preview marked: Off",(w-60)/2,32,"Ability_Hunter_SniperShot"); marked:SetPoint("LEFT",stealth,"RIGHT",12,0)
+        marked:SetScript("OnClick",function() E:SetPreviewKind(E.previewKind~="marked" and "marked" or nil) end)
+        FT:Tooltip(marked,"Preview marked","Show the marked player alert until switched off.")
+        self.previewStealth,self.previewMarked=stealth,marked
         self.move=FT:QuietButton(frame,"",(w-60)/2,32,"move"); self.move:SetPoint("TOPLEFT",24,y-76)
         self.move:SetScript("OnClick",function() E:SetMoving(not E.moving) end)
-        FT:Tooltip(self.move,"Move alert","Click to unlock, drag the alert where you want it, then click again to lock it.")
+        FT:Tooltip(self.move,"Move alert","Unlock, drag the alert, then click again to lock.")
         local reset=FT:QuietButton(frame,"Reset position",(w-60)/2,32,"reset"); reset:SetPoint("LEFT",self.move,"RIGHT",12,0)
         reset:SetScript("OnClick",function() E:ResetPosition() end)
         FT:Tooltip(reset,"Reset position","Put the alert back near the top of the screen.")
         self.plates=FT:Label(frame,"",12); self.plates:SetPoint("TOPLEFT",24,y-118); self.plates:SetWidth(w-48); self.plates:SetTextColor(.66,.59,.48)
+        FT:Sections(frame,{{"Stealth",self.buttons.stealth},{"Marked players",self.buttons.marks},{"Alert",self.buttons.flash},{"Look and position",self.sizeLabel}})
         if self.plates.SetWordWrap then self.plates:SetWordWrap(true) end
-        frame:HookScript("OnHide",function() if E.moving then E:SetMoving(false) end end)
+        frame:HookScript("OnHide",function() if E.moving then E:SetMoving(false) end; if E.previewKind then E:SetPreviewKind(nil) end end)
     end
     E:Refresh(); self.frame:Show()
 end
 function alertPage:Refresh() E:Refresh() end
+function alertPage:Peek() local f=E.notice; if E.previewKind then E:Preview(E.previewKind) elseif not (f and f:IsShown()) then E:Preview("stealth") end end
 FT:RegisterModule("EnemyAlerts",alertPage)
 -- Marked players
 local markPage={}
@@ -902,7 +999,7 @@ function E:RefreshMarks()
             r.remove=FT:QuietButton(r,"Remove",108,28,"delete"); r.remove:SetPoint("RIGHT",-2,0)
             FT:Tooltip(r.remove,"Remove mark","Stop alerting for this player.")
             r.note=FT:QuietButton(r,"Reason",96,28,"INV_Misc_Note_01"); r.note:SetPoint("RIGHT",r.remove,"LEFT",-6,0)
-            FT:Tooltip(r.note,"Reason","Why you marked them, in a few words (\"camped me in Duskwood\"). Shown on the red alert, on their tooltip and in the nearby list.")
+            FT:Tooltip(r.note,"Reason","A few words, shown on the alert and their tooltip.")
         end
         r:ClearAllPoints(); r:SetPoint("TOPLEFT",0,-(i-1)*ROW)
         r.icon:SetTexture(self:ClassIcon(m.class))
@@ -923,17 +1020,17 @@ function markPage:Open()
     if not self.frame then
         local w=width("EnemyMarks")
         local frame=FT:Window("ForeverToolsEnemyMarks","Marked players",w,520); self.frame=frame
-        FT:PageInfo(frame,"Marked players","Players you want to know about: the one who camped you, a rival guild's leader. When a marked player shows up you get a red alert, on every one of your characters.\n\nMark someone by targeting them and clicking Mark my target, by right-clicking their portrait (Mark player), or with /ft mark. Marks stay on this computer only.")
+        FT:PageInfo(frame,"Marked players","Players you want to know about. When one shows up you get a red alert, on all your characters.\n\nMark: target them and click Mark my target, right-click their portrait, or /ft mark.")
         self.alerts=FT:AccentButton(frame,"",w-48,32,"Ability_Hunter_SniperShot"); self.alerts:SetPoint("TOPLEFT",24,-66)
         self.alerts:SetScript("OnClick",function() local s=E:Settings(); s.marks=not s.marks; E:Apply() end)
-        FT:Tooltip(self.alerts,"Marked player alerts","Show a red alert when a player you marked shows up.")
+        FT:Tooltip(self.alerts,"Marked player alerts","Red alert when a player you marked shows up.")
         self.tip=FT:QuietButton(frame,"",w-48,32,"tooltip"); self.tip:SetPoint("TOPLEFT",24,-104)
         if self.tip.SetMotionScriptsWhileDisabled then self.tip:SetMotionScriptsWhileDisabled(true) end
         self.tip:SetScript("OnClick",function() local s=E:Settings(); s.markTooltip=not s.markTooltip; E:Refresh() end)
-        FT:Tooltip(self.tip,"Show the mark in tooltips","Add \"Marked\" and your reason to a marked player's tooltip.")
+        FT:Tooltip(self.tip,"Show the mark in tooltips","Show \"Marked\" and your reason on their tooltip.")
         local mark=FT:QuietButton(frame,"Mark my target",w-48,32,"add"); mark:SetPoint("TOPLEFT",24,-142)
         mark:SetScript("OnClick",function() E:MarkUnit("target") end)
-        FT:Tooltip(mark,"Mark my target","Mark the enemy player you are targeting. You can also right-click their portrait and pick Mark player, or type /ft mark.")
+        FT:Tooltip(mark,"Mark my target","Mark the enemy player you are targeting.")
         local scroll=CreateFrame("ScrollFrame","ForeverToolsEnemyMarksScroll",frame,"UIPanelScrollFrameTemplate")
         scroll:SetPoint("TOPLEFT",24,-186); scroll:SetPoint("BOTTOMRIGHT",-40,20)
         self.content=CreateFrame("Frame",nil,scroll); self.content:SetSize(w-72,1); scroll:SetScrollChild(self.content)
@@ -950,21 +1047,21 @@ local nearPage={}
 E.nearPage=nearPage
 local dockLabels={free="None",top="Top",bottom="Bottom",left="Left",right="Right"}
 local dockTips={
-    free="Not anchored: the list stays wherever you drag it and grows downwards.",
-    top="Attached to the top of the screen; it grows downwards. Drag it sideways along the edge.",
-    bottom="Attached to the bottom of the screen; it grows upwards. Drag it sideways along the edge.",
-    left="Attached to the left side of the screen; it grows downwards. Drag it up or down along the edge.",
-    right="Attached to the right side of the screen; it grows downwards. Drag it up or down along the edge.",
+    free="Grows downwards from where you put it.",
+    top="Grows downwards.",
+    bottom="Grows upwards. Good near the bottom of the screen.",
+    left="Grows downwards.",
+    right="Grows downwards.",
 }
 E.dockLabels=dockLabels
 function nearPage:Open()
     if not self.frame then
         local w=width("EnemyNearby")
         local frame=FT:Window("ForeverToolsEnemyNearby","Nearby enemies",w,520); self.frame=frame
-        FT:PageInfo(frame,"Nearby enemies","A small list of the enemy players you have seen lately: class icon, name, level and how long ago (it says stealth for 30 seconds after one vanished). Click the title to switch to the log: everyone you have met before, with where and how often (scroll with the mouse wheel). Marked players come first, in red; players in view now are bright, the others faded. Click a name to target that player.\n\nThe minus button hides the players and keeps the title bar; the arrows button lets you drag the list from anywhere on it. In a fight the list keeps its rows (they still target); players first seen in the fight are listed under it and get their own row when the fight ends.")
+        FT:PageInfo(frame,"Nearby enemies","Enemy players you saw lately. Click a name to target them. Marked players come first, in red.\n\nClick the title for the log of everyone you met before.")
         self.toggle=FT:AccentButton(frame,"",w-48,32,"Ability_Hunter_SniperShot"); self.toggle:SetPoint("TOPLEFT",24,-66)
         self.toggle:SetScript("OnClick",function() local s=E:Settings(); s.nearby=not s.nearby; E:Apply() end)
-        FT:Tooltip(self.toggle,"Nearby enemies","Show the enemy players you have seen recently in a small list. Click a name to target them.")
+        FT:Tooltip(self.toggle,"Nearby enemies","Show enemy players you saw recently. Click a name to target.")
         self.keep=FT:QuietButton(frame,"",w-48,32,"INV_Misc_PocketWatch_01"); self.keep:SetPoint("TOPLEFT",24,-104)
         self.keep.options=function()
             local out={}
@@ -973,7 +1070,7 @@ function nearPage:Open()
         end
         self.keep.onSelect=function(v) E:Settings().nearTime=v; E:UpdateStrip(); E:Refresh() end
         self.keep:SetScript("OnClick",function(owner) owner.value=E:Settings().nearTime; owner.menuWidth=w-48; FT:ShowChoices(owner) end)
-        FT:Tooltip(self.keep,"Keep for","How long a player stays in the list after you last saw them.")
+        FT:Tooltip(self.keep,"Keep for","How long a player stays in the list.")
         self.dock=FT:QuietButton(frame,"",w-48,32,"move"); self.dock:SetPoint("TOPLEFT",24,-142)
         self.dock.options=function()
             local out={}
@@ -982,13 +1079,13 @@ function nearPage:Open()
         end
         self.dock.onSelect=function(v) E:SetDock(v); E:PreviewStrip() end
         self.dock:SetScript("OnClick",function(owner) owner.value=E:Settings().nearDock; owner.menuWidth=w-48; FT:ShowChoices(owner) end)
-        FT:Tooltip(self.dock,"Anchor to","Attach the list to the top, bottom, left or right edge of the screen, or None to place it anywhere. Collapsed, only its title bar stays on that edge.")
+        FT:Tooltip(self.dock,"Anchor to","Which way the list grows. It never moves when you pick one.")
         self.fade=FT:QuietButton(frame,"",w-48,32,"INV_Misc_Spyglass_02"); self.fade:SetPoint("TOPLEFT",24,-180)
-        self.fade:SetScript("OnClick",function() local s=E:Settings(); s.nearFade=not s.nearFade; E:UpdateStrip(); E:Refresh() end)
-        FT:Tooltip(self.fade,"Title bar","Always: the title bar is always shown. On mouseover: it stays invisible until you point at it, someone is near, or an alert (stealth, marked player) goes off.")
+        FT:MakeChoice(self.fade,{{false,"Always","The title bar is always shown."},{true,"On mouseover","Invisible until you point at it or someone is near."}},function() return E:Settings().nearFade==true end,function(v) E:Settings().nearFade=v; E:UpdateStrip(); E:Refresh() end)
+        FT:Tooltip(self.fade,"Title bar","When the title bar shows.")
         self.empty=FT:QuietButton(frame,"",w-48,32,"INV_Misc_Note_04"); self.empty:SetPoint("TOPLEFT",24,-218)
         self.empty:SetScript("OnClick",function() local s=E:Settings(); s.nearShowEmpty=not s.nearShowEmpty; E:UpdateStrip(); E:Refresh() end)
-        FT:Tooltip(self.empty,"Show when no one is near","On: the small tab stays on screen with 0, so its buttons are always at hand. Off: the list only shows when there is someone in it.")
+        FT:Tooltip(self.empty,"Show when no one is near","Keep the empty list on screen.")
         self.rowsLabel=FT:Label(frame,"",14); self.rowsLabel:SetPoint("TOPLEFT",24,-264)
         self.rowsSlider=slider(frame,-262,function() end)
         self.rowsSlider:SetMinMaxValues(1,20); self.rowsSlider:SetValueStep(1)
@@ -996,27 +1093,30 @@ function nearPage:Open()
             if self.settingRows then return end
             E:Settings().nearRows=math.floor(v+.5); E:PreviewStrip(); E:Refresh()
         end)
-        FT:Tooltip(self.rowsSlider,"Players shown","How many players the list shows at most (1 to 20). The title counts everyone.")
+        FT:Tooltip(self.rowsSlider,"Players shown","Most players shown (1 to 20).")
         self.sizeLabel=FT:Label(frame,"",14); self.sizeLabel:SetPoint("TOPLEFT",24,-298)
         self.sizeSlider=slider(frame,-296,function(v) if self.settingSize then return end E:Settings().nearSize=v; E:PlaceStrip(); E:Refresh() end)
-        FT:Tooltip(self.sizeSlider,"Size","Make the list smaller or bigger (70% to 150%).")
-        local preview=FT:QuietButton(frame,"Preview",(w-60)/2,32,"Ability_Hunter_SniperShot"); preview:SetPoint("TOPLEFT",24,-332)
-        preview:SetScript("OnClick",function() E:PreviewStrip() end)
-        FT:Tooltip(preview,"Preview","Show an example list for a few seconds.")
+        FT:Tooltip(self.sizeSlider,"Size","List size (70% to 150%).")
+        local preview=FT:QuietButton(frame,"Preview: Off",(w-60)/2,32,"Ability_Hunter_SniperShot"); preview:SetPoint("TOPLEFT",24,-332)
+        preview:SetScript("OnClick",function() E:SetStripPreview(not E.stripPreviewOn) end)
+        FT:Tooltip(preview,"Preview","Show an example list until switched off.")
+        self.preview=preview
         self.move=FT:QuietButton(frame,"",(w-60)/2,32,"move"); self.move:SetPoint("LEFT",preview,"RIGHT",12,0)
         self.move:SetScript("OnClick",function() E:SetMovingStrip(not E.movingStrip) end)
-        FT:Tooltip(self.move,"Move list","Click to unlock, drag the list by its title, then click again to lock it. The arrows button on the list does the same.")
+        FT:Tooltip(self.move,"Move list","Unlock, drag the list by its title, then click again to lock.")
         local reset=FT:QuietButton(frame,"Reset position",(w-60)/2,32,"reset"); reset:SetPoint("TOPLEFT",24,-372)
         local clear=FT:QuietButton(frame,"Clear the log",(w-60)/2,32,"delete"); clear:SetPoint("LEFT",reset,"RIGHT",12,0)
-        clear:SetScript("OnClick",function() FT:Confirm("Forget every player in the log? Marked players stay marked.",function() E:ClearLog() end) end)
-        FT:Tooltip(clear,"Clear the log","Forget the players you have seen before (click the list's title to see them). Marked players stay marked.")
+        clear:SetScript("OnClick",function() FT:Confirm("Forget every player in the log? Marks stay.",function() E:ClearLog() end) end)
+        FT:Tooltip(clear,"Clear the log","Forget players you met before. Marks stay.")
         reset:SetScript("OnClick",function() E:ResetStrip() end)
-        FT:Tooltip(reset,"Reset position","Put the list back in its starting place (along its edge, if it is attached to one).")
+        FT:Tooltip(reset,"Reset position","Put the list back in its starting place.")
         self.plates=FT:Label(frame,"",12); self.plates:SetPoint("TOPLEFT",24,-416); self.plates:SetWidth(w-48); self.plates:SetTextColor(.66,.59,.48)
+        FT:Sections(frame,{{"List",self.keep},{"Look and position",self.dock}})
         if self.plates.SetWordWrap then self.plates:SetWordWrap(true) end
-        frame:HookScript("OnHide",function() if E.movingStrip then E:SetMovingStrip(false) end end)
+        frame:HookScript("OnHide",function() if E.movingStrip then E:SetMovingStrip(false) end; if E.stripPreviewOn then E:SetStripPreview(false) end end)
     end
     E:Refresh(); self.frame:Show()
 end
 function nearPage:Refresh() E:Refresh() end
+function nearPage:Peek() if not E.previewStrip then E:PreviewStrip() end end
 FT:RegisterModule("EnemyNearby",nearPage)

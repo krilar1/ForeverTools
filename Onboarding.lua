@@ -56,7 +56,7 @@ function Onboarding:ShowWhatsNew()
         local off=FT:QuietButton(frame,"Don't show again",170,26); off:SetPoint("BOTTOMLEFT",20,14)
         off.label:SetWidth(162); off.label:SetJustifyH("CENTER"); if off.label.SetWordWrap then off.label:SetWordWrap(false) end
         off:SetScript("OnClick",function() FT.modules.System:Settings().hideWhatsNew=true; frame:Hide(); FT:Toast("Turn it back on in System > General.",3) end)
-        FT:Tooltip(off,"Don't show again","Stop showing this after updates. You can still open it from System > General.")
+        FT:Tooltip(off,"Don't show again","Stop showing this after updates.")
         local close=FT:AccentButton(frame,"Got it",110,26,"confirm"); close:SetPoint("BOTTOMRIGHT",-20,14)
         close:SetScript("OnClick",function() frame:Hide() end)
     end

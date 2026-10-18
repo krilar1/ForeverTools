@@ -302,7 +302,7 @@ function Leveling:Apply()
     local moving=self.moving==true
     -- Behind game windows (like buff reminders); on top only while you move it.
     self.line:SetFrameStrata(moving and "HIGH" or "LOW")
-    self.line:EnableMouse(moving)
+    FT:LockedMouse(self.line,not moving,"Leveling")
     for _,texture in ipairs(self.line.fillTextures) do texture:SetShown(moving) end
     for _,texture in ipairs(self.line.borderTextures) do texture:SetShown(moving) end
     self.line.hint:SetShown(moving)
@@ -378,7 +378,7 @@ function Leveling:Refresh()
     -- Rows follow the chosen order, top to bottom, like the stats on screen.
     for i,key in ipairs(s.order) do
         local row=self.rows[key]
-        row.toggle:ClearAllPoints(); row.toggle:SetPoint("TOPLEFT",self.frame,"TOPLEFT",24,-106-(i-1)*40)
+        row.toggle:ClearAllPoints(); row.toggle:SetPoint("TOPLEFT",self.frame,"TOPLEFT",24,-136-(i-1)*40)
         row.toggle.label:SetText(partByKey[key][2]..": "..(s[key] and "On" or "Off")); FT:SetSelected(row.toggle,s[key])
         row.up:SetEnabled(i>1); row.up:SetAlpha(i>1 and 1 or .35)
         row.down:SetEnabled(i<#s.order); row.down:SetAlpha(i<#s.order and 1 or .35)
@@ -401,10 +401,10 @@ function Leveling:Open()
     if not self.frame then
         local frame=FT:Window("ForeverToolsLeveling","ForeverTools | Leveling stats",540,560); self.frame=frame
         FT:BackTo(frame,"SystemDisplay")
-        FT:PageInfo(frame,"Leveling stats","Your chosen stats on a small line you can move, and in the XP bar tooltip. Turn stats on or off and use the arrows to order them.\n\nSession stats start over when you reload or level up, and the line hides at max level. XP per hour settles after a few minutes.")
+        FT:PageInfo(frame,"Leveling stats","Your chosen stats on a movable line and in the XP bar tooltip. Use the arrows to order them.\n\nStats reset on reload or level up. Hidden at max level.")
         self.toggle=FT:AccentButton(frame,"",492,34,"Spell_ChargePositive"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function() if self.moving then self.moving=false end; local s=self:Settings(); s.enabled=not s.enabled; self:Apply() end)
-        FT:Tooltip(self.toggle,"Leveling stats","Show your chosen stats on screen and extra lines in the XP bar tooltip. The stats appear once you earn experience, so nothing sits on screen before there is anything to show.")
+        FT:Tooltip(self.toggle,"Leveling stats","Show your stats on screen and in the XP bar tooltip.")
         self.rows={}
         for _,entry in ipairs(parts) do
             local key=entry[1]
@@ -427,33 +427,27 @@ function Leveling:Open()
             FT:Tooltip(row.down,"Move down","Show this stat later.")
             self.rows[key]=row
         end
-        local y=-106-#parts*40-6
+        local statsHead=FT:Label(frame,"Stats",14,true); statsHead:SetPoint("TOPLEFT",24,-108); statsHead:SetTextColor(.95,.90,.81); FT:SectionHeading(statsHead,nil,300)
+        local y=-136-#parts*40-6
         self.layout=FT:QuietButton(frame,"",240,34,"move"); self.layout:SetPoint("TOPLEFT",24,y)
-        self.layout:SetScript("OnClick",function() local s=self:Settings(); s.layout=s.layout=="lines" and "single" or "lines"; self:Apply() end)
-        FT:Tooltip(self.layout,"Layout","Show each stat on its own line, or all stats on one compact line.")
+        FT:MakeChoice(self.layout,{{"single","All on one line","All stats on one compact line."},{"lines","One stat per line","Each stat on its own line."}},function() return self:Settings().layout end,function(v) self:Settings().layout=v; self:Apply() end)
+        FT:Tooltip(self.layout,"Layout","Each stat on its own line, or all on one line.")
         self.tooltipButton=FT:QuietButton(frame,"",240,34,"tooltip"); self.tooltipButton:SetPoint("TOPLEFT",276,y)
         self.tooltipButton:SetScript("OnClick",function() local s=self:Settings(); s.tooltip=not s.tooltip; self:Apply() end)
-        FT:Tooltip(self.tooltipButton,"XP bar tooltip","Add your chosen stats to the XP bar tooltip, in the same order.")
-        y=y-44
-        self.moveButton=FT:QuietButton(frame,"",240,34,"move"); self.moveButton:SetPoint("TOPLEFT",24,y)
-        self.moveButton:SetScript("OnClick",function() self:SetMoving(not self.moving) end)
-        FT:Tooltip(self.moveButton,"Move stats","Click to unlock, drag the stats where you want them, then click again to lock them. Moving turns the stats on.")
-        local reset=FT:QuietButton(frame,"Reset position",240,34,"reset"); reset:SetPoint("TOPLEFT",276,y)
-        reset:SetScript("OnClick",function() local s=self:Settings(); s.x,s.y,s.screenWidth,s.screenHeight=nil,nil,nil,nil; self:Apply() end)
-        FT:Tooltip(reset,"Reset position","Return the stats to the top left of the screen (keeps your line-up side).")
+        FT:Tooltip(self.tooltipButton,"XP bar tooltip","Add your stats to the XP bar tooltip.")
         y=y-44
         local alignIcon="Interface\\Icons\\INV_Misc_PocketWatch_01"
         self.alignChoice=FT:Dropdown(frame,492,function()
-            return {{value="left",label="Line up: left",icon=alignIcon,tooltip="Text lines up on the left; the stats grow to the right."},
-                {value="center",label="Line up: center",icon=alignIcon,tooltip="Text is centered; the stats grow evenly both ways."},
-                {value="right",label="Line up: right",icon=alignIcon,tooltip="Text lines up on the right; the stats grow to the left. Good next to the right screen edge."}}
+            return {{value="left",label="Line up: left",icon=alignIcon,tooltip="Line up on the left."},
+                {value="center",label="Line up: center",icon=alignIcon,tooltip="Centered."},
+                {value="right",label="Line up: right",icon=alignIcon,tooltip="Line up on the right."}}
         end,function(value) self:SetAlign(value) end,"move")
         self.alignChoice:SetPoint("TOPLEFT",24,y); self.alignChoice.menuWidth=492
-        FT:Tooltip(self.alignChoice,"Line up","Which side the text lines up on. The stats stay anchored on that side, so they can sit flush against a screen edge.")
+        FT:Tooltip(self.alignChoice,"Line up","Which side the text lines up on.")
         y=y-40
         self.bgToggle=FT:QuietButton(frame,"",240,34,"skins"); self.bgToggle:SetPoint("TOPLEFT",24,y)
         self.bgToggle:SetScript("OnClick",function() local s=self:Settings(); s.background=not s.background; self:Apply() end)
-        FT:Tooltip(self.bgToggle,"Background","Show a rounded background behind the stats. Pick its color and transparency next to it.")
+        FT:Tooltip(self.bgToggle,"Background","A rounded background behind the stats.")
         self.bgColor=FT:QuietButton(frame,"Background color",240,34); self.bgColor:SetPoint("TOPLEFT",276,y)
         self.bgColor.swatch=self.bgColor:CreateTexture(nil,"ARTWORK"); self.bgColor.swatch:SetSize(18,18); self.bgColor.swatch:SetPoint("LEFT",10,0)
         self.bgColor.label:ClearAllPoints(); self.bgColor.label:SetPoint("LEFT",self.bgColor.swatch,"RIGHT",8,0)
@@ -467,7 +461,7 @@ function Leveling:Open()
             else ColorPickerFrame:SetColorRGB(unpack(old)); ColorPickerFrame.func=change; ColorPickerFrame.cancelFunc=cancel; ColorPickerFrame:Show() end
             self:Apply()
         end)
-        FT:Tooltip(self.bgColor,"Background color","Choose the background color. Choosing a color turns the background on.")
+        FT:Tooltip(self.bgColor,"Background color","Background color.")
         y=y-48
         -- Sliders, like the size slider in Buff reminders.
         local function slider(label,top,min,max,step,tip,onChange)
@@ -481,8 +475,16 @@ function Leveling:Open()
         end
         self.sizeLabel,self.sizeSlider=slider("Font size",y,10,32,1,"Text size of the stats (10 to 32).",function(v) self:Settings().fontSize=math.floor(v+.5); FT:Coalesce("levelingSlider",function() self:Apply() end,.05) end)
         y=y-38
-        self.alphaLabel,self.alphaSlider=slider("Transparency",y,0,100,5,"How see-through the background is (0% solid, 100% invisible).",function(v) self:Settings().backgroundAlpha=1-math.floor(v+.5)/100; FT:Coalesce("levelingSlider",function() self:Apply() end,.05) end)
+        self.alphaLabel,self.alphaSlider=slider("Transparency",y,0,100,5,"0% solid, 100% invisible.",function(v) self:Settings().backgroundAlpha=1-math.floor(v+.5)/100; FT:Coalesce("levelingSlider",function() self:Apply() end,.05) end)
+        y=y-48
+        self.moveButton=FT:QuietButton(frame,"",240,34,"move"); self.moveButton:SetPoint("TOPLEFT",24,y)
+        self.moveButton:SetScript("OnClick",function() self:SetMoving(not self.moving) end)
+        FT:Tooltip(self.moveButton,"Move stats","Unlock, drag the stats, then click again to lock.")
+        local reset=FT:QuietButton(frame,"Reset position",240,34,"reset"); reset:SetPoint("TOPLEFT",276,y)
+        reset:SetScript("OnClick",function() local s=self:Settings(); s.x,s.y,s.screenWidth,s.screenHeight=nil,nil,nil,nil; self:Apply() end)
+        FT:Tooltip(reset,"Reset position","Back to the top left of the screen.")
         frame:SetHeight(-y+32+24)
+        FT:Sections(frame,{{"Look",self.layout},{"Position",self.moveButton}})
         frame:HookScript("OnHide",function() if self.moving then self:SetMoving(false) end end)
     end
     self:Apply(); self.frame:Show()

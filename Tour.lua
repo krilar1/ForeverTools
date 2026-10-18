@@ -26,71 +26,90 @@ local function bags(key) return {get=function() return FT.Bags:Settings()[key]==
 -- screen it changes, an optional preview, and whether the Quick tour has it.
 local function stops()
     local list={
-        {key="unitColors",chapter="Appearance",page="UnitColors",title="Class-colored health bars",text="Your health bar takes your class color, and so do your target's and focus's. Look at your player frame.",
+        {key="unitColors",chapter="Appearance",page="UnitColors",title="Class-colored health bars",text="Your health bar takes your class color, and so do your target's and focus's.",
             find="Player class colors",target=function() return PlayerFrame end,quick=true,
             get=function() return mod("UnitColors"):Settings().player==true end,
             set=function(on) local s=mod("UnitColors"):Settings(); for _,u in ipairs({"player","target","focus"}) do s[u]=on and true or false end; apply("UnitColors") end},
-        {key="dispelGlow",chapter="Appearance",page="DispelGlow",title="Dispel glow",text="A colored glow around a unit frame that has a debuff you can remove: blue for magic, purple for curses and so on.",
+        {key="dispelGlow",chapter="Appearance",page="DispelGlow",title="Dispel glow",text="A colored glow around a frame with a debuff you can remove.",
             find="Dispel glow",target=function() return PlayerFrame end,preview=function() local g=mod("DispelGlow"); if g and g.Preview then pcall(g.Preview,g,"Magic",4) end end,
             get=field("DispelGlow","enabled").get,set=field("DispelGlow","enabled").set},
-        {key="druidMana",chapter="Appearance",page="DruidMana",title="Druid mana bar",text="Your mana as a third bar under your health while you are in bear, cat or another form.",
+        {key="druidMana",chapter="Appearance",page="DruidMana",title="Druid mana bar",text="Your mana as a third bar while in a form.",
             find="Mana bar while shapeshifted",target=function() return PlayerFrame end,when=function() return playerClass()=="DRUID" end,
             get=function() return mod("UnitColors"):Settings().druidMana==true end,
             set=function(on) mod("UnitColors"):Settings().druidMana=on and true or false; apply("UnitColors"); apply("DruidMana") end},
-        {key="tooltipTarget",chapter="Appearance",page="Tooltip",title="Who a player is targeting",text="Player tooltips get a line saying who they are targeting. Hover a player to see it.",
+        {key="tooltipTarget",chapter="Appearance",page="Tooltip",title="Who a player is targeting",text="Player tooltips show who they target.",
             find="Target",quick=true,
             get=function() return mod("Tooltip"):Settings().target==true end,
             set=function(on) mod("Tooltip"):Settings().target=on and true or false end},
-        {key="itemCounts",chapter="Appearance",page="ItemCounts",title="Item counts",text="Item tooltips show how many you have in your bags and bank and on your other characters.",
+        {key="itemCounts",chapter="Appearance",page="ItemCounts",title="Item counts",text="Item tooltips show how many you have on every character.",
             find="Item counts",get=bags("counts").get,set=bags("counts").set},
-        {key="reminders",chapter="Buff reminders",page="BuffReminder",title="Buff reminders",text="A quiet notice when one of your own buffs is missing, like Arcane Intellect or a weapon oil.",
+        {key="thanks",chapter="Appearance",page="Chat",title="Thank for buffs",text="A /thank to strangers who buff you.",
+            find="Thank for buffs",get=function() return type(FT.db.thanks)=="table" and FT.db.thanks.enabled==true end,
+            set=function(on) if type(FT.db.thanks)~="table" then FT.db.thanks={} end; FT.db.thanks.enabled=on and true or false end},
+        {key="reminders",chapter="Buff reminders",page="BuffReminder",title="Buff reminders",text="A notice when one of your buffs is missing.",
             find="Self reminders",quick=true,get=field("BuffReminder","enabled").get,set=field("BuffReminder","enabled").set},
-        {key="rankMarker",chapter="Buff reminders",page="BuffRanks",title="Low-rank marker",text="A small corner on action buttons whose spell is a lower rank than one you know.",
+        {key="rankMarker",chapter="Buff reminders",page="BuffRanks",title="Low-rank marker",text="A corner on buttons below your best rank.",
             find="Marker on bars",get=field("BuffReminder","rankMarker").get,set=field("BuffReminder","rankMarker").set},
-        {key="cooldowns",chapter="Buff reminders",page="CooldownReminder",title="Cooldown reminders",text="A nudge to use a big cooldown on a tough target or a large pull.",
+        {key="cooldowns",chapter="Buff reminders",page="CooldownReminder",title="Cooldown reminders",text="A nudge to use a big cooldown when it matters.",
             find="Cooldown reminders",get=field("CooldownReminder","enabled").get,set=field("CooldownReminder","enabled").set},
-        {key="threat",chapter="Combat",page="Threat",title="Threat meter",text="A small meter of your threat on your target, next to the damage meter.",
+        {key="threat",chapter="Combat",page="Threat",title="Threat meter",text="Your threat on your target, next to the damage meter.",
             find="Threat meter",quick=true,target=function() local t=mod("Threat"); return t and t.meter end,get=field("Threat","enabled").get,set=field("Threat","enabled").set},
-        {key="rare",chapter="Combat",page="RareAlert",title="Rare alerts",text="A notice with a soft glow when a rare is nearby, on the minimap or as a nameplate.",
+        {key="rare",chapter="Combat",page="RareAlert",title="Rare alerts",text="A notice when a rare is nearby.",
             find="Rare alerts",quick=true,target=function() local r=mod("RareAlert"); return r and r.notice end,
             preview=function() local r=mod("RareAlert"); if r and r.Show then pcall(r.Show,r,"Rare example",true) end end,
             get=field("RareAlert","enabled").get,set=field("RareAlert","enabled").set},
-        {key="totems",chapter="Combat",page="Totems",title="Totem range",text="Your totems' reach as circles on the minimap.",
+        {key="interrupts",chapter="Combat",page="Interrupts",title="Interrupt bar",text="Your group's interrupts and when each is ready.",
+            find="Interrupt bar",target=function() local i=mod("Interrupts"); return i and i.bar end,
+            preview=function() local i=mod("Interrupts"); if i and i.Peek then pcall(i.Peek,i) end end,
+            get=field("Interrupts","enabled").get,set=field("Interrupts","enabled").set},
+        {key="totems",chapter="Combat",page="Totems",title="Totem range",text="Your totems' reach on the minimap.",
             find="Totem range on minimap",target=function() return Minimap end,when=function() return playerClass()=="SHAMAN" end,
             get=field("Totems","range").get,set=field("Totems","range").set},
-        {key="autoRole",chapter="Combat",page="SystemGameplay",title="Group role",text="When you join a group, your role (tank, healer or damage) is set from your talents.",
+        {key="autoRole",chapter="Combat",page="SystemGameplay",title="Group role",text="Your role is set from your talents when you join a group.",
             find="Set role when joining",get=sys("autoRole").get,set=sys("autoRole").set},
-        {key="stealth",chapter="PvP",page="EnemyAlerts",title="Stealth alerts",text="A warning when an enemy player near you goes into stealth.",
+        {key="stealth",chapter="PvP",page="EnemyAlerts",title="Stealth alerts",text="A warning when an enemy near you goes into stealth.",
             find="Stealth alerts",quick=true,target=function() return FT.Enemies and FT.Enemies.notice end,
             preview=function() if FT.Enemies then FT.Enemies:Preview("stealth") end end,
             get=field("Enemies","stealth").get,set=field("Enemies","stealth").set},
-        {key="nearby",chapter="PvP",page="EnemyNearby",title="Nearby enemies",text="A small row of class icons of the enemy players you have seen recently.",
+        {key="nearby",chapter="PvP",page="EnemyNearby",title="Nearby enemies",text="Enemy players you saw recently.",
             find="Nearby enemies",target=function() return FT.Enemies and FT.Enemies.strip end,
             preview=function() if FT.Enemies then FT.Enemies:PreviewStrip() end end,
             get=field("Enemies","nearby").get,set=field("Enemies","nearby").set},
-        {key="bgTimer",chapter="PvP",page="QueueTimer",title="Battleground timer",text="When a battleground queue pops, a bar counts down the time you have to enter.",
+        {key="trinkets",chapter="PvP",page="Trinkets",title="Trinket menu",text="Two trinket buttons with cooldowns. Point at one to swap.",
+            find="Trinket menu",target=function() local t=mod("Trinkets"); return t and t.bar end,
+            get=field("Trinkets","enabled").get,set=field("Trinkets","enabled").set},
+        {key="diminish",chapter="PvP",page="Diminish",title="Diminishing returns",text="Icons by your target when crowd control will be shorter. Red: immune.",
+            find="Diminishing returns",preview=function() local d=mod("Diminish"); if d and d.Peek then d:Peek() end end,
+            get=field("Diminish","enabled").get,set=field("Diminish","enabled").set},
+        {key="autoRelease",chapter="PvP",page="AutoRelease",title="Auto release",text="In battlegrounds your spirit is released by itself.",
+            find="Auto release",get=field("AutoRelease","enabled").get,set=field("AutoRelease","enabled").set},
+        {key="bgTimer",chapter="PvP",page="QueueTimer",title="Battleground timer",text="The time left to enter when a battleground queue pops.",
             find="Battleground timer",target=function() local t=mod("QueueTimer"); return t and t.bar end,
-            preview=function() local t=mod("QueueTimer"); if t and t.Preview then t:Preview() end end,
+            preview=function() local t=mod("QueueTimer"); if t and t.Peek then t:Peek() end end,
             get=field("QueueTimer","enabled").get,set=field("QueueTimer","enabled").set},
-        {key="fps",chapter="On-screen info",page="QualityOfLife",title="FPS counter",text="A small frames-per-second counter. Drag it anywhere later.",
+        {key="fps",chapter="On-screen info",page="QualityOfLife",title="FPS counter",text="A small FPS counter. Drag it anywhere later.",
             find="FPS counter",quick=true,target=function() local q=mod("QualityOfLife"); return q and q.counter end,
             get=field("QualityOfLife","enabled").get,set=field("QualityOfLife","enabled").set},
-        {key="leveling",chapter="On-screen info",page="Leveling",title="Leveling stats",text="XP per hour and time to level in a small line at the top left.",
+        {key="leveling",chapter="On-screen info",page="Leveling",title="Leveling stats",text="XP per hour and time to level.",
             find="Leveling stats",quick=true,target=function() local l=mod("Leveling"); return l and l.line end,
             get=field("Leveling","enabled").get,set=field("Leveling","enabled").set},
-        {key="flight",chapter="On-screen info",page="FlightTimer",title="Flight timer",text="Where you are flying and how long until you land.",
+        {key="errors",chapter="On-screen info",page="SystemErrors",title="Fewer error messages",text="The red error text (Out of range...) is hidden.",
+            find="Hide error messages",get=sys("hideErrors").get,set=sys("hideErrors").set},
+        {key="moveWindows",chapter="On-screen info",page="MoveWindows",title="Move game windows",text="Drag game windows by their title bar. Click Done at the top when finished.",
+            find="Move game windows",get=field("MoveWindows","enabled").get,set=field("MoveWindows","enabled").set},
+        {key="flight",chapter="On-screen info",page="FlightTimer",title="Flight timer",text="How long until you land.",
             find="Flight timer",get=field("FlightTimer","enabled").get,set=field("FlightTimer","enabled").set},
-        {key="fastLoot",chapter="System",page="SystemMerchant",title="Faster looting",text="Everything is looted the moment a corpse opens, when auto loot is on.",
+        {key="fastLoot",chapter="System",page="SystemMerchant",title="Faster looting",text="Everything is looted at once (with auto loot on).",
             find="Faster looting",quick=true,get=sys("fastLoot").get,set=sys("fastLoot").set},
-        {key="autoSell",chapter="System",page="SystemMerchant",title="Sell grey items",text="Junk is sold when you open a merchant, at most 12 per visit so all can be bought back.",
+        {key="autoSell",chapter="System",page="SystemMerchant",title="Sell grey items",text="Grey items are sold at merchants.",
             find="Auto-sell grey items",quick=true,get=sys("autoSell").get,set=sys("autoSell").set},
-        {key="autoRepair",chapter="System",page="SystemMerchant",title="Auto-repair",text="Your gear is repaired at merchants who can repair.",
+        {key="autoRepair",chapter="System",page="SystemMerchant",title="Auto-repair",text="Your gear is repaired at merchants.",
             find="Auto-repair",quick=true,get=sys("autoRepair").get,set=sys("autoRepair").set},
-        {key="hiddenUI",chapter="System",page="SystemGeneral",title="Key to show the interface",text="When you hide the interface, a short line says which key brings it back.",
+        {key="hiddenUI",chapter="System",page="SystemGeneral",title="Key to show the interface",text="A line says which key brings the interface back.",
             find="Show key when interface is hidden",get=sys("hiddenUIHint").get,set=sys("hiddenUIHint").set},
-        {key="gold",chapter="Bags",page="BagsGeneral",title="Gold of all your characters",text="Hover the gold in your bag to see every character's gold and the total.",
+        {key="gold",chapter="Bags",page="BagsGeneral",title="Gold of all your characters",text="Hover your bag's gold to see every character's gold.",
             find="Gold tooltip",quick=true,get=bags("gold").get,set=bags("gold").set},
-        {key="bankView",chapter="Bags",page="BagsGeneral",title="Bank and other characters",text="Right-click your bag's portrait to see your bank from anywhere, and switch to your other characters' bags.",
+        {key="bankView",chapter="Bags",page="BagsGeneral",title="Bank and other characters",text="Right-click your bag's portrait: your bank and your other characters' bags.",
             find="Bank and other characters",quick=true,get=bags("view").get,set=bags("view").set},
     }
     return list
@@ -180,17 +199,19 @@ function Tour:Card()
     if card.text.SetWordWrap then card.text:SetWordWrap(true) end
     card.text:SetTextColor(.85,.80,.70)
     card.keep=FT:AccentButton(card,"Keep it",CARD_W-40,32,"confirm")
+    card.keep.action=true; card.keep.primary=true; card.keep.label:SetText("Keep it")
     card.keep:SetScript("OnClick",function() self:Answer(true) end)
-    FT:Tooltip(card.keep,"Keep it","Keep this feature on and go to the next stop.")
+    FT:Tooltip(card.keep,"Keep it","Keep it on, next stop.")
     card.no=FT:QuietButton(card,"No thanks",CARD_W-40,32)
     card.no:SetScript("OnClick",function() self:Answer(false) end)
-    FT:Tooltip(card.no,"No thanks","Put it back the way it was and go to the next stop.")
-    card.pause=FT:QuietButton(card,"Pause",120,26)
+    FT:Tooltip(card.no,"No thanks","Put it back, next stop.")
+    card.no.action=true; card.no.label:SetText("No thanks")
+    card.pause=FT:QuietButton(card,"Pause",126,26)
     card.pause:SetScript("OnClick",function() self:Pause() end)
-    FT:Tooltip(card.pause,"Pause","Stop here and continue later with /ft setup. What you kept stays on.")
-    card.skip=FT:QuietButton(card,"Skip chapter",140,26)
+    FT:Tooltip(card.pause,"Pause","Continue later with /ft setup. What you kept stays on.")
+    card.skip=FT:QuietButton(card,"Skip chapter",126,26)
     card.skip:SetScript("OnClick",function() self:SkipChapter() end)
-    FT:Tooltip(card.skip,"Skip chapter","Go to the next menu without changing anything here.")
+    FT:Tooltip(card.skip,"Skip chapter","Next menu, nothing changed here.")
     -- Closing the card is the same as Pause.
     card:HookScript("OnHide",function()
         if not self.running then return end
@@ -210,8 +231,9 @@ end
 function Tour:Layout(stop,list,index)
     local card=self:Card()
     local name,first,last=self:Chapter(list,index)
-    card.chapter:SetText(name.." · stop "..(index-first+1).." of "..(last-first+1))
-    card.overall:SetText("Tour "..index.." / "..#list)
+    -- One counter: where you are in the whole tour. The dots show this chapter.
+    card.chapter:SetText(name)
+    card.overall:SetText(index.." of "..#list)
     for _,dot in ipairs(card.dots) do dot:Hide() end
     for i=first,last do
         local d=card.dots[i-first+1]
@@ -363,7 +385,7 @@ function Tour:Summary(trial)
         frame.note=FT:Label(frame,"",12); frame.note:SetTextColor(.66,.59,.48); frame.note:SetWidth(392)
         local export=FT:QuietButton(frame,"Export my setup",190,32,"INV_Misc_Note_03"); export:SetPoint("BOTTOMLEFT",24,20)
         export:SetScript("OnClick",function() frame:Hide(); mod("Profiles"):Transfer(false) end)
-        FT:Tooltip(export,"Export my setup","Copy a string with your setup, to paste on another computer or share.")
+        FT:Tooltip(export,"Export my setup","Copy your setup as a string.")
         local done=FT:AccentButton(frame,"Done",190,32,"confirm"); done:SetPoint("BOTTOMRIGHT",-24,20)
         done:SetScript("OnClick",function() frame:Hide() end)
         FT:Tooltip(done,"Done","Close. Open /ft any time to change things.")
@@ -423,6 +445,8 @@ function Tour:RefreshStart()
     local t=FT.db.tour
     local paused=type(t)=="table" and t.paused and not t.done
     f.resume:SetShown(paused and not self.demo)
+    -- Set up before (the beta, another computer)? One line points to Import.
+    f.importHint:SetShown(not (paused and not self.demo))
 end
 function Tour:ShowStart(again,demo)
     if InCombatLockdown() then FT:CombatOpenRequest(); return end
@@ -446,10 +470,10 @@ function Tour:ShowStart(again,demo)
                 edge:SetColorTexture(c[1],c[2],c[3],1)
             end
             b:SetScript("OnClick",function() self:PreviewLook(look.key) end)
-            FT:Tooltip(b,look.label,look.key=="none" and "The default look: no skins or colors." or "Shown on your screen as you click. Kept when you start the tour.")
+            FT:Tooltip(b,look.label,look.key=="none" and "The default look: no skins or colors." or "Shown as you click. Kept when you start.")
             f.looks[look.key]=b
         end
-        f.lookNote=FT:Label(f,"Your screen changes as you click a look, so you see it before you pick.",12)
+        f.lookNote=FT:Label(f,"Your screen changes as you click a look.",12)
         f.lookNote:SetPoint("TOPLEFT",24,-214); f.lookNote:SetTextColor(.66,.59,.48)
         local h2=FT:Label(f,"How long?",15,true); h2:SetPoint("TOPLEFT",24,-244); FT:SectionHeading(h2,"INV_Misc_PocketWatch_01",420)
         f.modes={}
@@ -463,7 +487,9 @@ function Tour:ShowStart(again,demo)
         end
         f.resume=FT:QuietButton(f,"Continue where you left off",552,30,"INV_Misc_Book_09"); f.resume:SetPoint("TOPLEFT",24,-334)
         f.resume:SetScript("OnClick",function() self.leaving=true; f:Hide(); self.leaving=nil; self:Resume() end)
-        FT:Tooltip(f.resume,"Continue","Go back to the stop where you paused the tour.")
+        FT:Tooltip(f.resume,"Continue","Go back to where you paused.")
+        f.importHint=FT:Label(f,"Set up before (the beta, another computer)? Import profile brings it all back.",12)
+        f.importHint:SetPoint("TOPLEFT",24,-338); f.importHint:SetWidth(552); f.importHint:SetTextColor(.66,.59,.48)
         local import=FT:QuietButton(f,"Import profile",176,34,"INV_Misc_Note_03"); import:SetPoint("BOTTOMLEFT",24,22)
         import:SetScript("OnClick",function()
             if self.demo then FT:Toast("Not in the practice run.",2); return end
@@ -474,11 +500,13 @@ function Tour:ShowStart(again,demo)
                 FT:Toast('Profile "'..name..'" imported and loaded.',4)
             end)
         end)
-        FT:Tooltip(import,"Import profile","Paste a ForeverTools export string from another computer or account. It is loaded right away.")
+        FT:Tooltip(import,"Import profile","Paste a ForeverTools export string. Loaded right away.")
         local later=FT:QuietButton(f,"Not now",176,34); later:SetPoint("BOTTOM",0,22)
         later:SetScript("OnClick",function() f:Hide() end)
-        FT:Tooltip(later,"Not now","Keep everything as it is. You are asked once more at your next login; after that, /ft setup starts the tour.")
+        FT:Tooltip(later,"Not now","Keep everything as it is. /ft setup starts the tour later.")
         local start=FT:AccentButton(f,"Start tour",176,34,"confirm"); start:SetPoint("BOTTOMRIGHT",-24,22)
+        -- The one to click: filled gold.
+        start.primary=true; FT:UpdateButton(start)
         start:SetScript("OnClick",function()
             if InCombatLockdown() then return end
             if self.demo then
@@ -489,7 +517,7 @@ function Tour:ShowStart(again,demo)
             self.leaving=true; f:Hide(); self.leaving=nil
             self:Begin(self.mode)
         end)
-        FT:Tooltip(start,"Start tour","Keep the look and start the tour. Each stop shows a feature on your screen; keep it or not.")
+        FT:Tooltip(start,"Start tour","Keep the look and start the tour.")
         -- Closing without starting: the look goes back, and you are asked once more next time.
         f:HookScript("OnHide",function()
             if self.leaving then return end
@@ -508,9 +536,9 @@ function Tour:ShowStart(again,demo)
         local profiles=mod("Profiles")
         self.trialSnap={settings=profiles and profiles:Snapshot() or {},tour=deepCopy(FT.db.tour),setupDone=FT.db.setupDone,setupAsked=FT.db.setupAsked}
     end
-    f.intro:SetText(self.demo and "Practice run: the tour as a new player sees it, on your own screen. Click whatever you like; when it ends, every setting goes back to how it is right now."
-        or again and "Pick a new look if you like, then take the tour again. Nothing changes unless you keep it."
-        or "Everything is off, so your interface looks default. This tour shows each feature on your own screen. Keep what you like; nothing changes unless you say so.")
+    f.intro:SetText(self.demo and "Practice run: when it ends, every setting goes back to how it is now."
+        or again and "Pick a new look if you like, then take the tour again."
+        or "Everything starts off. The tour shows each feature on your screen; keep what you like.")
     self.look=nil; self.mode=self.mode or "quick"; self.savedLook=nil
     self:RefreshStart()
     f.keepAfterCombat=not again

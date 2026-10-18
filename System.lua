@@ -1,5 +1,52 @@
 local _,FT=...
 local System={}
+-- Other addons' login lines (System > General > Hide other addons' login
+-- messages). Chat windows get a stand-in for AddMessage from the moment
+-- ForeverTools loads until 20 seconds after you enter the world; then the
+-- game's own is put back. With the switch off it is put back as soon as the
+-- settings have loaded. Lines the game hides (secret values) pass untouched.
+local quiet={frames={},untilTime=math.huge}
+local function quietLine(text)
+    if not FT.dbReady or type(FT.db)~="table" or type(FT.db.system)~="table" or FT.db.system.quietLogin~=true then return false end
+    if type(text)~="string" or (issecretvalue and issecretvalue(text)) then return false end
+    if GetTime and GetTime()>quiet.untilTime then return false end
+    if text:find("ForeverTools",1,true) then return false end
+    local plain=text:gsub("|H.-|h(.-)|h","%1"):gsub("|c%x%x%x%x%x%x%x%x",""):gsub("|r",""):gsub("|T.-|t","")
+    plain=plain:gsub("^%s+",""):lower()
+    -- Chat from players and channels starts with a name or channel in brackets.
+    if plain:sub(1,1)=="[" then return false end
+    return plain:find("v%d+%.%d") or plain:find("version %d") or plain:find("loaded") or plain:find("%d+%.%d+%.%d+")
+end
+function System:QuietWrap()
+    for i=1,(NUM_CHAT_WINDOWS or 10) do
+        local frame=_G["ChatFrame"..i]
+        if frame and not quiet.frames[frame] and type(frame.AddMessage)=="function" then
+            local original=frame.AddMessage
+            local stand=function(owner,text,...) if quietLine(text) then return end; return original(owner,text,...) end
+            quiet.frames[frame]={original=original,stand=stand}; frame.AddMessage=stand
+        end
+    end
+end
+function System:QuietUnwrap()
+    for frame,rec in pairs(quiet.frames) do
+        -- Only if nothing else replaced it since; otherwise ours just passes lines on.
+        if frame.AddMessage==rec.stand then frame.AddMessage=rec.original; quiet.frames[frame]=nil end
+    end
+    quiet.untilTime=0
+end
+System:QuietWrap()
+do
+    local f=CreateFrame("Frame"); f:RegisterEvent("ADDON_LOADED"); f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:SetScript("OnEvent",function(owner,event,name)
+        if event=="ADDON_LOADED" then
+            if name==(FT.name or "ForeverTools") and not (type(FT.db)=="table" and type(FT.db.system)=="table" and FT.db.system.quietLogin==true) then System:QuietUnwrap() end
+            return
+        end
+        owner:UnregisterAllEvents()
+        quiet.untilTime=(GetTime and GetTime() or 0)+20
+        C_Timer.After(21,function() System:QuietUnwrap() end)
+    end)
+end
 local function usable(value)
     return (not issecretvalue or not issecretvalue(value)) and value~=nil
 end
@@ -34,6 +81,7 @@ function System:Settings()
     if s.minimapIcons==nil then s.minimapIcons=false end
     -- Forever shows coordinates under the minimap by default; match that.
     if s.coordinates==nil then s.coordinates=true end
+    if type(s.quietNoControl)~="boolean" then s.quietNoControl=true end
     return s
 end
 function System:Apply()
@@ -45,53 +93,96 @@ function System:Apply()
         SetCVar("minimapShowPlayerCoords",s.coordinates and "1" or "0")
     end
     FT:UpdateMinimap(); if FT.modules.MinimapIcons then FT.modules.MinimapIcons:Apply() end
+    self:ApplyErrors()
     self:Refresh()
+end
+-- Error messages (On-screen info > Error messages). With the switch on, the
+-- game's error text frame stops listening for errors and we listen instead:
+-- an error we let through is handed to the frame's own handler, so it looks
+-- and sounds exactly like the game's. Off: the frame listens again. Only an
+-- unprotected frame's events change, so this is safe in combat too.
+local KEEP={"ERR_INV_FULL","ERR_BAG_FULL","ERR_QUEST_LOG_FULL","ERR_NOT_ENOUGH_MONEY","ERR_ITEM_MAX_COUNT","ERR_TOO_MANY_ITEMS"}
+function System:KeepError(message)
+    if type(message)~="string" or not usable(message) then return false end
+    for _,name in ipairs(KEEP) do local text=_G[name]; if type(text)=="string" and text==message then return true end end
+    return false
+end
+function System:ApplyErrors()
+    local frame=UIErrorsFrame
+    if not frame or not frame.RegisterEvent then return end
+    local s=self:Settings()
+    local on=s.hideErrors==true
+    if not self.errorEvents then
+        if not on then return end
+        self.errorEvents=CreateFrame("Frame")
+        self.errorEvents:SetScript("OnEvent",function(_,event,...)
+            local settings=self:Settings()
+            local _,message=...
+            local hide=settings.hideErrors==true and (not settings.errorsInCombat or InCombatLockdown()) and not self:KeepError(message)
+            if hide then return end
+            local handler=frame:GetScript("OnEvent")
+            if handler then pcall(handler,frame,event,...) end
+        end)
+    end
+    if self.hidingErrors==on then return end
+    self.hidingErrors=on
+    if on then
+        frame:UnregisterEvent("UI_ERROR_MESSAGE"); self.errorEvents:RegisterEvent("UI_ERROR_MESSAGE")
+    else
+        self.errorEvents:UnregisterEvent("UI_ERROR_MESSAGE"); frame:RegisterEvent("UI_ERROR_MESSAGE")
+    end
 end
 -- The switch lists. Each is a page of its group (see Hubs.lua): General and
 -- Loot and merchant under System, Minimap and Quests and loot rolls under
 -- On-screen info, Group role and Death glow under Combat, Keybind tools under
 -- Keybinds. Each page is its own module for FT:OpenModule and search.
 local pages={
-    {key="SystemGeneral",title="General",hint="Messages at login, first-time setup, resetting, and help when something breaks.",items={
-        {"welcome","Welcome message","welcome","Print a short \"ForeverTools loaded\" line in chat when you log in."},
-        {"hiddenUIHint","Show key when interface is hidden","INV_Misc_Eye_01","When you hide the interface (ALT-Z by default), show for a few seconds which key brings it back. The line fades by itself, steps aside for a screenshot and returns a couple of seconds later, and does not show during cutscenes."},
-        {"whatsNew","What's new after updates","INV_Misc_Note_05","After an update, show a short summary of what changed, once. Turn off to never show it."},
-        {"setup","First-time tour","INV_Misc_Book_09","Take the guided tour again, or continue it where you paused: each stop shows a feature on your screen, and you keep it or not. You can also pick a new look first. Nothing changes unless you keep it."},
-        {"reset","Reset all settings","reset","Return every ForeverTools setting to its default (all off) and reload. Saved profiles, custom macros and learned flight times are kept. Asks first."},
-        {"scriptErrors","Show Lua errors","errors","Show or hide the game's Lua error pop-ups. Hiding them does not fix the errors. This is the game's own setting."},
-        {"bugReport","Copy bug report","INV_Misc_Note_04","Opens a box with your addon version, game build, enabled features and recent ForeverTools errors, ready to copy. Nothing is sent anywhere."},
+    {key="SystemGeneral",sections={{"Messages","welcome"},{"Setup","setup"},{"Help","scriptErrors"}},title="General",hint="Messages, setup, reset and help.",items={
+        {"welcome","Welcome message","welcome","A short \"ForeverTools loaded\" line at login."},
+        {"quietNoControl","Hide notices while you can't play","Ability_Mount_Wyvern_01","Notices wait on flight paths, in vehicles and cutscenes."},
+        {"quietLogin","Hide other addons' login messages","Spell_Holy_Silence","Hide other addons' \"loaded\" lines at login. Player and game chat is never hidden."},
+        {"hiddenUIHint","Show key when interface is hidden","INV_Misc_Eye_01","Show which key brings the interface back after hiding it (Alt+Z)."},
+        {"whatsNew","What's new after updates","INV_Misc_Note_05","Show what changed after an update."},
+        {"setup","First-time tour","INV_Misc_Book_09","Take the tour again, or continue where you paused."},
+        {"reset","Reset all settings","reset","Everything back to off and reload. Profiles, macros and flight times are kept."},
+        {"scriptErrors","Show Lua errors","errors","Show the game's Lua error pop-ups."},
+        {"bugReport","Copy bug report","INV_Misc_Note_04","Version, game build, features and recent errors, ready to copy. Nothing is sent."},
     }},
-    {key="SystemMinimap",title="Minimap",hint="The ForeverTools button, coordinates, and tidying other addons' buttons.",items={
-        {"minimap","ForeverTools minimap button","map","Show or hide the ForeverTools button on the minimap. You can always open the settings with /ft."},
-        {"coordinates","Minimap coordinates","INV_Misc_Spyglass_02","Show or hide the game's own coordinates below the minimap."},
-        {"minimapIcons","Group minimap buttons","INV_Misc_Bag_08","Put other addons' minimap buttons into one small menu. Click its icon to open it. A few buttons may stay on the minimap. Do not use it together with another addon that collects minimap buttons."},
-        {"minimapIconsVertical","Grouped buttons","INV_Misc_Bag_08","How the grouped buttons are laid out in their menu. Horizontal: side by side, a new row after 6. Vertical: one below the other, a new column after 6. Click to switch. Needs Group minimap buttons on."},
+    {key="SystemMinimap",sections={{"Buttons","minimap"},{"Grouping","minimapIcons"}},title="Minimap",hint="ForeverTools button, coordinates, button grouping.",items={
+        {"minimap","ForeverTools minimap button","map","Show the ForeverTools button. /ft always works."},
+        {"coordinates","Minimap coordinates","INV_Misc_Spyglass_02","Show coordinates below the minimap."},
+        {"minimapIcons","Group minimap buttons","INV_Misc_Bag_08","Put other addons' minimap buttons into one menu."},
+        {"minimapIconsVertical","Grouped buttons","INV_Misc_Bag_08","Layout of the grouped buttons."},
     }},
     {key="SystemGameplay",title="Group role",hint="Your role when you join a group.",items={
-        {"autoRole","Set role when joining a group","Ability_Warrior_DefensiveStance","When you join a group, set your role (tank, healer or damage) from your talents. Changing it yourself always wins. Feral druids are asked once."},
+        {"autoRole","Set role when joining a group","Ability_Warrior_DefensiveStance","Set your role from your talents when you join a group."},
     }},
     {key="SystemDeath",title="Death glow",hint="How the screen looks while you are dead or a ghost.",items={
-        {"deathGlow","Death glow","Spell_Holy_Resurrection","The glowing, washed-out screen while you are dead or a ghost. On is the game's default; Off keeps the world looking normal. This is the game's own setting (the same as /console ffxDeath 0 or 1), so it applies to all your characters."},
+        {"deathGlow","Death glow","Spell_Holy_Resurrection","The washed-out screen while dead. The game's own setting, for all characters."},
     }},
-    {key="SystemQuests",title="Quests and loot rolls",hint="The quest tracker at login, and where loot-roll windows appear.",items={
-        {"objectives","Quest objectives","INV_Misc_Note_01","How the quest tracker starts when you log in or reload: Default (the game decides), Collapsed, Open, or Hidden. Opening or closing it yourself is kept until the next login. Hidden keeps it off the screen."},
-        {"lootMove","Move loot rolls","move","Show a sample loot-roll window you can drag. Click again to lock it. Until you move it, loot rolls appear where the game puts them."},
-        {"lootDefault","Use the game's loot-roll position","reset","Forget your moved position and let the game place loot rolls again."},
+    {key="SystemQuests",sections={{"Quest tracker","objectives"},{"Loot rolls","lootMove"}},title="Quests and loot rolls",hint="Quest tracker at login, loot-roll position.",items={
+        {"objectives","Quest tracker at login","INV_Misc_Note_01","How the quest tracker starts at login."},
+        {"lootMove","Move loot rolls","move","Drag a sample loot roll. Click again to lock."},
+        {"lootDefault","Revert to default position","reset","Let the game place loot rolls again."},
     }},
-    {key="SystemMerchant",title="Loot and merchant",hint="Looting faster, and selling and repairing when you visit a merchant.",items={
-        {"fastLoot","Faster looting","INV_Misc_Bag_10","Loot everything the moment a corpse is opened, instead of waiting for each slot. Works when auto loot is on (the game's Auto Loot option, or holding the auto-loot key). Items that ask before binding still ask."},
-        {"autoSell","Auto-sell grey items","INV_Misc_Coin_05","Sell grey (junk) items when you open a merchant, at most 12 per visit so every one can be bought back. If you carry more, the rest is sold next time."},
-        {"sellWhite","Also sell white gear","INV_Misc_Coin_03","When auto-sell runs, also sell white weapons and armor you have no use for. Kept: gear for an empty slot, gear in an equipment set and, up to level 20, anything better than what you wear. Never sold: potions, food, reagents, ammo, trade goods, quest items, tools, shirts, tabards, bags, rings, necklaces and trinkets. Sold gear can be bought back."},
-        {"autoRepair","Auto-repair","Trade_BlackSmithing","Repair all your gear when you visit a merchant who can repair."},
-        {"guildRepair","Use guild funds for repairs first","INV_Shirt_GuildTabard_01","When auto-repair runs, use guild bank repair money if your guild allows it, otherwise your own gold."},
+    {key="SystemMerchant",sections={{"Looting","fastLoot"},{"Selling","autoSell"},{"Repairing","autoRepair"}},title="Loot and merchant",hint="Faster looting, selling and repairing.",items={
+        {"fastLoot","Faster looting","INV_Misc_Bag_10","Take everything at once (with auto loot on)."},
+        {"autoSell","Auto-sell grey items","INV_Misc_Coin_05","Sell grey items at merchants, 12 per visit so all can be bought back."},
+        {"sellWhite","Also sell white gear","INV_Misc_Coin_03","Also sell white weapons and armor you don't need. Can be bought back."},
+        {"autoRepair","Auto-repair","Trade_BlackSmithing","Repair your gear at merchants."},
+        {"guildRepair","Use guild funds for repairs first","INV_Shirt_GuildTabard_01","Use guild repair money when allowed."},
     }},
-    {key="SystemKeybinds",title="Keybind tools",hint="Bind action buttons by hovering them, and put earlier keybinds back.",items={
-        {"quickKeybind","Quick keybind mode (/kb)","keybind","Hover any action button and press a key to bind it. Escape on a bound button unbinds it. Your keybinds are copied first, so you can save, go back or discard. You can also type /kb."},
-        {"backups","Backups and restore","profiles","Put back earlier keybinds, action bars and spell binds, or save a copy now. The list holds your full backups (saved by you, or automatically before an import) and your last keybind sessions. Hover one to see what it puts back. The last 10 of each are kept on this computer."},
+    {key="SystemErrors",title="Error messages",hint="Red text when an action fails.",items={
+        {"hideErrors","Hide error messages","Ability_Rogue_Disguise","Hide the red error text (Out of range, Not enough rage...). Bag full and similar still show."},
+        {"errorsInCombat","Only hide them in a fight","Ability_DualWield","Hide them only in combat."},
+    }},
+    {key="SystemKeybinds",title="Keybind tools",hint="Bind by hovering, and put earlier keybinds back.",items={
+        {"quickKeybind","Quick keybind mode (/kb)","keybind","Hover an action button and press a key to bind it. Esc unbinds. Also /kb."},
+        {"backups","Backups and restore","profiles","Put back earlier keybinds, action bars and spell binds, or save a copy now. Hover one to see what it restores."},
     }},
 }
 System.pages=pages
-local toggles={hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,sellWhite=true,scriptErrors=true,deathGlow=true}
+local toggles={hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietLogin=true,quietNoControl=true}
 -- Switches that are the game's own settings: read and written directly,
 -- never stored by ForeverTools. "Unavailable" when the game has no such setting.
 local gameOptions={scriptErrors="scriptErrors",deathGlow="ffxDeath"}
@@ -109,7 +200,8 @@ function System:Values()
     if coords==nil then coords=not getter or getter("minimapShowPlayerCoords")=="1" end
     return {welcome=FT.db.welcome==true,whatsNew=s.hideWhatsNew~=true,minimap=FT.db.minimapEnabled~=false,coordinates=coords,
         minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=gameOption("scriptErrors")=="1",deathGlow=gameOption("ffxDeath")~="0",
-        hiddenUIHint=s.hiddenUIHint==true,autoRole=s.autoRole==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true}
+        hiddenUIHint=s.hiddenUIHint==true,autoRole=s.autoRole==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true,
+        hideErrors=s.hideErrors==true,errorsInCombat=s.errorsInCombat==true,quietLogin=s.quietLogin==true,quietNoControl=s.quietNoControl~=false}
 end
 function System:Refresh()
     if not self.buttons then return end
@@ -128,6 +220,7 @@ function System:Refresh()
         end
         if key=="guildRepair" then button:SetEnabled(values.autoRepair); button:SetAlpha(values.autoRepair and 1 or .45) end
         if key=="sellWhite" then button:SetEnabled(values.autoSell); button:SetAlpha(values.autoSell and 1 or .45) end
+        if key=="errorsInCombat" then button:SetEnabled(values.hideErrors); button:SetAlpha(values.hideErrors and 1 or .45) end
         if key=="backups" then
             button.label:SetText("Backups and restore ("..FT.modules.Backups:Count()..")")
         end
@@ -145,9 +238,7 @@ function System:Refresh()
         end
         if key=="objectives" then
             local mode=FT.modules.QuestTracker and FT.modules.QuestTracker:Mode() or "default"
-            button.label:SetText("Quest objectives: "..({default="Default",collapsed="Collapsed on login",open="Open on login",hidden="Hidden"})[mode])
-            if not button.arrow then button.arrow=FT:Label(button,"v",12); button.arrow:SetPoint("RIGHT",-12,0) end
-            FT:SetSelected(button,mode~="default")
+            button.label:SetText("Quest tracker at login: "..({default="Game's default",collapsed="Collapsed",open="Open",hidden="Always hidden"})[mode])
         end
         if key=="rareAlert" then
             local rare=FT.modules.RareAlert
@@ -230,8 +321,8 @@ function System:Click(key)
             local icon="Interface\\Icons\\INV_Misc_Note_01"
             return {
                 {value="default",label="Default",icon=icon,tooltip="The game's own behavior."},
-                {value="collapsed",label="Collapsed on login",icon=icon,tooltip="Collapsed after every login and reload. Opening it yourself is kept until then."},
-                {value="open",label="Open on login",icon=icon,tooltip="Open after every login and reload. Closing it yourself is kept until then."},
+                {value="collapsed",label="Collapsed on login",icon=icon,tooltip="Collapsed after every login."},
+                {value="open",label="Open on login",icon=icon,tooltip="Open after every login."},
                 {value="hidden",label="Hidden",icon=icon,tooltip="Keep the tracker off the screen."},
             }
         end
@@ -280,6 +371,22 @@ local function buildPage(page)
                 b:SetPoint("TOPLEFT",24,-62-34-(i-1)*40); System.buttons[key]=b
                 b:SetScript("OnClick",function() System:Click(key) end)
                 FT:Tooltip(b,entry[2],entry[4])
+                -- Settings with a few choices open their list (no click-to-cycle).
+                if key=="objectives" then
+                    FT:MakeChoice(b,{{"default","Game's default","The game decides, as without ForeverTools."},{"collapsed","Collapsed","Collapsed after every login."},{"open","Open","Open after every login."},{"hidden","Always hidden","Keep the tracker off the screen."}},
+                        function() return FT.modules.QuestTracker:Mode() end,
+                        function(value) System:Settings().objectives=value~="default" and value or nil; FT.modules.QuestTracker:Apply(); System:Refresh() end)
+                elseif key=="minimapIconsVertical" then
+                    FT:MakeChoice(b,{{false,"Horizontal","Side by side, a new row after 6."},{true,"Vertical","One below the other."}},
+                        function() return System:Settings().minimapIconsVertical==true end,
+                        function(value) if (System:Settings().minimapIconsVertical==true)~=value then FT.modules.MinimapIcons:ToggleVertical() end end)
+                end
+            end
+            -- Headings between groups of settings.
+            if page.sections then
+                local list={}
+                for _,sec in ipairs(page.sections) do if System.buttons[sec[2]] then list[#list+1]={sec[1],System.buttons[sec[2]]} end end
+                FT:Sections(self.frame,list)
             end
             if page.key=="SystemMinimap" then FT.minimapToggle=System.buttons.minimap end
             if page.key=="SystemGeneral" then FT.welcomeToggle=System.buttons.welcome end

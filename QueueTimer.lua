@@ -68,6 +68,9 @@ function Timer:Bar()
     self.bar=f
     f:SetSize(WIDTH,HEIGHT); f:SetFrameStrata("HIGH"); f:SetClampedToScreen(true)
     FT:Panel(f); FT:Paint(f,{.06,.045,.02,.92},{.85,.66,.25,1})
+    -- Skins > PvP > Battleground timer.
+    local skins=FT.modules.IconStyles
+    if skins and skins.SkinPanel then skins:SkinPanel(f,"bgTimer",{.06,.045,.02,.92},{.85,.66,.25,1}) end
     f.fill=f:CreateTexture(nil,"ARTWORK"); f.fill:SetTexture("Interface\\Buttons\\WHITE8x8")
     f.fill:SetPoint("TOPLEFT",4,-4); f.fill:SetPoint("BOTTOMLEFT",4,4); f.fill:SetWidth(WIDTH-8)
     f.name=FT:Label(f,"",13,true); f.name:SetPoint("LEFT",10,0); f.name:SetWidth(WIDTH-78); f.name:SetJustifyH("LEFT")
@@ -75,7 +78,7 @@ function Timer:Bar()
     f.name:SetTextColor(1,1,1); f.name:SetShadowColor(0,0,0,1); f.name:SetShadowOffset(1,-1)
     f.time=FT:Label(f,"",15,true); f.time:SetPoint("RIGHT",-10,0); f.time:SetJustifyH("RIGHT")
     f.time:SetTextColor(1,1,1); f.time:SetShadowColor(0,0,0,1); f.time:SetShadowOffset(1,-1)
-    f:SetMovable(true); f:RegisterForDrag("LeftButton"); f:EnableMouse(false)
+    f:SetMovable(true); f:RegisterForDrag("LeftButton"); FT:LockedMouse(f,true,"QueueTimer")
     f:SetScript("OnDragStart",function() if self.moving then f:StartMoving() end end)
     f:SetScript("OnDragStop",function()
         f:StopMovingOrSizing()
@@ -201,14 +204,30 @@ end
 function Timer:SetMoving(on)
     self.moving=on and true or false
     local f=self:Bar()
-    f:EnableMouse(self.moving)
+    FT:LockedMouse(f,not self.moving)
     self.sampleStart=nil
     if self.moving then self:Position(); f:Show() else self:Position(); self:Check(); if not self.expires and not self.previewUntil then f:Hide() end end
     self:Refresh()
 end
-function Timer:Preview()
-    self.previewUntil=(GetTime and GetTime() or 0)+8; self.sampleStart=nil
-    self:Position(); self:Bar():Show()
+-- The Preview switch: an example timer (running fast) until switched off.
+function Timer:SetPreview(on)
+    self.previewOn=on and true or nil
+    if on then
+        self.previewUntil=math.huge; self.sampleStart=nil
+        self:Position(); self:Bar():Show()
+    elseif self.previewUntil then
+        self.previewUntil=nil; self.sampleStart=nil
+        self:Check(); if not self.expires and not self.moving and self.bar then self.bar:Hide() end
+    end
+    self:Refresh()
+end
+function Timer:Preview() self:SetPreview(true) end
+-- A setting changed while the timer is hidden: show it a few seconds.
+function Timer:Peek()
+    local f=self:Bar()
+    if f:IsShown() or self.previewOn then return end
+    self.previewUntil=(GetTime and GetTime() or 0)+4; self.sampleStart=nil
+    self:Position(); f:Show()
 end
 function Timer:ResetPosition()
     local s=self:Settings(); s.x,s.y=nil,nil
@@ -222,35 +241,39 @@ function Timer:Refresh()
     self.sizeLabel:SetText(string.format("Size: %d%%",math.floor(s.size*100+.5)))
     self.settingSize=true; self.sizeSlider:SetValue(s.size); self.settingSize=false
     self.move.label:SetText(self.moving and "Lock position" or "Move timer"); FT:SetSelected(self.move,self.moving)
-    self.place:SetText(s.x and "You placed the timer yourself." or "The timer is in the middle of the screen, and steps below the game's enter window if they would overlap.")
+    self.previewButton.label:SetText("Preview: "..(self.previewOn and "On" or "Off"))
+    self.place:SetText(s.x and "You placed the timer yourself." or "Middle of the screen, below the game's enter window.")
 end
 function Timer:Open()
     if not self.frame then
         local frame=FT:Window("ForeverToolsQueueTimer","Battleground timer",540,300); self.frame=frame
-        FT:PageInfo(frame,"Battleground timer","When a battleground queue pops, the game gives you a short time to enter but does not show how much is left. This bar counts it down: the battleground's name, the time left, and a bar that shrinks from green to red. The last ten seconds blink.\n\nThe time comes from the game, so it is exact. It never takes mouse clicks while you play.")
+        FT:PageInfo(frame,"Battleground timer","When a battleground queue pops, this bar counts down the time you have to enter. It goes from green to red and blinks for the last ten seconds.")
         local hint=FT:Label(frame,"Counts down the time you have to enter when a battleground queue pops.",12); hint:SetPoint("TOPLEFT",24,-64); hint:SetWidth(492); hint:SetTextColor(.66,.59,.48)
         self.toggle=FT:AccentButton(frame,"",492,34,"INV_Misc_PocketWatch_01"); self.toggle:SetPoint("TOPLEFT",24,-90)
         self.toggle:SetScript("OnClick",function() local s=self:Settings(); s.enabled=not s.enabled; self:Apply() end)
-        FT:Tooltip(self.toggle,"Battleground timer","Show a countdown of the time you have left to enter when a battleground queue pops.")
+        FT:Tooltip(self.toggle,"Battleground timer","Count down the time to enter when a battleground queue pops.")
         self.sizeLabel=FT:Label(frame,"",14); self.sizeLabel:SetPoint("TOPLEFT",24,-142)
         self.sizeSlider=CreateFrame("Slider",nil,frame,"OptionsSliderTemplate"); self.sizeSlider:SetSize(320,18); self.sizeSlider:SetPoint("TOPLEFT",196,-140)
         self.sizeSlider:SetMinMaxValues(.7,1.5); self.sizeSlider:SetValueStep(.05); self.sizeSlider:SetObeyStepOnDrag(true)
         self.sizeSlider:SetScript("OnValueChanged",function(_,v) if self.settingSize then return end self:Settings().size=math.floor(v*20+.5)/20; self:Position(); self:Refresh() end)
-        FT:Tooltip(self.sizeSlider,"Size","Make the timer smaller or bigger (70% to 150%).")
-        local preview=FT:QuietButton(frame,"Preview",240,32,"INV_Misc_PocketWatch_01"); preview:SetPoint("TOPLEFT",24,-180)
-        preview:SetScript("OnClick",function() self:Preview() end)
-        FT:Tooltip(preview,"Preview","Show an example timer for a few seconds, running fast so you see the colors change.")
+        FT:Tooltip(self.sizeSlider,"Size","Timer size (70% to 150%).")
+        local preview=FT:QuietButton(frame,"Preview: Off",240,32,"INV_Misc_PocketWatch_01"); preview:SetPoint("TOPLEFT",24,-180)
+        preview:SetScript("OnClick",function() self:SetPreview(not self.previewOn) end)
+        FT:Tooltip(preview,"Preview","Show an example timer until switched off.")
+        self.previewButton=preview
         self.move=FT:QuietButton(frame,"",240,32,"move"); self.move:SetPoint("TOPLEFT",276,-180)
         self.move:SetScript("OnClick",function() self:SetMoving(not self.moving) end)
-        FT:Tooltip(self.move,"Move timer","Click to unlock, drag the timer where you want it, then click again to lock it.")
+        FT:Tooltip(self.move,"Move timer","Unlock, drag the timer, then click again to lock.")
         local reset=FT:QuietButton(frame,"Reset position",240,32,"reset"); reset:SetPoint("TOPLEFT",24,-220)
         reset:SetScript("OnClick",function() self:ResetPosition(); self:Refresh() end)
-        FT:Tooltip(reset,"Reset position","Put the timer back in the middle of the screen, clear of the game's enter window.")
+        FT:Tooltip(reset,"Reset position","Put the timer back in the middle of the screen.")
         self.place=FT:Label(frame,"",12); self.place:SetPoint("TOPLEFT",24,-262); self.place:SetWidth(492); self.place:SetTextColor(.66,.59,.48)
         if self.place.SetWordWrap then self.place:SetWordWrap(true) end
+        FT:Sections(frame,{{"Look",self.sizeLabel},{"Position",preview}})
         -- Closing the page ends moving and the preview.
         frame:HookScript("OnHide",function()
             if self.moving then self:SetMoving(false) end
+            self.previewOn=nil
             if self.previewUntil then
                 self.previewUntil=nil; self.sampleStart=nil
                 self:Check(); if not self.expires and self.bar then self.bar:Hide() end

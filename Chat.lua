@@ -1,6 +1,6 @@
 local _,FT=...
 local Chat={tracked={}}
-local options={{"social","Social button"},{"tabs","Chat tabs"},{"icons","Side buttons"},{"input","Input box border"}}
+local options={{"social","Social button"},{"tabs","Chat tabs"},{"icons","Side buttons"},{"input","Input box border"},{"copy","Copy button"}}
 -- Values the game hides in a fight are treated as "not known".
 local function hidden(...)
     if not issecretvalue then return false end
@@ -27,7 +27,116 @@ local function overBox(object,padding)
 end
 function Chat:Settings()
     if type(FT.db.chat)~="table" then FT.db.chat={} end
-    return FT.db.chat
+    local s=FT.db.chat
+    -- The copy button shows while the mouse is over the chat.
+    if s.copy~="show" and s.copy~="hide" and s.copy~="hover" then s.copy="hover" end
+    return s
+end
+-- Copy chat: a window with the chat frame's text, to select and copy
+-- (Ctrl+C). Links, icons and colors become plain text. Lines the game hides
+-- in a fight are marked as hidden.
+-- colors: keep the chat's colors (class-colored names and the like). The
+-- box shows them; copied text then carries the game's color codes, so
+-- "Colors: Off" gives clean text to paste elsewhere.
+local function plainText(text,colors)
+    text=text:gsub("|T.-|t",""):gsub("|A.-|a","")
+    if not colors then text=text:gsub("|c%x%x%x%x%x%x%x%x",""):gsub("|cn.-:",""):gsub("|r","") end
+    text=text:gsub("|H.-|h(.-)|h","%1"):gsub("|K.-|k","?"):gsub("|n","\n")
+    return text
+end
+function Chat:CopyText(frame,colors)
+    frame=frame or SELECTED_CHAT_FRAME or ChatFrame1
+    local lines={}
+    local count=frame and frame.GetNumMessages and frame:GetNumMessages() or 0
+    if hidden(count) or type(count)~="number" then count=0 end
+    -- Each line's time: the chat keeps when a line arrived (game uptime);
+    -- turned into the clock time. Time: Off, 21:17 or 21:17:05.
+    local mode=self:CopyTime()
+    local seconds=mode=="hms"
+    local buffer=frame and frame.historyBuffer
+    local nowClock,nowUp=time and time() or 0,GetTime and GetTime() or 0
+    local function stamp(i)
+        if mode=="off" or not buffer or not buffer.GetEntryAtIndex or not buffer.GetNumElements or not date then return "" end
+        local ok,entry=pcall(function() return buffer:GetEntryAtIndex(buffer:GetNumElements()-i+1) end)
+        local at=ok and type(entry)=="table" and entry.timestamp
+        if type(at)~="number" or hidden(at) then return "" end
+        return "|cff9d9d9d["..date(seconds and "%H:%M:%S" or "%H:%M",math.floor(nowClock-(nowUp-at)+.5)).."]|r "
+    end
+    for i=1,count do
+        local ok,text=pcall(frame.GetMessageInfo,frame,i)
+        if ok and type(text)=="string" and not hidden(text) then lines[#lines+1]=stamp(i)..plainText(text,colors)
+        elseif ok and text~=nil then lines[#lines+1]=stamp(i).."(hidden by the game in this fight)" end
+    end
+    return table.concat(lines,"\n")
+end
+-- Time in front of each copied line: "off", "hm" (21:17) or "hms" (21:17:05).
+function Chat:CopyTime()
+    local s=self:Settings()
+    if s.copyTime~="off" and s.copyTime~="hm" and s.copyTime~="hms" then s.copyTime=s.copySeconds==false and "hm" or "hms" end
+    return s.copyTime
+end
+function Chat:OpenCopy(frame)
+    local w=self.copyWindow
+    if not w then
+        w=CreateFrame("Frame","ForeverToolsChatCopy",UIParent); w:SetSize(620,420); w:SetPoint("CENTER")
+        w:SetFrameStrata("DIALOG"); w:SetClampedToScreen(true); w:EnableMouse(true); w:SetMovable(true); w:RegisterForDrag("LeftButton")
+        w:SetScript("OnDragStart",w.StartMoving); w:SetScript("OnDragStop",w.StopMovingOrSizing)
+        FT:Panel(w)
+        w.title=FT:Label(w,"Copy chat",15,true); w.title:SetPoint("TOPLEFT",16,-12)
+        w.hint=FT:Label(w,"Select with the mouse, then Ctrl+C. Esc closes.",12); w.hint:SetPoint("TOPLEFT",16,-34); w.hint:SetTextColor(.66,.59,.48)
+        local close=CreateFrame("Button",nil,w,"UIPanelCloseButton"); close:SetPoint("TOPRIGHT",-4,-4)
+        w.seconds=FT:QuietButton(w,"",150,24,"INV_Misc_PocketWatch_01"); w.seconds:SetPoint("TOPRIGHT",-40,-8); w.seconds.label:SetFont(FT.bodyFont,12,"")
+        w.seconds:SetScript("OnClick",function() local s=Chat:Settings(); s.copyTime=({off="hm",hm="hms",hms="off"})[Chat:CopyTime()]; Chat:OpenCopy(w.frame) end)
+        FT:Tooltip(w.seconds,"Time","Show the time each line arrived.")
+        local scroll=CreateFrame("ScrollFrame","ForeverToolsChatCopyScroll",w,"UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT",16,-58); scroll:SetPoint("BOTTOMRIGHT",-34,14)
+        local box=CreateFrame("EditBox",nil,scroll); box:SetMultiLine(true); box:SetAutoFocus(false); box:SetWidth(560)
+        box:SetFontObject(ChatFontNormal or GameFontHighlight)
+        box:SetScript("OnEscapePressed",function() w:Hide() end)
+        -- Read only: typing puts the chat text back.
+        box:SetScript("OnTextChanged",function(owner,user) if user and w.text then owner:SetText(w.text) end end)
+        scroll:SetScrollChild(box)
+        w.scroll,w.box=scroll,box
+        -- Hold the mouse to select and drag past the top or bottom: the text
+        -- scrolls, faster the further out the mouse is.
+        box:HookScript("OnMouseDown",function() w.selecting=true end)
+        box:HookScript("OnMouseUp",function() w.selecting=false end)
+        w:SetScript("OnUpdate",function(_,dt)
+            if not w.selecting then return end
+            if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then w.selecting=false; return end
+            local _,y=GetCursorPosition(); local scale=scroll:GetEffectiveScale(); y=y/scale
+            local top,bottom=scroll:GetTop(),scroll:GetBottom(); if not top or not bottom then return end
+            local step=0
+            if y>top then step=-(y-top) elseif y<bottom then step=bottom-y end
+            if step~=0 then
+                local range=scroll:GetVerticalScrollRange() or 0
+                local speed=math.max(60,math.abs(step)*12)*dt*(step<0 and -1 or 1)
+                scroll:SetVerticalScroll(math.max(0,math.min(range,scroll:GetVerticalScroll()+speed)))
+            end
+        end)
+        if UISpecialFrames then table.insert(UISpecialFrames,"ForeverToolsChatCopy") end
+        self.copyWindow=w
+    end
+    w.frame=frame
+    local mode=self:CopyTime()
+    w.seconds.label:SetText("Time: "..({off="Off",hm="21:17",hms="21:17:05"})[mode]); FT:SetSelected(w.seconds,mode~="off")
+    -- The chat's own colors (class-colored names and the like).
+    w.text=self:CopyText(frame,true)
+    w.box:SetText(w.text); w.box:ClearFocus()
+    w:Show()
+    -- Start at the newest line, like the chat.
+    C_Timer.After(0,function() if w.scroll.GetVerticalScrollRange then w.scroll:SetVerticalScroll(w.scroll:GetVerticalScrollRange()) end end)
+end
+-- The small copy button in each chat window's top right corner.
+function Chat:CopyButton(frame,i)
+    if not frame or frame.ftCopy then return frame and frame.ftCopy end
+    local b=CreateFrame("Button",nil,frame); b:SetSize(20,20); b:SetPoint("TOPRIGHT",frame,"TOPRIGHT",-2,-2); b:SetFrameLevel(frame:GetFrameLevel()+5)
+    b.icon=b:CreateTexture(nil,"ARTWORK"); b.icon:SetAllPoints(); b.icon:SetTexture("Interface\\Icons\\INV_Misc_Note_02"); FT:RoundIcon(b.icon)
+    local hi=b:CreateTexture(nil,"HIGHLIGHT"); hi:SetAllPoints(); hi:SetColorTexture(1,1,1,.15)
+    b:SetScript("OnClick",function() Chat:OpenCopy(frame) end)
+    FT:Tooltip(b,"Copy chat","Copy this chat window's text. Also /ft copy.")
+    frame.ftCopy=b
+    return b
 end
 function Chat:Track(object,key,owner,cluster)
     if not object or not object.SetAlpha then return end
@@ -75,6 +184,7 @@ local function paintOne(self,s,object,rec,tabsOver)
     local hover=false
     if mode=="hover" then
         if rec.key=="tabs" then hover=tabsOver
+        elseif rec.key=="copy" then hover=overBox(rec.owner,4) or mouseOver(object)
         elseif rec.key=="icons" or rec.key=="social" then
             local cache,cluster=self.groupHover,rec.cluster
             if not cluster then hover=overBox(object,8)
@@ -138,6 +248,7 @@ function Chat:Apply()
         self:Track(_G[name.."ButtonFrame"],"icons",frame,"side"..i)
         self:Track(_G[name.."ScrollBar"],"icons",frame)
         if frame then self:Track(frame.ScrollBar,"icons",frame); self:Track(frame.ScrollToBottomButton,"icons",frame) end
+        if frame then self:Track(self:CopyButton(frame,i),"copy",frame) end
         local box=_G[name.."EditBox"]
         -- Only artwork is hidden. The edit box, focus, typed text and Enter work normally.
         for _,suffix in ipairs({"Left","Mid","Right","FocusLeft","FocusMid","FocusRight"}) do self:Track(_G[name.."EditBox"..suffix],"input",box) end
@@ -148,14 +259,19 @@ function Chat:Apply()
             box:HookScript("OnEditFocusLost",function() if FT.dbReady then Chat:Paint() end end)
         end
     end
-    self:Paint(); self:Refresh()
+    self:Paint(); self:ApplyThanks(); self:Refresh()
 end
 function Chat:Refresh()
     if not self.buttons then return end
     for _,entry in ipairs(options) do
         local mode=self:Settings()[entry[1]] or "show"
-        local icons={show="Spell_Holy_MagicalSentry",hide="Ability_Stealth",hover="Ability_Hunter_SniperShot"}
-        self.buttons[entry[1]].label:SetText(entry[2]..": |TInterface\\Icons\\"..icons[mode]..":18:18|t "..({show="Shown",hide="Hidden",hover="Mouseover"})[mode])
+        self.buttons[entry[1]].label:SetText(entry[2]..": "..({show="Shown",hide="Hidden",hover="Mouseover"})[mode])
+    end
+    if self.thanks then
+        local th=self:Thanks()
+        self.thanks.label:SetText("Thank for buffs: "..(th.enabled and "On" or "Off")); FT:SetSelected(self.thanks,th.enabled)
+        self.thanksGroup.label:SetText("Also my group: "..(th.group and "On" or "Off")); FT:SetSelected(self.thanksGroup,th.group)
+        self.thanksGroup:SetAlpha(th.enabled and 1 or .5)
     end
     if self.links then
         local on=FT.modules.System:Settings().chatLinks==true
@@ -177,15 +293,12 @@ function Chat:Open()
         -- Two columns: what shows around the chat on the left, its text on the right.
         local buttonsHead=FT:Label(self.frame,"Buttons and tabs",15,true);buttonsHead:SetPoint("TOPLEFT",24,-66);FT:SectionHeading(buttonsHead,"INV_Misc_Note_03",200)
         FT:AppearanceBack(self.frame)
-        FT:PageInfo(self.frame,"Chat","Choose what shows around the chat: click a button to switch between Shown, Hidden and Mouseover (shows when you hover it). Also the chat font and clickable web links.")
+        FT:PageInfo(self.frame,"Chat","What shows around the chat, the chat font, and clickable links.")
         for i,entry in ipairs(options) do
             local key=entry[1]; local b=FT:QuietButton(self.frame,"",350,32,"chat")
             b:SetPoint("TOPLEFT",24,-94-(i-1)*40)
-            b:SetScript("OnClick",function()
-                self:Settings()[key]=({show="hide",hide="hover",hover="show"})[self:Settings()[key] or "show"]
-                self:Apply()
-            end)
-            FT:Tooltip(b,entry[2],"Click to switch between Shown, Hidden and Mouseover (shows up when you hover it).")
+            FT:MakeChoice(b,{{"show","Shown"},{"hide","Hidden"},{"hover","Mouseover","Shows while the mouse is over the chat."}},function() return self:Settings()[key] or "show" end,function(v) self:Settings()[key]=v; self:Apply() end)
+            FT:Tooltip(b,entry[2],key=="copy" and "A button to copy the chat's text." or "Shown, Hidden, or on mouseover.")
             self.buttons[key]=b
         end
         local heading=FT:Label(self.frame,"Chat text",15,true);heading:SetPoint("TOPLEFT",386,-66);FT:SectionHeading(heading,"INV_Inscription_Tradeskill01",200)
@@ -209,22 +322,101 @@ function Chat:Open()
         end
         self.outline=FT:QuietButton(self.frame,"",350,32,"fonts");self.outline:SetPoint("TOPLEFT",386,-174)
         local choices={"original","THIN","OUTLINE","THICKOUTLINE"}
-        self.outline:SetScript("OnClick",function()
-            local p=fonts:Settings("chat")
-            local current=(p.outline=="" or p.outline==nil) and "original" or p.outline
-            for i,value in ipairs(choices) do if value==current then p.outline=choices[i%#choices+1];break end end
-            p.enabled=true;fonts:ApplyArea("chat");self:Refresh()
-        end)
-        FT:Tooltip(self.fontChoice,"Chat font","The font for chat text. The same setting as the Chat area under Fonts.")
-        FT:Tooltip(self.fontSize,"Chat font size","Use + and - to change the size. Click the number to go back to Blizzard's size.")
-        FT:Tooltip(self.outline,"Chat outline","Click to switch: Default (the game's soft shadow), Thin outline (a light outline without the shadow), Outline or Thick outline.")
-        local linksHead=FT:Label(self.frame,"Links",15,true);linksHead:SetPoint("TOPLEFT",24,-270);FT:SectionHeading(linksHead,"INV_Misc_Note_02",200)
-        self.links=FT:QuietButton(self.frame,"",350,32,"chat");self.links:SetPoint("TOPLEFT",24,-298)
+        local names={original="Default",THIN="Thin outline",OUTLINE="Outline",THICKOUTLINE="Thick outline"}
+        FT:MakeChoice(self.outline,function() local out={}; for _,v in ipairs(choices) do out[#out+1]={v,names[v] or v} end; return out end,
+            function() local p=fonts:Settings("chat"); return (p.outline=="" or p.outline==nil) and "original" or p.outline end,
+            function(v) local p=fonts:Settings("chat"); p.outline=v; p.enabled=true; fonts:ApplyArea("chat"); self:Refresh() end)
+        FT:Tooltip(self.fontChoice,"Chat font","Chat font (same as Fonts > Chat).")
+        FT:Tooltip(self.fontSize,"Chat font size","+ and - change the size. Click the number for the game's size.")
+        FT:Tooltip(self.outline,"Chat outline","Shadow or outline on chat text.")
+        local linksHead=FT:Label(self.frame,"Links",15,true);linksHead:SetPoint("TOPLEFT",24,-310);FT:SectionHeading(linksHead,"INV_Misc_Note_02",200)
+        self.links=FT:QuietButton(self.frame,"",350,32,"chat");self.links:SetPoint("TOPLEFT",24,-338)
         self.links:SetScript("OnClick",function() local s=FT.modules.System:Settings();s.chatLinks=not s.chatLinks;self:Refresh() end)
-        FT:Tooltip(self.links,"Clickable links","Web addresses in chat become clickable. Click one to get a box you can copy it from. Works on new messages.")
+        local thanksHead=FT:Label(self.frame,"Thanks",15,true);thanksHead:SetPoint("TOPLEFT",24,-390);FT:SectionHeading(thanksHead,"Spell_Holy_PrayerOfHealing",200)
+        self.thanks=FT:QuietButton(self.frame,"",350,32,"Spell_Holy_PowerWordShield");self.thanks:SetPoint("TOPLEFT",24,-418)
+        self.thanks:SetScript("OnClick",function() local th=self:Thanks(); th.enabled=not th.enabled; self:ApplyThanks(); self:Refresh() end)
+        FT:Tooltip(self.thanks,"Thank for buffs","A /thank to players who buff you in the open world, after a short pause. Once per player every few minutes. Never in fights, dungeons or PvP.")
+        self.thanksGroup=FT:QuietButton(self.frame,"",350,32,"Spell_Holy_PrayerOfHealing");self.thanksGroup:SetPoint("TOPLEFT",24,-458)
+        self.thanksGroup:SetScript("OnClick",function() local th=self:Thanks(); th.group=not th.group; self:Refresh() end)
+        FT:Tooltip(self.thanksGroup,"Also my group","Also thank group members.")
+        FT:Tooltip(self.links,"Clickable links","Web addresses in chat become clickable, to copy.")
     end
     self:Apply(); self.frame:Show()
 end
+-- Thank for buffs (Chat > Thanks, off by default). When another player
+-- buffs you in the open world, you /thank them after a short, slightly
+-- random pause (1 to 2.5 seconds), like a person would. Once per player
+-- every few minutes; never in a fight, in dungeons, raids, battlegrounds
+-- or arenas, and never for buffs from yourself or your pet. Group members
+-- only with "Also my group" on. It is the game's own /thank emote.
+local THANK_AGAIN=300
+function Chat:Thanks()
+    if type(FT.db.thanks)~="table" then FT.db.thanks={} end
+    local s=FT.db.thanks
+    if type(s.enabled)~="boolean" then s.enabled=false end
+    if type(s.group)~="boolean" then s.group=false end
+    return s
+end
+local thanked={}
+local function inWorld()
+    if not IsInInstance then return true end
+    local ok,inside=pcall(IsInInstance)
+    return ok and not hidden(inside) and not inside
+end
+-- The game only names who cast a buff when that player has a unit you can
+-- point at (your target, mouseover, a group member, a nameplate). A buff
+-- from a player the game doesn't name gets a general /thank (no name) instead,
+-- at most once a minute.
+local lastGeneral=0
+-- The game's emote call (DoEmote is only kept for old addons on some clients).
+local function emote(token,name)
+    if C_ChatInfo and C_ChatInfo.PerformEmote then return pcall(C_ChatInfo.PerformEmote,token,name) end
+    if DoEmote then return pcall(DoEmote,token,name) end
+end
+function Chat:ThankFor(info)
+    local s=self:Thanks()
+    if not s.enabled or InCombatLockdown() or not inWorld() then return end
+    if type(info)~="table" or hidden(info) or hidden(info.addedAuras) or type(info.addedAuras)~="table" then return end
+    for _,aura in ipairs(info.addedAuras) do
+        if type(aura)=="table" and not hidden(aura) and not hidden(aura.isHelpful) and aura.isHelpful then
+            local source=aura.sourceUnit
+            local fromPlayer=aura.isFromPlayerOrPlayerPet
+            if not hidden(source) and type(source)=="string" then
+                if UnitIsPlayer(source) and not UnitIsUnit(source,"player") and not UnitIsUnit(source,"pet") then
+                    local friend=UnitIsFriend and UnitIsFriend("player",source)
+                    local grouped=(UnitInParty and UnitInParty(source)) or (UnitInRaid and UnitInRaid(source))
+                    local name=UnitName(source)
+                    if not hidden(friend) and friend and not hidden(grouped) and (s.group or not grouped) and not hidden(name) and type(name)=="string" then
+                        local now=GetTime()
+                        if not thanked[name] or now-thanked[name]>THANK_AGAIN then
+                            thanked[name]=now
+                            C_Timer.After(1+math.random()*1.5,function()
+                                if InCombatLockdown() or not self:Thanks().enabled then return end
+                                emote("THANK",name)
+                            end)
+                        end
+                    end
+                end
+            elseif source==nil and not hidden(fromPlayer) and fromPlayer==true and not hidden(aura.sourceUnit) then
+                -- Cast by a player the game doesn't name (not your own: those carry "player").
+                local now=GetTime()
+                if now-lastGeneral>60 then
+                    lastGeneral=now
+                    C_Timer.After(1+math.random()*1.5,function()
+                        if InCombatLockdown() or not self:Thanks().enabled then return end
+                        -- No target name: aimed at your target if you have one, so only then.
+                        if not (UnitExists and UnitExists("target")) then emote("THANK",nil) end
+                    end)
+                end
+            end
+        end
+    end
+end
+local thankEvents=CreateFrame("Frame")
+function Chat:ApplyThanks()
+    if self:Thanks().enabled then thankEvents:RegisterUnitEvent("UNIT_AURA","player") else thankEvents:UnregisterEvent("UNIT_AURA") end
+end
+thankEvents:SetScript("OnEvent",function(_,_,unit,info) if FT.dbReady and unit=="player" then Chat:ThankFor(info) end end)
 FT:RegisterModule("Chat",Chat)
 local events=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_LOGIN","UPDATE_CHAT_WINDOWS","PLAYER_ENTERING_WORLD","PLAYER_REGEN_ENABLED","ADDON_LOADED"}) do events:RegisterEvent(event) end

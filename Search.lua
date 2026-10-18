@@ -5,7 +5,7 @@ local Search={}
 local function profiles() FT:OpenModule("Profiles") end
 local index={
     {"Macros","macro builder templates ranks mouseover combo","MacroForge","macros"},
-    {"Buff reminders","self buff reminder missing buffs weapon enchant","BuffReminder","buffs"},
+    {"Buff reminders","self buff reminder missing buffs weapon enchant rage mana energy power shout enough","BuffReminder","buffs"},
     {"Group buff reminders","group party raid dungeon buffs missing","BuffReminder","party"},
     {"Where reminders show","reminder show in open world city cities inn dungeon raid pvp battleground arena condition","BuffReminder","buffs"},
     {"Low-rank alerts","rank downrank low rank buffs trainer","BuffReminder","buffs"},
@@ -17,8 +17,9 @@ local index={
     {"Cooldown numbers","cooldown numbers color grey font","FontManager","fonts"},
     {"Unit frames","unit frames unitframe class colors health bar player target focus","UnitColors","character"},
     {"Dispel glow","dispel debuff cleanse purify decurse remove curse poison disease magic glow outline highlight color colour party","DispelGlow","Spell_Holy_DispelMagic"},
+    {"Game resource bars","personal resources resource display bars health energy rage mana combo points order move swap text percent number duplicate","PersonalResource","Ability_Rogue_SliceDice"},
     {"Druid mana bar","druid mana bar bear cat form shapeshift energy rage third bar player frame","DruidMana","Ability_Racial_BearForm"},
-    {"Skins","dark mode darkmode skin border outline action bars buttons buffs debuffs bags micro menu minimap gryphons totem stance xp reputation player target focus frame cast bar swing timer weapon","IconStyles","skins"},
+    {"Skins","dark mode darkmode skin border outline action bars buttons buffs debuffs bags micro menu minimap gryphons totem stance xp reputation player target focus frame cast bar swing timer weapon tooltip tooltips dialog npc gossip quest merchant vendor trade mail trainer flight loot popup parchment pvp trinket nearby enemies enemy alert battleground timer unit frames groups","IconStyles","skins"},
     {"Chat","chat social tabs side buttons input box","Chat","chat"},
     {"Chat font","chat font size outline","Chat","chat"},
     {"Clickable chat links","url link links copy web address","Chat","chat"},
@@ -37,12 +38,17 @@ local index={
     {"Spell binds","spell binds bind key keys role interrupt taunt dispel bindpad hidden bar","SpellBinds","INV_Misc_Key_13"},
     {"Totems","totem totems shaman range minimap circle reach left behind forgotten out of range warning pull","Totems","Spell_Nature_StoneSkinTotem"},
     {"Move elements","move elements movers unlock drag frames position anchors","Movers","move"},
+    {"Macro guide","macro guide help conditions mouseover focus castsequence modifier shift stance stopcasting startattack examples syntax how to write macros","MacroGuide","INV_Misc_Book_03"},
+    {"Move game windows","moveall move anything windows drag character frame spellbook talents calendar quest log social bank vendor mailbox trainer professions reset position blizzard frames","MoveWindows","INV_Misc_Map_01"},
     {"First-time setup","setup wizard preset welcome start","SystemGeneral","INV_Misc_Book_09"},
     {"Reset all settings","reset defaults restore clear","SystemGeneral","reset"},
     {"ForeverTools minimap button","minimap icon button","SystemMinimap","map"},
     {"Minimap coordinates","coordinates coords position","SystemMinimap","map"},
     {"Group minimap buttons","minimap icons collect gather addon buttons menu horizontal vertical row column","SystemMinimap","map"},
     {"Set role when joining a group","role tank healer damage group auto","SystemGameplay","Ability_Warrior_DefensiveStance"},
+    {"Interrupt bar","interrupt kick pummel shield bash earth shock counterspell hammer of justice silence spell lock bash cooldown party raid group tracker","Interrupts","Ability_Kick"},
+    {"Thank for buffs","thank thanks buff emote auto automatic stranger","Chat","Spell_Holy_PowerWordShield"},
+    {"Hide error messages","error errors red text spam out of range not enough rage energy mana moving interrupted ui errors frame","SystemErrors","Ability_Rogue_Disguise"},
     {"Move loot rolls","loot roll need greed position move","SystemQuests","move"},
     {"Flight timer","flight taxi flying countdown timer","FlightTimer","Ability_Mount_Wyvern_01"},
     {"Leveling stats","xp experience per hour time to level kills leveling rested background","Leveling","Spell_ChargePositive"},
@@ -58,7 +64,7 @@ local index={
     {"Export keybinds","keybind keybinds bindings keys export import profile action bar","\001profiles","keybind"},
     {"Rename profile","rename profile name change","\001profiles","profiles"},
     {"Icons for unlearned spells","icon unlearned spell level 1 bars question mark macro","MacroSettings","macros"},
-    {"Quest objectives","quest objectives tracker collapsed closed open hide hidden login reload","SystemQuests","INV_Misc_Note_01"},
+    {"Quest tracker at login","quest objectives tracker collapsed closed open hide hidden login reload","SystemQuests","INV_Misc_Note_01"},
     {"Death glow","death glow ghost dead grey gray screen effect ffxdeath bloom","SystemDeath","Spell_Holy_Resurrection"},
     {"Buff notice look","buff reminder style look icon only icon text bar size color outline transparency pulse own position weakaura","BuffReminder","buffs"},
     {"Food buff reminder","food well fed eat buff missing xp experience kills leveling reminder","BuffReminder","buffs"},
@@ -82,6 +88,9 @@ local index={
     {"Enemy alerts","stealth rogue druid prowl vanish shadowmeld invisible enemy alert warning pvp spy gank","EnemyAlerts","Ability_Stealth"},
     {"Marked players","mark marked kos kill on sight enemy player grudge rival pvp alert","EnemyMarks","Ability_Hunter_SniperShot"},
     {"Nearby enemies","nearby enemies enemy players list icons pvp radar","EnemyNearby","INV_Misc_Spyglass_02"},
+    {"Auto release","auto release spirit repop death dead battleground bg graveyard pvp","AutoRelease","Spell_Holy_Resurrection"},
+    {"Trinket menu","trinket trinkets swap equip menu cooldown pvp medallion insignia use","Trinkets","INV_Misc_PocketWatch_01"},
+    {"Diminishing returns","dr diminishing returns crowd control cc stun fear root silence immune pvp arena","Diminish","Spell_Frost_FrostNova"},
     {"Battleground timer","battleground bg queue pop enter timer countdown time left invitation pvp","QueueTimer","INV_Misc_PocketWatch_01"},
     {"Smart interact key","interact target key restedxp rxp quest item keybind one key","SmartKey","INV_Misc_Key_10"},
     {"Cooldown reminders","cooldown racial trinket reminder use elite rare pull blood fury berserking","CooldownReminder","buffs"},
@@ -98,11 +107,18 @@ function Search:Results(query)
     if query=="" then return {} end
     local starts,contains={},{}
     for i,entry in ipairs(index) do
+      -- Another class's page never shows (Totems on a warrior).
+      if FT:ForMyClass(entry[3]) then
         local label=entry[1]:lower()
-        local icon="Interface\\Icons\\"..(FT.icons[entry[4]] or entry[4])
+        -- The same icon as the page has in its group's list.
+        local hub,at=FT:HubOf(entry[3])
+        local pageIcon=hub and hub.pages[at] and hub.pages[at][3]
+        if type(pageIcon)=="function" then pageIcon=pageIcon() end
+        local icon=FT:IconPath(pageIcon or entry[4])
         local item={value=i,label=entry[1],icon=icon}
         if label:sub(1,#query)==query then starts[#starts+1]=item
         elseif label:find(query,1,true) or entry[2]:find(query,1,true) then contains[#contains+1]=item end
+      end
     end
     for _,item in ipairs(contains) do starts[#starts+1]=item end
     return starts
