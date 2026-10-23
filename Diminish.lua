@@ -26,7 +26,7 @@ local FALLBACK={[0]="Spell_Frost_FrostNova",[1]="Spell_Nature_Reincarnation",[2]
 local NAMES={[0]="Roots",[1]="Taunts",[2]="Stuns",[3]="Knockbacks",[4]="Incapacitates",[5]="Fears and disorients",[6]="Silences",[7]="Disarms"}
 local UNITS={target="TargetFrame",focus="FocusFrame",player="PlayerFrame"}
 local SIDES={right=true,left=true,above=true,below=true,free=true}
-local SIDE_NAMES={right="Right of the frame",left="Left of the frame",above="Above the frame",below="Below the frame",free="Where you dragged it"}
+local SIDE_NAMES={right="Right of the frame",left="Left of the frame",above="Above the frame",below="Below the frame",free="Custom"}
 local UNIT_NAMES={target="Target",focus="Focus",player="Yourself"}
 function DR:Settings()
     if type(FT.db.diminish)~="table" then FT.db.diminish={} end
@@ -523,7 +523,11 @@ function DR:Diagnose()
     for _,name in ipairs(names) do parts[#parts+1]=name.."="..tostring(getCVar(name)) end
     parts[#parts+1]="updates "..self.seen..", hidden "..self.hidden
     parts[#parts+1]="tracking "..(self.listening and "on" or "off")..", last: "..(self.last or "nothing yet")
-    print("|cffd9a54bForeverTools|r "..table.concat(parts,", "))
+    local st=self:Settings()
+    parts[#parts+1]="shown on: target "..(st.target and "on" or "off")..", focus "..(st.focus and "on" or "off")..", yourself "..(st.self and "on" or "off")
+    local mine=self.states[self:Key("player")]; local n=0; if mine then for _ in pairs(mine) do n=n+1 end end
+    parts[#parts+1]="on you now: "..n.." kind(s)"
+    print("ForeverTools "..table.concat(parts,"\n  "))
 end
 function DR:Refresh()
     if not self.frame then return end
@@ -537,8 +541,7 @@ function DR:Refresh()
     self.sizeLabel:SetText(string.format("Icon size: %d%%",math.floor(s.size*100+.5)))
     self.fontLabel:SetText(string.format("Timer size: %d",s.fontSize))
     self.settingSize=true; self.sizeSlider:SetValue(s.size); self.fontSlider:SetValue(s.fontSize); self.settingSize=false
-    self.move.label:SetText(self.moving and "Lock icons" or "Move icons"); FT:SetSelected(self.move,self.moving)
-    self.previewButton.label:SetText("Preview: "..(self.previewOn and "On" or "Off")); FT:SetSelected(self.previewButton,self.previewOn)
+    FT:RefreshPreview(self.frame)
     self.status:SetText(self:StatusText())
     if self:Supported() then self.status:SetTextColor(.55,.8,.45) else self.status:SetTextColor(.66,.59,.48) end
 end
@@ -550,6 +553,8 @@ function DR:Open()
         self.toggle=FT:AccentButton(frame,"",492,34,"Spell_Frost_FrostNova"); self.toggle:SetPoint("TOPLEFT",24,-90)
         self.toggle:SetScript("OnClick",function() local s=self:Settings(); s.enabled=not s.enabled; self:Apply() end)
         FT:Tooltip(self.toggle,"Diminishing returns","Icons for crowd control that will be shorter, or won't land. Turns on the game's own DR data if needed.")
+        self.previewButton=FT:TopPreview(frame,self.toggle,{get=function() return (self.previewOn or self.moving) and true or false end,
+            set=function(on) self:SetPreview(on); self:SetMoving(on) end,tip="Each row follows its frame."})
         local function switch(key,x,y,title,tip)
             local b=FT:QuietButton(frame,"",240,32,"Spell_Frost_FrostNova"); b:SetPoint("TOPLEFT",x,y)
             b:SetScript("OnClick",function() local s=self:Settings(); s[key]=not s[key]; self:PaintAll(); self:Refresh() end)
@@ -565,13 +570,10 @@ function DR:Open()
         for i,unit in ipairs({"target","focus","player"}) do
             local b=FT:QuietButton(frame,"",240,32,"move"); b:SetPoint("TOPLEFT",i==2 and 276 or 24,i==3 and -256 or -216)
             FT:MakeChoice(b,sides,function() return self:Settings().places[unit].side end,function(v) local p=self:Settings().places[unit]; p.side=v; p.x,p.y=nil,nil; self:Peek(); self:PaintAll(); self:Refresh() end)
-            FT:Tooltip(b,UNIT_NAMES[unit],"Where these icons sit. Or use Move icons to drag them anywhere.")
+            FT:Tooltip(b,UNIT_NAMES[unit],"Where these icons sit. Or turn on Preview and drag them anywhere.")
             self.placeRows[unit]=b
         end
-        self.move=FT:QuietButton(frame,"",240,32,"move"); self.move:SetPoint("TOPLEFT",276,-256)
-        self.move:SetScript("OnClick",function() self:SetMoving(not self.moving) end)
-        FT:Tooltip(self.move,"Move icons","Unlock, drag each row anywhere, then click again to lock. Rows follow their frame.")
-        local reset=FT:QuietButton(frame,"Reset positions",240,32,"reset"); reset:SetPoint("TOPLEFT",24,-296)
+        local reset=FT:QuietButton(frame,"Reset positions",240,32,"reset"); reset:SetPoint("TOPLEFT",276,-256)
         reset:SetScript("OnClick",function() self:ResetPlaces() end)
         FT:Tooltip(reset,"Reset positions","All rows back to the right of their frame.")
         local function slider(y,label,lo,hi,step,tip,set)
@@ -582,18 +584,14 @@ function DR:Open()
             FT:Tooltip(sl,label,tip)
             return l,sl
         end
-        self.sizeLabel,self.sizeSlider=slider(-342,"Icon size",.7,1.6,.05,"70% to 160%.",function(v) self:Settings().size=math.floor(v*20+.5)/20 end)
-        self.fontLabel,self.fontSlider=slider(-376,"Timer size",6,16,1,"Size of the countdown numbers.",function(v) self:Settings().fontSize=math.floor(v+.5); for _,row in pairs(self.rows or {}) do for _,b in ipairs(row.icons) do b.look=nil end end end)
-        self.textRow=FT:QuietButton(frame,"",240,32,"fonts"); self.textRow:SetPoint("TOPLEFT",24,-406)
+        self.sizeLabel,self.sizeSlider=slider(-302,"Icon size",.7,1.6,.05,"70% to 160%.",function(v) self:Settings().size=math.floor(v*20+.5)/20 end)
+        self.fontLabel,self.fontSlider=slider(-336,"Timer size",6,16,1,"Size of the countdown numbers.",function(v) self:Settings().fontSize=math.floor(v+.5); for _,row in pairs(self.rows or {}) do for _,b in ipairs(row.icons) do b.look=nil end end end)
+        self.textRow=FT:QuietButton(frame,"",240,32,"fonts"); self.textRow:SetPoint("TOPLEFT",24,-366)
         FT:MakeChoice(self.textRow,{{"on","On the icon"},{"below","Below the icon"},{"none","Hidden"}},function() return self:Settings().text end,function(v) self:Settings().text=v; for _,row in pairs(self.rows or {}) do row.place=nil; for _,b in ipairs(row.icons) do b.look=nil end end; self:Peek(); self:PaintAll(); self:Refresh() end)
         FT:Tooltip(self.textRow,"Timer","Where the countdown to the reset shows.")
-        self.previewButton=FT:QuietButton(frame,"",240,32,"Spell_Holy_MindVision"); self.previewButton:SetPoint("TOPLEFT",276,-406)
-        self.previewButton:SetScript("OnClick",function() self:SetPreview(not self.previewOn) end)
-        FT:Tooltip(self.previewButton,"Preview","Show example icons until switched off.")
-        self.status=FT:Label(frame,"",12); self.status:SetPoint("TOPLEFT",24,-448); self.status:SetWidth(492)
+        self.status=FT:Label(frame,"",12); self.status:SetPoint("TOPLEFT",24,-408); self.status:SetWidth(492)
         if self.status.SetWordWrap then self.status:SetWordWrap(true) end
         FT:Sections(frame,{{"Show on",self.targetRow},{"Place",self.placeRows.target},{"Look",self.sizeLabel}})
-        frame:HookScript("OnHide",function() if self.moving then self:SetMoving(false) end; if self.previewOn then self:SetPreview(false) end end)
     end
     self:Refresh(); self.frame:Show()
 end
@@ -614,13 +612,16 @@ end
 -- Most aura updates are not crowd control: skip them without a scan.
 function DR:Worth(unit,info)
     if not plain(info) or type(info)~="table" then return true end
-    if info.isFullUpdate then return true end
+    local full=info.isFullUpdate
+    if not plain(full) or full then return true end
     local byName=self:Lists()
     local added=info.addedAuras
     if plain(added) and type(added)=="table" then
         for _,a in ipairs(added) do
             if not plain(a) or type(a)~="table" or not plain(a.name) then return true end
-            if a.isHarmful~=false and kindOf(byName,a.spellId,a.name) then return true end
+            local harmful=a.isHarmful
+            if not plain(harmful) then return true end
+            if harmful~=false and kindOf(byName,a.spellId,a.name) then return true end
         end
     end
     local removed=info.removedAuraInstanceIDs

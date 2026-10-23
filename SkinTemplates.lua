@@ -83,17 +83,17 @@ function S:Refresh()
             end
             return list
         end
-        local w=118
-        self.saveTemplate=FT:QuietButton(frame,"Save new",w,32,"add"); self.saveTemplate:SetPoint("TOPLEFT",222,-244)
+        local w=99
+        self.saveTemplate=FT:QuietButton(frame,"Save new",w,32); self.saveTemplate:SetPoint("TOPLEFT",176,-244)
         self.saveTemplate:SetScript("OnClick",function() self:SaveCurrentAsTemplate() end)
         FT:Tooltip(self.saveTemplate,"Save as new template","Save your current skins as a template.")
-        self.updateTemplate=FT:QuietButton(frame,"Update",w,32,"INV_Scroll_03"); self.updateTemplate:SetPoint("LEFT",self.saveTemplate,"RIGHT",12,0)
+        self.updateTemplate=FT:QuietButton(frame,"Update",w,32); self.updateTemplate:SetPoint("LEFT",self.saveTemplate,"RIGHT",8,0)
         self.updateTemplate:SetScript("OnClick",function() self:UpdateTemplate() end)
         FT:Tooltip(self.updateTemplate,"Update template","Replace this template with your current skins. Asks first.")
-        self.renameTemplate=FT:QuietButton(frame,"Rename",w,32,"INV_Misc_Note_01"); self.renameTemplate:SetPoint("LEFT",self.updateTemplate,"RIGHT",12,0)
+        self.renameTemplate=FT:QuietButton(frame,"Rename",w,32); self.renameTemplate:SetPoint("LEFT",self.updateTemplate,"RIGHT",8,0)
         self.renameTemplate:SetScript("OnClick",function() self:RenameTemplate() end)
         FT:Tooltip(self.renameTemplate,"Rename template","Rename this template.")
-        self.deleteTemplate=FT:QuietButton(frame,"Delete",w,32,"delete"); self.deleteTemplate:SetPoint("LEFT",self.renameTemplate,"RIGHT",12,0)
+        self.deleteTemplate=FT:QuietButton(frame,"Delete",w,32); self.deleteTemplate:SetPoint("LEFT",self.renameTemplate,"RIGHT",8,0)
         self.deleteTemplate:SetScript("OnClick",function() self:DeleteTemplate() end)
         FT:Tooltip(self.deleteTemplate,"Delete template","Delete this template. Asks first.")
         for _,b in ipairs({self.saveTemplate,self.updateTemplate,self.renameTemplate,self.deleteTemplate}) do

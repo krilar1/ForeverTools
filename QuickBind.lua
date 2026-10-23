@@ -202,7 +202,7 @@ function Q:ShowPanel()
     if InCombatLockdown() then return end
     if not self.panel then
         local panel=CreateFrame("Frame","ForeverToolsQuickKeybind",UIParent); self.panel=panel
-        panel:SetSize(300,286); panel:SetFrameStrata("DIALOG"); panel:EnableMouse(true); panel:SetClampedToScreen(true)
+        panel:SetSize(300,286); panel:SetFrameStrata("FULLSCREEN"); panel:EnableMouse(true); panel:SetClampedToScreen(true)
         FT:Panel(panel)
         local title=FT:Label(panel,"Keybind snapshots",17,true); title:SetPoint("TOPLEFT",20,-20); title:SetTextColor(1,.82,0)
         FT:TitleBand(panel,46); FT:FadeIn(panel); FT:MakeDraggable(panel)

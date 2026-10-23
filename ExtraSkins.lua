@@ -1,7 +1,7 @@
 local _,FT=...
 local S=FT.modules.IconStyles
 S.artwork={};S.bagFills={};S.targetRims={};S.bagSlots={}
-S.extraOptions={{"minimap","Minimap"},{"stances","Stance / totem bars"},{"micro","Micro menu"},{"bags","Bag bar"},{"bagWindows","Bag menu"},{"bank","Bank"},{"gryphons","Gryphon frame"},{"player","Player frame"},{"pet","Pet frame"},{"target","Target frame"},{"tot","Target of target"},{"focus","Focus frame"},{"focustarget","Focus target"},{"party","Party frames"},{"personal","Personal resources"},{"castbar","Cast bars"},{"swing","Swing timers"},{"xp","XP / reputation"},{"tooltip","Tooltips"},{"dialogs","Dialog windows"},{"gameWindows","Game windows"},{"calendar","Calendar"},{"trinkets","Trinket menu"},{"nearby","Nearby enemies"},{"enemyAlert","Enemy alert"},{"bgTimer","Battleground timer"}}
+S.extraOptions={{"minimap","Minimap"},{"stances","Stance / totem bars"},{"micro","Micro menu"},{"bags","Bag bar"},{"bagWindows","Bag menu"},{"bank","Bank"},{"gryphons","Gryphon frame"},{"player","Player frame"},{"pet","Pet frame"},{"target","Target frame"},{"tot","Target of target"},{"focus","Focus frame"},{"focustarget","Focus target"},{"party","Party frames"},{"personal","Personal resources"},{"castbar","Cast bars"},{"swing","Swing timers"},{"xp","XP / reputation"},{"tooltip","Tooltips"},{"dialogs","Dialog windows"},{"gameWindows","Game windows"},{"calendar","Calendar"},{"trinkets","Trinket menu"},{"nearby","Nearby enemies"},{"enemyAlert","Enemy alert"},{"bgTimer","Battleground timer"},{"notices","Notices"},{"meters","Meters"},{"ftBars","Interrupt / enemy bars"}}
 -- A frame's children / regions, safely: some game frames hold parts that
 -- addons may not touch (the trade window's money boxes, for one). Asking
 -- for those raises an error, so such frames count as empty here.
@@ -33,6 +33,18 @@ function S:TintArtwork(texture,key,secondary)
         hooksecurefunc(texture,"SetAtlas",function() if not self.paintingArtwork then self:PaintArtwork(texture,record) end end)
     end
     if secondary then record.secondary=true end
+    -- The bank's bag slot buttons: their dark fill stays the game's (black
+    -- on black they could not be seen as buttons); their outline goes a dark
+    -- grey instead of black.
+    if record.bankBagArt==nil then
+        local atlas=texture.GetAtlas and texture:GetAtlas()
+        if type(atlas)=="string" and not (issecretvalue and issecretvalue(atlas)) then
+            atlas=atlas:lower()
+            if atlas=="bank-frame-bag-slot-bg" then record.bankBagArt="fill"
+            elseif atlas=="bank-frame-bag-slotframe" then record.bankBagArt="outline"; record.lift=record.lift or .35; record.desaturate=true
+            else record.bankBagArt=false end
+        else record.bankBagArt=false end
+    end
     self:PaintArtwork(texture,record)
 end
 function S:BagBackdrop(texture)
@@ -173,7 +185,11 @@ function S:PlayerPowerEdge(frame)
                     edge.width=px
                     edge:ClearAllPoints(); edge:SetPoint("TOPLEFT",bar,"TOPLEFT",-px,0); edge:SetPoint("BOTTOMLEFT",bar,"BOTTOMLEFT",-px,0); edge:SetWidth(2*px)
                 end
-                edge:SetVertexColor(s.borderColor[1],s.borderColor[2],s.borderColor[3],s.player and s.borderOpacity or 0)
+                -- The same tone as the frame art (never darker than its lift).
+                -- The frame art is a shaded picture times the color, so a plain
+                -- strip must be darker still to look the same.
+                local c,l=s.borderColor,.025
+                edge:SetVertexColor(math.max(c[1],l),math.max(c[2],l),math.max(c[3],l),s.player and s.borderOpacity or 0)
                 edge:SetShown(s.player and true or false)
             end
         end
@@ -188,7 +204,7 @@ function S:RetireUnitExtras()
 end
 -- Unit frame art in dark colors: never pure black, so the frame keeps its
 -- bevel and inner lines and looks as thick as the game's own.
-local UNIT_LIFT={player=.2,target=.2,tot=.2,focus=.2,focustarget=.2,pet=.2,party=.2}
+local UNIT_LIFT={player=.06,target=.06,tot=.06,focus=.06,focustarget=.06,pet=.06,party=.06}
 function S:PaintArtwork(texture,record)
     if self.paintingArtwork then return end
     self.paintingArtwork=true
@@ -213,6 +229,9 @@ function S:PaintArtwork(texture,record)
         and not ((elite or classification=="elite" or classification=="worldboss" or classification=="rareelite") and not s.elites))
     -- Bank pieces follow their own switch (Skins > Bank).
     local active=self:SkinOn(record,s) and allowed
+    -- Addon minimap button rings follow their own choice.
+    if record.ringChoice and s[record.ringChoice]~="dark" then active=false end
+    if record.bankBagArt=="fill" then active=false end
     -- Calendar day tiles: the parchment kept (desaturated, never black),
     -- only darkened in the background color.
     if record.tile then
@@ -238,7 +257,7 @@ function S:PaintArtwork(texture,record)
         if type(r)=="number" and type(g)=="number" and type(b)=="number" and not (issecretvalue and (issecretvalue(r) or issecretvalue(g) or issecretvalue(b)))
             and math.max(r,g,b)-math.min(r,g,b)>.08 then active=false end
     end
-    if active and (record.bagSlotBorder or (record.hideDecoration and (record.key=="bagWindows" and s.hideSlotArt or record.key~="bagWindows" and s.hideArt))) then
+    if active and record.bankBagArt~="outline" and (record.bagSlotBorder or (record.hideDecoration and (record.key=="bagWindows" and s.hideSlotArt or record.key~="bagWindows" and s.hideArt))) then
         texture:SetVertexColor(1,1,1,0)
     elseif record.background then
         if active then
@@ -364,7 +383,7 @@ function S:BagWindow(frame,opts)
         local key="bagArt"..tostring(frame)
         local function bags()
             if not FT.dbReady or not self:Settings().bagWindows then return end
-            FT:Coalesce(key,function() if not InCombatLockdown() then self:BagWindow(frame) end end,.1)
+            FT:Coalesce(key,function() if not FT:LooksWait() then self:BagWindow(frame) end end,.1)
         end
         frame:HookScript("OnShow",bags)
         if hooksecurefunc and frame.UpdateItems then hooksecurefunc(frame,"UpdateItems",bags) end
@@ -413,11 +432,16 @@ function S:BagSlot(button,key)
     local anchor=button.icon or button.Icon or button
     if not anchor.GetTexture then anchor=button end
     local edges=record.edges
-    for _,edge in ipairs(edges) do edge:ClearAllPoints() end
-    edges[1]:SetPoint("TOPLEFT",anchor,"TOPLEFT");edges[1]:SetPoint("TOPRIGHT",anchor,"TOPRIGHT")
-    edges[2]:SetPoint("BOTTOMLEFT",anchor,"BOTTOMLEFT");edges[2]:SetPoint("BOTTOMRIGHT",anchor,"BOTTOMRIGHT")
-    edges[3]:SetPoint("TOPLEFT",anchor,"TOPLEFT");edges[3]:SetPoint("BOTTOMLEFT",anchor,"BOTTOMLEFT")
-    edges[4]:SetPoint("TOPRIGHT",anchor,"TOPRIGHT");edges[4]:SetPoint("BOTTOMRIGHT",anchor,"BOTTOMRIGHT")
+    -- Re-anchoring 400 lines on every bag update makes the game lay them
+    -- out again: only when the slot's picture changed.
+    if record.edgeAnchor~=anchor then
+        record.edgeAnchor=anchor
+        for _,edge in ipairs(edges) do edge:ClearAllPoints() end
+        edges[1]:SetPoint("TOPLEFT",anchor,"TOPLEFT");edges[1]:SetPoint("TOPRIGHT",anchor,"TOPRIGHT")
+        edges[2]:SetPoint("BOTTOMLEFT",anchor,"BOTTOMLEFT");edges[2]:SetPoint("BOTTOMRIGHT",anchor,"BOTTOMRIGHT")
+        edges[3]:SetPoint("TOPLEFT",anchor,"TOPLEFT");edges[3]:SetPoint("BOTTOMLEFT",anchor,"BOTTOMLEFT")
+        edges[4]:SetPoint("TOPRIGHT",anchor,"TOPRIGHT");edges[4]:SetPoint("BOTTOMRIGHT",anchor,"BOTTOMRIGHT")
+    end
     -- Bag bar: the same soft frame and rounded icon corners as the action bars
     -- instead of four straight lines (kept as the fallback without the frame art).
     -- Bag bar: the game's own slot frames, recolored (same shape and size
@@ -428,10 +452,20 @@ function S:BagSlot(button,key)
         -- the border color, like your action bars. Game frames: none.
         local pref=self:Area("bags")
         local action=pref.barStyle=="action" and pref.bags
+        -- Small slots (the keyring) have their own, narrower frame picture.
+        local normal=button.GetNormalTexture and button:GetNormalTexture()
+        local normalAtlas=normal and normal.GetAtlas and normal:GetAtlas()
+        local small=type(normalAtlas)=="string" and not (issecretvalue and issecretvalue(normalAtlas)) and normalAtlas:lower():find("small",1,true)~=nil
+        local frameAtlas=(small and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("UI-HUD-ActionBar-IconFrame-Small")) and "UI-HUD-ActionBar-IconFrame-Small" or "UI-HUD-ActionBar-IconFrame"
         if action and not record.frameArt and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("UI-HUD-ActionBar-IconFrame") then
             record.frameArt=button:CreateTexture(nil,"ARTWORK",nil,7)
-            record.frameArt:SetAtlas("UI-HUD-ActionBar-IconFrame")
+            record.frameArt:SetAtlas(frameAtlas)
             record.frameArt.ftOwn=true
+        end
+        if record.frameArt and small and not record.smallFrame then
+            -- Exactly where the game's own (hidden) frame is, so nothing of
+            -- the slot's art sticks out at the side.
+            record.smallFrame=true; record.frameArt:SetAtlas(frameAtlas)
         end
         if record.frameArt then
             -- An earlier build took it for the game's bag art and hid it.
@@ -441,7 +475,9 @@ function S:BagSlot(button,key)
             -- icon's edge evenly all round).
             local w=anchor.GetWidth and anchor:GetWidth()
             local extra=(type(w)=="number" and not (issecretvalue and issecretvalue(w)) and w>0) and w/45 or 1
-            if record.frameExtra~=extra or record.frameAnchor~=anchor then
+            if record.smallFrame and normal then
+                if record.frameAnchor~=normal then record.frameAnchor=normal; record.frameArt:ClearAllPoints(); record.frameArt:SetAllPoints(normal) end
+            elseif record.frameExtra~=extra or record.frameAnchor~=anchor then
                 record.frameExtra,record.frameAnchor=extra,anchor
                 record.frameArt:ClearAllPoints(); record.frameArt:SetPoint("TOPLEFT",anchor,"TOPLEFT",0,0); record.frameArt:SetPoint("BOTTOMRIGHT",anchor,"BOTTOMRIGHT",extra,0)
             end
@@ -453,7 +489,11 @@ function S:BagSlot(button,key)
         -- edge painted into bag pictures doesn't show on one side of the frame.
         local icon=anchor~=button and anchor or nil
         if icon and icon.SetTexCoord then
-            if action and record.frameArt and not record.iconCropped then
+            if record.smallFrame then
+                -- Small slots (the keyring) show the game's own slot art: never
+                -- cropped, or it looks bigger than its frame.
+                if not record.smallUncropped then record.smallUncropped=true; icon:SetTexCoord(0,1,0,1) end
+            elseif action and record.frameArt and not record.iconCropped then
                 local a,b,c,d,e,f,g,h=icon:GetTexCoord()
                 record.iconCoord=(type(a)=="number" and not (issecretvalue and issecretvalue(a))) and {a,b,c,d,e,f,g,h} or nil
                 record.iconCropped=true; icon:SetTexCoord(.07,.93,.07,.93)
@@ -523,7 +563,7 @@ function S:BagSlot(button,key)
         record.redrawHooked=true
         local function again()
             if not FT.dbReady or not self:Settings().bags then return end
-            FT:Coalesce("bagButton"..tostring(button),function() if not InCombatLockdown() then self:BagFill(button); self:BagSlot(button,"bags") end end,.05)
+            FT:Coalesce("bagButton"..tostring(button),function() if not FT:LooksWait() then self:BagFill(button); self:BagSlot(button,"bags") end end,.05)
         end
         for _,method in ipairs({"SetNormalAtlas","SetNormalTexture","SetPushedAtlas","SetPushedTexture","SetChecked"}) do if type(button[method])=="function" then hooksecurefunc(button,method,again) end end
         local glow=button.SlotHighlightTexture
@@ -533,8 +573,8 @@ function S:BagSlot(button,key)
         record.updateHooked=true
         -- Looting updates the bag bar buttons: redo just that button.
         hooksecurefunc(button,"UpdateTextures",function()
-            if not FT.dbReady or not self:Settings().bags or InCombatLockdown() then return end
-            FT:Coalesce("bagButton"..tostring(button),function() if not InCombatLockdown() then self:BagFill(button); self:BagSlot(button,"bags") end end,.1)
+            if not FT.dbReady or not self:Settings().bags or FT:LooksWait() then return end
+            FT:Coalesce("bagButton"..tostring(button),function() if not FT:LooksWait() then self:BagFill(button); self:BagSlot(button,"bags") end end,.1)
         end)
     end
     local s=self:Area(key)
@@ -563,8 +603,10 @@ function S:BagDebug()
     for _,name in ipairs({"KeyRingButton","MainMenuBarKeyRingButton","CharacterReagentBag0Slot","ReagentBagSlot"}) do
         local b=_G[name]; if b then print("  named "..name..": skinned "..tostring(self.bagSlots[b] and true or false)) end
     end
-    local button=_G.CharacterBag0Slot or _G.MainMenuBarBackpackButton
-    if not button or not button.GetRegions then print("ForeverTools: no bag button found."); return end
+    -- The first bag button, then the keyring (its art sits a little off).
+    local first=_G.CharacterBag0Slot or _G.MainMenuBarBackpackButton
+    if not first or not first.GetRegions then print("ForeverTools: no bag button found."); return end
+    for _,button in ipairs({first,_G.KeyRingButton or _G.MainMenuBarKeyRingButton or false}) do if button then
     local names={}
     for k,v in pairs(button) do if type(k)=="string" and type(v)=="table" then names[v]=k end end
     for _,m in ipairs({"GetNormalTexture","GetPushedTexture","GetHighlightTexture","GetCheckedTexture"}) do
@@ -586,6 +628,7 @@ function S:BagDebug()
             end
         end
     end
+    end end
 end
 function S:PaintEmptyBagSlot(button,record)
     local icon=button.icon or button.Icon
@@ -627,7 +670,7 @@ function S:BankWindow()
         self.bankHooked=true
         local function again()
             if not FT.dbReady or self:Settings().bank~=true then return end
-            FT:Coalesce("bankArt",function() if not InCombatLockdown() then self:BankWindow() end end,.1)
+            FT:Coalesce("bankArt",function() if not FT:LooksWait() then self:BankWindow() end end,.1)
         end
         if panel.GenerateItemSlotsForSelectedTab then hooksecurefunc(panel,"GenerateItemSlotsForSelectedTab",again) end
         if panel.RefreshBankPanel then hooksecurefunc(panel,"RefreshBankPanel",again) end
@@ -686,7 +729,7 @@ function S:ApplyActionBarArt()
             end
             if hooksecurefunc and not (self.actionBarHooked and self.actionBarHooked[bar]) then
                 self.actionBarHooked=self.actionBarHooked or {}; self.actionBarHooked[bar]=true
-                local function again() if FT.dbReady then FT:Coalesce("actionBarArt",function() if not InCombatLockdown() then self:ApplyActionBarArt() end end,.1) end end
+                local function again() if FT.dbReady then FT:Coalesce("actionBarArt",function() if not FT:LooksWait() then self:ApplyActionBarArt() end end,.1) end end
                 for _,method in ipairs({"UpdateDividers","UpdateEndCaps"}) do if type(bar[method])=="function" then hooksecurefunc(bar,method,again) end end
             end
         end
@@ -821,6 +864,7 @@ function S:GameWindow(frame,name)
         for _,field in ipairs(BORDER_PIECES) do self:TintArtwork(border[field],"gameWindows") end
     end
     self:DialogBorders(frame,3,"gameWindows")
+    self:SideTabs(frame,"gameWindows")
     self.gameHooked=self.gameHooked or {}
     if frame.HookScript and not self.gameHooked[frame] then
         self.gameHooked[frame]=true
@@ -830,10 +874,98 @@ function S:GameWindow(frame,name)
         end)
     end
 end
+-- The tabs that stick out of a window's side (social, group finder,
+-- spellbook): their outer frame art is a plain file texture behind the icon.
+-- Only the art around the icon goes dark; the icon, highlight and checked
+-- glow are kept.
+local function num(v) return type(v)=="number" and not (issecretvalue and issecretvalue(v)) and v or nil end
+function S:SideTabs(frame,key)
+    local left,right=num(frame.GetLeft and frame:GetLeft()),num(frame.GetRight and frame:GetRight())
+    if not left or not right then return end
+    local function tab(button)
+        local keep={}
+        for _,getter in ipairs({"GetNormalTexture","GetPushedTexture","GetHighlightTexture","GetCheckedTexture","GetDisabledTexture"}) do
+            if button[getter] then local ok,t=pcall(button[getter],button); if ok and t then keep[t]=true end end
+        end
+        if button.icon then keep[button.icon]=true end; if button.Icon then keep[button.Icon]=true end
+        for _,region in ipairs(regs(button)) do
+            if not keep[region] and region.GetObjectType and region:GetObjectType()=="Texture" then
+                local layer=region.GetDrawLayer and region:GetDrawLayer()
+                if layer=="BACKGROUND" or layer=="BORDER" or layer=="ARTWORK" or layer=="OVERLAY" then
+                    local name=artName(region)
+                    if not name:find("highlight",1,true) and not name:find("glow",1,true) and not name:find("icon",1,true) then
+                        -- One picture holds the tab's fill and its outline: grey
+                        -- (not black), so only the outline turns dark.
+                        self:TintArtwork(region,key)
+                        local record=self.artwork[region]
+                        if record and not record.lift then record.desaturate=true; record.lift=.38; self:PaintArtwork(region,record) end
+                    end
+                end
+            end
+        end
+    end
+    -- The game's own side tab art (common-sidetab): found by name, wherever
+    -- the tab sits. The selected frame stays a little lighter.
+    local function sidetabArt(f)
+        for _,region in ipairs(regs(f)) do
+            if region.GetObjectType and region:GetObjectType()=="Texture" then
+                local name=artName(region)
+                if name=="common-sidetab" or name=="common-sidetab-selected" then
+                    self:TintArtwork(region,key)
+                    local record=self.artwork[region]
+                    if record and not record.lift then record.desaturate=true; record.lift=name=="common-sidetab" and .38 or .6; self:PaintArtwork(region,record) end
+                end
+            end
+        end
+    end
+    local function visit(f,depth)
+        if depth<0 then return end
+        for _,child in ipairs(kids(f)) do
+            sidetabArt(child)
+            if child.GetObjectType and (child:GetObjectType()=="Button" or child:GetObjectType()=="CheckButton") then
+                local l,r=num(child:GetLeft()),num(child:GetRight())
+                local w,h=num(child:GetWidth()),num(child:GetHeight())
+                local text=child.GetText and child:GetText()
+                local hasText=type(text)=="string" and not (issecretvalue and issecretvalue(text)) and text~=""
+                -- A side tab: small and about square, no words, sticking out
+                -- of the window's side (never the buttons of a window docked
+                -- beside it, like the macro icon picker's Okay and Cancel).
+                local sideTab=l and r and w and h and w<=72 and h<=72 and math.abs(w-h)<=24 and not hasText and not child.Left and not child.Middle
+                    and ((r>right+6 and l>=right-24 and l<=right+12) or (l<left-6 and r<=left+24 and r>=left-12))
+                if sideTab then tab(child) end
+            end
+            visit(child,depth-1)
+        end
+    end
+    visit(frame,5)
+end
+-- Every window the game opens as a panel (friends/social, group finder,
+-- Forever's own windows...), besides the named list. Dialog windows (NPC,
+-- vendor, mail...) have their own skin and are left out here.
+function S:IsDialogWindow(name) for _,n in ipairs(DIALOG_FRAMES) do if n==name then return true end end return false end
+function S:PanelNames()
+    local out={}
+    local dialog={}; for _,n in ipairs(DIALOG_FRAMES) do dialog[n]=true end
+    if type(UIPanelWindows)=="table" then
+        for name in pairs(UIPanelWindows) do if type(name)=="string" and not dialog[name] then out[name]=true end end
+    end
+    for _,name in ipairs({"SocialUIFrame","LFGUIFrame","GroupFinderFrame"}) do out[name]=true end
+    return out
+end
 function S:ApplyGameWindows()
     if not self:Settings().gameWindows and not self.gameTouched then return end
     self.gameTouched=true
     for _,name in ipairs(GAME_FRAMES) do local frame=_G[name]; if frame then self:GameWindow(frame,name) end end
+    for name in pairs(self:PanelNames()) do local frame=_G[name]; if type(frame)=="table" and frame.GetObjectType then self:GameWindow(frame,name) end end
+    -- Windows made later (opened for the first time) are skinned as they open.
+    if not self.panelHooked and hooksecurefunc and ShowUIPanel then
+        self.panelHooked=true
+        hooksecurefunc("ShowUIPanel",function(frame)
+            if not FT.dbReady or not self:Settings().gameWindows or type(frame)~="table" or not frame.GetName then return end
+            local name=frame:GetName(); if not name or self:IsDialogWindow(name) then return end
+            FT:Coalesce("panel"..name,function() self:GameWindow(frame,name) end,0)
+        end)
+    end
 end
 function S:DialogWindow(frame,name)
     if not frame then return end
@@ -854,6 +986,11 @@ function S:DialogWindow(frame,name)
     if border and border.GetObjectType and border:GetObjectType()~="Texture" then
         for _,field in ipairs(BORDER_PIECES) do self:TintArtwork(border[field],"dialogs") end
     end
+    -- A backdrop border (older pop-ups) keeps its edge and corner pieces on
+    -- the frame itself.
+    if isTexture(frame.TopEdge) and isTexture(frame.LeftEdge) then
+        for _,field in ipairs(BORDER_PIECES) do if isTexture(frame[field]) then self:TintArtwork(frame[field],"dialogs") end end
+    end
     -- Some windows keep their border in a child frame (the flight map's
     -- BorderFrame, for one): find nine-slice borders two levels down. Only
     -- their edge and corner pieces are touched, never the middle.
@@ -871,6 +1008,29 @@ end
 -- are open now (field name, art, color), to find a piece that looks wrong.
 function S:SkinDebug()
     local any=false
+    -- The window under the mouse, by name (to find windows the skin misses).
+    local focus=(GetMouseFoci and (GetMouseFoci() or {})[1]) or (GetMouseFocus and GetMouseFocus())
+    if focus and focus.GetName then
+        local chain={}
+        local f=focus
+        for _=1,8 do if not f or f==UIParent then break end; chain[#chain+1]=tostring(f:GetName() or "(unnamed)"); f=f.GetParent and f:GetParent() end
+        print("ForeverTools skin, under the mouse: "..table.concat(chain," < "))
+        if focus.GetRegions then
+            for _,region in ipairs(regs(focus)) do
+                if region.GetObjectType and region:GetObjectType()=="Texture" then
+                    local raw=region.GetTexture and region:GetTexture()
+                    if issecretvalue and issecretvalue(raw) then raw="?" end
+                    local w,h=region:GetSize()
+                    local function n(v) if type(v)~="number" or (issecretvalue and issecretvalue(v)) then return "?" end; return tostring(math.floor(v+.5)) end
+                    print(string.format("    piece  %s  %s  %s  %sx%s  %s",artName(region),tostring(raw),tostring(region.GetDrawLayer and region:GetDrawLayer()),n(w),n(h),self.artwork[region] and "skinned" or "left alone"))
+                end
+            end
+        end
+    end
+    -- The top window under the mouse: only that one is reported.
+    local topName
+    do local f=focus; for _=1,12 do if not f or not f.GetParent then break end; local p=f:GetParent(); if not p or p==UIParent then break end; f=p end
+        topName=f and f.GetName and f:GetName() end
     local function inside(region,frame)
         local p=region.GetParent and region:GetParent()
         for _=1,8 do if not p then return false end; if p==frame then return true end; p=p.GetParent and p:GetParent() end
@@ -878,7 +1038,11 @@ function S:SkinDebug()
     end
     local list={}
     for _,name in ipairs(DIALOG_FRAMES) do list[#list+1]=name end
-    for _,name in ipairs({"BankFrame","ContainerFrameCombinedBags","ContainerFrame1","MinimapCluster","CalendarFrame","CharacterFrame","PlayerTalentFrame","TalentFrame","PlayerSpellsFrame","SpellBookFrame","CalendarViewHolidayFrame","CalendarViewEventFrame","CalendarCreateEventFrame","CalendarViewRaidFrame"}) do list[#list+1]=name end
+    for _,name in ipairs({"BankFrame","ContainerFrameCombinedBags","ContainerFrame1","MinimapCluster","CalendarFrame","CalendarViewHolidayFrame","CalendarViewEventFrame","CalendarCreateEventFrame","CalendarViewRaidFrame"}) do list[#list+1]=name end
+    -- Every game window the Game windows skin knows (friends, group finder...).
+    for _,name in ipairs(GAME_FRAMES) do list[#list+1]=name end
+    for name in pairs(self:PanelNames()) do list[#list+1]=name end
+    if topName then list={topName} end
     for _,name in ipairs(list) do
         local frame=_G[name]
         if frame and frame.IsShown and frame:IsShown() then
@@ -952,6 +1116,19 @@ function S:ApplyDialogArtwork()
     self.dialogsTouched=true
     for _,name in ipairs(DIALOG_FRAMES) do local frame=_G[name]; if frame then self:DialogWindow(frame,name) end end
     self:DialogText()
+    -- Pop-ups (destroy an item, sell, confirm ...) are found when they show,
+    -- whatever the game names them.
+    if not self.popupHooked and hooksecurefunc and StaticPopup_Show then
+        self.popupHooked=true
+        hooksecurefunc("StaticPopup_Show",function(which)
+            if not FT.dbReady or not self:Settings().dialogs then return end
+            local dialog=StaticPopup_FindVisible and StaticPopup_FindVisible(which)
+            if dialog and dialog.GetObjectType then
+                local okN,n=pcall(dialog.GetName,dialog)
+                self:DialogWindow(dialog,okN and type(n)=="string" and n or "StaticPopup")
+            end
+        end)
+    end
 end
 -- With dark parchment, quest and gossip text the game writes in dark brown
 -- turns light (titles gold). The game's own colors come back when it is off.
@@ -1174,7 +1351,14 @@ end
 -- Cast bars: yours, your target's and your focus's frame, text box and background.
 function S:ApplyCastbarArtwork()
     for _,bar in ipairs({PlayerCastingBarFrame,TargetFrameSpellBar,FocusFrameSpellBar,TargetFrame and TargetFrame.spellbar,FocusFrame and FocusFrame.spellbar,_G.PetCastingBarFrame}) do
-        if bar then for _,field in ipairs({"Border","TextBorder","Background"}) do self:TintArtwork(bar[field],"castbar") end end
+        -- Only the outline: the bar's backing and the plate behind the
+        -- spell name keep the game's colors, and the outline is a dark tone,
+        -- never black, so it keeps its bevel.
+        if bar and bar.Border then
+            self:TintArtwork(bar.Border,"castbar")
+            local record=self.artwork[bar.Border]
+            if record and not record.lift then record.lift=.12; self:PaintArtwork(bar.Border,record) end
+        end
     end
 end
 -- Forever's weapon swing timers (main hand, off hand, ranged): the frame
@@ -1189,11 +1373,68 @@ end
 -- Totem bar: the element-colored square frames (earth/fire/water/air) on
 -- the multi-cast bar and the round borders on the player totem timers
 -- follow the Stance / totem area color, like other stance-bar borders.
+-- The action-button frame picture on a button (the gold square outline).
+local function iconFrames(button)
+    -- The action-button outline (any "...actionbar-iconframe..." art) on the
+    -- button or a child of it; never highlights, flashes or masks.
+    local out={}
+    local function scan(f,depth)
+        for _,region in ipairs(regs(f)) do
+            if isTexture(region) then
+                local a=region.GetAtlas and region:GetAtlas()
+                if type(a)=="string" and not (issecretvalue and issecretvalue(a)) then
+                    a=a:lower()
+                    if a:find("actionbar%-iconframe") and not a:find("highlight",1,true) and not a:find("mouseover",1,true) and not a:find("flash",1,true)
+                        and not a:find("mask",1,true) and not a:find("down",1,true) and not a:find("glow",1,true) then out[#out+1]=region end
+                end
+            end
+        end
+        if depth>0 then for _,child in ipairs(kids(f)) do scan(child,depth-1) end end
+    end
+    scan(button,1)
+    return out
+end
 function S:ApplyTotemArtwork()
     for i=1,4 do local slot=_G["MultiCastSlotButton"..i]; if slot then self:TintArtwork(slot.overlayTex,"stances") end end
     for i=1,12 do local button=_G["MultiCastActionButton"..i]; if button then self:TintArtwork(button.overlayTex,"stances") end end
+    -- Call of the elements, Totemic recall and the totem buttons: their
+    -- action-button outline takes the Stance / totem look.
+    local list={_G.MultiCastSummonSpellButton,_G.MultiCastRecallSpellButton}
+    for i=1,12 do list[#list+1]=_G["MultiCastActionButton"..i] end
+    for i=1,4 do list[#list+1]=_G["MultiCastSlotButton"..i] end
+    for _,button in pairs(list) do
+        if button then for _,t in ipairs(iconFrames(button)) do self:TintArtwork(t,"stances") end end
+    end
+    -- Call of the elements and Totemic recall draw their bronze ring with the
+    -- old totem bar picture (a file, not an atlas): the ring over the icon.
+    for _,button in ipairs({_G.MultiCastSummonSpellButton,_G.MultiCastRecallSpellButton}) do
+        if button then
+            local bw=button:GetWidth() or 30
+            for _,region in ipairs(regs(button)) do
+                if isTexture(region) and region.GetDrawLayer and region:GetDrawLayer()=="OVERLAY" then
+                    local raw=region.GetTexture and region:GetTexture()
+                    local a=region.GetAtlas and region:GetAtlas()
+                    local noAtlas=not (type(a)=="string" and a~="") 
+                    local w=region:GetWidth()
+                    if noAtlas and type(raw)=="number" and not (issecretvalue and issecretvalue(raw)) and raw>0 and (raw==310727 or (type(w)=="number" and w>bw+1)) then self:TintArtwork(region,"stances") end
+                end
+            end
+        end
+    end
     if TotemFrame and TotemFrame.GetChildren then
         for _,button in ipairs(kids(TotemFrame)) do self:TintArtwork(button.Border,"stances") end
+    end
+    -- The totem bar is filled in after login (and when totems are learned):
+    -- run again then.
+    if not self.totemWatch then
+        self.totemWatch=CreateFrame("Frame")
+        for _,event in ipairs({"PLAYER_ENTERING_WORLD","UPDATE_MULTI_CAST_ACTIONBAR","LEARNED_SPELL_IN_TAB","SPELLS_CHANGED"}) do pcall(self.totemWatch.RegisterEvent,self.totemWatch,event) end
+        self.totemWatch:SetScript("OnEvent",function()
+            if not FT.dbReady then return end
+            FT:Coalesce("totemArtwork",function() if not InCombatLockdown() then self:ApplyTotemArtwork() end end,1)
+        end)
+        local bar=_G.MultiCastActionBarFrame
+        if bar and bar.HookScript then bar:HookScript("OnShow",function() FT:Coalesce("totemArtwork",function() self:ApplyTotemArtwork() end,0) end) end
     end
 end
 -- XP / reputation bar dividers only: what changes when the watched
@@ -1309,6 +1550,28 @@ function S:MinimapButtonRim(texture)
     if record and not record.desaturate then record.desaturate=true; self:PaintArtwork(texture,record) end
     rec.inner:SetShown(rec.on and texture:IsShown())
 end
+-- The bag bar's background and divider art (the dividers are pooled and
+-- handed out again on each redraw).
+function S:BagBarArt()
+    if not BagsBar then return end
+    if BagsBar.GetRegions then
+        local width=BagsBar.GetWidth and BagsBar:GetWidth() or 0
+        for _,region in ipairs(regs(BagsBar)) do
+            if region.GetObjectType and region:GetObjectType()=="Texture" and region.GetWidth
+                and width>0 and region:GetWidth()>=width*.6 then self:TintArtwork(region,"bags",true) end
+        end
+    end
+    for _,field in ipairs({"HorizontalDividersPool","VerticalDividersPool"}) do
+        local pool=BagsBar[field]
+        if pool and pool.EnumerateActive then
+            for divider in pool:EnumerateActive() do
+                if divider.GetRegions then
+                    for _,texture in ipairs(regs(divider)) do self:TintArtwork(texture,"bags",true) end
+                end
+            end
+        end
+    end
+end
 function S:ApplyArtwork()
     self:ApplyBagWindows();self:ApplyGryphons();self:ApplyActionBarArt()
     self:ApplyTotemArtwork()
@@ -1373,16 +1636,11 @@ function S:ApplyArtwork()
             if record and not record.desaturate then record.desaturate=true; self:PaintArtwork(texture,record) end
         end
     end
-    -- ForeverTools' own minimap buttons (the FT button and the grouped
-    -- buttons' gear): their gold ring goes dark like the game's buttons.
-    for _,f in ipairs({_G.ForeverToolsMinimapButton,_G.ForeverToolsMinimapIcons}) do
-        local r=f and (f.ring or f.border)
-        if r then
-            self:TintArtwork(r,"minimap")
-            local record=self.artwork[r]
-            if record and not record.desaturate then record.desaturate=true; self:PaintArtwork(r,record) end
-        end
-    end
+    -- Addon minimap buttons (ForeverTools' own and other addons'): their
+    -- gold ring goes dark only with "Addon button rings: Dark".
+    self:AddonRings()
+    -- Addons make their minimap buttons a little after login.
+    if not self.ringsLater then self.ringsLater=true; C_Timer.After(5,function() if FT.dbReady then self:AddonRings() end end) end
     -- The ring is gold: grey it first so it takes the area's color cleanly.
     local ring=self:DielRing()
     if ring then
@@ -1417,28 +1675,12 @@ function S:ApplyArtwork()
             end end
         end
     end
-    if BagsBar and BagsBar.GetRegions then
-        local width=BagsBar.GetWidth and BagsBar:GetWidth() or 0
-        for _,region in ipairs(regs(BagsBar)) do
-            if region.GetObjectType and region:GetObjectType()=="Texture" and region.GetWidth
-                and width>0 and region:GetWidth()>=width*.6 then self:TintArtwork(region,"bags",true) end
-        end
-    end
-    -- Forever creates narrow decorative separator frames, not bar-wide textures.
-    if BagsBar then
-        for _,field in ipairs({"HorizontalDividersPool","VerticalDividersPool"}) do
-            local pool=BagsBar[field]
-            if pool and pool.EnumerateActive then
-                for divider in pool:EnumerateActive() do
-                    if divider.GetRegions then
-                        for _,texture in ipairs(regs(divider)) do self:TintArtwork(texture,"bags",true) end
-                    end
-                end
-            end
-        end
-        if not self.bagLayoutHooked and hooksecurefunc and BagsBar.UpdateDividers then
-            self.bagLayoutHooked=true;hooksecurefunc(BagsBar,"UpdateDividers",function() if FT.dbReady then FT:Coalesce("allArt",function() if not InCombatLockdown() then self:ApplyArtwork() end end,.1) end end)
-        end
+    self:BagBarArt()
+    if BagsBar and not self.bagLayoutHooked and hooksecurefunc and BagsBar.UpdateDividers then
+        -- The game redraws the bag bar's dividers whenever an item is picked
+        -- up or put down: redo only the bag bar's own art then (redoing all
+        -- art took ~200 ms and made dragging items stutter).
+        self.bagLayoutHooked=true;hooksecurefunc(BagsBar,"UpdateDividers",function() if FT.dbReady then FT:Coalesce("bagBarArt",function() if not FT:LooksWait() then self:BagBarArt() end end,.1) end end)
     end
     local bagButtons={}
     -- Every bag bar button: backpack, bags, the reagent bag and the key ring
@@ -1543,11 +1785,183 @@ function S:ApplyPvp()
     for frame in pairs(self.pvpPanels) do self:SkinPanel(frame) end
     local trinkets=FT.modules.Trinkets
     if trinkets and trinkets.PaintSkin then trinkets:PaintSkin() end
+    -- Our bars repaint their rows with the new look on their next paint.
+    self.skinVersion=(self.skinVersion or 0)+1
+    for _,name in ipairs({"Interrupts","EnemyCooldowns"}) do
+        local m=FT.modules[name]
+        if m and m.bar and m.bar:IsShown() and m.Paint then pcall(m.Paint,m) end
+    end
+    self:ApplyMeters()
+    -- Meters again a moment later: the game's damage meter and our threat
+    -- meter can redo their art right after a change (first switch-on).
+    if self.metersTouched then
+        FT:Coalesce("meterSkinsAgain",function() self.skinVersion=(self.skinVersion or 0)+1; self:ApplyMeters() end,.3)
+        FT:Coalesce("meterSkinsLate",function() self:ApplyMeters() end,1.2)
+    end
+end
+-- Meters (Skins > Notices & meters > Meters): the game's damage meter and
+-- our threat meter. Only header and background art, found by its art name,
+-- takes the look; bars, names, numbers and buttons are left alone. A
+-- texture's color is kept and put back (TintArtwork), so this is safe in
+-- fights and when the part is turned off.
+local function meterArtKind(texture)
+    local name=texture.GetAtlas and texture:GetAtlas()
+    if type(name)~="string" or (issecretvalue and issecretvalue(name)) then return end
+    name=name:lower()
+    if not name:find("damagemeter",1,true) or name:find("scalehandle",1,true) then return end
+    if name:find("header",1,true) or name:find("border",1,true) or name:find("frame",1,true) or name:find("edge",1,true) then return "edge" end
+    if name:find("bar",1,true) then return end -- the bars themselves
+    if name:find("background",1,true) then return "background" end
+end
+function S:MeterTexture(texture)
+    if not texture or not texture.GetAtlas then return end
+    local kind=meterArtKind(texture); if not kind then return end
+    self:TintArtwork(texture,"meters")
+    local record=self.artwork[texture]; if not record then return end
+    -- Never pure black: the header keeps its shape.
+    if kind=="background" then record.background=true else record.lift=.12 end
+    self:PaintArtwork(texture,record)
+end
+-- Rings of addon minimap buttons: on the minimap and in the grouped menu.
+-- Three choices (Skins > Minimap & menus): the ForeverTools button, the
+-- grouped buttons' gear, and other addons' buttons (on the minimap and in
+-- the group). Each keeps the game's gold ring unless set to Dark.
+-- The gold ring of an addon button: its ring or border field, or the
+-- texture showing the game's tracking border (by file id or name).
+local RING_FILE=136430
+local function ringOf(button)
+    local r=button.ring or button.border or button.Border
+    if isTexture(r) then return r end
+    for _,region in ipairs(regs(button)) do
+        if isTexture(region) then
+            local t=region.GetTexture and region:GetTexture()
+            if not (issecretvalue and issecretvalue(t)) and (t==RING_FILE or (type(t)=="string" and t:lower():find("trackingborder",1,true))) then return region end
+        end
+    end
+end
+function S:AddonRing(button,choice)
+    if not button or forbidden(button) then return end
+    local r=ringOf(button)
+    if not r then return end
+    self:TintArtwork(r,"minimap")
+    local record=self.artwork[r]
+    if record and record.ringChoice~=choice then record.ringChoice=choice; record.desaturate=true; self:PaintArtwork(r,record) end
+end
+function S:AddonRings()
+    local ft,gear=_G.ForeverToolsMinimapButton,_G.ForeverToolsMinimapIcons
+    self:AddonRing(ft,"addonRings"); self:AddonRing(gear,"gearRing")
+    if Minimap then for _,c in ipairs(kids(Minimap)) do if c~=ft and c~=gear and c.GetObjectType and c:GetObjectType()=="Button" then self:AddonRing(c,"addonRings") end end end
+    local icons=FT.modules.MinimapIcons
+    if icons and icons.records then for button in pairs(icons.records) do if button~=ft and button~=gear then self:AddonRing(button,"addonRings") end end end
+end
+-- A header button's art (collapse, settings): a dark tone, never black.
+function S:MeterButton(button)
+    if not button or not button.GetNormalTexture or forbidden(button) then return end
+    for _,get in ipairs({"GetNormalTexture","GetPushedTexture","GetDisabledTexture"}) do
+        local ok,t=pcall(button[get],button)
+        if ok and t and t.GetVertexColor then
+            self:TintArtwork(t,"meters")
+            local record=self.artwork[t]
+            if record and not record.lift then record.lift=.38; self:PaintArtwork(t,record) end
+        end
+    end
+end
+-- Our threat meter: its header, background and buttons, like the game's
+-- damage meter. Redone when the look changes (checked as it updates).
+function S:SkinThreat(meter)
+    if not meter then return end
+    meter.ftSkin=self.skinVersion or 0
+    if not self:Settings().meters and not self.metersTouched then return end
+    self.metersTouched=true
+    self:MeterTexture(meter.header); self:MeterTexture(meter.body)
+    -- Like the damage meter: the collapse button goes dark, the gear keeps
+    -- its colors.
+    self:MeterButton(meter.hide)
+    -- The background picture fades out towards the top: with the skin on,
+    -- an even fill in your background color sits under it (like the damage
+    -- meter's body).
+    -- Retired: the background now starts under the header like the damage
+    -- meter's, so no extra fill (it made the header look patchy).
+    local on=false
+    if on and not meter.ftSolid and meter.body then
+        meter.ftSolid=meter:CreateTexture(nil,"BACKGROUND",nil,-8); meter.ftSolid:SetTexture("Interface\\Buttons\\WHITE8x8")
+        meter.ftSolid:SetAllPoints(meter.body)
+    end
+    if meter.ftSolid then
+        local s=self:Area("meters"); local c=s.color
+        meter.ftSolid:SetVertexColor(c[1],c[2],c[3],math.max(.35,s.opacity or 1)*.85)
+        meter.ftSolid:SetShown(on and meter.body and meter.body:IsShown() and true or false)
+    end
+end
+function S:ApplyMeters()
+    if not FT.dbReady then return end
+    -- Nothing to do until the part has been turned on once.
+    if not self:Settings().meters and not self.metersTouched then return end
+    self.metersTouched=true
+    local threat=FT.modules.Threat
+    self:SkinThreat(threat and threat.meter)
+    for i=1,3 do
+        local w=_G["DamageMeterSessionWindow"..i]
+        if w and not forbidden(w) then
+            for _,r in ipairs(regs(w)) do self:MeterTexture(r) end
+            local box=w.MinimizeContainer and w.MinimizeContainer.ScrollBox
+            for _,c in ipairs(kids(w)) do
+                if c~=box and not (c.GetObjectType and c:GetObjectType()=="StatusBar") then
+                    for _,r in ipairs(regs(c)) do self:MeterTexture(r) end
+                    if c.GetObjectType and c:GetObjectType()=="Button" then self:MeterButton(c) end
+                    -- Buttons in the header (collapse, settings, session).
+                    for _,b in ipairs(kids(c)) do if b.GetObjectType and b:GetObjectType()=="Button" then self:MeterButton(b) end end
+                end
+            end
+        end
+    end
+    -- Extra damage meter windows are made when you open them.
+    if not self.meterHooked and DamageMeter and DamageMeter.SetupSessionWindow and hooksecurefunc then
+        self.meterHooked=true
+        hooksecurefunc(DamageMeter,"SetupSessionWindow",function() FT:Coalesce("meterSkins",function() S:ApplyMeters() end,.1) end)
+    end
+end
+-- Bars (Skins > Notices & meters > Bars): rows of the interrupt bar and the
+-- enemy cooldown bar. Each row gets the look's background and a thin border;
+-- off, the row's own color comes back. Repainted only when the look changes.
+function S:BarRow(row,back)
+    local version=self.skinVersion or 0
+    local on=FT.dbReady and self:Settings().ftBars==true
+    if row.ftSkin==version and row.ftSkinOn==on then return end
+    row.ftSkin=version; row.ftSkinOn=on
+    local s=on and self:Area("ftBars")
+    if not row.ftEdges then
+        row.ftEdges={}
+        for i=1,4 do local t=row:CreateTexture(nil,"BORDER"); t:SetTexture("Interface\\Buttons\\WHITE8x8"); t:Hide(); row.ftEdges[i]=t end
+    end
+    if on then
+        local c,bc=s.color,s.borderColor
+        row.back:SetColorTexture(math.max(c[1],.025),math.max(c[2],.025),math.max(c[3],.03),math.max(.35,s.opacity))
+        local w=math.max(1,math.min(3,tonumber(s.thickness) or 1))
+        local e=row.ftEdges
+        e[1]:ClearAllPoints(); e[1]:SetPoint("TOPLEFT"); e[1]:SetPoint("TOPRIGHT"); e[1]:SetHeight(w)
+        e[2]:ClearAllPoints(); e[2]:SetPoint("BOTTOMLEFT"); e[2]:SetPoint("BOTTOMRIGHT"); e[2]:SetHeight(w)
+        e[3]:ClearAllPoints(); e[3]:SetPoint("TOPLEFT"); e[3]:SetPoint("BOTTOMLEFT"); e[3]:SetWidth(w)
+        e[4]:ClearAllPoints(); e[4]:SetPoint("TOPRIGHT"); e[4]:SetPoint("BOTTOMRIGHT"); e[4]:SetWidth(w)
+        for _,t in ipairs(e) do t:SetVertexColor(bc[1],bc[2],bc[3],s.borderOpacity or 1); t:Show() end
+    else
+        row.back:SetColorTexture(back[1],back[2],back[3],back[4])
+        for _,t in ipairs(row.ftEdges) do t:Hide() end
+    end
+end
+-- An icon's border on those bars: the look's border color, or plain black.
+function S:BarIcon(b)
+    local version=self.skinVersion or 0
+    local on=FT.dbReady and self:Settings().ftBars==true
+    if b.ftSkin==version and b.ftSkinOn==on then return end
+    b.ftSkin=version; b.ftSkinOn=on
+    if on then local s=self:Area("ftBars"); local bc=s.borderColor; b.border:SetVertexColor(bc[1],bc[2],bc[3],s.borderOpacity or 1)
+    else b.border:SetVertexColor(0,0,0,.85) end
 end
 local apply=S.Apply
 function S:Apply()
     apply(self)
-    if FT.dbReady and not InCombatLockdown() then self:ApplyArtwork() end
+    if FT.dbReady and not FT:LooksWait() then self:ApplyArtwork() end
     if FT.dbReady then self:ApplyPvp() end
 end
 
@@ -1559,20 +1973,20 @@ local artworkUnits={player=true,target=true,focus=true,targettarget=true,focusta
 -- end of combat redoes everything anyway).
 artworkEvents:SetScript("OnEvent",function(_,event,unit)
     if (event=="UNIT_TARGET" or event=="UNIT_CLASSIFICATION_CHANGED" or event=="UNIT_PET") and not artworkUnits[unit] then return end
-    if not FT.dbReady or InCombatLockdown() then return end
+    if not FT.dbReady or FT:LooksWait() then return end
     -- Open bag windows redo themselves when their items update (hooked above).
     if event=="BAG_UPDATE_DELAYED" then return
     elseif event=="UPDATE_FACTION" or event=="UPDATE_EXPANSION_LEVEL" then
         -- Reputation changes often (every kill for some factions). Repaint the
         -- XP bar art we know; look for new dividers at most every 30 seconds.
         if S:Settings().xp then FT:Coalesce("xpArt",function()
-            if InCombatLockdown() then return end
+            if FT:LooksWait() then return end
             local now=GetTime()
             if not S.xpScanned or now-S.xpScanned>=30 then S.xpScanned=now; S:ApplyXPArtwork()
             else for texture,record in pairs(S.artwork) do if record.key=="xp" then S:PaintArtwork(texture,record) end end end
         end,.5) end
     else
         local s=S:Settings()
-        if s.player or s.target or s.tot or s.focus or s.focustarget or s.pet or s.party then FT:Coalesce("unitArt",function() if not InCombatLockdown() then S:ApplyUnitArtwork() end end) end
+        if s.player or s.target or s.tot or s.focus or s.focustarget or s.pet or s.party then FT:Coalesce("unitArt",function() if not FT:LooksWait() then S:ApplyUnitArtwork() end end) end
     end
 end)

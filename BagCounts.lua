@@ -19,6 +19,7 @@ function Counts:Lines(id,s)
         if e.bags>0 then parts[#parts+1]="bags "..e.bags end
         if e.bank>0 then parts[#parts+1]="bank "..e.bank end
         if e.worn>0 then parts[#parts+1]="worn "..e.worn end
+        if (e.mail or 0)>0 then parts[#parts+1]="mail "..e.mail end
         return parts
     end
     local function right(e)
@@ -30,7 +31,7 @@ function Counts:Lines(id,s)
     local me=B:Me()
     for _,entry in ipairs(B:Characters()) do
         if not entry.me or s.countSelf then
-            local e=B:Index(entry.guid)[id]
+            local e=(entry.me and B.LiveIndex and B:LiveIndex() or B:Index(entry.guid))[id]
             if e and e.total>0 then rows[#rows+1]={B:ClassName(entry.c,entry.guid,s.countFullNames),right(e)}; total=total+e.total end
         end
     end
@@ -129,6 +130,18 @@ function Counts:Hook()
     self.hooked=true
     if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType and Enum.TooltipDataType.Item~=nil then
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item,function(tip,data) pcall(self.OnTooltip,self,tip,data) end)
+    else
+        -- Game versions without the tooltip data system: the item tooltip's
+        -- own "item set" moment, with the id read from the item's link.
+        for _,tip in ipairs({GameTooltip,ItemRefTooltip}) do
+            if tip and tip.HookScript and (not tip.HasScript or tip:HasScript("OnTooltipSetItem")) then
+                tip:HookScript("OnTooltipSetItem",function(owner)
+                    local ok,_,link=pcall(owner.GetItem,owner)
+                    local id=ok and plain(link) and type(link)=="string" and tonumber(link:match("item:(%d+)"))
+                    if id then pcall(self.OnTooltip,self,owner,{id=id}) end
+                end)
+            end
+        end
     end
 end
 -- Holding Shift (when counts wait for it) redraws the tooltip that is open.
@@ -242,13 +255,13 @@ function Counts:Open()
         FT:PageInfo(frame,"Item counts","How many you have of an item, on its tooltip: bags, bank, other characters on this ruleset and the guild bank.\n\nEach character needs one login; banks are read when opened.")
         local function section(x,y,title,icon)
             local h=FT:Label(frame,title,16,true); h:SetPoint("TOPLEFT",x,y); h:SetTextColor(1,.82,0)
-            FT:SectionHeading(h,icon,200)
+            FT:SectionHeading(h,icon,x>100 and 120 or 200)
         end
         section(24,-66,"What to show","INV_Misc_Note_04")
-        self.toggle=FT:AccentButton(frame,"",364,34,"INV_Misc_Note_04"); self.toggle:SetPoint("TOPLEFT",24,-96)
+        self.toggle=FT:AccentButton(frame,"",300,34,"INV_Misc_Note_04"); self.toggle:SetPoint("TOPLEFT",24,-96)
         self.toggle:SetScript("OnClick",function() local s=settings(); s.counts=not s.counts; bags():Apply(); self:Refresh() end)
         FT:Tooltip(self.toggle,"Item counts","Show how many of an item you have, and where.")
-        self.style=FT:QuietButton(frame,"",364,32,"classes"); self.style:SetPoint("TOPLEFT",24,-138)
+        self.style=FT:QuietButton(frame,"",300,32,"classes"); self.style:SetPoint("TOPLEFT",24,-138)
         self.style.options=function() local out={}; for _,o in ipairs(styles) do out[#out+1]={value=o.value,label=o.label,tooltip=o.tooltip,icon="Interface\\Icons\\INV_Misc_Note_04"} end; return out end
         self.style.onSelect=function(value) settings().countStyle=value; self:Refresh() end
         self.style:SetScript("OnClick",function(owner) owner.value=settings().countStyle; owner.menuWidth=364; FT:ShowChoices(owner) end)
@@ -256,29 +269,29 @@ function Counts:Open()
         self.buttons={}
         for i,entry in ipairs(toggles) do
             local key=entry[1]
-            local b=FT:QuietButton(frame,"",364,32,entry[3]); b:SetPoint("TOPLEFT",24,-178-(i-1)*38)
+            local b=FT:QuietButton(frame,"",300,32,entry[3]); b:SetPoint("TOPLEFT",24,-178-(i-1)*38)
             if b.SetMotionScriptsWhileDisabled then b:SetMotionScriptsWhileDisabled(true) end
             b:SetScript("OnClick",function() local s=settings(); s[key]=not s[key]; self:Refresh() end)
             FT:Tooltip(b,entry[2],entry[4])
             self.buttons[key]=b
         end
         local divider=frame:CreateTexture(nil,"ARTWORK"); divider:SetColorTexture(.61,.51,.31,.6); divider:SetWidth(1)
-        divider:SetPoint("TOPLEFT",404,-96); divider:SetPoint("BOTTOMLEFT",404,24)
-        local R=420
+        divider:SetPoint("TOPLEFT",338,-96); divider:SetPoint("BOTTOMLEFT",338,24)
+        local R=352
         section(R,-66,"Where","Ability_Rogue_Sprint")
-        self.place=FT:QuietButton(frame,"",316,32,"move"); self.place:SetPoint("TOPLEFT",R,-96)
+        self.place=FT:QuietButton(frame,"",244,32,"move"); self.place:SetPoint("TOPLEFT",R,-96)
         self.place.options=function() local out={}; for _,o in ipairs(places) do out[#out+1]={value=o.value,label=o.label,tooltip=o.tooltip,icon="Interface\\Icons\\Ability_Rogue_Sprint"} end; return out end
         self.place.onSelect=function(value) settings().countPlace=value; self:Refresh() end
         self.place:SetScript("OnClick",function(owner) owner.value=settings().countPlace; owner.menuWidth=316; FT:ShowChoices(owner) end)
         FT:Tooltip(self.place,"Place","Where the counts show.")
-        local ph=FT:Label(frame,"Preview",16,true); ph:SetPoint("TOPLEFT",R,-146); ph:SetTextColor(1,.82,0); FT:SectionHeading(ph,"INV_Misc_Note_01",200)
-        local p=CreateFrame("Frame",nil,frame); p:SetPoint("TOPLEFT",R,-178); p:SetSize(300,300)
+        local ph=FT:Label(frame,"Preview",16,true); ph:SetPoint("TOPLEFT",R,-146); ph:SetTextColor(1,.82,0); FT:SectionHeading(ph,"INV_Misc_Note_01",120)
+        local p=CreateFrame("Frame",nil,frame); p:SetPoint("TOPLEFT",R,-178); p:SetSize(244,300)
         local function box()
-            local b=CreateFrame("Frame",nil,p); b:SetWidth(300); FT:RoundedFill(b,0,0,0,.88)
+            local b=CreateFrame("Frame",nil,p); b:SetWidth(244); FT:RoundedFill(b,0,0,0,.88)
             b.left,b.right={},{}
             for i=1,10 do
-                local l=b:CreateFontString(nil,"OVERLAY"); l:SetFont(FT.bodyFont,12,""); l:SetPoint("TOPLEFT",10,-7-(i-1)*17); l:SetJustifyH("LEFT"); l:SetWidth(108)
-                local r=b:CreateFontString(nil,"OVERLAY"); r:SetFont(FT.bodyFont,12,""); r:SetPoint("TOPRIGHT",-10,-7-(i-1)*17); r:SetJustifyH("RIGHT"); r:SetWidth(172)
+                local l=b:CreateFontString(nil,"OVERLAY"); l:SetFont(FT.bodyFont,12,""); l:SetPoint("TOPLEFT",10,-7-(i-1)*17); l:SetJustifyH("LEFT"); l:SetWidth(92)
+                local r=b:CreateFontString(nil,"OVERLAY"); r:SetFont(FT.bodyFont,12,""); r:SetPoint("TOPRIGHT",-10,-7-(i-1)*17); r:SetJustifyH("RIGHT"); r:SetWidth(132)
                 if l.SetWordWrap then l:SetWordWrap(false); r:SetWordWrap(false) end
                 b.left[i],b.right[i]=l,r
             end

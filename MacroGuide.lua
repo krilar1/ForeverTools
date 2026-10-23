@@ -7,7 +7,7 @@ local _,FT=...
 local G={}
 G.SECTIONS={
     {title="Basics",items={
-        {"Show a spell's icon and tooltip","#showtooltip as the first line gives the macro the icon, tooltip and cooldown of the spell it casts.","#showtooltip\n/cast <spell>"},
+        {"Show the spell icon and tooltip","#showtooltip as the first line gives the macro the icon, tooltip and cooldown of the spell it casts.","#showtooltip\n/cast <spell>"},
         {"Cast a spell","/cast casts a spell by name. Add (Rank 3) after the name for a lower rank.","/cast <spell>\n/cast <spell>(Rank 1)"},
         {"Use an item","/use uses an item from your bags or gear by name.","/use <item>"},
         {"Use a trinket or gear slot","A number uses what is in that slot: 13 is the top trinket, 14 the bottom one, 10 gloves.","#showtooltip 13\n/use 13"},
@@ -109,15 +109,27 @@ function G:Open()
                 local dh=d:GetStringHeight(); y=y+math.max(15,type(dh)=="number" and dh or 15)+6
                 -- The example in a dark box, one line per command.
                 local lines=1; for _ in code:gmatch("\n") do lines=lines+1 end
+                -- A read-only text box: click selects it all (or drag to mark
+                -- part of it), Ctrl+C copies. Addons cannot copy for you.
                 local box=CreateFrame("Frame",nil,content); box:SetPoint("TOPLEFT",0,-y); box:SetSize(inner-150,lines*16+12); FT:Panel(box); FT:Paint(box,{.04,.035,.03,1},{.35,.29,.18,1})
-                local c=box:CreateFontString(nil,"OVERLAY"); c:SetFont("Fonts\\ARIALN.TTF",13,""); c:SetPoint("TOPLEFT",8,-6); c:SetWidth(inner-166); c:SetJustifyH("LEFT"); c:SetText(code); c:SetTextColor(.62,.87,.62)
-                if c.SetWordWrap then c:SetWordWrap(true) end
-                local make=FT:QuietButton(content,"Make a macro",140,26); make:SetPoint("TOPRIGHT",0,-y)
-                make:SetScript("OnClick",function() G:Make(title,code) end)
-                FT:Tooltip(make,"Make a macro","Add this example to My own macros, ready to fill in and add to your bars.")
-                local copy=FT:QuietButton(content,"Copy",140,26); copy:SetPoint("TOPRIGHT",0,-y-30)
-                copy:SetScript("OnClick",function() FT:CopyBox(title,code,"Press Ctrl+C to copy, then paste it into a macro.") end)
-                FT:Tooltip(copy,"Copy","Show the text to copy.")
+                local edit=CreateFrame("EditBox",nil,box); edit:SetMultiLine(true); edit:SetAutoFocus(false)
+                edit:SetFont("Fonts\\ARIALN.TTF",13,""); edit:SetTextColor(.62,.87,.62)
+                edit:SetPoint("TOPLEFT",8,-6); edit:SetPoint("BOTTOMRIGHT",-8,4); edit:SetText(code)
+                local hint=FT:Label(content,"Click, then Ctrl+C",12); hint:SetPoint("TOPLEFT",box,"TOPRIGHT",12,-4); hint:SetWidth(130); hint:SetTextColor(.66,.59,.48)
+                local check=content:CreateTexture(nil,"OVERLAY"); check:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready"); check:SetSize(16,16); check:SetPoint("RIGHT",hint,"LEFT",-2,0); check:Hide()
+                local function reset() hint:SetText("Click, then Ctrl+C"); hint:SetTextColor(.66,.59,.48); check:Hide() end
+                edit:SetScript("OnTextChanged",function(owner,user) if user then owner:SetText(code); owner:HighlightText() end end)
+                edit:SetScript("OnEditFocusGained",function(owner) owner:HighlightText(); hint:SetText("Ctrl+C to copy"); hint:SetTextColor(1,.82,0) end)
+                edit:SetScript("OnEditFocusLost",function(owner) owner:HighlightText(0,0); reset() end)
+                edit:SetScript("OnEscapePressed",function(owner) owner:ClearFocus() end)
+                edit:HookScript("OnKeyDown",function(_,key)
+                    if key=="C" and IsControlKeyDown and IsControlKeyDown() then
+                        hint:SetText("Copied"); hint:SetTextColor(.45,.9,.45); check:Show()
+                        local mine={}; edit.copyToken=mine
+                        C_Timer.After(2,function() if edit.copyToken==mine then if edit:HasFocus() then hint:SetText("Ctrl+C to copy"); hint:SetTextColor(1,.82,0); check:Hide() else reset() end end end)
+                    end
+                end)
+                FT:Tooltip(edit,title,"Click to select it all, or drag to mark part of it. Then Ctrl+C to copy and paste it into a macro.")
                 y=y+math.max(lines*16+12,58)+14
             end
             y=y+8

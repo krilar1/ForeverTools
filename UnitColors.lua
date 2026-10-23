@@ -226,7 +226,7 @@ function Colors:LayerPlayerLevel(decorations,restoreOnly)
 end
 function Colors:Apply()
     if not FT.dbReady then return end
-    if InCombatLockdown() then self.deferred=true; self:Refresh(); return end
+    if FT:LooksWait() then self.deferred=true; self:Refresh(); return end
     self.deferred=false
     -- Party colors belong to Blizzard Edit Mode. Restore any bars this addon
     -- colored on older profiles, then leave their colors to the client.

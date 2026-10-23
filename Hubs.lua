@@ -27,7 +27,7 @@ local function buffStatus(key)
     return ok and text or ""
 end
 local hubs = {
-    {key = "Appearance", width = 760, height = 610, title = "Appearance", pages = {
+    {key = "Appearance", width = 620, height = 610, title = "Appearance", pages = {
         {"FontManager", "Fonts", "fonts", function() local m = mod("FontManager"); return m and m.Summary and m:Summary() or "Fonts, sizes and outlines" end},
         {"UnitColors", "Unit frames", function()
             -- Your own class's icon, like the switches on the page.
@@ -63,7 +63,7 @@ local hubs = {
         {"RareAlert", "Rare alerts", "INV_Misc_Head_Dragon_01", function() return onOff(settings("RareAlert").enabled) end},
         {"Totems", "Totems", "Spell_Nature_StoneSkinTotem", function() local t = settings("Totems"); return onOff(t.range or t.leftBehind) end},
         {"Interrupts", "Interrupt bar", "Ability_Kick", function() return onOff(settings("Interrupts").enabled) end},
-        {"SystemGameplay", "Group role", "Ability_Warrior_DefensiveStance", function() return onOff(settings("System").autoRole) end},
+        {"SystemGameplay", "Group role", "Ability_Warrior_DefensiveStance", function() local s = settings("System"); return "Role " .. onOff(s.autoRole):lower() end},
         {"SystemDeath", "Death glow", "Spell_Holy_Resurrection", function()
             local get = (C_CVar and C_CVar.GetCVar) or GetCVar
             local ok, value = pcall(function() return get and get("ffxDeath") end)
@@ -83,11 +83,12 @@ local hubs = {
         {"EnemyNearby", "Nearby enemies", "INV_Misc_Spyglass_02", function() return onOff(settings("Enemies").nearby) end},
         {"QueueTimer", "Battleground timer", "INV_Misc_PocketWatch_01", function() return onOff(settings("QueueTimer").enabled) end},
         {"Trinkets", "Trinket menu", function() return FT:FactionIcon() end, function() local on = settings("Trinkets").enabled; local T = FT.modules.Trinkets; if on and T and T.Worn and not T:Worn() then return "On · no trinket yet" end; return onOff(on) end},
+        {"EnemyCooldowns", "Enemy cooldowns", "Spell_Holy_BorrowedTime", function() return onOff(settings("EnemyCooldowns").enabled) end},
         {"Diminish", "Diminishing returns", "Spell_Frost_FrostNova", function() return onOff(settings("Diminish").enabled) end},
         {"AutoRelease", "Auto release", "Spell_Holy_GuardianSpirit", function() return onOff(settings("AutoRelease").enabled) end},
     }},
     {key = "Keybinds", width = 520, height = 608, title = "Keybinds", pages = {
-        {"SystemKeybinds", "Keybind tools", "INV_Misc_Key_03", function() return "Quick keybind and backups" end},
+        {"SystemKeybinds", "Keybind tools", "INV_Misc_Key_03", function() return "Short keys " .. onOff(settings("System").shortKeys):lower() end},
         {"SpellBinds", "Spell binds", "INV_Misc_Key_13", function() return onOff(settings("SpellBinds").enabled) end},
         {"CustomKeybinds", "Mouse-wheel casting", "mouseover", function() return onOff(settings("CustomKeybinds").enabled) end},
         {"SmartKey", "Smart interact key", "INV_Misc_Key_10", function() return onOff(settings("SmartKey").enabled) end},
@@ -112,7 +113,10 @@ local hubs = {
         {"MacroGeneric", "Generic", "INV_Misc_Gear_01", function() return macroCount("generic") end},
         {"MacroOwn", "My own macros", "INV_Feather_05", function()
             local m = mod("MacroForge"); if not m or not m.ViewEntries then return "" end
-            local n = #m:ViewEntries("own"); return n == 0 and "None yet" or (n .. " made by you")
+            -- Removed (hidden) macros don't count.
+            local n = 0
+            for _, e in ipairs(m:ViewEntries("own")) do if not (m.IsHidden and m:IsHidden(e)) then n = n + 1 end end
+            return n == 0 and "None yet" or (n .. " made by you")
         end},
         {"MacroOther", "Other classes", "classes", function() return "Look at an alt's macros" end},
         {"MacroHidden", "Hidden", "Spell_Magic_LesserInvisibilty", function()
@@ -181,14 +185,14 @@ local tips = {
     Threat = "Threat meter and threat % above your target.",
     RareAlert = "A notice when a rare is nearby.",
     Totems = "Shamans: totem range and left-behind warning.",
-    SystemGameplay = "Set your role when you join a group.",
+    SystemGameplay = "Your group role, set from your talents.",
     SystemDeath = "The washed-out screen while dead.",
     EnemyAlerts = "Alerts for stealth and marked players.",
     EnemyMarks = "Players you marked.",
     EnemyNearby = "Enemy players you saw recently.",
     QueueTimer = "Time left to enter a battleground.",
     Diminish = "When crowd control will be shorter, or won't land.",
-    SystemKeybinds = "Bind keys by hovering (/kb), and backups.",
+    SystemKeybinds = "Bind keys by hovering (/kb), short key text on buttons, and backups.",
     SpellBinds = "Bind spells, items and macros to keys.",
     CustomKeybinds = "Cast by scrolling over a unit.",
     SmartKey = "One key to interact while questing.",
@@ -198,6 +202,7 @@ local tips = {
     SystemMinimap = "Minimap button, coordinates, button grouping.",
     SystemQuests = "Quest tracker at login, loot-roll position.",
     Interrupts = "Your group's interrupts and cooldowns.",
+    EnemyCooldowns = "Big cooldowns enemy players have used.",
     SystemErrors = "Hide the red error text.",
     Movers = "Drag ForeverTools' things on screen.",
     MoveWindows = "Drag the game's own windows.",

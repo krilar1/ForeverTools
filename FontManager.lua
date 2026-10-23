@@ -339,7 +339,7 @@ function Fonts:ApplyArea(id)
                 hooksecurefunc(object,"SetFont",function(target)
                     if self.reapplying then return end
                     local pref=self:Settings(id); local original=self.originals[id] and self.originals[id][target]
-                    if not pref.enabled or not original or InCombatLockdown() then return end
+                    if not pref.enabled or not original or FT:LooksWait() then return end
                     local resolved=self:Resolve(pref); if not resolved then return end
                     self.reapplying=true
                     target:SetFont(resolved,pref.size==0 and original[2] or pref.size,self:Flags(pref.outline,original[3]))
@@ -351,7 +351,7 @@ function Fonts:ApplyArea(id)
     self.counts[id] = count
 end
 function Fonts:Apply(only)
-    if InCombatLockdown() then self.deferred = true; self:RefreshShown(); return end
+    if FT:LooksWait() then self.deferred = true; self:RefreshShown(); return end
     if not only then self.deferred = false end
     for _, id in ipairs(self.order) do
         if not only or only[id] then self:ApplyArea(id) end
@@ -485,53 +485,54 @@ end
 function Fonts:Open()
     self.selected = self.selected or "general"
     if not self.frame then
-        self.frame = FT:Window("ForeverToolsFontManager", "Fonts", 760, 530)
+        self.frame = FT:Window("ForeverToolsFontManager", "Fonts", 620, 530)
         self.frame:HookScript("OnHide", function() self:ShowElement() end)
         FT:AppearanceBack(self.frame)
         self.areaButtons = {}
         local areaScroll=CreateFrame("ScrollFrame",nil,self.frame,"UIPanelScrollFrameTemplate")
         -- Scroll area as wide as its buttons: the scrollbar then sits in the gap
         -- before the settings instead of touching them.
-        areaScroll:SetPoint("TOPLEFT",20,-64); areaScroll:SetSize(182,402)
-        local areaList=CreateFrame("Frame",nil,areaScroll); areaList:SetSize(178,#self.order*40); areaScroll:SetScrollChild(areaList)
+        areaScroll:SetPoint("TOPLEFT",20,-64); areaScroll:SetSize(162,402)
+        local areaList=CreateFrame("Frame",nil,areaScroll); areaList:SetSize(158,#self.order*40); areaScroll:SetScrollChild(areaList)
         for index, id in ipairs(self.order) do
             local key = id
-            local button = FT:QuietButton(areaList, self.areas[key].label, 178, 34, "fonts")
+            local button = FT:QuietButton(areaList, self.areas[key].label, 158, 34, "fonts")
             button:SetPoint("TOPLEFT", 0, -(index-1)*40)
             button.label:SetFont(FT.bodyFont,12,"")
             button:SetScript("OnClick", function() self.selected = key; self.notice = nil; self:Refresh() end)
             FT:Tooltip(button, self.areas[key].label, self.areas[key].description)
             self.areaButtons[key] = button
         end
-        self.title = FT:Label(self.frame, "", 20, true); self.title:SetPoint("TOPLEFT", 240, -66)
-        self.description = FT:Label(self.frame, "", 14); self.description:SetPoint("TOPLEFT", 240, -100); self.description:SetSize(494, 82); self.description:SetJustifyV("TOP")
-        self.toggle = FT:AccentButton(self.frame, "", 494, 34, "fonts"); self.toggle:SetPoint("TOPLEFT", 240, -120)
+        self.title = FT:Label(self.frame, "", 20, true); self.title:SetPoint("TOPLEFT", 204, -66)
+        self.description = FT:Label(self.frame, "", 14); self.description:SetPoint("TOPLEFT", 204, -100); self.description:SetSize(392, 82); self.description:SetJustifyV("TOP")
+        self.toggle = FT:AccentButton(self.frame, "", 392, 34, "fonts"); self.toggle:SetPoint("TOPLEFT", 204, -120)
         self.toggle:SetScript("OnClick", function() local s=self:Settings(self.selected); s.enabled=not s.enabled; self.notice=nil; self:Apply() end)
-        self.fontChoice = FT:Dropdown(self.frame, 494, function() return self:Catalogue() end, function(value) self:ChooseFont(value) end, "fonts")
-        self.fontChoice:SetPoint("TOPLEFT", 240, -170)
-        self.sizeChoice = self:Stepper(self.frame, 238, function()
+        self.fontChoice = FT:Dropdown(self.frame, 392, function() return self:Catalogue() end, function(value) self:ChooseFont(value) end, "fonts")
+        self.fontChoice:SetPoint("TOPLEFT", 204, -170)
+        self.fontChoice.menuBeside = self.frame
+        self.sizeChoice = self:Stepper(self.frame, 190, function()
             local list = {{value=0,label="Original size"}}; for i=8,40 do list[#list+1]={value=i,label=i .. " px"} end; return list
         end, function(value) self:Settings(self.selected).size=value; self:Apply() end, "fonts")
-        self.sizeChoice:SetPoint("TOPLEFT", 240, -212)
-        self.outlineChoice = self:Stepper(self.frame, 244, function() return outlineChoices(self.selected) end, function(value) self:Settings(self.selected).outline=value; self:Apply() end, "fonts")
-        self.outlineChoice:SetPoint("TOPLEFT", 490, -212)
-        self.previewTitle = FT:Label(self.frame, "Preview", 14, true); self.previewTitle:SetPoint("TOPLEFT",240,-262); FT:SectionHeading(self.previewTitle, "INV_Inscription_Tradeskill01", 260)
-        self.preview = FT:Label(self.frame, "The quick brown fox jumps over the lazy dog.", 22); self.preview:SetPoint("TOPLEFT", 240, -286); self.preview:SetSize(494, 80)
-        local all=FT:QuietButton(self.frame,"Apply selected font to all",494,32,"fonts")
-        all:SetPoint("TOPLEFT",240,-406)
+        self.sizeChoice:SetPoint("TOPLEFT", 204, -212)
+        self.outlineChoice = self:Stepper(self.frame, 190, function() return outlineChoices(self.selected) end, function(value) self:Settings(self.selected).outline=value; self:Apply() end, "fonts")
+        self.outlineChoice:SetPoint("TOPLEFT", 402, -212)
+        self.previewTitle = FT:Label(self.frame, "Preview", 14, true); self.previewTitle:SetPoint("TOPLEFT",204,-262); FT:SectionHeading(self.previewTitle, "INV_Inscription_Tradeskill01", 260)
+        self.preview = FT:Label(self.frame, "The quick brown fox jumps over the lazy dog.", 22); self.preview:SetPoint("TOPLEFT", 204, -286); self.preview:SetSize(392, 80)
+        local all=FT:QuietButton(self.frame,"Apply selected font to all",392,32,"fonts")
+        all:SetPoint("TOPLEFT",204,-406)
         self.allButton=all
         all:SetScript("OnClick",function() local font=self:Settings(self.selected).font; FT:Confirm("Use this font in every area? Sizes and outlines stay.",function() self:ApplyAllFonts(font) end) end)
         FT:Tooltip(all,"Apply font to all areas","Use this font everywhere. Sizes and outlines stay.")
-        self.customFont=CreateFrame("EditBox",nil,self.frame,"InputBoxTemplate"); self.customFont:SetSize(350,28); self.customFont:SetPoint("TOPLEFT",246,-212); self.customFont:SetFont(FT.bodyFont,14,""); self.customFont:SetAutoFocus(false)
-        self.customFontAdd=FT:QuietButton(self.frame,"Add font",128,28,"add"); self.customFontAdd:SetPoint("LEFT",self.customFont,"RIGHT",12,0)
+        self.customFont=CreateFrame("EditBox",nil,self.frame,"InputBoxTemplate"); self.customFont:SetSize(262,28); self.customFont:SetPoint("TOPLEFT",210,-212); self.customFont:SetFont(FT.bodyFont,14,""); self.customFont:SetAutoFocus(false)
+        self.customFontAdd=FT:QuietButton(self.frame,"Add font",112,28,"add"); self.customFontAdd:SetPoint("LEFT",self.customFont,"RIGHT",12,0)
         FT:Tooltip(self.customFontAdd,"Add font","Add the font file named in the box.")
         self.customFontAdd:SetScript("OnClick",function() local file=self.customFont:GetText(); local path=self:Resolve({font="file:"..file}); if not path then FT:Toast("Font not found. Put the file in Interface\\AddOns\\ForeverTools\\Media\\Fonts, then /reload."); return end; FT.db.customFonts=FT.db.customFonts or {}; local found=false; for _,v in ipairs(FT.db.customFonts) do if v==file then found=true end end; if not found then table.insert(FT.db.customFonts,file) end; self:ChooseFont("file:"..file) end)
         FT:Tooltip(self.customFont,"Font filename","File name, like MyFont.ttf, placed in ForeverTools/Media/Fonts. Only fonts you may use.")
-        self.status = FT:Label(self.frame, "", 13); self.status:SetPoint("TOPLEFT", 240, -392); self.status:SetSize(494, 62); self.status:SetJustifyV("TOP")
-        local reset = FT:QuietButton(self.frame, "Reset this area", 238, 32, "reset"); reset:SetPoint("BOTTOMLEFT", 240, 30)
+        self.status = FT:Label(self.frame, "", 13); self.status:SetPoint("TOPLEFT", 204, -392); self.status:SetSize(392, 62); self.status:SetJustifyV("TOP")
+        local reset = FT:QuietButton(self.frame, "Reset this area", 190, 32, "reset"); reset:SetPoint("BOTTOMLEFT", 204, 30)
         self.resetButton=reset
         reset:SetScript("OnClick", function() local id=self.selected; FT:Confirm("Reset "..self.areas[id].label.." font settings?",function() FT.db.fonts[id]={}; self.notice=nil; self:Apply() end) end)
-        local apply = FT:QuietButton(self.frame, "Reapply fonts", 244, 32, "confirm"); apply:SetPoint("LEFT", reset, "RIGHT", 12, 0)
+        local apply = FT:QuietButton(self.frame, "Reapply fonts", 190, 32, "confirm"); apply:SetPoint("LEFT", reset, "RIGHT", 8, 0)
         self.reapplyButton=apply
         apply:SetScript("OnClick", function() self.notice=nil; self:Apply() end)
         FT:PageInfo(self.frame, "Fonts", function()
@@ -582,10 +583,10 @@ end)
 -- lines), with a slow check every 10 seconds as a safety net.
 local scanElapsed,objectiveElapsed=0,0
 local function objectives()
-    if not FT.dbReady or InCombatLockdown() then return end
+    if not FT.dbReady or FT:LooksWait() then return end
     if (ObjectiveTrackerFrame or QuestObjectiveTracker or QuestWatchFrame) and Fonts:Settings("objectives").enabled then
         objectiveElapsed=0
-        FT:Coalesce("objectiveFonts",function() if not InCombatLockdown() then Fonts:ApplyArea("objectives") end end,1)
+        FT:Coalesce("objectiveFonts",function() if not FT:LooksWait() then Fonts:ApplyArea("objectives") end end,1)
     end
 end
 local questEvents=CreateFrame("Frame")
@@ -598,7 +599,7 @@ questEvents:SetScript("OnEvent",function()
 end)
 events:SetScript("OnUpdate",function(_,dt)
     scanElapsed=scanElapsed+dt; objectiveElapsed=objectiveElapsed+dt
-    if scanElapsed<2 or not FT.dbReady or InCombatLockdown() then return end
+    if scanElapsed<2 or not FT.dbReady or FT:LooksWait() then return end
     scanElapsed=0
     if (RXPFrame or RXPV2GuideWindow) and Fonts:Settings("restedxp").enabled then Fonts:ApplyArea("restedxp") end
     if objectiveElapsed>=10 then objectives() end

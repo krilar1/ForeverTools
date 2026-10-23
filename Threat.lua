@@ -119,7 +119,69 @@ function Threat:Style()
     if meter then
         readStyle(meter,"GetBarHeight","barHeight",14,40); readStyle(meter,"GetBarSpacing","spacing",0,10); readStyle(meter,"GetBackgroundAlpha","background",0,1)
     end
+    -- The damage meter's own bars, read from one on screen (at most every
+    -- two seconds): row height, bar height and the fill picture.
+    local now=GetTime()
+    if not self.mirrorAt or now-self.mirrorAt>2 then
+        self.mirrorAt=now; self.mirror=self:MirrorBar() or self.mirror
+        self.mirrorAlpha=self:MirrorBackground() or self.mirrorAlpha
+    end
+    -- The damage meter's background as see-through as it really is (its
+    -- transparency setting fades the frame that holds the picture).
+    if self.mirrorAlpha then style.background=self.mirrorAlpha end
+    local m=self.mirror
+    style.fillHeight,style.fill=nil,nil
+    if m then style.barHeight=m.row; style.fillHeight=m.bar; style.fill=m.fill end
     return style
+end
+function Threat:MirrorBackground()
+    local w=self.MeterWindow and self:MeterWindow(); if not w then return end
+    local found
+    local function visit(f,depth)
+        if found or depth<0 then return end
+        local ok,list=pcall(function() return {f:GetRegions()} end)
+        if ok then for _,region in ipairs(list) do
+            if not found and region.GetObjectType and region:GetObjectType()=="Texture" then
+                local a=region.GetAtlas and region:GetAtlas()
+                if not secret(a) and a=="damagemeters-background" then found=region end
+            end
+        end end
+        local okC,kids=pcall(function() return {f:GetChildren()} end)
+        if okC then for _,child in ipairs(kids) do visit(child,depth-1) end end
+    end
+    visit(w,2)
+    if not found then return end
+    local alpha=found:GetAlpha(); local p=found:GetParent()
+    while p and p~=w and p~=UIParent do alpha=alpha*p:GetAlpha(); p=p:GetParent() end
+    if secret(alpha) or type(alpha)~="number" then return end
+    return math.max(0,math.min(1,alpha))
+end
+function Threat:MirrorBar()
+    local w=self.MeterWindow and self:MeterWindow(); if not w then return end
+    local found
+    local function visit(f,depth)
+        if found or depth<0 then return end
+        local ok,kids=pcall(function() return {f:GetChildren()} end)
+        if not ok then return end
+        for _,child in ipairs(kids) do
+            if found then return end
+            if child:IsShown() and child.GetObjectType and child:GetObjectType()=="StatusBar" then
+                local h=child:GetHeight(); local parent=child:GetParent(); local ph=parent and parent:GetHeight()
+                local t=child.GetStatusBarTexture and child:GetStatusBarTexture()
+                if not secret(h) and not secret(ph) and type(h)=="number" and type(ph)=="number" and h>=8 and ph>=h and ph<=48 and t then
+                    local atlas=t.GetAtlas and t:GetAtlas()
+                    local file=t.GetTexture and t:GetTexture()
+                    if secret(atlas) then atlas=nil end; if secret(file) then file=nil end
+                    if (file==nil or file=="") and t.GetTextureFilePath then file=t:GetTextureFilePath(); if secret(file) then file=nil end end
+                    if atlas=="" then atlas=nil end
+                    found={row=math.floor(ph+.5),bar=math.floor(h+.5),fill=atlas and {atlas=atlas} or (file and {file=file}) or nil}
+                end
+            end
+            if not found and child:IsShown() then visit(child,depth-1) end
+        end
+    end
+    visit(w,6)
+    return found
 end
 local function button(parent,size,normal,pushed,highlight)
     local b=CreateFrame("Button",nil,parent); b:SetSize(size[1],size[2])
@@ -133,13 +195,16 @@ end
 function Threat:Meter()
     if self.meter then return self.meter end
     local f=CreateFrame("Frame","ForeverToolsThreatMeter",UIParent)
-    f:SetSize(260,120); f:SetFrameStrata("MEDIUM"); f:SetClampedToScreen(true); f:SetMovable(true)
+    -- Low, like the damage meter: game windows (friends, map...) open above it.
+    f:SetSize(260,120); f:SetFrameStrata("LOW"); f:SetClampedToScreen(true); f:SetMovable(true)
     if f.SetDontSavePosition then f:SetDontSavePosition(true) end
     f.header=f:CreateTexture(nil,"BACKGROUND",nil,1); f.header:SetPoint("TOPLEFT"); f.header:SetPoint("TOPRIGHT"); f.header:SetHeight(32)
     if hasAtlas("ui-damagemeters-header-bar") then f.header:SetAtlas("ui-damagemeters-header-bar")
     else f.header:SetColorTexture(.05,.04,.08,.9) end
     f.body=f:CreateTexture(nil,"BACKGROUND")
-    f.body:SetPoint("TOPLEFT",0,-30); f.body:SetPoint("BOTTOMRIGHT")
+    -- The background picture fades out at its top: like the damage meter,
+    -- it starts at the very top, so the faded part sits under the header.
+    f.body:SetPoint("TOPLEFT",0,0); f.body:SetPoint("BOTTOMRIGHT")
     if hasAtlas("damagemeters-background") then f.body:SetAtlas("damagemeters-background") else f.body:SetColorTexture(0,0,0,.6) end
     f.title=f:CreateFontString(nil,"OVERLAY","GameFontNormalMed1"); f.title:SetPoint("TOPLEFT",8,-9); f.title:SetText("Threat")
     f.target=f:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); f.target:SetPoint("LEFT",f.title,"RIGHT",8,0)
@@ -168,11 +233,13 @@ function Threat:Meter()
     f.empty=f:CreateFontString(nil,"OVERLAY","GameFontDisableSmall"); f.empty:SetPoint("TOP",0,-44)
     -- Drag the title bar to move it (out of combat).
     f:EnableMouse(true); f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart",function(owner) if not InCombatLockdown() and (self.moverUnlock or not self:Settings().locked) then owner:StartMoving() end end)
+    f:SetScript("OnDragStart",function(owner) if not InCombatLockdown() and (self.moverUnlock or not self:Settings().locked) then owner:StartMoving(); self.dragging=true end end)
     f:SetScript("OnDragStop",function(owner)
         owner:StopMovingOrSizing()
+        self.dragging=false; self:ShowSnapGlow(false)
         local s=self:Settings()
         s.x,s.y=owner:GetLeft(),owner:GetTop()
+        self:Snap(owner)
         self:Place()
     end)
     -- Resize from the bottom-right corner, with the damage meter's own handle.
@@ -196,7 +263,19 @@ function Threat:Meter()
     -- second, only in that mode and only while the meter is on screen).
     local function hover() self:UpdateGrip() end
     f.gripElapsed=0
+    f.snapElapsed=0
     f:SetScript("OnUpdate",function(owner,dt)
+        if self.dragging or self.sizing then
+            owner.snapElapsed=owner.snapElapsed+dt
+            if owner.snapElapsed>=.05 then
+                owner.snapElapsed=0
+                if self.dragging then local x,_,_,rect=self:SnapSpot(owner); self:ShowSnapGlow(x~=nil,rect)
+                else
+                    self.sizeShift=IsShiftKeyDown and IsShiftKeyDown() or false
+                    local h,rect=self:HeightSnap(owner); self:ShowSnapGlow(h~=nil,rect)
+                end
+            end
+        end
         if not owner.gripWatch then return end
         owner.gripElapsed=owner.gripElapsed+dt
         if owner.gripElapsed<.1 then return end
@@ -205,23 +284,134 @@ function Threat:Meter()
     f.grip:SetScript("OnMouseDown",function(_,button)
         local s=self:Settings()
         if button~="LeftButton" or InCombatLockdown() or s.collapsed or (s.locked and not self.moverUnlock) then return end
-        self.sizing=true; f:StartSizing("BOTTOMRIGHT")
+        self.sizing=true; self.sizeShift=false; f:StartSizing("BOTTOMRIGHT")
     end)
     f.grip:SetScript("OnMouseUp",function()
         if not self.sizing then return end
-        self.sizing=false; f:StopMovingOrSizing()
+        local snapped=not self.sizeShift and self:HeightSnap(f) or nil
+        self.sizeShift=false
+        self.sizing=false; f:StopMovingOrSizing(); self:ShowSnapGlow(false)
         local s=self:Settings()
-        s.width=number(math.floor(f:GetWidth()+.5),260,MIN_W,MAX_W); s.height=number(math.floor(f:GetHeight()+.5),150,MIN_H,MAX_H)
+        s.width=number(math.floor(f:GetWidth()+.5),260,MIN_W,MAX_W); s.height=number(snapped or math.floor(f:GetHeight()+.5),150,MIN_H,MAX_H)
         -- Sizing can move the anchor; keep a moved meter where it now is.
         if s.x and s.y then s.x,s.y=f:GetLeft(),f:GetTop() end
         self:Place(); self:Update(); hover()
     end)
-    f.grip:SetScript("OnEnter",function(b) hover(); GameTooltip:SetOwner(b,"ANCHOR_TOP"); GameTooltip:SetText("Resize",1,1,1); GameTooltip:AddLine("Drag to change the width and height.",.8,.8,.8,true); GameTooltip:Show() end)
+    f.grip:SetScript("OnEnter",function(b) hover(); GameTooltip:SetOwner(b,"ANCHOR_TOP"); GameTooltip:SetText("Resize",1,1,1); GameTooltip:AddLine("Drag to change the width and height. Beside the damage meter it snaps to its height; hold Shift for any height.",.8,.8,.8,true); GameTooltip:Show() end)
     f.grip:SetScript("OnLeave",function() hover(); GameTooltip:Hide() end)
     f:SetScript("OnSizeChanged",function() if self.sizing then self:UpdateMeter() end end)
     f:Hide()
     self.meter=f
+    local skins=FT.modules.IconStyles; if skins and skins.SkinThreat then skins:SkinThreat(f) end
     return f
+end
+-- Dropped near the game's damage meter: it snaps against it (side by side
+-- with the tops lined up, or stacked with the left edges lined up). Side by
+-- side with almost the same height, it takes the damage meter's height.
+-- The damage meter's art has a soft see-through edge: a small overlap makes
+-- the two look flush.
+local SNAP,GAP=16,-3
+function Threat:MeterWindow()
+    for i=1,3 do local w=_G["DamageMeterSessionWindow"..i]; if w and w.IsShown and w:IsShown() then return w end end
+    local m=self:DamageMeter(); if m and m:IsShown() then return m end
+end
+-- The damage meter's visible art (header and background), in screen units:
+-- its window is a little bigger than what you see, so snapping to the window
+-- left a gap.
+function Threat:MeterRect()
+    local w=self:MeterWindow(); if not w then return end
+    local k=w:GetEffectiveScale()/UIParent:GetEffectiveScale()
+    local L,R,T,B,HT
+    local function add(region)
+        if not region.IsShown or not region:IsShown() then return end
+        local atlas=region.GetAtlas and region:GetAtlas()
+        if type(atlas)~="string" or secret(atlas) or not atlas:lower():find("damagemeter",1,true) then return end
+        local atl=atlas:lower(); if atl:find("scalehandle",1,true) or atl:find("bar%-fill") then return end
+        local rl,rr,rt,rb=region:GetLeft(),region:GetRight(),region:GetTop(),region:GetBottom()
+        if not (rl and rr and rt and rb) or secret(rl) or secret(rr) or secret(rt) or secret(rb) then return end
+        local rk=region.GetEffectiveScale and region:GetEffectiveScale()/UIParent:GetEffectiveScale() or k
+        rl,rr,rt,rb=rl*rk,rr*rk,rt*rk,rb*rk
+        L=L and math.min(L,rl) or rl; R=R and math.max(R,rr) or rr; T=T and math.max(T,rt) or rt; B=B and math.min(B,rb) or rb
+        -- The header bar is the same art as ours: line our top up with it.
+        if atl:find("header%-bar") then HT=HT and math.max(HT,rt) or rt end
+    end
+    local function visit(f,depth)
+        if depth<0 then return end
+        local ok,list=pcall(function() return {f:GetRegions()} end)
+        if ok then for _,region in ipairs(list) do if region.GetObjectType and region:GetObjectType()=="Texture" then add(region) end end end
+        local okC,kids=pcall(function() return {f:GetChildren()} end)
+        if okC then for _,child in ipairs(kids) do if child.IsShown and child:IsShown() then visit(child,depth-1) end end end
+    end
+    visit(w,4)
+    local l,r,t,b=w:GetLeft(),w:GetRight(),w:GetTop(),w:GetBottom()
+    if not (l and r and t and b) or secret(l) or secret(r) or secret(t) or secret(b) then return end
+    l,r,t,b=l*k,r*k,t*k,b*k
+    -- Only trust the art when it sits on the window (its header may stick out a little).
+    self.rectInfo={window={l,r,t,b},art=L and {L,R,HT or T,B} or nil}
+    if L and R and T and B and L>=l-24 and R<=r+24 and T<=t+24 and B>=b-24 and R-L>40 and T-B>30 then return L,R,HT or T,B end
+    return l,r,t,b
+end
+-- Where the meter would land if dropped now (nil: not close enough).
+function Threat:SnapSpot(f)
+    if IsShiftKeyDown and IsShiftKeyDown() then return end
+    local l,r,t,b=self:MeterRect(); if not l then return end
+    local fl,ft,fw,fh=f:GetLeft(),f:GetTop(),f:GetWidth(),f:GetHeight()
+    if not (fl and ft and fw and fh) then return end
+    local fr,fb=fl+fw,ft-fh
+    local function near(a,c) return math.abs(a-c)<=SNAP end
+    local overlapY=fb<t+SNAP and ft>b-SNAP
+    local overlapX=fr>l-SNAP and fl<r+SNAP
+    local x,y=fl,ft
+    if overlapY and near(fl,r) then x=r+GAP
+    elseif overlapY and near(fr,l) then x=l-fw-GAP
+    elseif overlapX and near(fb,t) then y=t+fh+GAP
+    elseif overlapX and near(ft,b) then y=b-GAP
+    else return end
+    local height
+    if x~=fl then y=t; height=math.floor((t-b)+.5)   -- side by side: same top, same height
+    elseif math.abs(fl-l)<=40 then x=l end
+    return x,y,height,{l,r,t,b}
+end
+function Threat:Snap(f)
+    local x,y,height=self:SnapSpot(f); if not x then return end
+    local s=self:Settings()
+    if height and not s.collapsed then s.height=height end
+    s.x,s.y=x,y
+end
+-- A gold flash around both meters while a drop (or a resize) would snap.
+local function glowBox(parent)
+    local g=CreateFrame("Frame",nil,parent or UIParent); g:SetFrameStrata("HIGH")
+    g.edges={}
+    for i=1,4 do local t=g:CreateTexture(nil,"OVERLAY"); t:SetColorTexture(1,.82,.2,1); t:SetBlendMode("ADD"); g.edges[i]=t end
+    local e=g.edges
+    e[1]:SetPoint("TOPLEFT",-2,2); e[1]:SetPoint("TOPRIGHT",2,2); e[1]:SetHeight(2)
+    e[2]:SetPoint("BOTTOMLEFT",-2,-2); e[2]:SetPoint("BOTTOMRIGHT",2,-2); e[2]:SetHeight(2)
+    e[3]:SetPoint("TOPLEFT",-2,2); e[3]:SetPoint("BOTTOMLEFT",-2,-2); e[3]:SetWidth(2)
+    e[4]:SetPoint("TOPRIGHT",2,2); e[4]:SetPoint("BOTTOMRIGHT",2,-2); e[4]:SetWidth(2)
+    g.elapsed=0
+    g:SetScript("OnUpdate",function(owner,dt) owner.elapsed=owner.elapsed+dt; owner:SetAlpha(.55+.45*math.abs(math.sin(owner.elapsed*6))) end)
+    g:Hide()
+    return g
+end
+function Threat:ShowSnapGlow(on,rect)
+    local f=self.meter; if not f then return end
+    self.glowOwn=self.glowOwn or glowBox(f); self.glowOther=self.glowOther or glowBox(UIParent)
+    if not on or not rect then self.glowOwn:Hide(); self.glowOther:Hide(); return end
+    self.glowOwn:SetAllPoints(f); self.glowOwn:Show()
+    local o=self.glowOther; o:ClearAllPoints()
+    o:SetPoint("TOPLEFT",UIParent,"BOTTOMLEFT",rect[1],rect[3]); o:SetPoint("BOTTOMRIGHT",UIParent,"BOTTOMLEFT",rect[2],rect[4]); o:Show()
+end
+-- Resizing beside the damage meter: close to its height, it snaps to it.
+function Threat:HeightSnap(f)
+    -- Hold Shift for any height.
+    if IsShiftKeyDown and IsShiftKeyDown() then return end
+    local l,r,t,b=self:MeterRect(); if not l then return end
+    local fl,fr,ft,fb=f:GetLeft(),f:GetRight(),f:GetTop(),f:GetBottom()
+    if not (fl and fr and ft and fb) then return end
+    local beside=(math.abs(fl-r)<=6 or math.abs(fr-l)<=6) and math.abs(ft-t)<=3
+    if not beside then return end
+    local h=t-b
+    if math.abs((ft-fb)-h)<=SNAP then return math.floor(h+.5),{l,r,t,b} end
 end
 -- Beside the damage meter: above it, or below when there is no room above.
 -- Once you drag the meter, your spot is used instead.
@@ -259,11 +449,19 @@ function Threat:Row(index)
     if row then return row end
     local f=self.meter
     row=CreateFrame("Frame",nil,f)
-    row.bar=CreateFrame("StatusBar",nil,row); row.bar:SetAllPoints()
-    if hasAtlas("UI-HUD-CoolDownManager-Bar") then row.bar:SetStatusBarTexture("UI-HUD-CoolDownManager-Bar") else row.bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar") end
+    -- Like the damage meter: a square class icon the row's height, then a
+    -- thinner bar (three quarters high, centered) starting just under the
+    -- icon's right edge, with the meter's shadow behind and edge on top.
+    -- Measured on the game's damage meter: the icon is 8 taller than the
+    -- row (centered), the bar 2 shorter, and the bar's shadow and edge
+    -- reach 2 above and below the bar.
+    row.icon=row:CreateTexture(nil,"ARTWORK"); row.icon:SetPoint("LEFT")
+    row.bar=CreateFrame("StatusBar",nil,row); row.bar:SetPoint("LEFT",row.icon,"RIGHT",-2,0); row.bar:SetPoint("RIGHT")
+    row.bar:SetStatusBarTexture(hasAtlas("UI-HUD-CoolDownManager-Bar") and "UI-HUD-CoolDownManager-Bar" or "Interface\\TargetingFrame\\UI-StatusBar")
     row.bar:SetMinMaxValues(0,100)
-    row.bg=row.bar:CreateTexture(nil,"BACKGROUND"); row.bg:SetPoint("TOPLEFT",-2,2); row.bg:SetPoint("BOTTOMRIGHT",2,-2)
+    row.bg=row.bar:CreateTexture(nil,"BACKGROUND"); row.bg:SetPoint("TOPLEFT",0,2); row.bg:SetPoint("BOTTOMRIGHT",0,-2)
     if hasAtlas("ui-damagemeters-bar-shadowbg") then row.bg:SetAtlas("ui-damagemeters-bar-shadowbg") else row.bg:SetColorTexture(0,0,0,.4) end
+    if hasAtlas("ui-damagemeters-bar-shadowedge") then row.edge=row.bar:CreateTexture(nil,"OVERLAY",nil,-1); row.edge:SetPoint("TOPLEFT",0,2); row.edge:SetPoint("BOTTOMRIGHT",0,-2); row.edge:SetAtlas("ui-damagemeters-bar-shadowedge") end
     row.value=row.bar:CreateFontString(nil,"OVERLAY","NumberFontNormal"); row.value:SetPoint("RIGHT",-4,0); row.value:SetJustifyH("RIGHT")
     row.name=row.bar:CreateFontString(nil,"OVERLAY","NumberFontNormal"); row.name:SetPoint("LEFT",4,0); row.name:SetPoint("RIGHT",row.value,"LEFT",-8,0)
     row.name:SetJustifyH("LEFT"); if row.name.SetWordWrap then row.name:SetWordWrap(false) end
@@ -277,17 +475,52 @@ local function classColor(unit)
     local _,class=UnitClass(unit)
     if not secret(class) and type(class)=="string" and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class] then return RAID_CLASS_COLORS[class] end
 end
+-- PvP has no threat: the meter stays away in battlegrounds and arenas, and
+-- while your target is a player (a duel or world PvP).
+function Threat:PvP()
+    if IsInInstance then
+        local ok,inside,kind=pcall(IsInInstance)
+        if ok and not secret(inside) and inside and not secret(kind) and (kind=="pvp" or kind=="arena") then return true end
+    end
+    if UnitIsPlayer then
+        local ok,p=pcall(UnitIsPlayer,"target")
+        if ok and not secret(p) and p then
+            local okA,attack=pcall(UnitCanAttack,"player","target")
+            if okA and not secret(attack) and attack then return true end
+        end
+    end
+    return false
+end
 function Threat:ShouldShowMeter()
     local s=self:Settings()
     if self.previewing then return true end
     if not s.enabled then return false end
+    if self:PvP() then return false end
     if s.show=="always" then return true end
     if s.show=="group" then return IsInGroup() end
     return InCombatLockdown() or yes(UnitAffectingCombat("player"))
 end
+-- The class icon at the start of a bar (the game's class icon art).
+function Threat:ClassIcon(texture,class)
+    if texture.ftClass==class then return end
+    texture.ftClass=class
+    if not class or class=="" then texture:SetTexture(nil); texture:SetColorTexture(0,0,0,.4); return end
+    -- The damage meter's own square class icons (Interface\Icons\ClassIcon_*).
+    local name=class:sub(1,1)..class:sub(2):lower()
+    if class=="DEATHKNIGHT" then name="DeathKnight" elseif class=="DEMONHUNTER" then name="DemonHunter" end
+    texture:SetTexCoord(0,1,0,1); texture:SetTexture("Interface\\Icons\\ClassIcon_"..name)
+    if texture:GetTexture() then return end
+    local atlas="classicon-"..class:lower()
+    if hasAtlas(atlas) then texture:SetAtlas(atlas); return end
+    local c=CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[class]
+    texture:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
+    if c then texture:SetTexCoord(c[1],c[2],c[3],c[4]) end
+end
 function Threat:UpdateMeter()
     if not self:ShouldShowMeter() then if self.meter then self.meter:Hide() end return end
     local f=self:Meter(); local s=self:Settings(); local style=self:Style()
+    local skins=FT.modules.IconStyles
+    if skins and skins.SkinThreat and f.ftSkin~=(skins.skinVersion or 0) then skins:SkinThreat(f) end
     local target=mob()
     local entries,private
     if self.previewing then
@@ -299,6 +532,8 @@ function Threat:UpdateMeter()
         entries,private=self:Entries(target)
         if target then f.target:SetText(UnitName(target)) else f.target:SetText("") end
     end
+    -- With the Meters skin, the background is as solid as the damage meter's.
+    local skinned=skins and skins.Settings and skins:Settings().meters
     f.body:SetAlpha(style.background)
     -- As many bars as fit in the meter's height.
     local height=self.sizing and f:GetHeight() or self:MeterHeight()
@@ -307,17 +542,31 @@ function Threat:UpdateMeter()
     for i=1,shown do
         local e=entries[i]; local row=self:Row(i)
         local y=-34-(i-1)*(style.barHeight+style.spacing)
-        if row.placedY~=y or row.placedH~=style.barHeight then
-            row.placedY,row.placedH=y,style.barHeight
+        if row.placedY~=y or row.placedH~=style.barHeight or row.placedF~=style.fillHeight then
+            row.placedY,row.placedH,row.placedF=y,style.barHeight,style.fillHeight
             row:ClearAllPoints()
-            row:SetPoint("TOPLEFT",f,"TOPLEFT",4,y)
-            row:SetPoint("RIGHT",f,"RIGHT",-4,0); row:SetHeight(style.barHeight)
+            row:SetPoint("TOPLEFT",f,"TOPLEFT",5,y)
+            row:SetPoint("RIGHT",f,"RIGHT",-3,0); row:SetHeight(style.barHeight)
+            row.icon:SetSize(style.barHeight+8,style.barHeight+8); row.bar:SetHeight(style.fillHeight or math.max(6,style.barHeight-2))
         end
-        local color
+        local color,class
         if e.unit then
-            row.name:SetText(UnitName(e.unit)); color=classColor(e.unit)
+            local n=UnitName(e.unit)
+            if not pcall(row.name.SetFormattedText,row.name,"%d. %s",i,n) then row.name:SetText(n) end
+            color=classColor(e.unit)
+            local _,c=UnitClass(e.unit); if not secret(c) and type(c)=="string" then class=c end
         else
-            row.name:SetText(e.name); color=RAID_CLASS_COLORS and RAID_CLASS_COLORS[e.class]
+            row.name:SetFormattedText("%d. %s",i,e.name); color=RAID_CLASS_COLORS and RAID_CLASS_COLORS[e.class]; class=e.class
+        end
+        self:ClassIcon(row.icon,class)
+        -- The damage meter's own fill picture, when it shows a bar.
+        local fill=style.fill
+        local key=fill and (fill.atlas or fill.file) or "default"
+        if row.fillKey~=key then
+            row.fillKey=key
+            if fill and fill.atlas then row.bar:SetStatusBarTexture(fill.atlas)
+            elseif fill and fill.file then row.bar:SetStatusBarTexture(fill.file)
+            else row.bar:SetStatusBarTexture(hasAtlas("UI-HUD-CoolDownManager-Bar") and "UI-HUD-CoolDownManager-Bar" or "Interface\\TargetingFrame\\UI-StatusBar") end
         end
         if color then row.bar:SetStatusBarColor(color.r,color.g,color.b) else row.bar:SetStatusBarColor(.55,.55,.6) end
         row.bar:SetValue(e.value)
@@ -337,7 +586,7 @@ function Threat:UpdateMeter()
             f.hide:SetNormalAtlas(expand); if hasAtlas(expand.."-pressed") then f.hide:SetPushedAtlas(expand.."-pressed") end
         end
     end
-    f.body:SetShown(not s.collapsed)
+    f.body:SetShown(not s.collapsed); if f.ftSolid then f.ftSolid:Hide() end
     f:Show()
     self.private=private
 end
@@ -483,7 +732,7 @@ function Threat:Refresh()
     p.box:SetSize(math.max(34,w+14),math.min(s.size,24)+10)
     local c=s.backgroundColor
     for _,t in ipairs(p.box.background) do t:SetVertexColor(c[1],c[2],c[3],s.backgroundAlpha); t:SetShown(s.background) end
-    self.moveText.label:SetText(self.movingText and "Lock position" or "Move threat %"); FT:SetSelected(self.moveText,self.movingText)
+    FT:RefreshPreview(self.frame)
 end
 function Threat:Open()
     if not self.frame then
@@ -493,6 +742,14 @@ function Threat:Open()
         self.toggle=FT:AccentButton(frame,"",492,34,ICON); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function() local s=self:Settings(); s.enabled=not s.enabled; self:Apply() end)
         FT:Tooltip(self.toggle,"Threat meter","Your group's threat on your target, next to the damage meter.")
+        self.previewButton=FT:TopPreview(frame,self.toggle,{get=function() return self.previewing==true end,
+            set=function(on)
+                on=on and not InCombatLockdown()
+                self.previewing=on; self.moverUnlock=on or nil; self.skinPeek=nil
+                -- The threat % can only be dragged with a target.
+                self.movingText=on and yes(UnitExists("target")) or false
+                self:Apply()
+            end,tip="Also the threat % above your target, when you have one."})
         self.showChoice=FT:Dropdown(frame,240,function()
             local list={}; for _,e in ipairs(shows) do list[#list+1]={value=e[1],label=e[2],icon="Interface\\Icons\\"..ICON} end; return list
         end,function(value) self:Settings().show=value; self:Apply() end,ICON)
@@ -568,19 +825,60 @@ function Threat:Open()
         end)
         FT:Tooltip(self.bgColor,"Background color","Background color.")
         self.alphaLabel,self.alphaSlider=slider(-478,0,100,5,"Transparency","0% solid, 100% invisible.",function(v) self:Settings().backgroundAlpha=1-math.floor(v+.5)/100; FT:Coalesce("threatSlider",function() self:Apply() end,.05) end)
-        self.moveText=FT:QuietButton(frame,"",240,32,"move"); self.moveText:SetPoint("TOPLEFT",24,-512)
-        self.moveText:SetScript("OnClick",function() self:SetMovingText(not self.movingText) end)
-        FT:Tooltip(self.moveText,"Move threat %","Target something, unlock, drag the number, then lock.")
-        local resetText=FT:QuietButton(frame,"Reset position",240,32,"reset"); resetText:SetPoint("TOPLEFT",276,-512)
+        local resetText=FT:QuietButton(frame,"Reset position",240,32,"reset"); resetText:SetPoint("TOPLEFT",24,-512)
         resetText:SetScript("OnClick",function() local s=self:Settings(); s.textX,s.textY=0,2; self:Apply() end)
         FT:Tooltip(resetText,"Reset position","Back just above the target portrait.")
         frame:SetHeight(578)
-        frame:HookScript("OnShow",function() self.previewing=not InCombatLockdown(); self:Apply() end)
-        frame:HookScript("OnHide",function() self.previewing=false; if self.movingText then self.movingText=false end; self:Apply() end)
     end
-    self.previewing=not InCombatLockdown()
     self.frame:Show(); self:Apply()
 end
 FT:RegisterModule("Threat",Threat)
 local login=CreateFrame("Frame"); login:RegisterEvent("PLAYER_LOGIN")
 login:SetScript("OnEvent",function() if FT.dbReady then Threat:Apply() end end)
+
+-- /ft threatdebug: where the damage meter's art is and where the threat
+-- meter sits (to find a gap).
+function Threat:Debug()
+    local function r4(t) if not t then return "none" end; return string.format("left %.1f right %.1f top %.1f bottom %.1f",t[1],t[2],t[3],t[4]) end
+    local w=self:MeterWindow()
+    print("ForeverTools threat: damage meter window "..tostring(w and w.GetName and w:GetName() or "not found"))
+    self:MeterRect()
+    local info=self.rectInfo or {}
+    print("  window "..r4(info.window)); print("  art    "..r4(info.art))
+    local f=self.meter
+    if f then print("  threat "..r4({f:GetLeft() or 0,f:GetRight() or 0,f:GetTop() or 0,f:GetBottom() or 0})..string.format("  scale %.2f",f:GetEffectiveScale()/UIParent:GetEffectiveScale())) end
+    local m=self:MirrorBar()
+    print("  damage meter bar: "..(m and string.format("row %d bar %d fill %s",m.row,m.bar,tostring(m.fill and (m.fill.atlas or m.fill.file))) or "none found"))
+    local row=self.rows and self.rows[1]
+    if row and row.bar then
+        local t=row.bar:GetStatusBarTexture()
+        print("  threat bar fill: "..tostring(t and (t:GetAtlas() or t:GetTexture()))..string.format("  bar %.0fx%.0f",row.bar:GetWidth(),row.bar:GetHeight()))
+    end
+    if w then
+        local k=UIParent:GetEffectiveScale()
+        local wl,wt=w:GetLeft(),w:GetTop()
+        local lines=0
+        local function visit(fr,depth,path)
+            if depth<0 or lines>=90 then return end
+            local ok,list=pcall(function() return {fr:GetRegions()} end)
+            if ok then for _,region in ipairs(list) do
+                if lines<90 and region.GetObjectType and region:GetObjectType()=="Texture" and region:IsShown() then
+                    local a=region.GetAtlas and region:GetAtlas()
+                    if secret(a) or a=="" then a=nil end
+                    local raw=region.GetTexture and region:GetTexture()
+                    if secret(raw) then raw="?" end
+                    local l,t,w2,h=region:GetLeft(),region:GetTop(),region:GetWidth(),region:GetHeight()
+                    if not secret(l) and l and wl then
+                        lines=lines+1
+                        local cr,cg,cb,ca=region:GetVertexColor()
+                        local function n(v) if secret(v) or type(v)~="number" then return "?" end; return string.format("%.2f",v) end
+                        print(string.format("    %s  %s  %s  %s  at %.0f,%.0f  %.0fx%.0f  color %s %s %s %s  alpha %s",path,tostring(a or raw),tostring(region:GetDrawLayer()),region:GetObjectType(),l-wl,t-wt,w2,h,n(cr),n(cg),n(cb),n(ca),n(region:GetAlpha())))
+                    end
+                end
+            end end
+            local okC,kids=pcall(function() return {fr:GetChildren()} end)
+            if okC then for i,child in ipairs(kids) do if child:IsShown() then local nm=child.GetName and child:GetName(); if type(nm)~="string" or secret(nm) then nm=(child.GetObjectType and child:GetObjectType() or "")..i end; visit(child,depth-1,path.."."..nm) end end end
+        end
+        visit(w,6,"w")
+    end
+end

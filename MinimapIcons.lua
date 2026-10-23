@@ -11,7 +11,7 @@ function Icons:Enabled()
     return FT.modules.System:Settings().minimapIcons==true
 end
 function Icons:PositionLauncher()
-    if not self.launcher or not Minimap or InCombatLockdown() then return end
+    if not self.launcher or not Minimap or FT:LooksWait() then return end
     local angle=tonumber(FT.db.minimapCollectorAngle) or 45
     if angle~=angle then angle=45 end
     local x,y=math.cos(math.rad(angle)),math.sin(math.rad(angle))
@@ -107,7 +107,7 @@ function Icons:Create()
     self.empty=FT:Label(panel,"No addon icons available",12);self.empty:SetPoint("CENTER")
     panel:SetScript("OnUpdate",function(_,dt) self:MenuUpdate(dt) end)
     button:SetScript("OnDragStart",function()
-        if InCombatLockdown() then return end
+        if FT:LooksWait() then return end
         self.dragging=true;panel:Hide();if GameTooltip then GameTooltip:Hide() end
         self:DragLauncher()
     end)
@@ -167,7 +167,7 @@ function Icons:Collect(button,known)
     if hooksecurefunc and not record.hooked then
         record.hooked=true
         local function position()
-            if record.active and not self.positioning and not InCombatLockdown() then self:Place(button,record) end
+            if record.active and not self.positioning and not FT:LooksWait() then self:Place(button,record) end
         end
         hooksecurefunc(button,"SetPoint",position)
         hooksecurefunc(button,"ClearAllPoints",position)
@@ -187,7 +187,7 @@ function Icons:Place(button,record)
     self.positioning=false
 end
 function Icons:Scan()
-    if not self.active or InCombatLockdown() then return end
+    if not self.active or FT:LooksWait() then return end
     if LibStub then
         local lib=LibStub("LibDBIcon-1.0",true)
         if lib and lib.GetButtonList and lib.GetMinimapButton then
@@ -200,7 +200,7 @@ function Icons:Scan()
     self:Collect(FT.minimapButton,true)
 end
 function Icons:Layout()
-    if not self.panel or InCombatLockdown() then return end
+    if not self.panel or FT:LooksWait() then return end
     local list={};local cell=40
     for button,record in pairs(self.records) do
         if record.active and button:IsShown() and not (button.db and button.db.hide) then
@@ -229,7 +229,7 @@ function Icons:Layout()
     self.empty:SetShown(#list==0);self.dirty=false
 end
 function Icons:Restore()
-    if InCombatLockdown() then return end
+    if FT:LooksWait() then return end
     for button,record in pairs(self.records) do
         if record.active and not protected(button) then
             record.active=false -- disable our positioning hooks before restoration
@@ -254,7 +254,7 @@ function Icons:Restore()
     if self.launcher then self.launcher:Hide() end
 end
 function Icons:Apply()
-    if not FT.dbReady or not FT.profilesReady or InCombatLockdown() then return end
+    if not FT.dbReady or not FT.profilesReady or FT:LooksWait() then return end
     self.active=self:Enabled()
     if not self.active then self:Restore();return end
     local fresh=not self.launcher
@@ -266,6 +266,8 @@ function Icons:Apply()
         if not record.active then self:Collect(button,true) end
     end
     self:PositionLauncher();self.launcher:Show();self:Scan();self:Layout()
+    -- Rings of buttons found now follow the Skins ring choices.
+    local skins=FT.modules.IconStyles; if skins and skins.AddonRings then pcall(skins.AddonRings,skins) end
 end
 function Icons:ToggleVertical()
     if InCombatLockdown() then FT:Toast("Change minimap icons after combat.");return end
@@ -291,7 +293,7 @@ events:SetScript("OnEvent",function(_,event)
     if FT.dbReady then FT:Coalesce("minimapIcons",function() Icons:Apply() end) end
 end)
 events:SetScript("OnUpdate",function(_,dt)
-    if not Icons.active or InCombatLockdown() then return end
+    if not Icons.active or FT:LooksWait() then return end
     Icons.elapsed=Icons.elapsed+dt
     if Icons.elapsed>=3 then Icons.elapsed=0;Icons:Scan();Icons:Layout()
     elseif Icons.dirty then Icons:Layout() end

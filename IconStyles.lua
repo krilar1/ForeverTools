@@ -27,7 +27,7 @@ function Skins:Settings()
         local old=type(s.areas)=="table" and type(s.areas.bagWindows)=="table" and s.areas.bagWindows.bank==true
         s.bank=(old and s.bagWindows==true) and true or false
     end
-    for _,key in ipairs({"minimap","bags","bagWindows","micro","xp","player","target","tot","focus","focustarget","pet","party","personal","castbar","swing","tooltip","dialogs","gameWindows","calendar","trinkets","nearby","enemyAlert","bgTimer"}) do
+    for _,key in ipairs({"minimap","bags","bagWindows","micro","xp","player","target","tot","focus","focustarget","pet","party","personal","castbar","swing","tooltip","dialogs","gameWindows","calendar","trinkets","nearby","enemyAlert","bgTimer","notices","meters","ftBars"}) do
         if type(s[key])~="boolean" then s[key]=false end
     end
     if type(s.stances)~="boolean" then s.stances=false end
@@ -58,7 +58,7 @@ function Skins:Area(key)
     end
     if type(s)~="table" then
         s={preset=root.preset,opacity=root.opacity,shadow=root.shadow,color={unpack(root.color)},borderColor={unpack(root.borderColor)},thickness=1,borderOpacity=1,rares=false,elites=false,hideSecondary=key=="micro"}
-        if key=="bags" or key=="bagWindows" or key=="dialogs" or key=="gameWindows" or key=="calendar" or key=="nearby" or key=="enemyAlert" or key=="bgTimer" then s.opacity=1 end
+        if key=="bags" or key=="bagWindows" or key=="dialogs" or key=="gameWindows" or key=="calendar" or key=="nearby" or key=="enemyAlert" or key=="bgTimer" or key=="notices" or key=="meters" or key=="ftBars" then s.opacity=1 end
         if key=="trinkets" then s.thickness=2; s.opacity=1 end
         if key=="gryphons" then s.preset="soft";s.color={.04,.04,.05};s.borderColor={.26,.21,.17};s.opacity=.34 end
         root.areas[key]=s
@@ -325,7 +325,7 @@ function Skins:ScanBar(container,depth)
 end
 function Skins:Apply()
     if not FT.dbReady then return end
-    if InCombatLockdown() then self.deferred=true; self:Refresh(); return end
+    if FT:LooksWait() then self.deferred=true; self:Refresh(); return end
     self.deferred=false; local s=self:Settings()
     if s.actions then
         for _,prefix in ipairs(bars) do for i=1,12 do self:Track(_G[prefix..i],"actions") end end
@@ -340,9 +340,11 @@ function Skins:Apply()
     end
     if FT.modules.SpellBinds then FT.modules.SpellBinds:PaintRim() end
     if s.stances then
-        for _,prefix in ipairs({"StanceButton","PossessButton","TotemFrameTotem"}) do
+        for _,prefix in ipairs({"StanceButton","PossessButton","TotemFrameTotem","MultiCastActionButton","MultiCastSlotButton"}) do
             for i=1,12 do self:Track(_G[prefix..i],"stances") end
         end
+        -- The totem bar's Call of the elements and Totemic recall buttons.
+        for _,name in ipairs({"MultiCastSummonSpellButton","MultiCastRecallSpellButton","MultiCastFlyoutButton"}) do self:Track(_G[name],"stances") end
         for _,name in ipairs({"StanceBar","StanceBarFrame","PossessBarFrame","TotemFrame","MultiCastActionBarFrame"}) do self:ScanBar(_G[name],2) end
     end
     if s.buffs then
@@ -359,7 +361,7 @@ function Skins:ApplyBuffs() self:ApplyPart("buffs") end
 -- One kind of icon only (buffs, action buttons or stance/totem buttons),
 -- for events that can only change that kind.
 function Skins:ApplyPart(kind)
-    if not FT.dbReady or InCombatLockdown() then return end
+    if not FT.dbReady or FT:LooksWait() then return end
     local s=self:Settings()
     if not s[kind] then return end
     if kind=="buffs" then
@@ -370,9 +372,11 @@ function Skins:ApplyPart(kind)
         for _,prefix in ipairs(bars) do for i=1,12 do self:Track(_G[prefix..i],"actions") end end
         if FT.modules.SpellBinds then FT.modules.SpellBinds:PaintRim() end
     elseif kind=="stances" then
-        for _,prefix in ipairs({"StanceButton","PossessButton","TotemFrameTotem"}) do
+        for _,prefix in ipairs({"StanceButton","PossessButton","TotemFrameTotem","MultiCastActionButton","MultiCastSlotButton"}) do
             for i=1,12 do self:Track(_G[prefix..i],"stances") end
         end
+        -- The totem bar's Call of the elements and Totemic recall buttons.
+        for _,name in ipairs({"MultiCastSummonSpellButton","MultiCastRecallSpellButton","MultiCastFlyoutButton"}) do self:Track(_G[name],"stances") end
         for _,name in ipairs({"StanceBar","StanceBarFrame","PossessBarFrame","TotemFrame","MultiCastActionBarFrame"}) do self:ScanBar(_G[name],2) end
         if self.ApplyTotemArtwork then self:ApplyTotemArtwork() end
     end
@@ -388,13 +392,13 @@ for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","ADDON_LOADED","PL
 events:SetScript("OnEvent",function(_,event,unit)
     if not FT.dbReady then return end
     if event=="UNIT_AURA" then
-        if unit=="player" and not InCombatLockdown() then FT:Coalesce("skinBuffs",function() Skins:ApplyPart("buffs") end,.25) end
+        if unit=="player" and not FT:LooksWait() then FT:Coalesce("skinBuffs",function() Skins:ApplyPart("buffs") end,.25) end
         return
     end
     -- Events that only touch one kind of icon redo just that kind.
     local part=(event=="ACTIONBAR_SLOT_CHANGED" and "actions") or ((event=="PLAYER_TOTEM_UPDATE" or event=="UPDATE_SHAPESHIFT_FORMS") and "stances")
     if part then
-        if InCombatLockdown() then Skins.deferred=true
+        if FT:LooksWait() then Skins.deferred=true
         else FT:Coalesce("skinPart"..part,function() Skins:ApplyPart(part) end,.1) end
         return
     end

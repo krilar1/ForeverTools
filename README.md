@@ -1,6 +1,6 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 0.90.0.**
+**Quality-of-life tools for WoW: Forever — version 1.0.0.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
 one place. Everything starts **off**, so the game looks like Blizzard's until you
@@ -107,6 +107,9 @@ the home window. Use **`/rl`** to reload the UI.
 - **Trinket menu** (PvP, off by default): two buttons for your trinket slots
   that work in combat, with cooldowns; hover for every trinket you carry and
   click one to put it on (in a fight the swap waits until it ends).
+- **Enemy cooldowns** (PvP, off by default): big cooldowns enemy players have
+  used (PvP trinket, racials, Blind, Ice Block, Divine Shield, fears and more)
+  with the time left, on a movable bar and by your target's frame.
 - **Diminishing returns** (PvP, off by default): an icon per kind of crowd
   control next to your target, focus and (optionally) your own frame, each
   placed on its own; yellow/orange/red for half, quarter, immune, and a swipe
@@ -152,10 +155,10 @@ the home window. Use **`/rl`** to reload the UI.
 - **Where things are** (the main menu):
   - **Appearance:** Fonts, Unit frames, Dispel glow, Druid mana bar, Game
     resource bars, Skins, Chat and Tooltip.
-  - **Combat:** Threat meter, Interrupt bar, Rare alerts, Totems, Group role,
+  - **Combat:** Threat meter, Interrupt bar, Rare alerts, Totems, Group and dungeons,
     Death glow.
   - **PvP:** Enemy alerts, Marked players, Nearby enemies, Battleground timer,
-    Trinket menu, Diminishing returns, Auto release.
+    Trinket menu, Enemy cooldowns, Diminishing returns, Auto release.
   - **Keybinds:** Keybind tools (Quick keybind, Backups), Spell binds,
     Mouse-wheel casting, Smart interact key.
   - **On-screen info:** FPS counter, Leveling stats, Flight timer, Minimap,
@@ -219,8 +222,8 @@ the home window. Use **`/rl`** to reload the UI.
   your account and you are asked whether to use it in the game now (outside
   combat; if the game blocks addons from switching layouts you are told to import it in Edit
   Mode). The two strings cannot be mixed: pasting an Edit Mode string into the
-  profile import is refused with a pointer to Edit Mode. During the last days of
-  the beta a daily reminder asks you to export your layout.
+  profile import is refused with a pointer to Edit Mode. `/ft launch` opens a
+  small window with both exports, to back up your whole setup.
 - **Include keybinds** on the export window adds all your key bindings to the
   string. When you import a string with keybinds, **Apply keybinds** replaces
   your current bindings with them (outside combat).
@@ -356,7 +359,7 @@ ForeverTools' own code is released under the [MIT License](LICENSE).
 Bundled third-party components (the fonts and InFlight flight data) keep
 their own licenses, listed above.
 
-## Beta limitations
+## Limitations
 
 - Restricted or unavailable unit data may prevent tooltip enhancements, buff
   source names, or reminder checks. Native tooltip content is preserved where

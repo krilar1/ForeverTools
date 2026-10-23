@@ -274,19 +274,19 @@ function P:Refresh()
 end
 function P:Open()
     if not self.frame then
-        local frame=FT:Window("ForeverToolsPersonal","Game resource bars",760,560); self.frame=frame
+        local frame=FT:Window("ForeverToolsPersonal","Game resource bars",620,560); self.frame=frame
         FT:PageInfo(frame,"Personal resources","The game's health and power display above your character. Pick the order of its parts and the text on each bar.\n\nWhich parts show is set in Edit Mode.")
-        local hint=FT:Label(frame,"Changes the game's Personal Resource Display (turn it on in Edit Mode).",12); hint:SetPoint("TOPLEFT",24,-64); hint:SetWidth(712); hint:SetTextColor(.66,.59,.48)
+        local hint=FT:Label(frame,"Changes the game's Personal Resource Display (turn it on in Edit Mode).",12); hint:SetPoint("TOPLEFT",24,-64); hint:SetWidth(572); hint:SetTextColor(.66,.59,.48)
         local head=FT:Label(frame,"Order (top to bottom)",14,true); head:SetPoint("TOPLEFT",24,-96); FT:SectionHeading(head,nil,170)
         self.rows={}
         for _,part in ipairs(PARTS) do
-            local row=CreateFrame("Frame",nil,frame); row:SetSize(354,32)
+            local row=CreateFrame("Frame",nil,frame); row:SetSize(300,32)
             row.eye=FT:QuietButton(row,"",32,32,"INV_Misc_Spyglass_02"); row.eye:SetPoint("LEFT")
             row.eye:SetScript("OnClick",function() local s=self:Settings(); s.preview[part]=not self:Previewed(part); self:Refresh() end)
             FT:Tooltip(row.eye,"Show in preview","Show it in the preview only. \"off\": hidden in Edit Mode.")
-            row.name=FT:QuietButton(row,"",210,32); row.name:SetPoint("LEFT",row.eye,"RIGHT",6,0); row.name:EnableMouse(false)
+            row.name=FT:QuietButton(row,"",156,32); row.name:SetPoint("LEFT",row.eye,"RIGHT",6,0); row.name:EnableMouse(false)
             row.name.label:ClearAllPoints(); row.name.label:SetPoint("LEFT",12,0); row.name.label:SetFont(FT.bodyFont,13,"")
-            row.up=FT:QuietButton(row,"Up",48,32); row.up:SetPoint("LEFT",row.name,"RIGHT",6,0)
+            row.up=FT:QuietButton(row,"Up",44,32); row.up:SetPoint("LEFT",row.name,"RIGHT",6,0)
             row.up:SetScript("OnClick",function() self:Move(part,-1) end)
             FT:Tooltip(row.up,"Move up","Move this part one step up.")
             row.down=FT:QuietButton(row,"Down",52,32); row.down:SetPoint("LEFT",row.up,"RIGHT",4,0)
@@ -294,15 +294,15 @@ function P:Open()
             FT:Tooltip(row.down,"Move down","Move this part one step down.")
             self.rows[part]=row
         end
-        self.reset=FT:QuietButton(frame,"Use the game's order",354,32,"reset"); self.reset:SetPoint("TOPLEFT",24,-290)
+        self.reset=FT:QuietButton(frame,"Use the game's order",300,32,"reset"); self.reset:SetPoint("TOPLEFT",24,-290)
         self.reset:SetScript("OnClick",function() self:ResetOrder() end)
         FT:Tooltip(self.reset,"Game's order","The game's own order.")
         -- Preview: the parts in your order, as eyes allow.
-        local phead=FT:Label(frame,"Preview",14,true); phead:SetPoint("TOPLEFT",404,-96); FT:SectionHeading(phead,nil,280)
-        local box=CreateFrame("Frame",nil,frame); box:SetSize(332,130); box:SetPoint("TOPLEFT",404,-124); FT:Panel(box); FT:Paint(box,{.03,.025,.02,1},{.3,.25,.18,1})
+        local phead=FT:Label(frame,"Preview",14,true); phead:SetPoint("TOPLEFT",340,-96); FT:SectionHeading(phead,nil,180)
+        local box=CreateFrame("Frame",nil,frame); box:SetSize(256,130); box:SetPoint("TOPLEFT",340,-124); FT:Panel(box); FT:Paint(box,{.03,.025,.02,1},{.3,.25,.18,1})
         box.rows={}
         for _,part in ipairs({"health","power","alt"}) do
-            local row=CreateFrame("Frame",nil,box); row:SetSize(280,part=="alt" and 12 or 16)
+            local row=CreateFrame("Frame",nil,box); row:SetSize(216,part=="alt" and 12 or 16)
             row.back=row:CreateTexture(nil,"BACKGROUND"); row.back:SetAllPoints(); row.back:SetColorTexture(0,0,0,.85)
             row.fill=row:CreateTexture(nil,"ARTWORK"); row.fill:SetPoint("TOPLEFT",1,-1); row.fill:SetPoint("BOTTOMRIGHT",-1,1)
             row.fill:SetColorTexture(unpack(BAR[part] or {.95,.85,.1}))
@@ -316,15 +316,15 @@ function P:Open()
             dot:SetTexture("Interface\\AddOns\\"..FT.name.."\\Media\\Rounded.tga"); dot:SetVertexColor(i<=3 and .85 or .2,i<=3 and .15 or .18,i<=3 and .1 or .16)
         end
         box.rows.class=points
-        box.empty=FT:Label(box,"Nothing to show: every eye is off.",12); box.empty:SetPoint("CENTER"); box.empty:SetTextColor(.66,.59,.48)
+        box.empty=FT:Label(box,"Nothing to show: every bar is hidden here.",12); box.empty:SetPoint("CENTER"); box.empty:SetTextColor(.66,.59,.48)
         self.preview=box
-        local note=FT:Label(frame,"The eyes change only this preview.",12)
-        note:SetPoint("TOPLEFT",404,-264); note:SetWidth(332); note:SetTextColor(.66,.59,.48)
+        local note=FT:Label(frame,"The spyglass on a row shows or hides that bar here only. Your bars in the game don't change.",12)
+        note:SetPoint("TOPLEFT",340,-264); note:SetWidth(256); note:SetTextColor(.66,.59,.48)
         -- Text on each bar.
-        local thead=FT:Label(frame,"Text on the bars",14,true); thead:SetPoint("TOPLEFT",24,-372); FT:SectionHeading(thead,nil,600)
+        local thead=FT:Label(frame,"Text on the bars",14,true); thead:SetPoint("TOPLEFT",24,-372); FT:SectionHeading(thead,nil,440)
         self.textChoices={}
         for i,part in ipairs(TEXT_PARTS) do
-            local d=FT:Dropdown(frame,i==2 and 332 or 354,function()
+            local d=FT:Dropdown(frame,280,function()
                 local out={}
                 for _,mode in ipairs({"game","value","percent","none"}) do
                     out[#out+1]={value=mode,label=MODE_LABEL[mode],icon="Interface\\Icons\\INV_Misc_Note_01",
@@ -333,7 +333,7 @@ function P:Open()
                 return out
             end,function(value) self:Settings().text[part]=value; self:Apply(true) end,"fonts")
             d:SetHeight(32)
-            d:SetPoint("TOPLEFT",i==2 and 404 or 24,i==3 and -440 or -400)
+            d:SetPoint("TOPLEFT",i==2 and 316 or 24,i==3 and -440 or -400)
             FT:Tooltip(d,"Text","Which text this bar shows.")
             self.textChoices[part]=d
         end

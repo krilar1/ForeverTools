@@ -273,13 +273,18 @@ auraEvents:SetScript("OnEvent",function(_,_,unit)
     if hidden(same) or same then FT:Coalesce("wheel:auras",function() B:UpdateBlocks() end,0) end
 end)
 -- Works out, per wheel direction, whether the friendly cast is held back.
--- lift: entering combat, clear every block while it can still be changed.
+-- lift: entering combat. The game can't read debuffs for the wheel in a
+-- fight, so each block is set once, for the whole fight: NPC blocks are
+-- cleared, and a dispel either always casts or (In a fight: Camera) never
+-- does on friendly units.
 function B:UpdateBlocks(lift)
     if InCombatLockdown() and not lift then return end
     local npc=not lift and self:NpcUnderMouse() or false
+    local fightZoom=lift and self:Settings().fightDispel=="zoom" and self:Settings().enabled and true or false
     local dispels
     for _,button in pairs(self.buttons) do
         local blocked=npc
+        if lift and button.dispel and fightZoom then blocked=true end
         if button.dispel and not lift then
             dispels=true
             if not blocked then blocked=self:DispelBlocked(button.dispel) end
@@ -308,6 +313,11 @@ function B:Refresh()
     local s=self:Settings()
     self.npcToggle.label:SetText("Friendly NPCs: "..(s.npcs==true and "On" or "Off")); FT:SetSelected(self.npcToggle,s.npcs==true)
     self.npcToggle:SetAlpha(s.enabled and not self.unavailable and 1 or .5)
+    if self.fightToggle then
+        local zoom=s.fightDispel=="zoom"
+        self.fightToggle.label:SetText("Dispels in a fight: "..(zoom and "Camera (never cast)" or "Cast on anyone"))
+        self.fightToggle:SetAlpha(s.enabled and not self.unavailable and 1 or .5)
+    end
     self.toggle.label:SetText(self.unavailable and "Wheel casting: Unavailable" or ("Mouse-wheel casting: "..(s.enabled and "On" or "Off")))
     self.toggle:SetEnabled(not self.unavailable); FT:SetSelected(self.toggle,s.enabled and not self.unavailable)
     local list=self:LearnedSpells()
@@ -351,7 +361,18 @@ function B:Open()
             self.pickers[key]=picker
             FT:Tooltip(picker,d[2],"A learned spell to cast on the unit under your mouse. None scrolls normally.")
         end
-        self.status=FT:Label(self.frame,"",13); self.status:SetPoint("TOPLEFT",24,-534); self.status:SetSize(472,42)
+        -- In a fight the game hides debuffs from the wheel, so a dispel can't
+        -- check for something to remove: cast it on anyone, or not at all.
+        self.fightToggle=FT:QuietButton(self.frame,"",472,30,"mouseover"); self.fightToggle:SetPoint("TOPLEFT",24,-532)
+        self.fightToggle.icon:SetTexture("Interface\\Icons\\Spell_Holy_DispelMagic")
+        if self.fightToggle.label.SetWordWrap then self.fightToggle.label:SetWordWrap(false) end
+        self.fightToggle:SetScript("OnClick",function()
+            local s=self:Settings(); s.fightDispel=s.fightDispel~="zoom" and "zoom" or nil
+            if InCombatLockdown() then self.pending=true end
+            self:Refresh()
+        end)
+        FT:Tooltip(self.fightToggle,"Dispels in a fight","Out of a fight a dispel on the wheel only casts when there is something to remove. In a fight the game hides debuffs from the wheel, so it can't check.\n\nCast on anyone: scrolling over a friend always casts the dispel.\nCamera: in a fight the wheel zooms over friends instead. Hostile spells still cast.\n\nChanges count from your next fight.")
+        self.status=FT:Label(self.frame,"",13); self.status:SetPoint("TOPLEFT",24,-568); self.status:SetSize(472,24)
         self.spellRows={}
         for i=1,5 do
             local row=FT:QuietButton(self.frame,"",472,36,"mouseover"); row:SetPoint("TOPLEFT",24,-304-(i-1)*38)
@@ -370,7 +391,7 @@ function B:Open()
         prev:SetScript("OnClick",function() self:TurnPage(-1) end)
         next:SetScript("OnClick",function() self:TurnPage(1) end)
         self.pageLabel=FT:Label(self.frame,"",12); self.pageLabel:SetPoint("TOP",0,-506)
-        FT:PageInfo(self.frame,"Mouse-wheel casting","Bind a spell to scrolling up or down. Scroll over a unit to cast on it; elsewhere the wheel zooms.\n\nFriendly NPCs and totems are skipped. Dispels only cast when there is something to remove.")
+        FT:PageInfo(self.frame,"Mouse-wheel casting","Bind a spell to scrolling up or down. Scroll over a unit to cast on it; elsewhere the wheel zooms.\n\nFriendly NPCs and totems are skipped. Dispels only cast when there is something to remove — out of a fight. In a fight the game hides debuffs, so choose whether dispels cast on anyone or not at all.")
         FT:Tooltip(self.toggle,"Enable mouse-wheel casting","Turn wheel casting on or off.")
     end
     self:Refresh(); self.frame:Show()

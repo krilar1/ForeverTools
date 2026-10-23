@@ -107,6 +107,9 @@ function Macros:CreateRoomUI()
     local frame = FT:Window("ForeverToolsMakeRoom", "ForeverTools | Make room", 700, 596)
     frame.noSavePrompt = true
     frame.homeButton:Hide()
+    -- It opens over the macro window: one layer up, so the two never mix.
+    frame:SetFrameStrata("FULLSCREEN_DIALOG")
+    if frame.SetToplevel then frame:SetToplevel(true) end
     self.roomFrame = frame
     frame.intro = FT:Label(frame, "", 14); frame.intro:SetPoint("TOPLEFT", 24, -56); frame.intro:SetWidth(650)
     frame.left = makeColumn(frame, 24, "Delete from Character macros", "Click a macro to tick it for deleting. General macros are never touched.")

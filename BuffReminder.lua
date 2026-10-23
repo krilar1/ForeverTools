@@ -9,7 +9,7 @@ local choices={
     Druid={{"Mark of the Wild",true,"wild"},{"Gift of the Wild",false,"wild"},{"Thorns",false},{"Omen of Clarity",false}},
     Hunter={{"Aspect of the Hawk",true,"aspect"},{"Aspect of the Dragonhawk",false,"aspect"},{"Aspect of the Monkey",false,"aspect"},{"Aspect of the Viper",false,"aspect"},{"Aspect of the Wild",false,"aspect"},{"Aspect of the Beast",false,"aspect"},{"Trueshot Aura",false}},
     Mage={{"Arcane Intellect",true,"intellect"},{"Arcane Brilliance",false,"intellect"},{"Frost Armor",false,"armor"},{"Ice Armor",false,"armor"},{"Mage Armor",false,"armor"},{"Molten Armor",false,"armor"},{"Dampen Magic",false,"magic"},{"Amplify Magic",false,"magic"}},
-    Paladin={{"Blessing of Might",true,"blessing"},{"Blessing of Wisdom",false,"blessing"},{"Blessing of Kings",false,"blessing"},{"Blessing of Salvation",false,"blessing"},{"Blessing of Light",false,"blessing"},{"Blessing of Sanctuary",false,"blessing"},{"Righteous Fury",true,"protection"}},
+    Paladin={{"Blessing of Might",true,"blessing"},{"Blessing of Wisdom",false,"blessing"},{"Blessing of Kings",false,"blessing"},{"Salvation",false,"salvation"},{"Mass Salvation",false,"salvation",true},{"Blessing of Light",false,"blessing"},{"Blessing of Sanctuary",false,"blessing"},{"Righteous Fury",true,"protection"}},
     Priest={{"Power Word: Fortitude",true,"fortitude"},{"Prayer of Fortitude",false,"fortitude"},{"Divine Spirit",false,"spirit"},{"Prayer of Spirit",false,"spirit"},{"Inner Fire",false},{"Shadow Protection",false,"shadow"},{"Prayer of Shadow Protection",false,"shadow",true},{"Shadowform",false},{"Touch of Weakness",false},{"Shadowguard",false}},
     Shaman={{"Lightning Shield",true,"shield"},{"Water Shield",false,"shield"}},
     Warlock={{"Demon Armor",true,"armor"},{"Demon Skin",false,"armor"},{"Fel Armor",false,"armor"},{"Soul Link",false}},
@@ -65,6 +65,11 @@ function Reminder:Settings()
     end
     if type(s.selected)~="table" then s.selected={} end
     if type(s.specSelected)~="table" then s.specSelected={} end
+    -- Forever renamed Blessing of Salvation to Salvation (not a blessing any
+    -- more): choices, looks and combat picks saved under the old name follow.
+    local function rename(t) if type(t)=="table" and t["Blessing of Salvation"]~=nil then if t["Salvation"]==nil then t["Salvation"]=t["Blessing of Salvation"] end; t["Blessing of Salvation"]=nil end end
+    rename(s.selected); rename(s.styles); rename(s.combat)
+    for _,specs in pairs(s.specSelected) do if type(specs)=="table" then for _,picked in pairs(specs) do rename(picked) end end end
     -- Buffs with a look of their own: [buff name or "weapon:main"/"weapon:off"]={mode=,size=,...}
     if type(s.styles)~="table" then s.styles={} end
     -- Buffs that also remind during a fight: [buff name or "weapon:main"/"weapon:off"]=true
@@ -540,6 +545,13 @@ function Reminder:SetMoving(value)
     self.dragging=false;self.moving=value==true
     self:Refresh()
 end
+-- The Preview switches (Your buffs, Look and position): sample notices that
+-- can be dragged; off locks them again.
+function Reminder:PreviewOn() return (self.previewSelf and not self.peekingSelf) and true or false end
+function Reminder:SetPreview(on)
+    self.previewSelf=on and true or nil; self.peekingSelf=nil; self.peekToken=nil
+    self:SetMoving(on and true or false); self:Apply()
+end
 -- Classes with a weapon reminder. Shamans pick a weapon buff per hand (the
 -- main hand is watched from the start). Rogues switch a poison reminder on
 -- per hand (off from the start: poisons come at a later level). Whatever is
@@ -958,14 +970,23 @@ function Reminder:Refresh(cachedSpells)
             if #units>0 then
                 for _,entry in ipairs(self:Available(learned)) do
                     local group=entry.group
-                    if self:Enabled(entry,currentSpec,learned) and (group=="wild" or group=="blessing" or group=="intellect" or group=="fortitude" or group=="spirit") then
-                        local missing=0
+                    if self:Enabled(entry,currentSpec,learned) and (group=="wild" or group=="blessing" or group=="salvation" or group=="intellect" or group=="fortitude" or group=="spirit") then
+                        local missing,names=0,{}
                         for _,unit in ipairs(units) do
-                            if self:HasAura(entry.name,unit)==false and self:FamilyPresent(group,unit)==false then missing=missing+1 end
+                            if self:HasAura(entry.name,unit)==false and self:FamilyPresent(group,unit)==false then
+                                missing=missing+1
+                                local okN,n=pcall(UnitName,unit)
+                                if okN and safe(n) and type(n)=="string" then names[#names+1]=n end
+                            end
                         end
                         if missing>0 then
-                            local family=({wild="Wild buff",blessing="Blessing",intellect="Intellect",fortitude="Fortitude",spirit="Spirit"})[group] or "Group buff"
-                            self.groupMissing[#self.groupMissing+1]={name=family.." missing — "..missing.." member"..(missing==1 and "" or "s"),spell=entry.spell}
+                            local family=({wild="Wild buff",blessing="Blessing",salvation="Salvation",intellect="Intellect",fortitude="Fortitude",spirit="Spirit"})[group] or "Group buff"
+                            -- Who: up to two names on the bar, everyone in the tooltip.
+                            local who
+                            if #names==missing and missing<=2 then who=table.concat(names,", ")
+                            elseif #names>0 then who=names[1]..", "..(names[2] and (names[2].." ") or "").."+"..(missing-math.min(2,#names))
+                            else who=missing.." member"..(missing==1 and "" or "s") end
+                            self.groupMissing[#self.groupMissing+1]={name=family.." missing — "..who,family=family,names=names,count=missing,spell=entry.spell}
                         end
                     end
                 end
@@ -1077,6 +1098,7 @@ function Reminder:Apply()
         local badge=CreateFrame("Button","ForeverToolsBuffReminder",UIParent)
         self.badge=badge;badge:SetSize(285,34);badge:SetPoint("TOP",UIParent,"TOP",0,-115)
         badge:SetFrameStrata("LOW");FT:Panel(badge);FT:MeterSkin(badge)
+        local skins=FT.modules.IconStyles; if skins and skins.SkinPanel then skins:SkinPanel(badge,"notices",{0.075,0.058,0.04,1},{.61,.51,.31,1}) end
         badge.icon=badge:CreateTexture(nil,"ARTWORK");badge.icon:SetSize(20,20);badge.icon:SetPoint("LEFT",8,0);badge.icon:SetTexCoord(.08,.92,.08,.92);FT:RoundIcon(badge.icon)
         badge.text=FT:Label(badge,"",13);badge.text:SetPoint("LEFT",badge.icon,"RIGHT",8,0);badge.text:SetWidth(242)
         badge:RegisterForClicks("LeftButtonUp","RightButtonUp")
@@ -1095,13 +1117,24 @@ function Reminder:Apply()
         end)
         local group=CreateFrame("Button","ForeverToolsGroupBuffReminder",UIParent);self.groupBadge=group
         group:SetSize(285,34);group:SetFrameStrata("LOW");FT:Panel(group);FT:MeterSkin(group)
+        local skins=FT.modules.IconStyles; if skins and skins.SkinPanel then skins:SkinPanel(group,"notices",{0.075,0.058,0.04,1},{.61,.51,.31,1}) end
         group.icon=group:CreateTexture(nil,"ARTWORK");group.icon:SetSize(20,20);group.icon:SetPoint("LEFT",8,0);group.icon:SetTexCoord(.08,.92,.08,.92);FT:RoundIcon(group.icon)
         group.text=FT:Label(group,"",13);group.text:SetPoint("LEFT",group.icon,"RIGHT",8,0);group.text:SetWidth(242)
+        if group.text.SetWordWrap then group.text:SetWordWrap(false) end
         group:RegisterForClicks("LeftButtonUp","RightButtonUp")
         group:SetScript("OnClick",function(_,button) self:ClickNotice("group",button) end)
         group:RegisterForDrag("LeftButton");group:SetScript("OnDragStart",function(owner) self:DragStart(owner) end)
         group:SetScript("OnDragStop",function() self:DragUpdate();self.dragging=false end)
-        FT:Tooltip(group,"Group buffs",function() return self:HideHint() end)
+        FT:Tooltip(group,"Group buffs",function()
+            -- Everyone missing each buff, then the usual click hints.
+            local lines={}
+            for _,e in ipairs(self.groupMissing or {}) do
+                if e.family then lines[#lines+1]=e.family.." ("..e.count.."): "..(#e.names>0 and table.concat(e.names,", ") or "names hidden") end
+            end
+            local hint=self:HideHint()
+            if #lines==0 then return hint end
+            return table.concat(lines,"\n")..(hint and hint~="" and ("\n\n"..hint) or "")
+        end)
     end
     self:Refresh()
 end
@@ -1167,6 +1200,7 @@ function Reminder:CustomNotice(key)
     notice.bar=CreateFrame("Frame",nil,notice); notice.bar:SetAllPoints(notice)
     if notice.bar.SetFrameLevel then notice.bar:SetFrameLevel(math.max(0,(notice:GetFrameLevel() or 1)-1)) end
     FT:Panel(notice.bar); FT:MeterSkin(notice.bar)
+    local skins=FT.modules.IconStyles; if skins and skins.SkinPanel then skins:SkinPanel(notice.bar,"notices",{0.075,0.058,0.04,1},{.61,.51,.31,1}) end
     notice.border=notice:CreateTexture(nil,"BORDER"); notice.border:SetTexture("Interface\\AddOns\\"..FT.name.."\\Media\\Rounded.tga")
     notice.icon=notice:CreateTexture(nil,"ARTWORK"); notice.icon:SetTexCoord(.08,.92,.08,.92); FT:RoundIcon(notice.icon)
     notice.border:SetPoint("TOPLEFT",notice.icon,"TOPLEFT",-2,2); notice.border:SetPoint("BOTTOMRIGHT",notice.icon,"BOTTOMRIGHT",2,-2)
@@ -1344,7 +1378,7 @@ function Reminder:OpenStyle(key,title)
     if not self.stylePanel then
         local frame=self.frame
         local panel=CreateFrame("Frame",nil,frame); self.stylePanel=panel
-        panel:SetSize(300,474); panel:SetFrameStrata("DIALOG"); panel:SetFrameLevel(frame:GetFrameLevel()+20); panel:SetClampedToScreen(true)
+        panel:SetSize(300,474); panel:SetFrameStrata("FULLSCREEN"); panel:SetFrameLevel(frame:GetFrameLevel()+20); panel:SetClampedToScreen(true)
         FT:MakeDraggable(panel,frame); FT:Panel(panel); panel:Hide()
         FT:AddClose(panel,nil,8)
         panel.title=FT:Label(panel,"",16,true); panel.title:SetPoint("TOPLEFT",16,-14); panel.title:SetWidth(236); panel.title:SetJustifyH("LEFT"); panel.title:SetTextColor(1,.82,0)
@@ -1496,7 +1530,7 @@ local kindLabels={group="Group buffs",blessing="Blessings",aura="Auras, aspects 
 local kindIcons={group="Spell_Holy_PrayerOfFortitude",blessing="Spell_Holy_FistOfJustice",aura="Spell_Holy_DevotionAura",armor="Spell_Frost_FrostArmor02",self="Spell_Holy_WordFortitude"}
 local function kindOf(entry)
     local g=entry.group
-    if g=="wild" or g=="fortitude" or g=="intellect" or g=="spirit" then return "group" end
+    if g=="wild" or g=="fortitude" or g=="intellect" or g=="spirit" or g=="salvation" then return "group" end
     if g=="blessing" then return "blessing" end
     if g=="stance" or g=="protection" or g=="aspect" then return "aura" end
     if g=="armor" then return "armor" end
@@ -1526,11 +1560,9 @@ function Reminder:RefreshMenu(learned)
     self.markerToggle.label:SetText("Marker on bars: "..(s.rankMarker and "On" or "Off"));FT:SetSelected(self.markerToggle,s.rankMarker)
     local ignoredCount=0;for _ in pairs(type(s.ignoredRanks)=="table" and s.ignoredRanks or {}) do ignoredCount=ignoredCount+1 end
     self.exceptions.label:SetText("Exceptions"..(ignoredCount>0 and (" ("..ignoredCount..")") or ""))
-    self.moveButton.label:SetText(self.moving and "Lock" or "Move")
-    FT:SetSelected(self.moveButton,self.moving)
     -- Peeks (a setting changed) don't count as the switch being on.
-    self.selfPreview.label:SetText("Preview: "..(self.previewSelf and not self.peekingSelf and "On" or "Off"))
-    self.groupPreview.label:SetText("Preview: "..(self.previewGroup and "On" or "Off"))
+    for _,b in ipairs({self.moveButton,self.selfPreview}) do b.label:SetText("Preview: "..(self:PreviewOn() and "On" or "Off")); FT:SetSelected(b,self:PreviewOn()) end
+    self.groupPreview.label:SetText("Preview: "..(self.previewGroup and "On" or "Off")); FT:SetSelected(self.groupPreview,self.previewGroup and true or false)
     self.sizeValue:SetText("Size: "..math.floor(s.size*100+.5).."%")
     self.settingSize=true;self.sizeSlider:SetValue(s.size);self.settingSize=false
     self.hideChoice.value=s.hideAfter;self.hideChoice.label:SetText(self:HideAfterText())
@@ -1677,13 +1709,14 @@ function Reminder:RefreshMenu(learned)
         place(self.markerToggle,X,y);place(self.exceptions,X+COL,y);y=y+32
     elseif pane=="look" then
         local function head(n,text) local h=self.kindHeads[n]; h.ftHeading.icon=nil; h:SetText(text); place(h,X,y); y=y+18 end
+        place(self.moveButton,X+COL,y);y=y+46
         head(1,"Look")
         place(self.sizeValue,X,y+3);place(self.sizeSlider,X+124,y);y=y+36
         place(self.selfColorButton,X,y);y=y+46
         head(2,"Timing")
         place(self.hideChoice,X,y);y=y+46
         head(3,"Position")
-        place(self.moveButton,X,y);place(self.resetPosition,X+COL,y);y=y+40
+        place(self.resetPosition,X,y);y=y+40
     end
     for _,control in ipairs(self.paneControls) do if not placed[control] then control:Hide() end end
     for _,h in ipairs(self.kindHeads) do if not placed[h] then h:Hide() end end
@@ -1748,12 +1781,13 @@ function Reminder:Build()
         self.groupToggle=pane(FT:AccentButton(top,"",232,34,"party"))
         self.groupToggle:SetScript("OnClick",function() local s=self:Settings();s.groupEnabled=not s.groupEnabled;self:Apply() end)
         FT:Tooltip(self.groupToggle,"Group reminders","A notice when someone in your group is missing your buff. Hidden in combat.")
-        self.moveButton=pane(FT:QuietButton(top,"",232,32,"move"))
-        self.moveButton:SetScript("OnClick",function() self:SetMoving(not self.moving) end)
-        FT:Tooltip(self.moveButton,"Move reminders","Unlock, drag the notice, then click again to lock.")
-        self.selfPreview=pane(FT:QuietButton(top,"Preview: Off",232,34,"buffs"))
-        self.selfPreview:SetScript("OnClick",function() self.previewSelf=not (self.previewSelf and not self.peekingSelf) or nil; self.peekingSelf=nil; self.peekToken=nil; self:Apply() end)
-        FT:Tooltip(self.selfPreview,"Preview self reminders","Show sample notices until switched off.")
+        local tip="Shows sample notices, so you can drag them into place. Click again to lock them."
+        self.moveButton=pane(FT:QuietButton(top,"Preview: Off",232,34,"Spell_Holy_MindVision"))
+        self.moveButton:SetScript("OnClick",function() self:SetPreview(not self:PreviewOn()) end)
+        FT:Tooltip(self.moveButton,"Preview",tip)
+        self.selfPreview=pane(FT:QuietButton(top,"Preview: Off",232,34,"Spell_Holy_MindVision"))
+        self.selfPreview:SetScript("OnClick",function() self:SetPreview(not self:PreviewOn()) end)
+        FT:Tooltip(self.selfPreview,"Preview",tip)
         for _,b in ipairs({self.toggle,self.groupToggle,self.moveButton,self.selfPreview}) do if b.label.SetWordWrap then b.label:SetWordWrap(false) end end
         self.specChoice=pane(FT:Dropdown(detail,W,function() return self:SpecChoices() end,function(value) self:PickSpec(value) end,"classes"))
         self.powerToggle=pane(FT:QuietButton(detail,"",232,32,"Spell_Nature_ManaRegenTotem"))
@@ -1894,9 +1928,9 @@ function Reminder:Build()
             local s=self:Settings();s.x=nil;s.y=nil;s.screenWidth=nil;s.screenHeight=nil;self:Apply()
         end)
         FT:Tooltip(resetPosition,"Reset position","Back to the top center of the screen.")
-        self.groupPreview=pane(FT:QuietButton(detail,"Preview: Off",232,34,"party"))
-        self.groupPreview:SetScript("OnClick",function() self.previewGroup=not self.previewGroup or nil; self:Apply() end)
-        FT:Tooltip(self.groupPreview,"Preview group reminder","Show a sample group notice until switched off.")
+        self.groupPreview=pane(FT:QuietButton(detail,"Preview: Off",232,34,"Spell_Holy_MindVision"))
+        self.groupPreview:SetScript("OnClick",function() local on=not self.previewGroup; self.previewGroup=on or nil; self:SetMoving(on) end)
+        FT:Tooltip(self.groupPreview,"Preview","Shows a sample group notice, so you can drag it into place. Click again to lock it.")
         frame:HookScript("OnHide",function()
             self.previewSelf=nil;self.previewGroup=nil;self.peekingSelf=nil
             self:SetMoving(false)

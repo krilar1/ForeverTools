@@ -117,7 +117,11 @@ local function readContainer(bag)
     for slot=1,size do
         local found,info=pcall(api.GetContainerItemInfo,bag,slot)
         if found and plain(info) and type(info)=="table" then
+            -- The item's link, or (while the game is still loading the item's
+            -- details) just its id, so no slot is ever left out of the counts.
             local link=text(info.hyperlink)
+            local id=number(info.itemID)
+            if not link and id then link="item:"..id end
             if link then items[slot]={link,number(info.stackCount) or 1,number(info.iconFileID),number(info.quality)} end
         end
     end
@@ -302,7 +306,7 @@ function Bags:Index(guid)
     local st=self:Store(); local index={}
     local function add(link,count,field)
         local id=itemID(link); if not id then return end
-        local e=index[id]; if not e then e={bags=0,bank=0,worn=0,total=0}; index[id]=e end
+        local e=index[id]; if not e then e={bags=0,bank=0,worn=0,mail=0,total=0}; index[id]=e end
         e[field]=e[field]+count; e.total=e.total+count
     end
     local function containers(list,field)
@@ -316,10 +320,185 @@ function Bags:Index(guid)
         if c then
             containers(c.bags,"bags"); containers(c.bank,"bank")
             for _,link in pairs(c.worn or {}) do add(link,1,"worn") end
+            self:AddMail(c,add)
         end
     end
     self.indexes[guid]=index
     return index
+end
+-- The character you play, counted from the bags right now (not the copy
+-- saved a moment after the last change), so a tooltip is right straight
+-- away: every slot counts, stacked or not. The bank is the saved copy unless
+-- it is open.
+function Bags:LiveIndex()
+    local index={}
+    local function add(link,count,field)
+        local id=itemID(link); if not id then return end
+        local e=index[id]; if not e then e={bags=0,bank=0,worn=0,mail=0,total=0}; index[id]=e end
+        e[field]=e[field]+count; e.total=e.total+count
+    end
+    for _,bag in ipairs(self:BagIDs()) do
+        local items=readContainer(bag)
+        if items then for slot=1,items.size do local it=items[slot]; if it then add(it[1],it[2] or 1,"bags") end end end
+    end
+    for slot=1,19 do
+        local link=GetInventoryItemLink and GetInventoryItemLink("player",slot)
+        if not text(link) and GetInventoryItemID then local id=GetInventoryItemID("player",slot); if number(id) then link="item:"..id end end
+        if text(link) then add(link,1,"worn") end
+    end
+    local c=self:Store().chars[self:Me() or ""]
+    for _,bag in ipairs(c and c.bank or {}) do for slot=1,(bag.size or 0) do local it=bag[slot]; if it then add(it[1],it[2] or 1,"bank") end end end
+    if c then self:AddMail(c,add) end
+    return index
+end
+-- Mail -----------------------------------------------------------------------
+-- Items in a character's mailbox: what was there when they last opened it
+-- (c.mail), plus what your other characters sent them since (c.mailSent).
+-- So an item mailed to an alt never just vanishes from the counts.
+local SENT_KEEP=30*86400 -- mail is kept by the game for 30 days
+function Bags:AddMail(c,add)
+    for slot=1,(type(c.mail)=="table" and c.mail.size or 0) do local it=c.mail[slot]; if it then add(it[1],it[2] or 1,"mail") end end
+    for _,it in ipairs(type(c.mailSent)=="table" and c.mailSent or {}) do add(it[1],it[2] or 1,"mail") end
+end
+-- Which of your characters a mail goes to ("Name" or "Name-Realm"), on this
+-- ruleset. Nil for anyone else (their mail isn't tracked).
+function Bags:CharacterNamed(recipient)
+    if type(recipient)~="string" or recipient=="" or not plain(recipient) then return end
+    local name,realm=recipient:match("^%s*([^%-]+)%-?(.-)%s*$")
+    if not name then return end
+    name=name:lower()
+    local ruleset=self:Ruleset()
+    for guid,c in pairs(self:Store().chars) do
+        if type(c)=="table" and type(c.name)=="string" and c.name:lower()==name and sameRealm(c.realm)==ruleset
+            and (realm=="" or sameRealm(realm)==sameRealm(c.realm)) then return guid,c end
+    end
+end
+-- What is attached to the mail being sent right now.
+function Bags:SendAttachments()
+    local list={}
+    local max=ATTACHMENTS_MAX_SEND or 12
+    for i=1,max do
+        local link=GetSendMailItemLink and GetSendMailItemLink(i)
+        local ok,_,id,_,count=false
+        if GetSendMailItem then ok,_,id,_,count=pcall(GetSendMailItem,i) end
+        link=text(link) or (ok and number(id) and "item:"..id) or nil
+        if link then list[#list+1]={link,(ok and number(count)) or 1} end
+    end
+    return list
+end
+-- SendMail was called: remember what went out, written down when the game
+-- says it was sent.
+function Bags:MailSending(recipient)
+    if not self:Recording() then return end
+    local guid=self:CharacterNamed(recipient)
+    if not guid or guid==self:Me() then self.outgoing=nil; self.lastAttach=nil; return end
+    local items=self:SendAttachments()
+    -- Already cleared by the time we look: use what was attached a moment ago.
+    if #items==0 and self.lastAttach then items=self.lastAttach end
+    self.outgoing=#items>0 and {guid=guid,items=items} or nil
+end
+function Bags:MailSent()
+    local out=self.outgoing; self.outgoing=nil
+    if not out then return end
+    local c=self:Store().chars[out.guid]; if type(c)~="table" then return end
+    c.mailSent=type(c.mailSent)=="table" and c.mailSent or {}
+    local t=now()
+    for _,it in ipairs(out.items) do c.mailSent[#c.mailSent+1]={it[1],it[2],t} end
+    self.lastAttach=nil
+    self:Changed(out.guid,true)
+end
+-- Your own mailbox, read when it is open.
+function Bags:ScanMail()
+    if not self:Recording() or not GetInboxNumItems then return end
+    local c,guid=self:Record(true); if not c then return end
+    local okN,n=pcall(GetInboxNumItems); n=okN and number(n) or 0
+    local mail={size=0}
+    for i=1,n do
+        for a=1,(ATTACHMENTS_MAX_RECEIVE or 16) do
+            local link
+            if GetInboxItemLink then local okL,l=pcall(GetInboxItemLink,i,a); link=okL and text(l) or nil end
+            local ok,_,id,_,count=false
+            if GetInboxItem then ok,_,id,_,count=pcall(GetInboxItem,i,a) end
+            link=link or (ok and number(id) and "item:"..id) or nil
+            if link then
+                count=(ok and number(count)) or 1
+                mail.size=mail.size+1; mail[mail.size]={link,count}
+            end
+        end
+    end
+    -- Mail between your own characters arrives at once: the box as it is now
+    -- replaces the notes about what was sent.
+    c.mail=mail; c.mailSeen=now(); c.mailSent=nil
+    self:Changed(guid,true)
+end
+-- Auction house: what you bid on or buy is noted; when the game says "You
+-- won an auction for ..." it goes into your mail in the counts, until you
+-- open the mailbox and take it out.
+local function linkName(link) return type(link)=="string" and link:match("%[(.-)%]") or nil end
+function Bags:AuctionBid(link,count)
+    link=text(link); if not link then return end
+    local name=linkName(link)
+    if not name and GetItemInfo then local id=itemID(link); local ok,n=pcall(GetItemInfo,id); if ok then name=text(n) end end
+    self.auctionBids=self.auctionBids or {}
+    table.insert(self.auctionBids,1,{link,number(count) or 1,name,now()})
+    while #self.auctionBids>50 do table.remove(self.auctionBids) end
+end
+function Bags:AuctionWonPattern()
+    if self.wonPattern~=nil then return self.wonPattern end
+    local fmt=type(ERR_AUCTION_WON_S)=="string" and ERR_AUCTION_WON_S or "You won an auction for %s"
+    local escaped=fmt:gsub("([%(%)%.%+%-%*%?%[%]%^%$])","%%%1")
+    self.wonPattern="^"..escaped:gsub("%%s","(.+)").."$"
+    return self.wonPattern
+end
+function Bags:AuctionWon(msg)
+    if not self:Recording() or type(msg)~="string" or not plain(msg) then return end
+    local name=msg:match(self:AuctionWonPattern()); if not name then return end
+    local c,guid=self:Record(true); if not c then return end
+    local item
+    for i,bid in ipairs(self.auctionBids or {}) do
+        if bid[3]==name then item=bid; table.remove(self.auctionBids,i); break end
+    end
+    if not item and GetItemInfo then
+        local ok,_,link=pcall(GetItemInfo,name)
+        if ok and text(link) then item={link,1} end
+    end
+    if not item then return end
+    c.mailSent=type(c.mailSent)=="table" and c.mailSent or {}
+    c.mailSent[#c.mailSent+1]={item[1],item[2] or 1,now()}
+    self:Changed(guid,true)
+end
+function Bags:HookAuctions()
+    if self.auctionHooked or not hooksecurefunc then return end
+    if PlaceAuctionBid then
+        hooksecurefunc("PlaceAuctionBid",function(kind,index)
+            local link=GetAuctionItemLink and GetAuctionItemLink(kind,index)
+            local ok,_,_,count=false
+            if GetAuctionItemInfo then ok,_,_,count=pcall(GetAuctionItemInfo,kind,index) end
+            pcall(self.AuctionBid,self,link,ok and count or 1)
+        end)
+        self.auctionHooked=true
+    end
+    local AH=C_AuctionHouse
+    if AH then
+        if AH.PlaceBid then hooksecurefunc(AH,"PlaceBid",function(auctionID)
+            local ok,info=pcall(AH.GetAuctionInfoByID,auctionID)
+            if ok and type(info)=="table" then pcall(self.AuctionBid,self,info.itemLink,info.quantity) end
+        end); self.auctionHooked=true end
+        if AH.ConfirmCommoditiesPurchase then hooksecurefunc(AH,"ConfirmCommoditiesPurchase",function(id,quantity)
+            if number(id) then pcall(self.AuctionBid,self,"item:"..id,quantity) end
+        end); self.auctionHooked=true end
+    end
+end
+-- Old notes about sent mail go after the game's 30 days.
+function Bags:TidyMail()
+    local t=now()
+    for _,c in pairs(self:Store().chars) do
+        if type(c)=="table" and type(c.mailSent)=="table" then
+            local keep={}
+            for _,it in ipairs(c.mailSent) do if t-(it[3] or 0)<SENT_KEEP then keep[#keep+1]=it end end
+            c.mailSent=#keep>0 and keep or nil
+        end
+    end
 end
 -- Characters on a ruleset: you first, then by name (or by gold for the gold list).
 function Bags:Characters(ruleset,byGold)
@@ -572,10 +751,32 @@ function Bags:HookBagMenus()
         local sub=root:CreateButton("Characters")
         for _,entry in ipairs(self:Characters()) do
             local guid=entry.guid
-            sub:CreateButton(self:ClassName(entry.c,guid)..(entry.me and " (you)" or ""),function() self:Select(guid,true) end)
+            sub:CreateButton(self:ClassName(entry.c,guid,true)..(entry.me and " (you)" or ""),function() self:Select(guid,true) end)
         end
+        -- Old or deleted characters are removed on the Characters page.
+        sub:CreateDivider()
+        sub:CreateButton("Manage characters...",function() if not InCombatLockdown() then FT:OpenModule("BagsCharacters") end end)
     end
     for _,tag in ipairs({"MENU_CONTAINER_FRAME_COMBINED","MENU_CONTAINER_FRAME"}) do pcall(Menu.ModifyMenu,tag,add) end
+end
+-- /ft countdebug: why the gold list or item counts don't show.
+function Bags:Debug()
+    local s=self:Settings(); local st=self:Store()
+    print("ForeverTools bags ("..(FT.version or "?")..")")
+    print("Gold tooltip: "..tostring(s.gold).."  Item counts: "..tostring(s.counts).."  (count yourself: "..tostring(s.countSelf)..", only with Shift: "..tostring(s.countShift)..", place: "..tostring(s.countPlace)..")")
+    print("Recording: "..tostring(self:Recording()).."  started: "..tostring(st.started).."  off: "..tostring(st.off))
+    print("Me: "..tostring(self:Me()).."  ruleset: "..tostring(self:Ruleset()))
+    local n,here=0,0; local ruleset=self:Ruleset()
+    for _,c in pairs(st.chars) do if type(c)=="table" then n=n+1; if sameRealm(c.realm)==ruleset then here=here+1 end end end
+    print("Characters saved: "..n.." ("..here.." on this ruleset)")
+    print("Tooltip data system: "..tostring(TooltipDataProcessor~=nil and Enum~=nil and Enum.TooltipDataType~=nil).."  OnTooltipSetItem: "..tostring(GameTooltip and GameTooltip.HasScript and GameTooltip:HasScript("OnTooltipSetItem")))
+    for _,frame in ipairs(self:GameBags()) do
+        local okN,name=pcall(frame.GetName,frame)
+        local money=frame.MoneyFrame or (okN and name and _G[name.."MoneyFrame"])
+        print("Bag window "..tostring(okN and name)..": shown "..tostring(frame:IsShown())..", money frame "..tostring(money and (money.GetName and money:GetName() or "yes") or "none")..", hooked "..tostring(money and money.ftGoldHooked))
+    end
+    local me=self:Me() and st.chars[self:Me()]
+    if me then local slots=0; for _,bag in ipairs(me.bags or {}) do for i=1,(bag.size or 0) do if bag[i] then slots=slots+1 end end end; print("Your saved bags: "..#(me.bags or {}).." bags, "..slots.." items, gold "..tostring(me.money)) end
 end
 function Bags:GameBags()
     local list={}
@@ -1072,12 +1273,15 @@ function Bags:Apply()
     local s=self:Settings()
     if self:AnyOn() then local st=self:Store(); if st.off~=true then st.started=true end end
     for _,frame in ipairs(self:GameBags()) do
-        self:HookMoney(frame.MoneyFrame)
+        -- Older bag windows keep the money frame as a global (ContainerFrame1MoneyFrame).
+        local okN,n=pcall(frame.GetName,frame)
+        self:HookMoney(frame.MoneyFrame or (okN and type(n)=="string" and _G[n.."MoneyFrame"]) or nil)
         if s.view then self:HookPortrait(frame) end
         if frame.ftPortraitCover then frame.ftPortraitCover:SetShown(s.view) end
         if s.view and s.buttons then self:AddBagButtons(frame) end
         self:PlaceBagButtons(frame)
     end
+    for _,name in ipairs({"ContainerFrame1MoneyFrame","ContainerFrameCombinedBagsMoneyFrame"}) do self:HookMoney(_G[name]) end
     if not s.view then for _,view in pairs(self.views or {}) do view:Hide() end end
     if self:Recording() then FT:Coalesce("ftBagsScan",function() self:ScanBags() end,1) end
     if FT.BagOrder then FT.BagOrder:Apply() end
@@ -1095,20 +1299,36 @@ local function bankerTypes()
     end
     return bankers
 end
+-- (The keyring keeps the game's own art: putting a key icon on it fought
+-- with the game redrawing it.)
+function Bags:KeyringIcon() end
 local events=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_LOGIN","PLAYER_MONEY","BAG_UPDATE_DELAYED","PLAYER_EQUIPMENT_CHANGED","PLAYER_REGEN_ENABLED",
     "PLAYER_INTERACTION_MANAGER_FRAME_SHOW","PLAYER_INTERACTION_MANAGER_FRAME_HIDE","BANKFRAME_OPENED","BANKFRAME_CLOSED",
+    "CHAT_MSG_SYSTEM","AUCTION_HOUSE_SHOW","MAIL_SEND_SUCCESS","MAIL_FAILED","MAIL_INBOX_UPDATE","MAIL_SHOW","MAIL_SEND_INFO_UPDATE",
     "PLAYERBANKSLOTS_CHANGED","PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED","BANK_TABS_CHANGED","GUILDBANKBAGSLOTS_CHANGED","PLAYER_GUILD_UPDATE","PLAYER_LOGOUT"}) do
     pcall(events.RegisterEvent,events,event)
 end
 events:SetScript("OnEvent",function(_,event,kind)
     if not FT.dbReady then return end
     if event=="PLAYER_LOGIN" then
+        Bags:KeyringIcon(); C_Timer.After(2,function() Bags:KeyringIcon() end)
         Bags:Apply()
-        if Bags:Recording() then C_Timer.After(3,function() Bags:Record(true); Bags:ScanBags() end) end
+        if Bags:Recording() then C_Timer.After(3,function() Bags:Record(true); Bags:ScanBags(); Bags:TidyMail() end) end
+        if hooksecurefunc and SendMail and not Bags.mailHooked then
+            Bags.mailHooked=true
+            hooksecurefunc("SendMail",function(recipient) pcall(Bags.MailSending,Bags,recipient) end)
+        end
+        Bags:HookAuctions()
         return
     end
     if not Bags:Recording() then return end
+    if event=="CHAT_MSG_SYSTEM" then Bags:AuctionWon(kind); return
+    elseif event=="AUCTION_HOUSE_SHOW" then Bags:HookAuctions(); return
+    elseif event=="MAIL_SEND_SUCCESS" then Bags:MailSent(); return
+    elseif event=="MAIL_FAILED" then Bags.outgoing=nil; return
+    elseif event=="MAIL_SEND_INFO_UPDATE" then Bags.lastAttach=Bags:SendAttachments(); return
+    elseif event=="MAIL_INBOX_UPDATE" or event=="MAIL_SHOW" then FT:Coalesce("ftMailScan",function() Bags:ScanMail() end,.3); return end
     if event=="PLAYER_MONEY" then Bags:ScanMoney()
     elseif event=="BAG_UPDATE_DELAYED" or event=="PLAYER_EQUIPMENT_CHANGED" then FT:Coalesce("ftBagsScan",function() Bags:ScanBags() end,1)
     elseif event=="PLAYER_REGEN_ENABLED" then
@@ -1253,11 +1473,11 @@ function list:Refresh()
         elseif row.guid then
             local c=row.c
             r.icon:SetTexture(Bags:ClassIcon(c))
-            r.name:SetText(Bags:ClassName(c,row.guid)..(row.me and "  |cffb8ab8a(you)|r" or ""))
+            r.name:SetText(Bags:ClassName(c,row.guid,true)..(row.me and "  |cffb8ab8a(you)|r" or ""))
             r.meta:SetText("Level "..(c.level or "?").." · "..Bags:Money(c.money).." · bags "..Bags:Ago(row.me and now() or c.seen).." · bank "..Bags:Ago(c.bankSeen))
-            r.fullName=c.name; r.fullMeta=r.meta:GetText()
+            r.fullName=c.fullName or c.name; r.fullMeta=r.meta:GetText()
             r.forgetTip="Remove "..(c.name or "this character").." from gold, item counts and character buttons."..(row.me and " You are on it now: it comes back when your bags change." or " It is added again the next time it logs in.")
-            r.forget:SetScript("OnClick",function() FT:Confirm("Forget "..(c.name or "this character").."?",function() Bags:Forget(row.guid); list:Refresh(); Bags:Refresh() end) end)
+            r.forget:SetScript("OnClick",function() FT:Confirm("Forget "..(c.fullName or c.name or "this character").."?",function() Bags:Forget(row.guid); list:Refresh(); Bags:Refresh() end) end)
         elseif row.guild then
             r.icon:SetTexture("Interface\\Icons\\INV_Shirt_GuildTabard_01")
             r.name:SetText("<"..(row.g.name or "?")..">  guild bank")

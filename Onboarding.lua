@@ -106,7 +106,11 @@ function Onboarding:Check()
     if FT.db.lastSeenVersion~=FT.version then
         local updated=FT.db.lastSeenVersion~=nil or not FT.freshInstall
         FT.db.lastSeenVersion=FT.version
-        if updated and FT.modules.System:Settings().hideWhatsNew~=true then self:ShowWhatsNew() end
+        -- Some versions come out quietly: their notes are in the menu's
+        -- What's new, but the window doesn't open by itself (1.0.0 goes out
+        -- around the game's launch, when players have enough on screen).
+        local quiet=FT.quietReleases and FT.quietReleases[FT.version]
+        if updated and not quiet and FT.modules.System:Settings().hideWhatsNew~=true then self:ShowWhatsNew() end
     end
 end
 FT:RegisterModule("Onboarding",Onboarding)

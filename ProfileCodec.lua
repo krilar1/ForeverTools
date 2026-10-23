@@ -1,4 +1,20 @@
 local _,FT=...
+-- Hex <-> bytes through lookup tables: the same text as string.format("%02x")
+-- and tonumber(pair,16), but done by the string library in one pass instead
+-- of a Lua call per byte (a full profile is hundreds of thousands of them).
+local TO_HEX,FROM_HEX={},{}
+do
+    local digits="0123456789abcdef"
+    for b=0,255 do
+        local hi,lo=math.floor(b/16)+1,b%16+1
+        local c=string.char(b)
+        TO_HEX[c]=digits:sub(hi,hi)..digits:sub(lo,lo)
+        -- Every spelling of the pair: lower and upper case letters.
+        for _,a in ipairs({digits:sub(hi,hi),digits:sub(hi,hi):upper()}) do
+            for _,z in ipairs({digits:sub(lo,lo),digits:sub(lo,lo):upper()}) do FROM_HEX[a..z]=c end
+        end
+    end
+end
 -- Length-prefixed data, not Lua source. Import never evaluates executable text.
 function FT:EncodeProfile(value)
     local function encode(v,depth)
@@ -16,13 +32,14 @@ function FT:EncodeProfile(value)
         return table.concat(out)
     end
     local raw=encode(value,0)
-    return "FT1:"..raw:gsub(".",function(c) return string.format("%02x",c:byte()) end)
+    return "FT1:"..(raw:gsub(".",TO_HEX))
 end
 function FT:DecodeProfile(text)
     if type(text)~="string" or #text>4000000 then return nil,"Profile is too large." end
     local encoded=text:gsub("%s",""):match("^FT1:(.*)$")
     if not encoded or #encoded%2~=0 or encoded:find("[^%x]") then return nil,"Invalid ForeverTools profile string." end
-    local raw=encoded:gsub("..",function(pair) return string.char(tonumber(pair,16)) end)
+    -- Every pair is two hex digits (checked just above), so each is in the table.
+    local raw=encoded:gsub("..",FROM_HEX)
     local pos,nodes=1,0
     local function read(depth)
         nodes=nodes+1; assert(nodes<400000 and depth<20,"Profile exceeds limits")

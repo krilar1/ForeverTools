@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "0.90.0"
+FT.version = "1.0.0"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -64,10 +64,37 @@ function FT:InitializeDB()
     self.dbReady = true
 end
 local databaseEvents = CreateFrame("Frame")
+-- Looks wait for the end of a fight, except right after a /reload in one.
+function FT:LooksWait() return InCombatLockdown() and not self.combatReload end
 databaseEvents:RegisterEvent("ADDON_LOADED")
 databaseEvents:RegisterEvent("PLAYER_LOGOUT")
+databaseEvents:RegisterEvent("PLAYER_ENTERING_WORLD")
+databaseEvents:RegisterEvent("PLAYER_REGEN_ENABLED")
+-- A /reload during a fight: looks (skins, fonts, colours) are put on right
+-- away instead of after the fight, or the game would look bare. The game may
+-- only report the fight after loading, so this holds from loading until the
+-- world is shown (no fight) or until the fight ends.
+local function redoLooks()
+    for _, name in ipairs({"IconStyles", "FontManager", "UnitColors"}) do
+        local m = FT.modules[name]
+        if m and m.Apply then pcall(m.Apply, m) end
+    end
+end
+FT.redoLooks = redoLooks
 databaseEvents:SetScript("OnEvent", function(_, event, name)
-    if event == "ADDON_LOADED" and name == addonName then FT:InitializeDB()
+    if event == "ADDON_LOADED" and name == addonName then
+        FT.combatReload = true
+        FT:InitializeDB()
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        if not FT.combatReload then return end
+        local fighting = InCombatLockdown() or (UnitAffectingCombat and UnitAffectingCombat("player"))
+        if fighting then
+            -- Anything that waited during loading is put on now.
+            C_Timer.After(0, function() if FT.dbReady and FT.combatReload then redoLooks() end end)
+        else
+            C_Timer.After(2, function() if not InCombatLockdown() then FT.combatReload = nil end end)
+        end
+    elseif event == "PLAYER_REGEN_ENABLED" then FT.combatReload = nil
     elseif event == "PLAYER_LOGOUT" and FT.dbReady then ForeverToolsDB = FT.db; KrilarToolsDB = FT.db end
 end)
 
@@ -88,8 +115,11 @@ function FT:CombatOpenRequest()
     self.openAfterCombat=true
     return true
 end
+-- ForeverTools windows sit in the FULLSCREEN layer, above the elements they
+-- preview; the game's color picker and pop-ups opened from them go above.
 function FT:TrackColorPicker()
     self.colorPickerOpen=true
+    if ColorPickerFrame then ColorPickerFrame:SetFrameStrata("FULLSCREEN_DIALOG"); ColorPickerFrame:Raise() end
     if ColorPickerFrame and not self.colorPickerWatched then
         self.colorPickerWatched=true
         ColorPickerFrame:HookScript("OnHide",function() FT.colorPickerOpen=nil end)
@@ -97,7 +127,12 @@ function FT:TrackColorPicker()
 end
 function FT:ShowPopup(key,...)
     if InCombatLockdown() then return end
-    return StaticPopup_Show(key,...)
+    local dialog=StaticPopup_Show(key,...)
+    if dialog and dialog.SetFrameStrata then
+        dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+        if not dialog.ftStrataHooked then dialog.ftStrataHooked=true; dialog:HookScript("OnHide",function(d) d:SetFrameStrata("DIALOG") end) end
+    end
+    return dialog
 end
 function FT:OpenModule(name)
     if self:CombatOpenRequest() then return end
@@ -854,6 +889,10 @@ function FT:RowStyle(button)
     label.GetText = function(owner) if owner.ftRaw ~= nil then return owner.ftRaw end; return getText(owner) end
     label.SetText = function(owner, text)
         owner.ftRaw = text
+        -- One line, always: a name too long for its row is cut short ("…")
+        -- instead of wrapping out of the box.
+        if owner.SetWordWrap then owner:SetWordWrap(false) end
+        if owner.SetMaxLines then owner:SetMaxLines(1) end
         if button.rowStyle == false or type(text) ~= "string" or (issecretvalue and issecretvalue(text)) then hideRowExtras(button); return setText(owner, text) end
         local name, value = text:match("^(.-):%s+(.+)$")
         if name and name ~= "" and (value == "On" or value == "Off") then
@@ -950,7 +989,9 @@ function FT:Window(name, title, width, height)
     frame:HookScript("OnShow",function(owner) if InCombatLockdown() then owner:Hide() end end)
     frame:SetSize(width, height)
     frame:SetPoint("CENTER")
-    frame:SetFrameStrata("DIALOG")
+    -- Above every element on screen (previews, move tags), below menus,
+    -- pop-ups and tooltips.
+    frame:SetFrameStrata("FULLSCREEN")
     frame:SetClampedToScreen(true)
     frame:SetMovable(true)
     frame:EnableMouse(true)
@@ -1037,7 +1078,7 @@ function FT:OpenHome()
             {"Buff reminders","BuffsHub","Spell_Magic_GreaterBlessingofKings","Missing buffs, low ranks and cooldowns"},
             {"Appearance","Appearance","Spell_Holy_MindVision","Fonts, unit frames, skins, chat and tooltip"},
             {"Combat","SystemCombat","Ability_DualWield","Threat meter, rare alerts, interrupts and group role"},
-            {"PvP","PvP",self:FactionIcon(),"Stealth alerts, marked players, nearby enemies"},
+            {"PvP","PvP",self:FactionIcon(),"Enemy cooldowns, stealth alerts, nearby enemies"},
             {"Keybinds","Keybinds","INV_Misc_Key_14","Quick keybind, spell binds, wheel casting and smart key"},
             {"On-screen info","SystemDisplay","INV_Misc_Spyglass_03","FPS, leveling stats, flight timer, minimap and quests"},
             {"System","System","generic","General settings, looting and merchant"},
@@ -1166,15 +1207,20 @@ SlashCmdList.FOREVERTOOLS = function(message)
     elseif command == "enemies" or command == "stealth" then FT:OpenModule("EnemyAlerts")
     elseif command == "screen" or command == "info" then FT:OpenModule("SystemDisplay")
     elseif command == "threat" then FT:OpenModule("Threat")
-    elseif command == "dr" then if FT.modules.Diminish then FT.modules.Diminish:Diagnose() end
+    elseif command == "dr" then if FT.modules.Diminish then FT:DebugBox("Diminishing returns", function() FT.modules.Diminish:Diagnose() end) end
+    elseif command == "countdebug" then if FT.Bags and FT.Bags.Debug then FT:DebugBox("Item counts debug", function() FT.Bags:Debug() end) end
+    elseif command == "nearbydebug" then if FT.Enemies and FT.Enemies.NearbyDebug then FT:DebugBox("Nearby enemies debug", function() FT.Enemies:NearbyDebug() end) end
+    elseif command == "lag" then if FT.modules.Lag then FT.modules.Lag:Start() end
+    elseif command == "enemycd" then if FT.modules.EnemyCooldowns then FT:DebugBox("Enemy cooldowns", function() FT.modules.EnemyCooldowns:Diagnose() end) end
     elseif command == "launch" then local layout=FT.modules.EditModeLayout; if layout then layout:Remind(true) end
     elseif command == "editmode" or command == "editmode remind" then local layout=FT.modules.EditModeLayout; if layout then if command == "editmode remind" then layout:Remind(true) else layout:Show() end end
     elseif command == "newchar" or command == "newcharacter" then if FT.modules.Profiles then FT.modules.Profiles:AskNewCharacter() end
     elseif command == "copy" then if FT.modules.Chat and FT.modules.Chat.OpenCopy then FT.modules.Chat:OpenCopy() end
-    elseif command == "skindebug" then if FT.modules.IconStyles and FT.modules.IconStyles.SkinDebug then FT.modules.IconStyles:SkinDebug() end
+    elseif command == "threatdebug" then if FT.modules.Threat and FT.modules.Threat.Debug then FT:DebugBox("Threat debug", function() FT.modules.Threat:Debug() end) end
+    elseif command == "skindebug" then if FT.modules.IconStyles and FT.modules.IconStyles.SkinDebug then FT:DebugBox("Skin debug", function() FT.modules.IconStyles:SkinDebug() end) end
     elseif command == "buffdebug" then if FT.modules.BuffReminder and FT.modules.BuffReminder.BuffDebug then FT.modules.BuffReminder:BuffDebug() end
     elseif command == "powerdebug" then if FT.modules.BuffReminder and FT.modules.BuffReminder.PowerDebug then FT.modules.BuffReminder:PowerDebug() end
-    elseif command == "bagdebug" then if FT.modules.IconStyles and FT.modules.IconStyles.BagDebug then FT.modules.IconStyles:BagDebug() end
+    elseif command == "bagdebug" then if FT.modules.IconStyles and FT.modules.IconStyles.BagDebug then FT:DebugBox("Bag debug", function() FT.modules.IconStyles:BagDebug() end) end
     elseif command == "start" then if FT.modules.Onboarding then FT.modules.Onboarding:ShowDemo() end
     elseif command == "setup" or command == "wizard" then if FT.modules.Onboarding then FT.modules.Onboarding:ShowSetup(true) end
     elseif command == "whatsnew" or command == "news" then if FT.modules.Onboarding then FT.modules.Onboarding:ShowWhatsNew() end
@@ -1328,6 +1374,13 @@ function FT:ShowChoices(owner)
     local inner = scrolls and 34 or 16
     menu:SetFrameLevel(owner:GetFrameLevel() + 30)
     menu:ClearAllPoints(); menu:SetPoint("TOPLEFT", owner, "BOTTOMLEFT", 0, -3)
+    -- Some lists open beside their window instead (the font list), so what
+    -- they change stays in view while you pick.
+    local beside = owner.menuBeside
+    local right, left = beside and beside:IsVisible() and beside:GetRight(), owner:GetLeft()
+    if right and left then
+        menu:ClearAllPoints(); menu:SetPoint("TOPLEFT", owner, "TOPLEFT", right - left + 8, 0)
+    end
     menu.list:SetWidth(width - inner); menu.list:SetHeight(math.max(1, #options * 30))
     menu.scroll:SetVerticalScroll(0)
     for _, row in ipairs(menu.rows) do row:Hide() end
@@ -1583,6 +1636,37 @@ function FT:TextCaret(box, inset, options)
         place(x, options.single and 0 or -y, height)
     end)
     box:HookScript("OnTextChanged", function() state.lines = nil end)
+    -- Up and down arrows: to the same column on the line above or below, when
+    -- the game's own box does not move the cursor itself. Both the arrow
+    -- event and the key press are watched (some boxes only get one of them).
+    if not options.single then
+        if box.SetAltArrowKeyMode then pcall(box.SetAltArrowKeyMode, box, false) end
+        local function arrow(key)
+            if key ~= "UP" and key ~= "DOWN" then return end
+            if box.IsMultiLine and not box:IsMultiLine() then return end
+            local stamp = GetTime()
+            if state.arrowAt == stamp and state.arrowKey == key then return end
+            state.arrowAt, state.arrowKey = stamp, key
+            local before = box:GetCursorPosition()
+            if type(before) ~= "number" then return end
+            C_Timer.After(0, function()
+                if box:GetCursorPosition() ~= before then return end
+                local text = box:GetText() or ""
+                local starts = {1}
+                for i = 1, #text do if text:sub(i, i) == "\n" then starts[#starts + 1] = i + 1 end end
+                local line = 1
+                for i, st in ipairs(starts) do if before + 1 >= st then line = i end end
+                local column = before + 1 - starts[line]
+                local target = line + (key == "UP" and -1 or 1)
+                if target < 1 then box:SetCursorPosition(0); return end
+                if target > #starts then box:SetCursorPosition(#text); return end
+                local lineEnd = (starts[target + 1] and starts[target + 1] - 2) or #text
+                box:SetCursorPosition(math.min(starts[target] - 1 + column, lineEnd))
+            end)
+        end
+        box:HookScript("OnArrowPressed", function(_, key) arrow(key) end)
+        if box.HasScript and box:HasScript("OnKeyDown") then box:HookScript("OnKeyDown", function(_, key) arrow(key) end) end
+    end
     -- Blink like a normal text cursor; solid for a moment after it moves.
     local driver = CreateFrame("Frame", nil, box); driver:Hide()
     driver:SetScript("OnUpdate", function()
@@ -1756,6 +1840,21 @@ function FT:PlaceBeside(frame)
 end
 -- A read-only text box the player can select and copy with Ctrl+C.
 -- Nothing is sent anywhere; the text only leaves the game if the player pastes it.
+-- A debug report in a copy window instead of the chat (long reports scroll
+-- out of the chat history): Ctrl+A, Ctrl+C, paste it in a message.
+function FT:DebugBox(title, fn)
+    local lines = {}
+    local realPrint = print
+    print = function(...)
+        local parts = {}
+        for i = 1, select("#", ...) do parts[i] = tostring((select(i, ...))) end
+        lines[#lines + 1] = (table.concat(parts, " "):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
+    end
+    local ok, err = pcall(fn)
+    print = realPrint
+    if not ok then lines[#lines + 1] = "error: " .. tostring(err) end
+    self:CopyBox(title, table.concat(lines, "\n"), "Ctrl+A to select all, Ctrl+C to copy, then paste it in a message.", true)
+end
 function FT:CopyBox(title, text, hint, tall)
     if self:CombatOpenRequest() then return end
     local frame = self.copyBox
@@ -1833,4 +1932,41 @@ function FT:Confirm(message,action)
     local h = f.text:GetStringHeight(); if type(h) ~= "number" then h = 40 end
     f:SetHeight(math.max(130, h + 104))
     f:Show(); f:Raise()
+end
+
+-- Preview, the same on every page that puts something on screen: one switch
+-- at the top right, on the row of the page's main switch. On: the element
+-- shows with example content and can be dragged. Off (or the page closes):
+-- it is locked again and the examples go away.
+--   opts.get() -> on?, opts.set(on), opts.tip (tooltip text)
+function FT:TopPreview(frame, main, opts)
+    local width = 150
+    local b = self:QuietButton(frame, "Preview: Off", width, main and main:GetHeight() or 34, "Spell_Holy_MindVision")
+    if main then
+        main:SetWidth(main:GetWidth() - width - 12)
+        b:SetPoint("LEFT", main, "RIGHT", 12, 0)
+    else
+        b:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -24, -62)
+    end
+    b.ftPreview = opts
+    local function refresh() FT:RefreshPreview(frame) end
+    b:SetScript("OnClick", function()
+        local on = not opts.get()
+        opts.set(on)
+        if on then FT:Toast("Drag it into place. Click Preview again to lock it.", 4) end
+        refresh()
+    end)
+    self:Tooltip(b, "Preview", (opts.tip and (opts.tip .. " ") or "") .. "Shows it on screen with examples, so you can drag it into place. Click again to lock it.")
+    frame.ftPreviewButton = b
+    frame:HookScript("OnShow", refresh)
+    frame:HookScript("OnHide", function() if opts.get() then opts.set(false) end end)
+    refresh()
+    return b
+end
+function FT:RefreshPreview(frame)
+    local b = frame and frame.ftPreviewButton
+    if not b then return end
+    local on = b.ftPreview.get() and true or false
+    b.label:SetText("Preview: " .. (on and "On" or "Off"))
+    self:SetSelected(b, on)
 end

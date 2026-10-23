@@ -58,9 +58,9 @@ function Profiles:ShowSwitcher(owner)
 end
 -- Only preferences are copied. Macro history and installed WoW macros belong to
 -- the character and are never rewritten by loading an appearance profile.
-local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish"}
+local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish","enemyCooldowns"}
 -- Every module that must redraw after settings change (load, login, reset).
-local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey","Totems","DruidMana","SellMarks","QueueTimer","Trinkets","AutoRelease","PersonalResource","Interrupts","Bags","Enemies","Diminish"}
+local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey","Totems","DruidMana","SellMarks","QueueTimer","Trinkets","AutoRelease","PersonalResource","Interrupts","Bags","Enemies","Diminish","EnemyCooldowns"}
 local function copy(value)
     if type(value) ~= "table" then return value end
     local result={}; for k,v in pairs(value) do result[k]=copy(v) end; return result
@@ -184,8 +184,11 @@ function Profiles:Load(name,stayPage,silent)
     FT.minimapDragAngle=nil
     self.selected=name
     self:Remember(name)
+    -- Every part applies even if one of them fails (the error is still
+    -- reported), so a profile is never left half loaded.
     for _,module in ipairs(applyModules) do
-        local object=FT.modules[module]; if object then object:Apply() end
+        local object=FT.modules[module]
+        if object then local ok,err=pcall(object.Apply,object); if not ok and geterrorhandler then geterrorhandler()(err) end end
     end
     FT:UpdateMinimap()
     local macros=FT.modules.MacroForge
@@ -888,7 +891,8 @@ function Profiles:AskNewCharacter()
             if self:Load(name,false,true) then FT:Toast('Using profile "'..name..'".',3) end
         end)
         FT:Tooltip(use,"Use","Use it on this character.")
-        frame.use=use
+        use.primary=true; FT:UpdateButton(use)
+        frame.use=use; frame.new=new; frame.import=import
     end
     local frame=self.newCharacterFrame
     local name=self:NewCharacterProfile() or self:AnyProfile()
@@ -896,15 +900,30 @@ function Profiles:AskNewCharacter()
     frame.choice=choice; frame.pick.value=choice; frame.pick.label:SetText(self:ChoiceLabel(choice))
     frame.pick:SetShown(true); frame.use:SetShown(true)
     local who=self:DisplayName()
-    if name then
-        frame.text:SetText("Which settings should "..who.." use? Pick a look or profile, start new, or import.")
-        frame.note:SetText("Closing keeps the game's look. Change it any time in /ft > Profiles.")
+    -- With profiles already made: a small window, pick one or start new.
+    -- Without: the full window with looks and imports.
+    local compact=name and true or false
+    local W=compact and 360 or 560
+    frame:SetSize(W,compact and 180 or 304)
+    frame.text:SetWidth(W-48); frame.pick:SetWidth(W-48); frame.note:SetWidth(W-48)
+    frame.import:SetShown(not compact); frame.importEdit:SetShown(not compact)
+    local half=compact and math.floor((W-56)/2) or 252
+    frame.new:SetWidth(half); frame.use:SetWidth(half)
+    frame.new:ClearAllPoints(); frame.new:SetPoint("BOTTOMLEFT",24,22)
+    frame.use:ClearAllPoints(); frame.use:SetPoint("BOTTOMRIGHT",-24,22)
+    frame.use.label:SetText(compact and "Use profile" or "Use selected")
+    if compact then
+        frame.text:SetText("Profile for "..who..":")
+        frame.note:SetText("")
     else
         frame.text:SetText("Which settings should "..who.." use? Pick a look, start new, or import.")
         frame.note:SetText("Closing keeps your current settings. Change it any time in /ft > Profiles.")
     end
+    frame.pick:ClearAllPoints(); frame.pick:SetPoint("TOPLEFT",24,compact and -84 or -104)
     frame.note:ClearAllPoints(); frame.note:SetPoint("TOPLEFT",24,-150)
-    frame:ClearAllPoints(); frame:SetPoint("CENTER"); frame:Show()
+    -- On the right side of the screen: other addons often ask their own
+    -- first-login questions in the middle.
+    frame:ClearAllPoints(); frame:SetPoint("RIGHT",UIParent,"RIGHT",-80,60); frame:Show()
 end
 -- The explicit choice, else the most recently used profile, if it still exists.
 function Profiles:NewCharacterProfile()
@@ -935,7 +954,7 @@ end)
 
 -- Settings only: saved profiles, custom macros/fonts, learned flight routes,
 -- rank knowledge and macro history are kept. A reload re-applies native UI.
-local resettable={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","chat","system","customKeybinds","lootRoll","tooltip","buffReminder","flightTimer","leveling","vendor","dispelGlow","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish"}
+local resettable={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","chat","system","customKeybinds","lootRoll","tooltip","buffReminder","flightTimer","leveling","vendor","dispelGlow","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish","enemyCooldowns"}
 function Profiles:DefaultsForCharacter()
     for _,key in ipairs(resettable) do FT.db[key]=nil end
     self.active,self.selected=nil,nil
@@ -1014,7 +1033,7 @@ end
 function Profiles:Normalize()
     -- Every module fills in its defaults first, so opening a page for the
     -- first time never counts as a change.
-    for _,name in ipairs({"LootRoll","System","Tooltip","QualityOfLife","FlightTimer","BuffReminder","CooldownReminder","Leveling","UnitColors","Chat","CustomKeybinds","IconStyles","DispelGlow","RareAlert","Threat","SmartKey","Totems","Movers","QueueTimer","Trinkets","AutoRelease","PersonalResource","Interrupts","Bags","Enemies","Diminish"}) do
+    for _,name in ipairs({"LootRoll","System","Tooltip","QualityOfLife","FlightTimer","BuffReminder","CooldownReminder","Leveling","UnitColors","Chat","CustomKeybinds","IconStyles","DispelGlow","RareAlert","Threat","SmartKey","Totems","Movers","QueueTimer","Trinkets","AutoRelease","PersonalResource","Interrupts","Bags","Enemies","Diminish","EnemyCooldowns"}) do
         local module=FT.modules[name]
         if module and module.Settings then pcall(module.Settings,module) end
     end
@@ -1158,7 +1177,11 @@ function Profiles:Transfer(importing,onImported)
         if box.SetMaxBytes then box:SetMaxBytes(0) end
         local pasteHint=FT:Label(box,"Paste string here",13);pasteHint:SetPoint("TOPLEFT",box,10,-10);frame.pasteHint=pasteHint
         box:SetScript("OnTextChanged",function(_,user)
-            local n=#box:GetText(); box:SetHeight(math.max(160,math.ceil(n/65)*16));pasteHint:SetShown(n==0)
+            -- The box grows with the text, but not without end: a whole profile
+            -- is hundreds of thousands of characters, and a box tens of
+            -- thousands of pixels tall made pasting stutter. Select all and
+            -- copy still take the whole text.
+            local n=#box:GetText(); box:SetHeight(math.max(160,math.min(4000,math.ceil(n/65)*16)));pasteHint:SetShown(n==0)
             if frame.importing and user then
                 -- A string from Edit Mode (or anything else) is not a profile.
                 local wrong=n>0 and not box:GetText():match("^%s*FT1:")
@@ -1302,7 +1325,7 @@ end
 -- by an earlier (or later) version must still bring everything it can. Each
 -- setting area that fails the checks is left out (it keeps its defaults) and
 -- named in skipped; the rest is imported.
-local areaNames={fps="FPS counter",fonts="Fonts",unitColors="Unit frames",iconStyles="Skins",chat="Chat",system="System settings",customKeybinds="Mouse-wheel casting",customFonts="Your font files",lootRoll="Loot rolls",tooltip="Tooltip",buffReminder="Buff reminders",customMacros="Your macros",flightTimer="Flight timer",leveling="Leveling stats",dispelGlow="Dispel glow",actionMacros="Macro places",rareAlert="Rare alerts",threat="Threat meter",fireAlert="Fire alert",smartKey="Smart key",totems="Totems",movers="Element positions",queueTimer="Battleground timer",trinkets="Trinket menu",autoRelease="Auto release",personal="Game resource bars",interrupts="Interrupt bar",thanks="Thanks",moveWindows="Game window places",bags="Bags",enemies="Enemy alerts",diminish="Diminishing returns"}
+local areaNames={fps="FPS counter",fonts="Fonts",unitColors="Unit frames",iconStyles="Skins",chat="Chat",system="System settings",customKeybinds="Mouse-wheel casting",customFonts="Your font files",lootRoll="Loot rolls",tooltip="Tooltip",buffReminder="Buff reminders",customMacros="Your macros",flightTimer="Flight timer",leveling="Leveling stats",dispelGlow="Dispel glow",actionMacros="Macro places",rareAlert="Rare alerts",threat="Threat meter",fireAlert="Fire alert",smartKey="Smart key",totems="Totems",movers="Element positions",queueTimer="Battleground timer",trinkets="Trinket menu",autoRelease="Auto release",personal="Game resource bars",interrupts="Interrupt bar",thanks="Thanks",moveWindows="Game window places",bags="Bags",enemies="Enemy alerts",diminish="Diminishing returns",enemyCooldowns="Enemy cooldowns"}
 function Profiles:ValidateImport(data)
     if type(data)~="table" then return nil,"Invalid or unsupported profile." end
     local result=self:StrictImport(data)
@@ -1333,6 +1356,7 @@ function Profiles:StrictImport(data)
     if not check(result.fps,{enabled="boolean",fontSize="number",x="number",y="number",screenWidth="number",screenHeight="number",align="string",anchorX="number",anchorY="number",anchorWidth="number",anchorHeight="number"}) then return nil,"Invalid FPS settings." end
     if not check(result.queueTimer,{enabled="boolean",size="number",x="number",y="number"}) then return nil,"Invalid battleground timer settings." end
     if not check(result.diminish,{enabled="boolean",target="boolean",focus="boolean",self="boolean",side="string",size="number",places="table",fontSize="number",text="string"}) then return nil,"Invalid diminishing returns settings." end
+    if not check(result.enemyCooldowns,{enabled="boolean",bar="boolean",targetIcons="boolean",where="string",grow="string",name="string",side="string",icon="number",rows="number",targetSize="number",timeScale="number",nameScale="number",tx="number",ty="number",x="number",y="number"}) then return nil,"Invalid enemy cooldown settings." end
     if not check(result.autoRelease,{enabled="boolean",keepSelfRes="boolean"}) then return nil,"Invalid auto release settings." end
     if not check(result.personal,{order="table",text="table",preview="table"}) then return nil,"Invalid personal resource settings." end
     if not check(result.interrupts,{enabled="boolean",when="string",self="boolean",solo="boolean",width="number",size="number",x="number",y="number",dock="string",grow="string",rows="number"}) then return nil,"Invalid interrupt bar settings." end
@@ -1371,7 +1395,7 @@ function Profiles:StrictImport(data)
         if pref.numberColor then for i=1,3 do local v=pref.numberColor[i]; if type(v)~="number" or v<0 or v>1 then return nil,"Invalid font color." end end end
     end
     for _,pref in pairs(result.customKeybinds or {}) do
-        if type(pref)~="table" or not check(pref,{enabled="boolean",up="table",down="table",npcs="boolean"}) then return nil,"Invalid bindings." end
+        if type(pref)~="table" or not check(pref,{enabled="boolean",up="table",down="table",npcs="boolean",fightDispel="string"}) then return nil,"Invalid bindings." end
         for _,dir in ipairs({"up","down"}) do if not check(pref[dir],{spellID="number",friendly="string",hostile="string"}) then return nil,"Invalid spell." end end
     end
     if not check(result.dispelGlow,{enabled="boolean",player="boolean",target="boolean",focus="boolean",party="boolean",raid="boolean",strength="string",pulse="boolean",colors="table"}) then return nil,"Invalid dispel glow settings." end
@@ -1389,17 +1413,34 @@ function Profiles:StrictImport(data)
             end
         end
     end
-    for k,v in pairs(result.chat or {}) do if k~="copyColors" and k~="copySeconds" and k~="copyTime" and v~="show" and v~="hide" and v~="hover" then return nil,"Invalid chat mode." end end
-    if type(result.chat)=="table" and ((result.chat.copyColors~=nil and type(result.chat.copyColors)~="boolean") or (result.chat.copySeconds~=nil and type(result.chat.copySeconds)~="boolean") or (result.chat.copyTime~=nil and result.chat.copyTime~="off" and result.chat.copyTime~="hm" and result.chat.copyTime~="hms")) then return nil,"Invalid chat mode." end
-    local objectiveModes={collapsed=true,open=true,hidden=true}
-    for _,key in ipairs({"unitColors","system"}) do
-        for name,v in pairs(result[key] or {}) do
-            -- Quest objectives is the one choice (not a switch) stored with the system toggles.
-            if key=="system" and name=="objectives" then if not objectiveModes[v] then return nil,"Invalid quest objectives setting." end
-            elseif type(v)~="boolean" then return nil,"Invalid toggle." end
+    -- Chat, System and Unit frames hold many small settings: one value that
+    -- isn't what it should be is left out (kept at its default) instead of
+    -- the whole part being refused.
+    if type(result.chat)=="table" then
+        local c=result.chat
+        local bools={copyColors=true,copySeconds=true,history=true}
+        for k,v in pairs(c) do
+            if type(k)~="string" then c[k]=nil
+            elseif bools[k] then if type(v)~="boolean" then c[k]=nil end
+            elseif k=="copyTime" then if v~="off" and v~="hm" and v~="hms" then c[k]=nil end
+            elseif v~="show" and v~="hide" and v~="hover" then c[k]=nil end
         end
     end
-    if not check(result.tooltip,{guildFactionColor="boolean",guildFactionIcon="boolean",target="boolean",guild="boolean",healthBar="boolean",position="string",order="string",offsetX="number",offsetY="number",x="number",y="number",screenWidth="number",screenHeight="number",name="number",details="number",targetSize="number",layout="table",factionIcon="string",guildIconPosition="string",faction="string",factionHome="number"}) then return nil,"Invalid tooltip settings." end
+    local objectiveModes={collapsed=true,open=true,hidden=true}
+    -- Key text nudge (System > Keybind tools): points left/right and up/down.
+    local systemNumbers={keyX=true,keyY=true}
+    for _,key in ipairs({"unitColors","system"}) do
+        local t=result[key]
+        if type(t)=="table" then
+            for name,v in pairs(t) do
+                -- Quest objectives is the one choice (not a switch) stored with the system toggles.
+                if key=="system" and name=="objectives" then if not objectiveModes[v] then t[name]=nil end
+                elseif key=="system" and systemNumbers[name] then if type(v)~="number" or v~=v or math.abs(v)>12 then t[name]=nil end
+                elseif type(v)~="boolean" then t[name]=nil end
+            end
+        end
+    end
+    if not check(result.tooltip,{guildFactionColor="boolean",guildFactionIcon="boolean",target="boolean",guild="boolean",healthBar="boolean",position="string",order="string",offsetX="number",offsetY="number",x="number",y="number",screenWidth="number",screenHeight="number",name="number",details="number",targetSize="number",targetedBy="boolean",layout="table",factionIcon="string",guildIconPosition="string",faction="string",factionHome="number"}) then return nil,"Invalid tooltip settings." end
     if result.tooltip and result.tooltip.factionIcon and not FT.modules.Tooltip.iconPlaces[result.tooltip.factionIcon] then return nil,"Invalid faction icon place." end
     if result.tooltip and result.tooltip.faction and not FT.modules.Tooltip.factionModes[result.tooltip.faction] then return nil,"Invalid faction setting." end
     for _,entry in ipairs(result.tooltip and result.tooltip.layout or {}) do

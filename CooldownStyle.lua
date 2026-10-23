@@ -62,10 +62,10 @@ function Fonts:Refresh()
     refresh(self)
     if not self.frame then return end
     if not self.cooldownColor then
-        self.cooldownColor=FT:QuietButton(self.frame,"Number color",238,32,"fonts")
-        self.cooldownColor:SetPoint("TOPLEFT",240,-406)
+        self.cooldownColor=FT:QuietButton(self.frame,"Number color",190,32,"fonts")
+        self.cooldownColor:SetPoint("TOPLEFT",204,-406)
         self.cooldownColor:SetScript("OnClick",function() self:CooldownColorPicker() end)
-        self.cooldownGrey=FT:QuietButton(self.frame,"",244,32,"skins")
+        self.cooldownGrey=FT:QuietButton(self.frame,"",190,32,"skins")
         self.cooldownGrey:SetPoint("LEFT",self.cooldownColor,"RIGHT",12,0)
         self.cooldownGrey:SetScript("OnClick",function() local s=self:Settings("cooldowns"); s.greyCooldowns=not s.greyCooldowns; update(); self:Refresh() end)
         FT:Tooltip(self.cooldownColor,"Cooldown number color","Color of cooldown numbers. Reset area brings back the game's color.")

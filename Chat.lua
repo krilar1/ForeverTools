@@ -79,7 +79,7 @@ function Chat:OpenCopy(frame)
     local w=self.copyWindow
     if not w then
         w=CreateFrame("Frame","ForeverToolsChatCopy",UIParent); w:SetSize(620,420); w:SetPoint("CENTER")
-        w:SetFrameStrata("DIALOG"); w:SetClampedToScreen(true); w:EnableMouse(true); w:SetMovable(true); w:RegisterForDrag("LeftButton")
+        w:SetFrameStrata("FULLSCREEN"); w:SetClampedToScreen(true); w:EnableMouse(true); w:SetMovable(true); w:RegisterForDrag("LeftButton")
         w:SetScript("OnDragStart",w.StartMoving); w:SetScript("OnDragStop",w.StopMovingOrSizing)
         FT:Panel(w)
         w.title=FT:Label(w,"Copy chat",15,true); w.title:SetPoint("TOPLEFT",16,-12)
@@ -207,7 +207,7 @@ local function paintOne(self,s,object,rec,tabsOver)
     if hidden(current) or type(current)~="number" or math.abs(current-alpha)>.001 then object:SetAlpha(alpha) end
     -- Showing and hiding is allowed in a fight; switching the mouse on a
     -- frame is not always, and it only changes with the setting anyway.
-    if rec.mouse~=nil and not InCombatLockdown() then
+    if rec.mouse~=nil and not FT:LooksWait() then
         local mouse=mode~="hide" and rec.mouse
         local actual=object.IsMouseEnabled and object:IsMouseEnabled()
         if actual~=mouse then object:EnableMouse(mouse) end
@@ -238,7 +238,7 @@ function Chat:NeedsPolling()
     return false
 end
 function Chat:Apply()
-    if not FT.dbReady or InCombatLockdown() then return end
+    if not FT.dbReady or FT:LooksWait() then return end
     self:Track(QuickJoinToastButton,"social",ChatFrame1,"social")
     self:Track(FriendsMicroButton,"social",ChatFrame1,"social")
     for _,name in ipairs({"ChatFrameMenuButton","ChatFrameChannelButton","ChatFrameToggleVoiceDeafenButton","ChatFrameToggleVoiceMuteButton"}) do self:Track(_G[name],"icons",ChatFrame1,"side1") end
@@ -259,7 +259,7 @@ function Chat:Apply()
             box:HookScript("OnEditFocusLost",function() if FT.dbReady then Chat:Paint() end end)
         end
     end
-    self:Paint(); self:ApplyThanks(); self:Refresh()
+    self:Paint(); self:ApplyThanks(); self:ApplyHistory(); self:Refresh()
 end
 function Chat:Refresh()
     if not self.buttons then return end
@@ -272,6 +272,10 @@ function Chat:Refresh()
         self.thanks.label:SetText("Thank for buffs: "..(th.enabled and "On" or "Off")); FT:SetSelected(self.thanks,th.enabled)
         self.thanksGroup.label:SetText("Also my group: "..(th.group and "On" or "Off")); FT:SetSelected(self.thanksGroup,th.group)
         self.thanksGroup:SetAlpha(th.enabled and 1 or .5)
+    end
+    if self.history then
+        local on=self:Settings().history==true
+        self.history.label:SetText("Keep chat after reload: "..(on and "On" or "Off")); FT:SetSelected(self.history,on)
     end
     if self.links then
         local on=FT.modules.System:Settings().chatLinks==true
@@ -289,38 +293,38 @@ function Chat:Refresh()
 end
 function Chat:Open()
     if not self.frame then
-        self.frame=FT:Window("ForeverToolsChat","Chat",760,560); self.buttons={}
+        self.frame=FT:Window("ForeverToolsChat","Chat",620,560); self.buttons={}
         -- Two columns: what shows around the chat on the left, its text on the right.
         local buttonsHead=FT:Label(self.frame,"Buttons and tabs",15,true);buttonsHead:SetPoint("TOPLEFT",24,-66);FT:SectionHeading(buttonsHead,"INV_Misc_Note_03",200)
         FT:AppearanceBack(self.frame)
         FT:PageInfo(self.frame,"Chat","What shows around the chat, the chat font, and clickable links.")
         for i,entry in ipairs(options) do
-            local key=entry[1]; local b=FT:QuietButton(self.frame,"",350,32,"chat")
+            local key=entry[1]; local b=FT:QuietButton(self.frame,"",276,32,"chat")
             b:SetPoint("TOPLEFT",24,-94-(i-1)*40)
             FT:MakeChoice(b,{{"show","Shown"},{"hide","Hidden"},{"hover","Mouseover","Shows while the mouse is over the chat."}},function() return self:Settings()[key] or "show" end,function(v) self:Settings()[key]=v; self:Apply() end)
             FT:Tooltip(b,entry[2],key=="copy" and "A button to copy the chat's text." or "Shown, Hidden, or on mouseover.")
             self.buttons[key]=b
         end
-        local heading=FT:Label(self.frame,"Chat text",15,true);heading:SetPoint("TOPLEFT",386,-66);FT:SectionHeading(heading,"INV_Inscription_Tradeskill01",200)
+        local heading=FT:Label(self.frame,"Chat text",15,true);heading:SetPoint("TOPLEFT",320,-66);FT:SectionHeading(heading,"INV_Inscription_Tradeskill01",200)
         local fonts=FT.modules.FontManager
-        self.fontChoice=FT:Dropdown(self.frame,350,function() return fonts:Catalogue() end,function(value)
+        self.fontChoice=FT:Dropdown(self.frame,276,function() return fonts:Catalogue() end,function(value)
             local pref=fonts:Settings("chat");local path=fonts:Resolve({font=value})
             if not fonts:ValidFont(path) then FT:Toast("That font is unavailable.");return end
             pref.font=value;pref.enabled=true;fonts:ApplyArea("chat");self:Refresh()
         end,"fonts")
-        self.fontChoice:SetPoint("TOPLEFT",386,-94)
-        self.fontSize=FT:QuietButton(self.frame,"",236,32,"fonts");self.fontSize:SetPoint("TOPLEFT",386,-134)
+        self.fontChoice:SetPoint("TOPLEFT",320,-94)
+        self.fontSize=FT:QuietButton(self.frame,"",184,32,"fonts");self.fontSize:SetPoint("TOPLEFT",320,-134)
         self.fontSize:SetScript("OnClick",function()
             local p=fonts:Settings("chat");if p.size==0 then return end
             FT:Confirm("Restore the original chat font size?",function() p.size=0;fonts:ApplyArea("chat");self:Refresh() end)
         end)
         for i,delta in ipairs({-1,1}) do
-            local button=FT:QuietButton(self.frame,delta<0 and "-" or "+",50,32,delta<0 and "reset" or "add")
-            button:SetPoint("TOPLEFT",630+(i-1)*56,-134)
+            local button=FT:QuietButton(self.frame,delta<0 and "-" or "+",40,32,delta<0 and "reset" or "add")
+            button:SetPoint("TOPLEFT",510+(i-1)*46,-134)
             FT:Tooltip(button,delta<0 and "Smaller" or "Larger",delta<0 and "Make chat text one size smaller." or "Make chat text one size larger.")
             button:SetScript("OnClick",function()local p=fonts:Settings("chat");p.size=math.max(8,math.min(40,(p.size==0 and 14 or p.size)+delta));p.enabled=true;fonts:ApplyArea("chat");self:Refresh() end)
         end
-        self.outline=FT:QuietButton(self.frame,"",350,32,"fonts");self.outline:SetPoint("TOPLEFT",386,-174)
+        self.outline=FT:QuietButton(self.frame,"",276,32,"fonts");self.outline:SetPoint("TOPLEFT",320,-174)
         local choices={"original","THIN","OUTLINE","THICKOUTLINE"}
         local names={original="Default",THIN="Thin outline",OUTLINE="Outline",THICKOUTLINE="Thick outline"}
         FT:MakeChoice(self.outline,function() local out={}; for _,v in ipairs(choices) do out[#out+1]={v,names[v] or v} end; return out end,
@@ -330,16 +334,25 @@ function Chat:Open()
         FT:Tooltip(self.fontSize,"Chat font size","+ and - change the size. Click the number for the game's size.")
         FT:Tooltip(self.outline,"Chat outline","Shadow or outline on chat text.")
         local linksHead=FT:Label(self.frame,"Links",15,true);linksHead:SetPoint("TOPLEFT",24,-310);FT:SectionHeading(linksHead,"INV_Misc_Note_02",200)
-        self.links=FT:QuietButton(self.frame,"",350,32,"chat");self.links:SetPoint("TOPLEFT",24,-338)
+        self.links=FT:QuietButton(self.frame,"",276,32,"chat");self.links:SetPoint("TOPLEFT",24,-338)
         self.links:SetScript("OnClick",function() local s=FT.modules.System:Settings();s.chatLinks=not s.chatLinks;self:Refresh() end)
         local thanksHead=FT:Label(self.frame,"Thanks",15,true);thanksHead:SetPoint("TOPLEFT",24,-390);FT:SectionHeading(thanksHead,"Spell_Holy_PrayerOfHealing",200)
-        self.thanks=FT:QuietButton(self.frame,"",350,32,"Spell_Holy_PowerWordShield");self.thanks:SetPoint("TOPLEFT",24,-418)
+        self.thanks=FT:QuietButton(self.frame,"",276,32,"Spell_Holy_PowerWordShield");self.thanks:SetPoint("TOPLEFT",24,-418)
         self.thanks:SetScript("OnClick",function() local th=self:Thanks(); th.enabled=not th.enabled; self:ApplyThanks(); self:Refresh() end)
         FT:Tooltip(self.thanks,"Thank for buffs","A /thank to players who buff you in the open world, after a short pause. Once per player every few minutes. Never in fights, dungeons or PvP.")
-        self.thanksGroup=FT:QuietButton(self.frame,"",350,32,"Spell_Holy_PrayerOfHealing");self.thanksGroup:SetPoint("TOPLEFT",24,-458)
+        self.thanksGroup=FT:QuietButton(self.frame,"",276,32,"Spell_Holy_PrayerOfHealing");self.thanksGroup:SetPoint("TOPLEFT",24,-458)
         self.thanksGroup:SetScript("OnClick",function() local th=self:Thanks(); th.group=not th.group; self:Refresh() end)
         FT:Tooltip(self.thanksGroup,"Also my group","Also thank group members.")
         FT:Tooltip(self.links,"Clickable links","Web addresses in chat become clickable, to copy.")
+        local historyHead=FT:Label(self.frame,"History",15,true);historyHead:SetPoint("TOPLEFT",320,-230);FT:SectionHeading(historyHead,"INV_Misc_Book_09",150)
+        self.history=FT:QuietButton(self.frame,"",276,32,"chat");self.history:SetPoint("TOPLEFT",320,-258)
+        self.history:SetScript("OnClick",function()
+            local st=self:Settings(); st.history=not st.history
+            -- Turned on now: keep from here (nothing to bring back this time).
+            if st.history then self.restored=true end
+            self:ApplyHistory(); self:Refresh()
+        end)
+        FT:Tooltip(self.history,"Keep chat after reload","Today's chat comes back after a /reload or logging in again: up to 250 lines per chat window, for this character. From the next day it starts fresh. The combat log is not kept.")
     end
     self:Apply(); self.frame:Show()
 end
@@ -435,4 +448,70 @@ events:SetScript("OnUpdate",function(_,dt)
     if x==Chat.lastX and y==Chat.lastY then return end
     Chat.lastX,Chat.lastY=x,y
     Chat:Paint()
+end)
+
+-- Keep chat (Chat > History, off by default). What your chat windows showed
+-- today comes back after a /reload or logging in again: up to 250 lines per
+-- window, for this character, and only from today (from the next day it
+-- starts empty). The combat log and lines the game hides (secret) or that
+-- name Battle.net friends (only valid in the session they were written)
+-- are not kept. It lives outside your profile, so it never travels with an
+-- export.
+local KEEP_LINES=250
+local function today() return date and date("%Y-%m-%d") or "" end
+function Chat:HistoryStore()
+    if type(FT.db.chatHistory)~="table" then FT.db.chatHistory={} end
+    local name=UnitName and UnitName("player"); local realm=GetRealmName and GetRealmName()
+    if hidden(name,realm) or type(name)~="string" then return nil end
+    local key=name.."-"..tostring(realm)
+    local store=FT.db.chatHistory[key]
+    if type(store)~="table" or store.day~=today() then store={day=today(),frames={}}; FT.db.chatHistory[key]=store end
+    return store
+end
+local function keptFrame(i) local frame=_G["ChatFrame"..i]; if frame and frame~=COMBATLOG and i~=2 then return frame end end
+function Chat:Remember(i,text,r,g,b)
+    if self.restoring or not self:Settings().history then return end
+    if hidden(text) or type(text)~="string" or text=="" or text:find("|K",1,true) then return end
+    if hidden(r,g,b) then r,g,b=nil,nil,nil end
+    local store=self.historyStore; if not store or store.day~=today() then store=self:HistoryStore(); self.historyStore=store end
+    if not store then return end
+    local list=store.frames[i]; if not list then list={}; store.frames[i]=list end
+    list[#list+1]={text,type(r)=="number" and r or nil,type(g)=="number" and g or nil,type(b)=="number" and b or nil}
+    if #list>KEEP_LINES then table.remove(list,1) end
+end
+function Chat:ApplyHistory()
+    local on=self:Settings().history==true
+    if on and not self.historyHooked and hooksecurefunc then
+        self.historyHooked=true
+        for i=1,(NUM_CHAT_WINDOWS or 10) do
+            local frame=keptFrame(i)
+            if frame and frame.AddMessage then hooksecurefunc(frame,"AddMessage",function(_,text,r,g,b) Chat:Remember(i,text,r,g,b) end) end
+        end
+    end
+    if not on then self.historyStore=nil end
+end
+-- Put today's lines back, once per login, before anything new is kept.
+function Chat:RestoreHistory()
+    if self.restored or not self:Settings().history then return end
+    self.restored=true
+    local store=self:HistoryStore(); if not store then return end
+    self.historyStore=store
+    self.restoring=true
+    for i,list in pairs(store.frames) do
+        local frame=type(i)=="number" and keptFrame(i)
+        if frame and type(list)=="table" and #list>0 then
+            frame:AddMessage("|cff8a7f6a— Chat from earlier today —|r")
+            for _,line in ipairs(list) do if type(line)=="table" and type(line[1])=="string" then pcall(frame.AddMessage,frame,line[1],line[2],line[3],line[4]) end end
+            frame:AddMessage("|cff8a7f6a— Now —|r")
+        end
+    end
+    self.restoring=false
+end
+local historyEvents=CreateFrame("Frame")
+historyEvents:RegisterEvent("PLAYER_LOGIN")
+historyEvents:SetScript("OnEvent",function()
+    if not FT.dbReady then return end
+    -- Restore first, then start keeping new lines (the restored ones are not
+    -- kept twice).
+    Chat:RestoreHistory(); Chat:ApplyHistory()
 end)

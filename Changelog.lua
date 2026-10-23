@@ -1,7 +1,18 @@
 local _,FT=...
 -- Short player-facing notes for the "What's new" window. Newest first.
+-- Versions whose What's new doesn't open by itself after updating.
+FT.quietReleases={["1.0.0"]=true}
 FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
+    {version="1.0.0",notes={
+        {icon="Spell_Holy_BorrowedTime",title="Enemy cooldowns",text="See the big cooldowns enemies used. PvP."},
+        {icon="Spell_Shadow_Twilight",title="Darker notices & meters",text="Notices, bars and the damage meter."},
+        {icon="Ability_Hunter_SniperShot",title="Targeted by",text="Tooltips show who targets a unit."},
+        {icon="INV_Misc_Note_03",title="Keep chat after reload",text="Today's chat comes back. Chat page."},
+        {icon="INV_Misc_Bag_08",title="Counts with mail",text="Mailed and won items are counted."},
+        {icon="INV_Misc_Key_03",title="Short key text",text="S1, C6, M5, SM5 on your action buttons."},
+        {icon="Trade_BlackSmithing",title="Fixes",text="Imports, stutter, duels, reload in a fight."},
+    }},
     {version="0.90.0",notes={
         {icon="Spell_Frost_FrostNova",title="Diminishing returns",text="See when crowd control will be shorter. PvP."},
         {icon="Ability_Kick",title="Interrupt bar",text="Your group's interrupts and their cooldowns."},

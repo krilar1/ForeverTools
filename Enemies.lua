@@ -21,6 +21,15 @@ local function stamp() return time and time() or 0 end
 local STEALTH_IDS={[1784]=1,[1785]=1,[1786]=1,[1787]=1,[1856]=1,[1857]=1,[11327]=1,[11329]=1,[5215]=1,[6783]=1,[9913]=1,[20580]=1,[58984]=1,[66]=1,[32612]=1}
 local STEALTH_NAMES={Stealth=true,Prowl=true,Vanish=true,Shadowmeld=true,Invisibility=true}
 local STEALTHY={ROGUE=true,DRUID=true}
+-- The picture of the stealth spell (Stealth, Prowl, Shadowmeld ...), shown
+-- on the alert and the list instead of the class icon.
+local function spellIcon(id)
+    if not id then return nil end
+    local tex
+    if C_Spell and C_Spell.GetSpellTexture then local ok,t=pcall(C_Spell.GetSpellTexture,id); if ok then tex=t end end
+    if not tex and GetSpellTexture then local ok,t=pcall(GetSpellTexture,id); if ok then tex=t end end
+    if tex and plain(tex) and (type(tex)=="number" or type(tex)=="string") then return tex end
+end
 function E:Settings()
     if type(FT.db.enemies)~="table" then FT.db.enemies={} end
     local s=FT.db.enemies
@@ -34,7 +43,7 @@ function E:Settings()
     if type(s.nearShowEmpty)~="boolean" then s.nearShowEmpty=false end
     if type(s.nearAlong)~="number" then s.nearAlong=nil end
     if s.nearCorner~="TOPLEFT" and s.nearCorner~="BOTTOMLEFT" and s.nearCorner~="TOPRIGHT" then s.nearCorner=nil end
-    s.nearRows=math.max(1,math.min(20,math.floor(tonumber(s.nearRows) or 8)))
+    s.nearRows=math.max(1,math.min(8,math.floor(tonumber(s.nearRows) or 8)))
     if type(s.nearFade)~="boolean" then s.nearFade=false end
     for _,pair in ipairs({{"x","y"},{"nearX","nearY"}}) do
         if type(s[pair[1]])~="number" or type(s[pair[2]])~="number" then s[pair[1]],s[pair[2]]=nil,nil end
@@ -58,10 +67,26 @@ function E:Active()
     return true
 end
 -- An enemy player, read from a unit. nil when it is not one, or hidden.
-function E:Read(unit)
+function E:Read(unit,duelToo)
     if not unit or not UnitIsPlayer then return end
     local ok,isPlayer=pcall(UnitIsPlayer,unit); if not ok or not plain(isPlayer) or not isPlayer then return end
-    local okEnemy,enemy=pcall(UnitIsEnemy,"player",unit); if not okEnemy or not plain(enemy) or not enemy then return end
+    local okEnemy,enemy=pcall(UnitIsEnemy,"player",unit)
+    if not okEnemy or not plain(enemy) then return end
+    -- In a duel your own faction is not "enemy", only attackable.
+    if not enemy and duelToo and UnitCanAttack then
+        local okA,attack=pcall(UnitCanAttack,"player",unit)
+        enemy=okA and plain(attack) and attack==true
+    end
+    if not enemy then return end
+    -- A duel makes your own faction hostile for a while: only the other faction counts.
+    if UnitFactionGroup then
+        local okA,mine=pcall(UnitFactionGroup,"player"); local okB,theirs=pcall(UnitFactionGroup,unit)
+        if okA and okB and plain(mine) and plain(theirs) and type(mine)=="string" and mine==theirs then
+            -- Stealth alerts still count someone you duel (marked by duel).
+            if not duelToo then return end
+            duelToo="duel"
+        end
+    end
     local guid=text(UnitGUID and UnitGUID(unit)); if not guid then return end
     local okName,name,realm=pcall(UnitName,unit); name=okName and text(name); if not name then return end
     realm=okName and text(realm)
@@ -71,7 +96,7 @@ function E:Read(unit)
     if UnitRace then local _,file=UnitRace(unit); race=text(file) end
     local guild=GetGuildInfo and text((GetGuildInfo(unit)))
     local dead=UnitIsDeadOrGhost and UnitIsDeadOrGhost(unit); dead=plain(dead) and dead==true
-    return {guid=guid,name=name,realm=realm,class=class,level=level,race=race,guild=guild,dead=dead}
+    return {guid=guid,name=name,realm=realm,class=class,level=level,race=race,guild=guild,dead=dead,duel=duelToo=="duel" or nil}
 end
 function E:Key(info)
     local realm=info.realm
@@ -98,6 +123,8 @@ function E:Saw(info,unit)
     local entry=self.seen[info.guid] or {}
     for k,v in pairs(info) do entry[k]=v end
     entry.last=now(); if not entry.first then entry.first=entry.last end
+    -- A new sighting (they were out of view): the "in view for" clock restarts.
+    if not entry.unit or not entry.since then entry.since=entry.last end
     entry.unit=unit
     self.seen[info.guid]=entry
     self:LogSaw(info)
@@ -105,12 +132,78 @@ function E:Saw(info,unit)
     if mark then
         -- Keep what we know about a marked player up to date.
         mark.class=info.class or mark.class; mark.level=info.level or mark.level; mark.guild=info.guild or mark.guild; mark.seen=stamp()
-        if self:Settings().marks then self:Alert(info,"marked") end
+        -- Not for someone you just marked yourself: the alert waits until
+        -- they have been out of view and come back.
+        if self:Settings().marks and not entry.markedHere then self:Alert(info,"marked") end
     end
     self:UpdateStrip()
 end
+-- A player you can see while they are in stealth (close enough to spot
+-- them): their Stealth / Prowl buff is read when they come into view.
+function E:InStealth(unit)
+    if not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then return nil end
+    for i=1,40 do
+        local ok,a=pcall(C_UnitAuras.GetAuraDataByIndex,unit,i,"HELPFUL")
+        if not ok or not a then return nil end
+        if plain(a) and type(a)=="table" then
+            local id,name=a.spellId,a.name
+            if (plain(id) and STEALTH_IDS[id]) or (plain(name) and type(name)=="string" and STEALTH_NAMES[name]) then
+                local icon=a.icon
+                if not (plain(icon) and (type(icon)=="number" or type(icon)=="string")) then icon=plain(id) and spellIcon(id) or nil end
+                return plain(name) and name or "Stealth",icon
+            end
+        end
+    end
+end
+-- Going into stealth, seen from the Stealth / Prowl buff showing up on a
+-- player in view (in a fight the game may hide the spell they cast, but
+-- not always the buff). Only new buffs are looked at.
+E.inStealth={}
+function E:AuraChanged(unit,info)
+    if not plain(unit) or type(unit)~="string" then return end
+    if not (unit=="target" or unit=="focus" or unit=="mouseover" or unit:find("^nameplate")) then return end
+    if not self:Settings().stealth or not self:Active() then return end
+    local look=false
+    if plain(info) and type(info)=="table" then
+        local full=info.isFullUpdate
+        if not plain(full) or full then look=true end
+        local added=info.addedAuras
+        if not look and plain(added) and type(added)=="table" then
+            for _,a in ipairs(added) do
+                if not plain(a) or type(a)~="table" then look=true; break end
+                local id,name=a.spellId,a.name
+                if (plain(id) and STEALTH_IDS[id]) or (plain(name) and type(name)=="string" and STEALTH_NAMES[name]) then look=true; break end
+            end
+        end
+        -- A removed buff may be the stealth ending.
+        local removed=info.removedAuraInstanceIDs
+        if not look and plain(removed) and type(removed)=="table" and #removed>0 and next(self.inStealth) then
+            local okG,g=pcall(UnitGUID,unit)
+            if okG and plain(g) and self.inStealth[g] then look=true end
+        end
+    else look=true end
+    if not look then return end
+    local info2=self:Read(unit,true); if not info2 then return end
+    local spell,icon=self:InStealth(unit)
+    local was=self.inStealth[info2.guid]
+    self.inStealth[info2.guid]=spell and true or nil
+    if spell and not was then
+        info2.spell=spell; info2.spellIcon=icon
+        if not info2.duel then self:Saw(info2,unit) end
+        self:Alert(info2,"stealth")
+    end
+end
+function E:CheckSpotted(unit)
+    if not self:Settings().stealth or not self:Active() then return end
+    local info=self:Read(unit,true); if not info then return end
+    local spell,icon=self:InStealth(unit); if not spell then return end
+    info.spell=spell; info.spellIcon=icon
+    self.inStealth[info.guid]=true
+    self:Alert(info,"spotted")
+end
 function E:PlateAdded(unit)
     if not self:Active() then return end
+    self:CheckSpotted(unit)
     local info=self:Read(unit); if not info then return end
     self.plates[unit]=info.guid
     self:Saw(info,unit)
@@ -121,13 +214,13 @@ function E:PlateRemoved(unit)
     local guid=self.plates[unit]; self.plates[unit]=nil
     if not guid or not self:Active() then return end
     local entry=self.seen[guid]; if not entry then return end
-    entry.unit=nil
+    entry.unit=nil; entry.markedHere=nil
     local s=self:Settings()
     if not s.stealth or not s.fade then return end
     local dead=UnitIsDeadOrGhost and UnitIsDeadOrGhost(unit)
     if plain(dead) and dead then return end
     if entry.dead then return end
-    local stealthy=STEALTHY[entry.class or ""] or entry.race=="NightElf"
+    local stealthy=STEALTHY[entry.class or ""]
     if not stealthy or now()-(entry.first or now())<1 then return end
     self:Alert(entry,"faded")
 end
@@ -151,9 +244,11 @@ function E:Cast(unit,spellID)
     if not plain(unit) or type(unit)~="string" then return end
     if not (unit:find("^nameplate") or unit=="target" or unit=="focus" or unit=="mouseover") then return end
     if not self:IsStealthSpell(spellID) then return end
-    local info=self:Read(unit); if not info then return end
-    info.spell=self:SpellName(spellID)
-    self:Saw(info,unit)
+    -- Someone you duel (your own faction) counts here too, but is not
+    -- listed as an enemy.
+    local info=self:Read(unit,true); if not info then return end
+    info.spell=self:SpellName(spellID); info.spellIcon=spellIcon(spellID)
+    if not info.duel then self:Saw(info,unit) end
     self:Alert(info,"stealth")
 end
 -- Skins > PvP: the panel takes the skin's colors when that part is on.
@@ -232,7 +327,7 @@ function E:Position()
     if s.x and s.y then f:SetPoint("CENTER",UIParent,"BOTTOMLEFT",s.x/s.size,s.y/s.size)
     else f:SetPoint("TOP",UIParent,"TOP",0,-140/s.size) end
 end
-local titles={stealth="Enemy went into stealth",faded="Enemy dropped from view",marked="Marked player nearby"}
+local titles={stealth="Enemy went into stealth",faded="Enemy dropped from view",spotted="Stealthed enemy spotted",marked="Marked player nearby"}
 function E:Alert(info,kind,preview)
     local s=self:Settings()
     if not preview and FT:NoControl() then return end
@@ -242,13 +337,16 @@ function E:Alert(info,kind,preview)
         -- Once per player per minute (marked) or half minute (stealth).
         local key=kind..":"..(info.guid or info.name or "?")
         local last=self.alerted[key]
-        if last and now()-last<(kind=="marked" and 60 or 30) then return end
+        -- Stealth warnings may come again quickly (a stealthed player in a
+        -- fight keeps popping in and out of view); marked players once a minute.
+        local gap=kind=="marked" and 60 or kind=="spotted" and 4 or 8
+        if last and now()-last<gap then return end
         self.alerted[key]=now()
     end
     -- The list shows who went into stealth, and comes up if it was hidden.
     if not preview then
         local entry=info.guid and self.seen[info.guid]
-        if entry and kind~="marked" then entry.stealthAt=now() end
+        if entry and kind~="marked" then entry.stealthAt=now(); entry.stealthIcon=info.spellIcon end
         self:Wake(12)
     end
     -- A marked player is always the stronger, red alert.
@@ -256,7 +354,7 @@ function E:Alert(info,kind,preview)
     local f=self:Notice(); self:Position()
     local color=danger and RED or GOLD
     skinPanel(f,"enemyAlert",{.06,.045,.02,.95},{color[1]*.85,color[2]*.85,color[3]*.85,1},{semantic=danger})
-    f.icon:SetTexture(self:ClassIcon(info.class))
+    f.icon:SetTexture((kind~="marked" and info.spellIcon) or self:ClassIcon(info.class))
     f.title:SetText(((danger and kind~="marked") and ("Marked player · "..titles[kind]:lower()) or titles[kind] or "Enemy nearby")..(preview and not self.moving and " — preview" or ""))
     f.title:SetTextColor(color[1],color[2],color[3])
     local r,g,b=self:ClassColor(info.class)
@@ -337,12 +435,15 @@ local STEALTH_TAG=30 -- seconds a row says "stealth" after they vanished
 local function ago(e)
     if e.logged then return short(stamp()-(e.seen or stamp())) end
     if e.stealthAt and now()-e.stealthAt<STEALTH_TAG then return "|cffffd100stealth|r" end
-    if e.unit then return "now" end
+    -- In view: how long you've seen them (1s, 2s ...); out of view: how long ago.
+    if e.unit then local t=now()-(e.since or e.last or now()); return t<1 and "now" or short(t) end
     return short(now()-(e.last or now()))
 end
 local function fillRow(row,e)
     row.entry=e
-    row.icon:SetTexture(E:ClassIcon(e.class))
+    -- In stealth (or Shadowmeld) a moment ago: that spell's picture instead of the class.
+    local stealthy=e.stealthIcon and e.stealthAt and now()-e.stealthAt<STEALTH_TAG
+    row.icon:SetTexture(stealthy and e.stealthIcon or E:ClassIcon(e.class))
     local r,g,b=E:ClassColor(e.class)
     local marked=E:IsMarked(e)
     row.name:SetText((marked and "|cffff4433!|r " or "")..(e.name or "?")); row.name:SetTextColor(r,g,b)
@@ -369,7 +470,26 @@ local function rowTooltip(owner)
     local mark=E:IsMarked(e)
     if mark then GameTooltip:AddLine("Marked"..(mark.note and (": "..mark.note) or " by you"),1,.3,.25,true) end
     if owner.secure then GameTooltip:AddLine(owner.combatNew and "Seen in this fight. Click to target after it." or "Click to target.",.1,1,.1) end
+    GameTooltip:AddLine(mark and "Right-click: change reason or remove mark." or "Right-click: mark player.",.72,.66,.55)
     GameTooltip:Show()
+end
+-- Right-click a row: mark the player (with a reason), change the reason or
+-- remove the mark.
+local function rowMenu(row)
+    local e=row.entry; if not e or not e.name then return end
+    if not MenuUtil or not MenuUtil.CreateContextMenu then return end
+    MenuUtil.CreateContextMenu(row,function(_,root)
+        local key=E:Key(e); local m=E:Marks()[key]
+        root:CreateTitle(e.name)
+        if m then
+            root:CreateButton("Change reason...",function() E:AskReason(key) end)
+            root:CreateButton("Remove mark",function() E:Unmark(key) end)
+        else
+            root:CreateButton("Mark player...",function()
+                local k=E:Mark(e); FT:Toast("Marked "..e.name..".",3); E:AskReason(k)
+            end)
+        end
+    end)
 end
 local function makeRow(parent,secure)
     local row
@@ -378,9 +498,13 @@ local function makeRow(parent,secure)
         row=ok and b or CreateFrame("Button",nil,parent)
         row:RegisterForClicks("AnyUp","AnyDown")
         row:SetAttribute("type","macro")
+        -- Right-click opens our menu instead of targeting.
+        row:SetAttribute("type2","ftmenu")
+        row:HookScript("OnClick",function(owner,button,down) if button=="RightButton" and not down then rowMenu(owner) end end)
         row.secure=true
     else
         row=CreateFrame("Frame",nil,parent)
+        row:SetScript("OnMouseUp",function(owner,button) if button=="RightButton" then rowMenu(owner) end end)
     end
     row:SetSize(WIDTH-12,ROW)
     row.icon=row:CreateTexture(nil,"ARTWORK"); row.icon:SetSize(ROW-2,ROW-2); row.icon:SetPoint("LEFT",0,0); row.icon:SetTexCoord(.08,.92,.08,.92)
@@ -399,12 +523,35 @@ local function makeRow(parent,secure)
 end
 function E:Strip()
     if self.strip then return self.strip end
-    local f=plainFrame("ForeverToolsNearbyEnemies",UIParent)
+    -- A secure frame: the collapse button (also secure) can fold it to the
+    -- title in a fight, when the game won't let addon code resize it.
+    local okF,secureF=pcall(CreateFrame,"Frame","ForeverToolsNearbyEnemies",UIParent,"SecureHandlerBaseTemplate")
+    local f=okF and secureF or plainFrame("ForeverToolsNearbyEnemies",UIParent)
     f:SetSize(WIDTH,HEADER); f:SetFrameStrata("MEDIUM"); f:SetClampedToScreen(true); f:SetMovable(true); f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
     -- Header: collapse, title and count, move.
-    f.toggle=headerButton(f,"Interface\\Buttons\\UI-MinusButton-Up",14)
-    f.toggle:SetScript("OnClick",function() self:ToggleCollapsed() end)
+    -- The rows sit in a holder of their own that the collapse button shows
+    -- and hides, in a fight too.
+    local okH,holder=pcall(CreateFrame,"Frame",nil,f,"SecureHandlerBaseTemplate")
+    if not okH or not holder then holder=CreateFrame("Frame",nil,f) end
+    holder:SetAllPoints(f); f.holder=holder
+    local okT,toggle=pcall(CreateFrame,"Button",nil,f,"SecureHandlerClickTemplate")
+    if not okT or not toggle then toggle=CreateFrame("Button",nil,f) end
+    toggle:SetSize(14,14)
+    toggle.tex=toggle:CreateTexture(nil,"ARTWORK"); toggle.tex:SetAllPoints(); toggle.tex:SetTexture("Interface\\Buttons\\UI-MinusButton-Up")
+    local thi=toggle:CreateTexture(nil,"HIGHLIGHT"); thi:SetAllPoints(); thi:SetTexture("Interface\\Buttons\\UI-PlusButton-Hilight"); thi:SetBlendMode("ADD")
+    f.toggle=toggle
+    if toggle.SetFrameRef then
+        toggle:SetFrameRef("holder",holder); toggle:SetFrameRef("strip",f)
+        toggle:SetAttribute("_onclick",[[
+            local holder=self:GetFrameRef("holder"); local strip=self:GetFrameRef("strip")
+            if not holder or not strip then return end
+            if holder:IsShown() then holder:Hide(); strip:SetHeight(self:GetAttribute("closedHeight") or 22)
+            else holder:Show(); strip:SetHeight(self:GetAttribute("openHeight") or 22) end
+        ]])
+    end
+    toggle:HookScript("PreClick",function() toggle.wasOpen=holder:IsShown() end)
+    toggle:HookScript("OnClick",function() self:ToggleCollapsed(toggle.wasOpen) end)
     f.toggle:SetScript("OnEnter",function(owner) GameTooltip:SetOwner(owner,"ANCHOR_RIGHT"); GameTooltip:SetText(self:Settings().nearCollapsed and "Show the players" or "Hide the players (keep the title)"); GameTooltip:Show() end)
     f.toggle:SetScript("OnLeave",function() GameTooltip:Hide() end)
     f.swords=f:CreateTexture(nil,"ARTWORK"); f.swords:SetSize(16,16); f.swords:SetTexture("Interface\\Icons\\Ability_DualWield"); f.swords:SetTexCoord(.08,.92,.08,.92)
@@ -438,12 +585,16 @@ function E:Strip()
     end)
     f.move:SetScript("OnLeave",function() GameTooltip:Hide() end)
     f.rows={}
-    for i=1,MAXROWS do local row=makeRow(f,true); row:Hide(); f.rows[i]=row end
+    for i=1,MAXROWS do local row=makeRow(holder,true); row:Hide(); f.rows[i]=row end
     -- One window, always: the background and border are a frame of their own
     -- behind the list, so in a fight it can grow over the rows added below
     -- (the list itself holds click-to-target buttons the game does not let
     -- us move or resize in combat). The list and the extra rows draw none.
     f:SetFrameLevel(10)
+    -- The rows' holder (and so the rows) above the list itself, or the list
+    -- would take the clicks meant for the names.
+    holder:SetFrameLevel(f:GetFrameLevel()+2)
+    for i=1,MAXROWS do f.rows[i]:SetFrameLevel(holder:GetFrameLevel()+1) end
     local panel=plainFrame(nil,f); panel:SetFrameLevel(9); panel:SetAllPoints(f); f.panel=panel
     skinPanel(panel,"nearby",{0,0,0,.82},{.6,.6,.6,1})
     local function clear(frame)
@@ -543,9 +694,49 @@ function E:FitPanel()
         end
     else panel:SetAllPoints(f) end
 end
-function E:ToggleCollapsed()
-    if busy() then FT:Toast("Collapse or open the list after the fight.",3); return end
-    local s=self:Settings(); s.nearCollapsed=not s.nearCollapsed
+-- wasOpen: whether the rows showed before the click. The secure click has
+-- already folded or opened the list (in a fight too); this follows it.
+-- /ft nearbydebug: why clicking a name doesn't target (hover a name, type it).
+function E:NearbyDebug()
+    local f=self.strip
+    print("ForeverTools nearby list ("..(FT.version or "?")..") in fight: "..tostring(InCombatLockdown and InCombatLockdown()))
+    if not f then print("No list yet."); return end
+    local function lv(x) local ok,v=pcall(x.GetFrameLevel,x); return ok and v or "?" end
+    print(("List: shown %s level %s strata %s mouse %s protected %s"):format(tostring(f:IsShown()),lv(f),tostring(f:GetFrameStrata()),tostring(f:IsMouseEnabled()),tostring(f.IsProtected and f:IsProtected())))
+    local h=f.holder; if h then print(("Holder: shown %s level %s mouse %s"):format(tostring(h:IsShown()),lv(h),tostring(h:IsMouseEnabled()))) end
+    for i,row in ipairs(f.rows) do
+        if row:IsShown() then
+            local okT,t=pcall(row.GetAttribute,row,"type"); local okM,m=pcall(row.GetAttribute,row,"macrotext")
+            print(("Row %d: level %s mouse %s visible %s type %s text %s"):format(i,lv(row),tostring(row:IsMouseEnabled()),tostring(row:IsVisible()),tostring(okT and t),tostring(okM and m)))
+        end
+    end
+    for i,row in ipairs(f.extra and f.extra.rows or {}) do if row:IsShown() then print("Row first seen in this fight (not clickable until it ends): "..tostring(row.entry and row.entry.name)) end end
+    local foci=GetMouseFoci and GetMouseFoci() or {GetMouseFocus and GetMouseFocus()}
+    for i,frame in ipairs(foci or {}) do
+        local chain={}; local x=frame
+        for _=1,6 do if not x then break end; local okN,n=pcall(x.GetName,x); chain[#chain+1]=(okN and n) or (x==f and "list") or (x==h and "holder") or "?"; x=x.GetParent and x:GetParent() end
+        print("Under the mouse: "..table.concat(chain," < ").."  level "..lv(frame))
+    end
+    print("Mouse-down casting (ActionButtonUseKeyDown): "..tostring(GetCVar and GetCVar("ActionButtonUseKeyDown")))
+end
+function E:ToggleCollapsed(wasOpen)
+    local s=self:Settings()
+    local f=self.strip
+    local holder=f and f.holder
+    if wasOpen~=nil and holder and holder:IsShown()~=wasOpen then
+        s.nearCollapsed=not holder:IsShown()
+    elseif busy() then
+        FT:Toast("Collapse or open the list after the fight.",3); return
+    else
+        s.nearCollapsed=not s.nearCollapsed
+    end
+    if busy() then
+        -- In a fight only the look follows; the rest after it.
+        f.toggle.tex:SetTexture(s.nearCollapsed and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+        if s.nearCollapsed then f.extra:Hide() end
+        self.pendingLayout=true; self:FitPanel()
+        return
+    end
     self:UpdateStrip(); self:Refresh()
 end
 function E:StripEntries()
@@ -575,8 +766,9 @@ function E:LayoutHeader(f,count,compact)
     local anchor=fromBottom and "BOTTOMLEFT" or "TOPLEFT"
     local dy=fromBottom and 5 or -5
     f.toggle:SetPoint(anchor,6,dy)
-    f.toggle.tex:SetTexture((s.nearCollapsed or count==0) and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
-    f.toggle:SetShown(count>0 or s.nearCollapsed)
+    -- Always there, empty or not: + when folded, - when open.
+    f.toggle.tex:SetTexture(s.nearCollapsed and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+    f.toggle:Show()
     f.swords:SetPoint("LEFT",f.toggle,"RIGHT",4,0)
     f.title:SetPoint("LEFT",f.swords,"RIGHT",5,0)
     f.title:SetText(VIEW_TITLE[self.view or "near"].." ("..count..")")
@@ -605,11 +797,14 @@ function E:UpdateStrip()
     self:LayoutHeader(f,count,compact)
     local offset=log and math.max(0,math.min(self.logOffset or 0,count-s.nearRows)) or 0
     if log then self.logOffset=offset end
-    local shown=compact and 0 or math.min(s.nearRows,count-offset)
+    -- The rows are filled even while folded, so opening the list in a
+    -- fight shows them right away.
+    local filled=math.max(0,math.min(s.nearRows,count-offset))
+    local shown=compact and 0 or filled
     local fromBottom=s.nearDock=="bottom"
     for i=1,MAXROWS do
         local row=f.rows[i]
-        if i<=shown then
+        if i<=filled then
             local e=list[i+offset]
             fillRow(row,e)
             row.guid=e.guid or e.name
@@ -621,6 +816,11 @@ function E:UpdateStrip()
     end
     -- Collapsed (or empty) it is just the header, as wide as the list.
     f:SetSize(WIDTH,HEADER+(shown>0 and (shown*ROW+6) or 0)); f.shownRows=shown
+    f.holder:SetShown(not s.nearCollapsed)
+    if f.toggle.SetAttribute then
+        f.toggle:SetAttribute("closedHeight",HEADER)
+        f.toggle:SetAttribute("openHeight",HEADER+(filled>0 and (filled*ROW+6) or 0))
+    end
     -- While moving, the rows let the mouse through: drag the box anywhere.
     for i=1,MAXROWS do f.rows[i]:EnableMouse(not self.movingStrip) end
     f.extra:Hide()
@@ -652,9 +852,18 @@ end
 -- An alert (stealth, marked player) brings the bar up for a while.
 function E:Wake(seconds) self.wakeUntil=now()+(seconds or 10); self:FadeStrip() end
 -- The log: everyone you have met (this account), newest first.
+-- The log keeps today's players only: from the next day they are forgotten
+-- (marked players stay in Marked).
+local function day(t) return date and date("%Y-%m-%d",t) or "" end
 function E:Log()
     if type(FT.db.enemyLog)~="table" then FT.db.enemyLog={} end
-    return FT.db.enemyLog
+    local log=FT.db.enemyLog
+    local today=day(stamp())
+    if self.logDay~=today then
+        self.logDay=today
+        for k,e in pairs(log) do if type(e)~="table" or day(e.seen or 0)~=today then log[k]=nil end end
+    end
+    return log
 end
 local LOG_MAX=300
 function E:LogSaw(info)
@@ -729,7 +938,7 @@ function E:UpdateInFight(f,list,log)
         end
     end
     for i=n+1,#extra.rows do extra.rows[i]:Hide() end
-    if n>0 and f:IsShown() then extra:SetSize(WIDTH,n*ROW+6); self:PlaceExtra(); extra:Show() else extra:Hide() end
+    if n>0 and f:IsShown() and not self:Settings().nearCollapsed then extra:SetSize(WIDTH,n*ROW+6); self:PlaceExtra(); extra:Show() else extra:Hide() end
     self:FitPanel()
 end
 local SAMPLE={{name="Sneakyboi",class="ROGUE",level=24,unit="nameplate1"},{name="Gankalot",class="WARRIOR",level=30},{name="Moonfury",class="DRUID",level=22,unit="nameplate2"},{name="Pewpew",class="HUNTER",level=25}}
@@ -784,6 +993,9 @@ function E:Mark(info,note)
     local m=marks[key]
     m.name=info.name; m.realm=info.realm; m.class=info.class or m.class; m.level=info.level or m.level; m.guild=info.guild or m.guild; m.seen=stamp()
     if note then m.note=note end
+    -- You are looking at them: no "Marked player nearby" for this sighting.
+    local seen=info.guid and self.seen[info.guid]
+    if seen then seen.markedHere=true end
     self:RefreshMarks(); self:UpdateStrip()
     return key
 end
@@ -837,7 +1049,7 @@ function E:TooltipLine(tip)
 end
 -- Events -----------------------------------------------------------------------------
 local events=CreateFrame("Frame")
-local listening={"NAME_PLATE_UNIT_ADDED","NAME_PLATE_UNIT_REMOVED","UNIT_SPELLCAST_SUCCEEDED","PLAYER_TARGET_CHANGED","UPDATE_MOUSEOVER_UNIT","PLAYER_ENTERING_WORLD"}
+local listening={"NAME_PLATE_UNIT_ADDED","NAME_PLATE_UNIT_REMOVED","UNIT_SPELLCAST_SUCCEEDED","PLAYER_TARGET_CHANGED","UPDATE_MOUSEOVER_UNIT","PLAYER_ENTERING_WORLD","UNIT_AURA"}
 function E:Apply()
     local on=self:AnyOn()
     for _,event in ipairs(listening) do
@@ -849,13 +1061,14 @@ function E:Apply()
     if not self:Settings().stealth and not self:Settings().marks and self.notice and not self.moving then self.notice:Hide() end
     self:Refresh()
 end
-events:SetScript("OnEvent",function(_,event,unit,_,spellID)
+events:SetScript("OnEvent",function(_,event,unit,arg2,spellID)
     if not FT.dbReady then return end
     if event=="NAME_PLATE_UNIT_ADDED" then E:PlateAdded(unit)
     elseif event=="NAME_PLATE_UNIT_REMOVED" then E:PlateRemoved(unit)
     elseif event=="UNIT_SPELLCAST_SUCCEEDED" then E:Cast(unit,spellID)
-    elseif event=="PLAYER_TARGET_CHANGED" then if E:Active() then E:Saw(E:Read("target"),nil) end
-    elseif event=="UPDATE_MOUSEOVER_UNIT" then if E:Active() then E:Saw(E:Read("mouseover"),nil) end
+    elseif event=="UNIT_AURA" then E:AuraChanged(unit,arg2)
+    elseif event=="PLAYER_TARGET_CHANGED" then if E:Active() then E:CheckSpotted("target"); E:Saw(E:Read("target"),nil) end
+    elseif event=="UPDATE_MOUSEOVER_UNIT" then if E:Active() then E:CheckSpotted("mouseover"); E:Saw(E:Read("mouseover"),nil) end
     elseif event=="PLAYER_ENTERING_WORLD" then E.plates={}; E.seen={}; E:UpdateStrip() end
 end)
 local boot=CreateFrame("Frame"); boot:RegisterEvent("PLAYER_LOGIN")
@@ -889,11 +1102,7 @@ function E:Refresh()
         page.buttons.fade:SetEnabled(s.stealth); page.buttons.fade:SetAlpha(s.stealth and 1 or .45)
         page.sizeLabel:SetText(string.format("Size: %d%%",math.floor(s.size*100+.5)))
         page.settingSize=true; page.sizeSlider:SetValue(s.size); page.settingSize=false
-        page.move.label:SetText(self.moving and "Lock position" or "Move alert"); FT:SetSelected(page.move,self.moving)
-        if page.previewStealth then
-            page.previewStealth.label:SetText("Preview stealth: "..(self.previewKind=="stealth" and "On" or "Off"))
-            page.previewMarked.label:SetText("Preview marked: "..(self.previewKind=="marked" and "On" or "Off"))
-        end
+        FT:RefreshPreview(page.frame)
         page.plates:SetText(self:NameplateNote())
         if FT.RefreshDock and page.frame:IsShown() then FT:RefreshDock(page.frame) end
     end
@@ -901,7 +1110,6 @@ function E:Refresh()
     if near and near.frame then
         local s=self:Settings()
         near.toggle.label:SetText("Nearby enemies: "..(s.nearby and "On" or "Off")); FT:SetSelected(near.toggle,s.nearby)
-        if near.preview then near.preview.label:SetText("Preview: "..(self.stripPreviewOn and "On" or "Off")) end
         near.keep.label:SetText("Keep for: "..s.nearTime.." seconds")
         near.dock.label:SetText("Anchor to: "..(E.dockLabels[s.nearDock] or "None"))
         near.fade.label:SetText("Title bar: "..(s.nearFade and "On mouseover" or "Always")); FT:SetSelected(near.fade,s.nearFade)
@@ -910,7 +1118,7 @@ function E:Refresh()
         near.empty.label:SetText("Show when no one is near: "..(s.nearShowEmpty and "On" or "Off")); FT:SetSelected(near.empty,s.nearShowEmpty)
         near.sizeLabel:SetText(string.format("Size: %d%%",math.floor(s.nearSize*100+.5)))
         near.settingSize=true; near.sizeSlider:SetValue(s.nearSize); near.settingSize=false
-        near.move.label:SetText(self.movingStrip and "Lock position" or "Move list"); FT:SetSelected(near.move,self.movingStrip)
+        FT:RefreshPreview(near.frame)
         near.plates:SetText(self:NameplateNote())
         if FT.RefreshDock and near.frame:IsShown() then FT:RefreshDock(near.frame) end
     end
@@ -935,7 +1143,7 @@ function alertPage:Open()
     if not self.frame then
         local w=width("EnemyAlerts")
         local frame=FT:Window("ForeverToolsEnemyAlerts","Enemy alerts",w,520); self.frame=frame
-        FT:PageInfo(frame,"Enemy alerts","A warning when an enemy player near you goes into stealth, and a red one when a player you marked shows up.\n\nOnly players you can see count: nameplates, target, mouseover. Someone already stealthed is not noticed.")
+        FT:PageInfo(frame,"Enemy alerts","A warning when an enemy player near you goes into stealth, and a red one when a player you marked shows up.\n\nOnly players you can see count: nameplates, target, mouseover. Someone already in stealth is noticed when you get close enough to see them. Someone you duel counts too.")
         self.buttons={}
         for i,entry in ipairs(alertSwitches) do
             local key=entry[1]
@@ -949,23 +1157,15 @@ function alertPage:Open()
         self.sizeLabel=FT:Label(frame,"",14); self.sizeLabel:SetPoint("TOPLEFT",24,y-2)
         self.sizeSlider=slider(frame,y,function(v) if self.settingSize then return end E:Settings().size=v; E:Position(); E:Refresh() end)
         FT:Tooltip(self.sizeSlider,"Size","Alert size (70% to 150%).")
-        local stealth=FT:QuietButton(frame,"Preview stealth: Off",(w-60)/2,32,"Ability_Stealth"); stealth:SetPoint("TOPLEFT",24,y-36)
-        stealth:SetScript("OnClick",function() E:SetPreviewKind(E.previewKind~="stealth" and "stealth" or nil) end)
-        FT:Tooltip(stealth,"Preview stealth","Show the stealth alert until switched off.")
-        local marked=FT:QuietButton(frame,"Preview marked: Off",(w-60)/2,32,"Ability_Hunter_SniperShot"); marked:SetPoint("LEFT",stealth,"RIGHT",12,0)
-        marked:SetScript("OnClick",function() E:SetPreviewKind(E.previewKind~="marked" and "marked" or nil) end)
-        FT:Tooltip(marked,"Preview marked","Show the marked player alert until switched off.")
-        self.previewStealth,self.previewMarked=stealth,marked
-        self.move=FT:QuietButton(frame,"",(w-60)/2,32,"move"); self.move:SetPoint("TOPLEFT",24,y-76)
-        self.move:SetScript("OnClick",function() E:SetMoving(not E.moving) end)
-        FT:Tooltip(self.move,"Move alert","Unlock, drag the alert, then click again to lock.")
-        local reset=FT:QuietButton(frame,"Reset position",(w-60)/2,32,"reset"); reset:SetPoint("LEFT",self.move,"RIGHT",12,0)
+        local reset=FT:QuietButton(frame,"Reset position",(w-60)/2,32,"reset"); reset:SetPoint("TOPLEFT",24,y-36)
         reset:SetScript("OnClick",function() E:ResetPosition() end)
         FT:Tooltip(reset,"Reset position","Put the alert back near the top of the screen.")
-        self.plates=FT:Label(frame,"",12); self.plates:SetPoint("TOPLEFT",24,y-118); self.plates:SetWidth(w-48); self.plates:SetTextColor(.66,.59,.48)
+        self.plates=FT:Label(frame,"",12); self.plates:SetPoint("TOPLEFT",24,y-78); self.plates:SetWidth(w-48); self.plates:SetTextColor(.66,.59,.48)
         FT:Sections(frame,{{"Stealth",self.buttons.stealth},{"Marked players",self.buttons.marks},{"Alert",self.buttons.flash},{"Look and position",self.sizeLabel}})
         if self.plates.SetWordWrap then self.plates:SetWordWrap(true) end
-        frame:HookScript("OnHide",function() if E.moving then E:SetMoving(false) end; if E.previewKind then E:SetPreviewKind(nil) end end)
+        self.preview=FT:TopPreview(frame,self.buttons.stealth,{get=function() return (E.previewKind or E.moving) and true or false end,
+            set=function(on) if on then E:SetPreviewKind("stealth"); E:SetMoving(true) else E:SetMoving(false); E:SetPreviewKind(nil) end end,
+            tip="An example stealth alert."})
     end
     E:Refresh(); self.frame:Show()
 end
@@ -1020,7 +1220,7 @@ function markPage:Open()
     if not self.frame then
         local w=width("EnemyMarks")
         local frame=FT:Window("ForeverToolsEnemyMarks","Marked players",w,520); self.frame=frame
-        FT:PageInfo(frame,"Marked players","Players you want to know about. When one shows up you get a red alert, on all your characters.\n\nMark: target them and click Mark my target, right-click their portrait, or /ft mark.")
+        FT:PageInfo(frame,"Marked players","Players you want to know about. When one shows up you get a red alert, on all your characters.\n\nMark: target them and click Mark my target, right-click their portrait or their row in the enemy list, or /ft mark.")
         self.alerts=FT:AccentButton(frame,"",w-48,32,"Ability_Hunter_SniperShot"); self.alerts:SetPoint("TOPLEFT",24,-66)
         self.alerts:SetScript("OnClick",function() local s=E:Settings(); s.marks=not s.marks; E:Apply() end)
         FT:Tooltip(self.alerts,"Marked player alerts","Red alert when a player you marked shows up.")
@@ -1058,7 +1258,7 @@ function nearPage:Open()
     if not self.frame then
         local w=width("EnemyNearby")
         local frame=FT:Window("ForeverToolsEnemyNearby","Nearby enemies",w,520); self.frame=frame
-        FT:PageInfo(frame,"Nearby enemies","Enemy players you saw lately. Click a name to target them. Marked players come first, in red.\n\nClick the title for the log of everyone you met before.")
+        FT:PageInfo(frame,"Nearby enemies","Enemy players you saw lately. Click a name to target them; right-click it to mark them. Marked players come first, in red.\n\nClick the title for everyone you met today (Seen before), then your marked players.")
         self.toggle=FT:AccentButton(frame,"",w-48,32,"Ability_Hunter_SniperShot"); self.toggle:SetPoint("TOPLEFT",24,-66)
         self.toggle:SetScript("OnClick",function() local s=E:Settings(); s.nearby=not s.nearby; E:Apply() end)
         FT:Tooltip(self.toggle,"Nearby enemies","Show enemy players you saw recently. Click a name to target.")
@@ -1088,32 +1288,26 @@ function nearPage:Open()
         FT:Tooltip(self.empty,"Show when no one is near","Keep the empty list on screen.")
         self.rowsLabel=FT:Label(frame,"",14); self.rowsLabel:SetPoint("TOPLEFT",24,-264)
         self.rowsSlider=slider(frame,-262,function() end)
-        self.rowsSlider:SetMinMaxValues(1,20); self.rowsSlider:SetValueStep(1)
+        self.rowsSlider:SetMinMaxValues(1,8); self.rowsSlider:SetValueStep(1)
         self.rowsSlider:SetScript("OnValueChanged",function(_,v)
             if self.settingRows then return end
             E:Settings().nearRows=math.floor(v+.5); E:PreviewStrip(); E:Refresh()
         end)
-        FT:Tooltip(self.rowsSlider,"Players shown","Most players shown (1 to 20).")
+        FT:Tooltip(self.rowsSlider,"Players shown","Most players shown (1 to 8).")
         self.sizeLabel=FT:Label(frame,"",14); self.sizeLabel:SetPoint("TOPLEFT",24,-298)
         self.sizeSlider=slider(frame,-296,function(v) if self.settingSize then return end E:Settings().nearSize=v; E:PlaceStrip(); E:Refresh() end)
         FT:Tooltip(self.sizeSlider,"Size","List size (70% to 150%).")
-        local preview=FT:QuietButton(frame,"Preview: Off",(w-60)/2,32,"Ability_Hunter_SniperShot"); preview:SetPoint("TOPLEFT",24,-332)
-        preview:SetScript("OnClick",function() E:SetStripPreview(not E.stripPreviewOn) end)
-        FT:Tooltip(preview,"Preview","Show an example list until switched off.")
-        self.preview=preview
-        self.move=FT:QuietButton(frame,"",(w-60)/2,32,"move"); self.move:SetPoint("LEFT",preview,"RIGHT",12,0)
-        self.move:SetScript("OnClick",function() E:SetMovingStrip(not E.movingStrip) end)
-        FT:Tooltip(self.move,"Move list","Unlock, drag the list by its title, then click again to lock.")
-        local reset=FT:QuietButton(frame,"Reset position",(w-60)/2,32,"reset"); reset:SetPoint("TOPLEFT",24,-372)
+        local reset=FT:QuietButton(frame,"Reset position",(w-60)/2,32,"reset"); reset:SetPoint("TOPLEFT",24,-332)
         local clear=FT:QuietButton(frame,"Clear the log",(w-60)/2,32,"delete"); clear:SetPoint("LEFT",reset,"RIGHT",12,0)
         clear:SetScript("OnClick",function() FT:Confirm("Forget every player in the log? Marks stay.",function() E:ClearLog() end) end)
         FT:Tooltip(clear,"Clear the log","Forget players you met before. Marks stay.")
         reset:SetScript("OnClick",function() E:ResetStrip() end)
         FT:Tooltip(reset,"Reset position","Put the list back in its starting place.")
-        self.plates=FT:Label(frame,"",12); self.plates:SetPoint("TOPLEFT",24,-416); self.plates:SetWidth(w-48); self.plates:SetTextColor(.66,.59,.48)
+        self.plates=FT:Label(frame,"",12); self.plates:SetPoint("TOPLEFT",24,-376); self.plates:SetWidth(w-48); self.plates:SetTextColor(.66,.59,.48)
         FT:Sections(frame,{{"List",self.keep},{"Look and position",self.dock}})
         if self.plates.SetWordWrap then self.plates:SetWordWrap(true) end
-        frame:HookScript("OnHide",function() if E.movingStrip then E:SetMovingStrip(false) end; if E.stripPreviewOn then E:SetStripPreview(false) end end)
+        self.preview=FT:TopPreview(frame,self.toggle,{get=function() return (E.stripPreviewOn or E.movingStrip) and true or false end,
+            set=function(on) E:SetStripPreview(on); E:SetMovingStrip(on) end,tip="An example list; drag it by its title."})
     end
     E:Refresh(); self.frame:Show()
 end

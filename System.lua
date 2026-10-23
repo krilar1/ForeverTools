@@ -15,7 +15,10 @@ local function quietLine(text)
     plain=plain:gsub("^%s+",""):lower()
     -- Chat from players and channels starts with a name or channel in brackets.
     if plain:sub(1,1)=="[" then return false end
+    -- The game's own greeting stays.
+    if plain:find("welcome to world of warcraft",1,true) then return false end
     return plain:find("v%d+%.%d") or plain:find("version %d") or plain:find("loaded") or plain:find("%d+%.%d+%.%d+")
+        or plain:find("welcome to ",1,true) or plain:find("thanks for using",1,true) or plain:find("thank you for using",1,true)
 end
 function System:QuietWrap()
     for i=1,(NUM_CHAT_WINDOWS or 10) do
@@ -94,6 +97,7 @@ function System:Apply()
     end
     FT:UpdateMinimap(); if FT.modules.MinimapIcons then FT.modules.MinimapIcons:Apply() end
     self:ApplyErrors()
+    if FT.modules.KeyText then FT.modules.KeyText:Apply() end
     self:Refresh()
 end
 -- Error messages (On-screen info > Error messages). With the switch on, the
@@ -154,7 +158,7 @@ local pages={
         {"minimapIcons","Group minimap buttons","INV_Misc_Bag_08","Put other addons' minimap buttons into one menu."},
         {"minimapIconsVertical","Grouped buttons","INV_Misc_Bag_08","Layout of the grouped buttons."},
     }},
-    {key="SystemGameplay",title="Group role",hint="Your role when you join a group.",items={
+    {key="SystemGameplay",title="Group role",hint="Your group role, set from your talents.",items={
         {"autoRole","Set role when joining a group","Ability_Warrior_DefensiveStance","Set your role from your talents when you join a group."},
     }},
     {key="SystemDeath",title="Death glow",hint="How the screen looks while you are dead or a ghost.",items={
@@ -176,13 +180,16 @@ local pages={
         {"hideErrors","Hide error messages","Ability_Rogue_Disguise","Hide the red error text (Out of range, Not enough rage...). Bag full and similar still show."},
         {"errorsInCombat","Only hide them in a fight","Ability_DualWield","Hide them only in combat."},
     }},
-    {key="SystemKeybinds",title="Keybind tools",hint="Bind by hovering, and put earlier keybinds back.",items={
+    {key="SystemKeybinds",title="Keybind tools",hint="Bind by hovering, short key text, and put earlier keybinds back.",items={
         {"quickKeybind","Quick keybind mode (/kb)","keybind","Hover an action button and press a key to bind it. Esc unbinds. Also /kb."},
+        {"shortKeys","Short key text","keybind","The key on your action buttons, short: S1 for Shift-1, C6 for Ctrl-6, M5 for mouse button 5, SM5 for Shift + mouse button 5, WU for mouse wheel up."},
+        {"keyX","Key text left / right","keybind","Slide the key text on your action buttons left or right, a point at a time."},
+        {"keyY","Key text up / down","keybind","Slide the key text on your action buttons up or down, a point at a time."},
         {"backups","Backups and restore","profiles","Put back earlier keybinds, action bars and spell binds, or save a copy now. Hover one to see what it restores."},
     }},
 }
 System.pages=pages
-local toggles={hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietLogin=true,quietNoControl=true}
+local toggles={hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,shortKeys=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietLogin=true,quietNoControl=true}
 -- Switches that are the game's own settings: read and written directly,
 -- never stored by ForeverTools. "Unavailable" when the game has no such setting.
 local gameOptions={scriptErrors="scriptErrors",deathGlow="ffxDeath"}
@@ -200,7 +207,7 @@ function System:Values()
     if coords==nil then coords=not getter or getter("minimapShowPlayerCoords")=="1" end
     return {welcome=FT.db.welcome==true,whatsNew=s.hideWhatsNew~=true,minimap=FT.db.minimapEnabled~=false,coordinates=coords,
         minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=gameOption("scriptErrors")=="1",deathGlow=gameOption("ffxDeath")~="0",
-        hiddenUIHint=s.hiddenUIHint==true,autoRole=s.autoRole==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true,
+        hiddenUIHint=s.hiddenUIHint==true,autoRole=s.autoRole==true,shortKeys=s.shortKeys==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true,
         hideErrors=s.hideErrors==true,errorsInCombat=s.errorsInCombat==true,quietLogin=s.quietLogin==true,quietNoControl=s.quietNoControl~=false}
 end
 function System:Refresh()
@@ -235,6 +242,11 @@ function System:Refresh()
         if key=="fps" then
             local fps=FT.modules.QualityOfLife
             button.label:SetText("FPS counter: "..(fps and fps.Settings and fps:Settings().enabled and "On" or "Off").." — settings")
+        end
+        if key=="keyX" or key=="keyY" then
+            local v=tonumber(self:Settings()[key]) or 0
+            local words=key=="keyX" and (v<0 and " left" or v>0 and " right" or "") or (v<0 and " down" or v>0 and " up" or "")
+            button.label:SetText((key=="keyX" and "Key text left / right: " or "Key text up / down: ")..(v==0 and "Game's spot" or (math.abs(v)..words)))
         end
         if key=="objectives" then
             local mode=FT.modules.QuestTracker and FT.modules.QuestTracker:Mode() or "default"
@@ -335,6 +347,7 @@ function System:Click(key)
         FT:ShowChoices(button); return
     end
     if key=="lootDefault" then FT.modules.LootRoll:UseDefault(); self:Refresh(); return end
+    if key=="keyX" or key=="keyY" then self:Settings()[key]=nil; self:Apply(); return end
     if gameOptions[key] then
         local name=gameOptions[key]
         local set=(C_CVar and C_CVar.SetCVar) or SetCVar
@@ -376,6 +389,19 @@ local function buildPage(page)
                     FT:MakeChoice(b,{{"default","Game's default","The game decides, as without ForeverTools."},{"collapsed","Collapsed","Collapsed after every login."},{"open","Open","Open after every login."},{"hidden","Always hidden","Keep the tracker off the screen."}},
                         function() return FT.modules.QuestTracker:Mode() end,
                         function(value) System:Settings().objectives=value~="default" and value or nil; FT.modules.QuestTracker:Apply(); System:Refresh() end)
+                elseif key=="keyX" or key=="keyY" then
+                    -- A number with - and + beside it; click the number for 0.
+                    b:SetWidth(width-48-76)
+                    for i,delta in ipairs({-1,1}) do
+                        local step=FT:QuietButton(self.frame,delta<0 and "-" or "+",34,32)
+                        step:SetPoint("LEFT",b,"RIGHT",6+(i-1)*38,0)
+                        step:SetScript("OnClick",function()
+                            local s=System:Settings(); s[key]=math.max(-12,math.min(12,(tonumber(s[key]) or 0)+delta))
+                            if s[key]==0 then s[key]=nil end; System:Apply()
+                        end)
+                        local words=key=="keyX" and (delta<0 and "left" or "right") or (delta<0 and "down" or "up")
+                        FT:Tooltip(step,entry[2],"One point "..words..".")
+                    end
                 elseif key=="minimapIconsVertical" then
                     FT:MakeChoice(b,{{false,"Horizontal","Side by side, a new row after 6."},{true,"Vertical","One below the other."}},
                         function() return System:Settings().minimapIconsVertical==true end,
@@ -637,6 +663,77 @@ function System:RaiseTargetLine(tip)
     tip.ftTargetLine=footer
 end
 function System:TooltipTarget(tip)
+    self:TooltipTargetLine(tip)
+    self:TargetedBy(tip)
+end
+-- "Targeted by": who in your group (and which enemies with a nameplate)
+-- has the unit under the mouse targeted. Only what the game tells us: in a
+-- fight it can hide who targets what, and those are left out.
+local TARGETED_MAX=6
+function System:TargetedByNames(unit)
+    if not UnitIsUnit or not UnitExists then return {},0 end
+    local names,hidden,seen={},0,{}
+    local function check(source,you)
+        if seen[source] then return end
+        local ok,exists=pcall(UnitExists,source)
+        if not ok or not usable(exists) or not exists then return end
+        -- The same person can be both raid3 and a nameplate: count them once.
+        local okName,name=pcall(UnitName,source)
+        if not okName or not usable(name) or type(name)~="string" then hidden=hidden+1; return end
+        if seen[name] then return end
+        local okT,result=pcall(UnitIsUnit,source.."target",unit)
+        if not okT or not usable(result) then hidden=hidden+1; return end
+        if result~=true then return end
+        seen[name]=true; seen[source]=true
+        if you then table.insert(names,1,"|cffff5a5aYou|r"); return end
+        local okC,_,token=pcall(UnitClass,source); if not okC then token=nil end
+        local c=usable(token) and (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS or {})[token]
+        local hostile=UnitCanAttack and UnitCanAttack("player",source)
+        local color=c and FT.modules.Tooltip.hex(c.r,c.g,c.b) or (usable(hostile) and hostile and "|cffff4040" or "|cffffffff")
+        names[#names+1]=color..name.."|r"
+    end
+    check("player",true)
+    local raid=IsInRaid and IsInRaid()
+    if raid then
+        for i=1,40 do check("raid"..i) end
+    else
+        for i=1,4 do check("party"..i) end
+    end
+    for i=1,4 do check("party"..i.."pet") end
+    check("pet")
+    -- Enemies (and anyone else) with a nameplate on screen.
+    for i=1,40 do check("nameplate"..i) end
+    return names,hidden
+end
+function System:TargetedBy(tip)
+    if tip.ftAddonHelp or not FT.modules.Tooltip:Settings().targetedBy then return end
+    local unit=displayedUnit(tip); if not unit then return end
+    local names,hidden=self:TargetedByNames(unit)
+    local text
+    if #names>0 then
+        local shown={}
+        for i=1,math.min(TARGETED_MAX,#names) do shown[i]=names[i] end
+        text="Targeted by: "..table.concat(shown,"|cffffd100,|r ")
+        if #names>TARGETED_MAX then text=text.." |cffffd100+"..(#names-TARGETED_MAX).."|r" end
+    elseif hidden>0 and InCombatLockdown and InCombatLockdown() then
+        text=nil -- the game hides it in this fight: say nothing rather than "nobody"
+    end
+    local prefix=tip:GetName() or "GameTooltip"
+    local line=tip.ftTargetedLine and _G[prefix.."TextLeft"..tip.ftTargetedLine]
+    if line then
+        -- Updated in place while the tooltip stays up.
+        line:SetText(text or "")
+        return
+    end
+    if not text then return end
+    tip:AddLine(text,1,.82,0)
+    -- Above the beta's "submit an issue" footer, like the Target line.
+    local saved=tip.ftTargetLine
+    tip.ftTargetLine=tip:NumLines(); self:RaiseTargetLine(tip)
+    tip.ftTargetedLine=tip.ftTargetLine; tip.ftTargetLine=saved
+    if tip.Show then tip:Show() end
+end
+function System:TooltipTargetLine(tip)
     self:ClearTargetPlayerDisplay(tip)
     self:TooltipClass(tip)
     self:TooltipLayout(tip)
@@ -691,15 +788,27 @@ events:SetScript("OnEvent",function()
     System:Apply()
     if not GameTooltip or System.hooked then return end
     System.hooked=true
-    GameTooltip:HookScript("OnTooltipCleared",function(tip) System:ClearTargetPlayerDisplay(tip);tip.ftTargetLine=nil;tip.ftNameLine=nil;tip.ftDetailsLine=nil;tip.ftPlayerLayout=nil;tip.ftGuildOnName=nil;tip.ftBuffSource=nil;tip.ftAddonHelp=nil;tip.ftSpellID=nil end)
+    GameTooltip:HookScript("OnTooltipCleared",function(tip) System:ClearTargetPlayerDisplay(tip);tip.ftTargetLine=nil;tip.ftTargetedLine=nil;tip.ftNameLine=nil;tip.ftDetailsLine=nil;tip.ftPlayerLayout=nil;tip.ftGuildOnName=nil;tip.ftBuffSource=nil;tip.ftAddonHelp=nil;tip.ftSpellID=nil end)
     local function showBuffSource(tip,unit,aura)
         if tip~=GameTooltip or tip.ftBuffSource or not aura then return end
         local caster=aura.sourceUnit
-        local source=usable(caster) and type(caster)=="string" and safeCall(UnitName,caster) or nil
-        if (not source or source=="") and usable(aura.isFromPlayerOrPlayerPet) and aura.isFromPlayerOrPlayerPet then source="You" end
-        if not source or source=="" then return end
+        if not (usable(caster) and type(caster)=="string") then return end
+        -- You: "You". Anyone else: their name in their class color. With no
+        -- caster the game names (someone out of range, an item), nothing is
+        -- shown: "from a player" doesn't say which one.
+        local mine=caster=="player"
+        if not mine and UnitIsUnit then local okU,same=pcall(UnitIsUnit,caster,"player"); mine=okU and usable(same) and same==true end
+        local text
+        if mine then text="You"
+        else
+            local source=safeCall(UnitName,caster)
+            if not source or source=="" then return end
+            local _,token=safeCall(UnitClass,caster)
+            local c=type(token)=="string" and (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS or {})[token]
+            text=c and string.format("|cff%02x%02x%02x%s|r",math.floor(c.r*255+.5),math.floor(c.g*255+.5),math.floor(c.b*255+.5),source) or source
+        end
         tip.ftBuffSource=true
-        tip:AddLine("Cast by: "..source,1,.82,0)
+        tip:AddLine("Cast by: "..text,1,.82,0)
         tip:Show()
     end
     local function buffSourceByIndex(tip,unit,index,filter)
@@ -793,8 +902,18 @@ function System:ObserveGroupRole(event)
     self.wasGrouped=grouped -- consume before invoking any role API
     if not joined or not FT.dbReady or not self:Settings().autoRole or InCombatLockdown() or not UnitSetRole then return end
     local role,reason=self:SuggestedRole()
-    if reason=="FERAL" then self.feralPending=true;self:CheckFeralPrompt()
-    elseif role then self:SetOwnRole(role) end
+    -- A line in chat says what happened, so it is easy to see it worked.
+    local names={TANK="Tank",HEALER="Healer",DAMAGER="Damage"}
+    if reason=="FERAL" then
+        self.feralPending=true
+        print("|cff4fc3f7ForeverTools|r: Feral can tank or deal damage. You'll be asked in the dungeon.")
+        self:CheckFeralPrompt()
+    elseif role then
+        if self:SetOwnRole(role) then print("|cff4fc3f7ForeverTools|r: role set to "..names[role].." (from your talents).")
+        else print("|cff4fc3f7ForeverTools|r: role not set (the game didn't allow it). Set it from your portrait's menu.") end
+    else
+        print("|cff4fc3f7ForeverTools|r: role not set: no talent tree stands out yet. Pick one in Buff reminders > Your buffs, or set it from your portrait's menu.")
+    end
 end
 -- Never attempt a protected role setter: pcall alone cannot prevent a
 -- Blizzard blocked-action warning for a protected function.
@@ -816,7 +935,7 @@ function System:CheckFeralPrompt()
         local frame=CreateFrame("Frame","ForeverToolsRoleChoice",UIParent)
         self.rolePrompt=frame
         frame:SetSize(330,132);frame:SetPoint("CENTER",UIParent,"CENTER",0,170)
-        frame:SetFrameStrata("DIALOG");FT:Panel(frame);FT:MakeDraggable(frame)
+        frame:SetFrameStrata("FULLSCREEN");FT:Panel(frame);FT:MakeDraggable(frame)
         local title=FT:Label(frame,"Your role for this group?",15)
         title:SetPoint("TOP",0,-18)
         FT:AddClose(frame)
@@ -856,5 +975,26 @@ roleEvents:SetScript("OnEvent",function(_,event,changedName)
             System.feralPending=nil
             if System.rolePrompt then System.rolePrompt:Hide() end
         end
-    else System:CheckFeralPrompt() end
+    else
+        if event=="PLAYER_ENTERING_WORLD" then System:RoleOnEntering() end
+        System:CheckFeralPrompt()
+    end
 end)
+-- Entering a dungeon already grouped, with no role picked yet: set it (or
+-- ask, for Feral) once per visit, not only right after joining a group.
+function System:RoleOnEntering()
+    if not FT.dbReady or not self:Settings().autoRole or InCombatLockdown() then return end
+    if not (IsInGroup and IsInGroup()) then return end
+    local kind; if IsInInstance then local ok,inside,k=pcall(IsInInstance); if ok and usable(k) then kind=k end end
+    if kind~="party" and kind~="raid" then self.roleVisit=nil; return end
+    if self.roleVisit then return end
+    self.roleVisit=true
+    local current=UnitGroupRolesAssigned and UnitGroupRolesAssigned("player")
+    if usable(current) and current~=nil and current~="NONE" then return end
+    local role,reason=self:SuggestedRole()
+    if reason=="FERAL" then self.feralPending=true
+    elseif role and self:SetOwnRole(role) then
+        print("|cff4fc3f7ForeverTools|r: role set to "..(({TANK="Tank",HEALER="Healer",DAMAGER="Damage"})[role]).." (from your talents).")
+    end
+end
+

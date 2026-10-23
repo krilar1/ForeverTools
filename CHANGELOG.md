@@ -1,3 +1,66 @@
+# ForeverTools 1.0.0 (2026-10-23)
+
+## New
+- **Enemy cooldowns** (PvP → Enemy cooldowns): when an enemy player uses a big cooldown (PvP trinket, racials, Blind, Vanish, Ice Block, Divine Shield, Psychic Scream, Hammer of Justice, Death Coil and more), it shows with the time left. A movable bar with a group per enemy (class colors, newest first, a limit on enemies): grow down, up, right or left (a column per enemy), or right or left in one line to save height; the name beside, above, below or on the icons, or icons only; the name grows with the icon size; name and timer text sizes of their own. Icons on your target frame are a separate switch (off at first), and can be dragged while previewing. Seen from the casts the game shows you (target, focus, mouseover, nameplates, arena enemies); times are the usual ones. Everywhere, or PvP only (battlegrounds, arenas and duels). More spells: potions and Free Action, Evocation, Last Stand, Holy Shock, Rebirth, Stormstrike, traps (shared cooldown) and more. `/ft enemycd` for bug reports.
+- **Preview, the same everywhere:** every page with something on screen has one Preview switch at the top, next to the page's main switch. It shows the element with examples and lets you drag it; click again to lock. It replaces the separate Move and Preview buttons (Rare alerts, Cooldown reminders, Buff reminders, Threat meter, Interrupt bar, Diminishing returns, Enemy alerts, Nearby enemies, Trinket menu, Battleground timer, FPS counter, Leveling stats, Flight timer, Tooltip). Pages no longer start a preview by themselves.
+- **Skins → Notices & meters:** dark looks for the buff and cooldown notices and the rare alert, the interrupt and enemy cooldown bars, and the game's damage meter together with the threat meter (only header and background art; bars and numbers keep their colors). Turning a skin part on (or changing its look) shows what it skins for a few seconds. Also the header buttons of both meters.
+- **Threat meter:** looks like the damage meter: its class icons, its bars (size and fill copied from the damage meter on screen), numbered rows and the same spacing. Dropped next to the damage meter, it snaps flush against it (side by side or stacked) and takes its height; both outlines flash gold while a drop would snap. Resizing beside it snaps to exactly its height, with the same flash; hold Shift for any height (or to drop it anywhere without snapping). With the Meters skin, its background is as solid as the damage meter's.
+- **Unit frame skin:** a darker tone, like the cast bars.
+- **Stance / totem skin:** also the totem bar's Call of the elements and Totemic recall buttons.
+- **Cast bar skin:** only the outline darkens now (a dark tone, not black); the bar and the spell name plate keep the game's colors.
+- **Short key text** (System → Keybind tools, off by default): the keys on your action buttons in a short form: S1 for Shift-1, C6 for Ctrl-6, M5 for mouse button 5, SM5 for Shift + mouse button 5, WU/WD for the mouse wheel. The key text can also be slid left, right, up or down a point at a time for a perfect fit.
+- **Targeted by** (Appearance → Tooltip → Extras, on at first): unit tooltips get a line with who has that unit targeted: you, your party or raid, and enemies with a nameplate on screen. Hover yourself to see who targets you. In a fight the game sometimes hides who targets what; those are left out.
+- **Mouse-wheel dispels in a fight** (Keybinds → Mouse-wheel casting): the game hides debuffs from the wheel during a fight, so a dispel can't check for something to remove there. A new choice says what it does in a fight: **Cast on anyone** (as before) or **Camera** (the wheel zooms over friends; hostile spells still cast). Out of a fight a dispel still only casts when there is something to remove.
+- **Item counts include mail:** items you mail to one of your other characters are counted on them ("mail" in the tooltip) until they open their mailbox; then what is really in it counts. Your own counts are read from your bags as they are now, so every item counts at once, stacked or not. Auctions you win count as mail straight away too.
+- **Keep chat after reload** (Appearance → Chat → History, off by default): today's chat comes back after a /reload or logging in again, up to 250 lines per chat window, per character. From the next day it starts fresh; the combat log is not kept.
+- **Manage characters in the bag list:** the bag portrait menu → Characters → "Manage characters..." opens the list with a remove button per character. Characters show their full name (first and last), so two with the same first name are easy to tell apart.
+
+## Changed
+- **Salvation** (Forever renamed Blessing of Salvation; it is no longer a blessing): its own row in Buff reminders, under Group buffs, with its own group notice ("Salvation missing"); Mass Salvation counts for it. Choices saved under the old name move over by themselves. The macro template is renamed too.
+- **Macro templates:** Frost Blast (mage) and Lava Burst (shaman) added; Sense Undead removed (gone from Forever). "Add all class macros" also skips Revoke and Aquatic Form (Sense Undead stays skipped).
+- **Tiger's Fury** (removed from Forever druids) is gone from cooldown reminders and the Burst spell bind.
+- **Nearby enemies** shows at most 8 players (was up to 20), so the list stays small.
+- **New character window:** with a profile already saved, a small window on the right side of the screen: pick a profile or start a new one.
+- The addon list no longer says "for WoW: Forever" after the name.
+- Bag bar skin (action bar style): the keyring gets its own narrow frame, so its art no longer shows outside the frame.
+- Tour start: "Every menu, step by step".
+
+## Fixed
+- **Marking a player** no longer shows "Marked player nearby" for that same player right away; the alert comes the next time they show up.
+- **Hide other addons' login messages** also hides their "Welcome to …" and "Thanks for using …" greetings (the game's own welcome stays).
+- **Text stays in its box:** names on choice rows are kept to one line (cut short if needed), and the slider labels on the Skins page have their own space left of the slider ("Bar slots: Action bars", "Slot transparency").
+- **"Cast by" on buffs:** your own buffs say "You"; other players are named in their class color; when the game doesn't say who (an item someone used on you, someone out of range) the line is left out instead of saying "You".
+- **Profile import kept Chat and System at defaults** when the profile had Keep chat after reload or a key text nudge (settings new in 1.0.0). They import now, and a single odd value in Chat, System or Unit frames is left out on its own instead of the whole part.
+- **"Make room" for macros** opens above the macro window instead of mixing with it.
+- **Profiles load completely:** if one part fails while a profile loads, the rest still loads (the error is reported) instead of stopping halfway.
+- **Importing and exporting is lighter:** profile strings are read and written faster (exactly the same strings as before; every older string still imports), and the paste box no longer grows thousands of pixels tall.
+- **Gold list and item counts in older-style bags and tooltips:** also hooked where the game keeps the money frame by name and has no tooltip data system. `/ft countdebug` shows why they would not appear.
+- **Pop-ups take the Dialog windows skin** (destroy an item, confirm a sale and the like).
+- **Stealth alerts show the spell's picture** (Stealth, Prowl, Shadowmeld ...) instead of the class icon, on the alert and in Nearby enemies, so a night elf warrior in Shadowmeld is easy to tell from a rogue. The "dropped from view" guess is only for rogues and druids.
+- **Nearby enemies can be folded in a fight:** the - / + button folds the list to its title bar (and opens it) in combat too, and it is always there, also when the list is empty. Clicking a name targets that player.
+- **Nearby enemies:** someone in view counts up (5s, 6s ...) from when they came into view, instead of always saying "now".
+- **Dragging items no longer stutters** with the Bags skin on: picking up an item redrew every skin (about 0.2 s each time); now only the bag bar is redone. `/ft lag` records 20 seconds and shows what took the time, for bug reports about stutter.
+- **Bank skin:** the bank's bag slot buttons keep their own fill and get a dark grey outline, so they still look like buttons.
+- **Game windows skin:** every window the game opens as a panel is skinned (Forever's Social window, group finder and others), also when first opened later. The tabs on their side (social, group finder, character panel) get a dark outline too; their icons keep their look.
+- **Threat meter:** stays below game windows (like the damage meter), and stays away in PvP: in battlegrounds and arenas, and while your target is a player (duels, world PvP).
+- **ForeverTools windows stay on top:** previews and move tags no longer show through the settings window.
+- `/ft skindebug` and `/ft bagdebug` show their report in a copy window instead of the chat.
+- **Macro guide:** the examples are text boxes now: click to select (or mark part), Ctrl+C to copy; it says when it is copied. The Make a macro and Copy buttons are gone.
+- **My own macros:** the count in the list no longer counts removed macros, and updates right away.
+- **Skins → Minimap & menus:** gold (the game's) or dark rings, chosen separately for addon buttons (ForeverTools' and others', also in the group) and the grouped buttons' gear. All gold unless you pick Dark.
+- **/reload in a fight:** skins, fonts, unit colors and minimap buttons came back only after the fight. Now they are put on right away.
+- **Move elements:** a window minimized from its title bar stayed collapsed after Done.
+- **Macro text:** the up and down arrows move between lines.
+- **Cooldown reminders while leveling:** kills are counted from your experience, so the quiet "Ready" nudge after about 8 kills shows again. A racial or trinket used just before a fight counts as on cooldown, so it is never suggested then.
+- **Narrower Appearance pages:** Fonts, Game resource bars, Skins, Chat, Tooltip and Item counts take less room. The font list opens beside the window, so the preview stays in view while you pick.
+- **Enemy list:** right-click a player in Nearby enemies, Seen before or Marked to mark them (with a reason), change the reason or remove the mark. Seen before keeps today's players only.
+- **Tooltip page:** the Preview switch no longer covers the Extras heading.
+- **Diminishing returns:** a Lua error with some debuff updates (the game hides parts of them in fights) is fixed. "Where you dragged it" is now called "Custom". `/ft dr` shows a fuller report in a copy window.
+- **Stealth alerts:** also for someone you duel from your own faction (they still don't count as an enemy in your lists). New: "Stealthed enemy spotted" when someone in Stealth or Prowl comes close enough for you to see.
+- **Group role:** says in chat what it did when you join a group (role set, Feral asks in the dungeon, or why it couldn't). Entering a dungeon already grouped with no role picked also sets it (or asks, for Feral), once per visit.
+- **Group buff reminder:** names who is missing the buff (two on the bar, everyone when you hover it).
+- **Seen before / Nearby enemies:** players from your own faction (a duel) are no longer counted as enemies.
+
 # ForeverTools 0.90.0 (2026-10-18)
 
 ## New: PvP and combat

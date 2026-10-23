@@ -37,6 +37,7 @@ function Tip:Settings()
     if s.guild==nil then s.guild=false end
     if s.guildFactionColor==nil then s.guildFactionColor=false end
     if s.healthBar==nil then s.healthBar=true end
+    if s.targetedBy==nil then s.targetedBy=true end
     if not s.position then s.position="Default" end
     if not s.order then s.order="NLT" end
     local valid=false
@@ -335,6 +336,7 @@ function Tip:RenderPreview()
     local parts,faction=self:SampleParts()
     local nameSize=s.name>0 and s.name or 14
     local lines=self:Compose(parts,self:FactionIcon(faction,math.max(18,math.floor(nameSize*1.3+.5))))
+    if s.targetedBy then lines[#lines+1]={text="|cffffd100Targeted by: |cffff5a5aYou|r|cffffd100,|r |cffc79c6eGarrosh|r|cffffd100,|r |cfffff569Vol'jin|r"} end
     local headerFont,_,headerFlags=(GameTooltipHeaderText or GameFontNormal):GetFont()
     local bodyFont,_,bodyFlags=(GameTooltipText or GameFontNormal):GetFont()
     local y=-10
@@ -369,26 +371,26 @@ function Tip:Refresh()
         row.join.label:SetText(entry.join and canJoin and "Same line" or "New line"); FT:SetSelected(row.join,entry.join and canJoin)
     end
     self.health.label:SetText("Tooltip health bar: "..(s.healthBar and "On" or "Off")); FT:SetSelected(self.health,s.healthBar)
-    self.guildColor.label:SetText("Faction-colored guild name: "..(s.guildFactionColor and "On" or "Off")); FT:SetSelected(self.guildColor,s.guildFactionColor)
+    self.guildColor.label:SetText("Guild in faction color: "..(s.guildFactionColor and "On" or "Off")); FT:SetSelected(self.guildColor,s.guildFactionColor)
+    self.targetedBy.label:SetText("Targeted by: "..(s.targetedBy and "On" or "Off")); FT:SetSelected(self.targetedBy,s.targetedBy)
     self.guildColor:SetAlpha(s.guild and 1 or .5)
     for _,part in ipairs({"name","details","targetSize"}) do
         self.sizes[part].label:SetText((s[part]==0 and "Default" or s[part].." px"))
     end
-    self.moveButton.label:SetText(self.moving and "Moving tooltip — click to lock" or "Move tooltip freely")
-    FT:SetSelected(self.moveButton,self.moving)
+    FT:RefreshPreview(self.frame)
     local ids=FT.modules.System:Settings().spellID==true
     self.ids.label:SetText("Show tooltip IDs: "..(ids and "On" or "Off")); FT:SetSelected(self.ids,ids)
     self:RenderPreview()
 end
 function Tip:Open()
     if not self.frame then
-        local frame=FT:Window("ForeverToolsTooltip","Tooltip",760,560)
+        local frame=FT:Window("ForeverToolsTooltip","Tooltip",620,560)
         self.frame=frame
         FT:PageInfo(frame,"Tooltip","Left: build your player tooltip. Turn parts on or off, order them, and join parts with Same line.\n\nRight: extras, text sizes and position.")
         local sectionIcons={Layout="INV_Misc_Note_01",Extras="INV_Misc_Book_07",["Text size"]="INV_Inscription_Tradeskill01",Position="Ability_Rogue_Sprint"}
         local function section(x,y,title,hint)
             local h=FT:Label(frame,title,16,true); h:SetPoint("TOPLEFT",x,y); h:SetTextColor(1,.82,0)
-            FT:SectionHeading(h,sectionIcons[title],200)
+            FT:SectionHeading(h,sectionIcons[title],x>100 and 110 or 200)
         end
         section(24,-66,"Layout","Turn parts on or off, order them, join them with Same line.")
         self.layoutTop=96
@@ -396,7 +398,7 @@ function Tip:Open()
         for _,key in ipairs(partKeys) do
             local row={}
             local label=self.partLabels[key]
-            row.toggle=FT:QuietButton(frame,"",190,34,key=="target" and "Ability_Hunter_SniperShot" or key=="guild" and "INV_Shirt_GuildTabard_01" or key=="class" and "classes" or key=="faction" and FT:FactionIcon() or "tooltip")
+            row.toggle=FT:QuietButton(frame,"",150,34,key=="target" and "Ability_Hunter_SniperShot" or key=="guild" and "INV_Shirt_GuildTabard_01" or key=="class" and "classes" or key=="faction" and FT:FactionIcon() or "tooltip")
             row.toggle:SetScript("OnClick",function() self:TogglePart(key) end)
             FT:Tooltip(row.toggle,label,({name="The player's name.",guild="The player's guild, if they have one.",level="The player's level.",race="The player's race.",class="The player's class, in class color.",faction="Off, Icon (a small badge) or Text (the faction's name).",target="Who the player targets. Own line."})[key])
             -- Blizzard's own friends-list arrow, referenced from the game, not bundled.
@@ -412,7 +414,7 @@ function Tip:Open()
             row.down:SetPoint("LEFT",row.up,"RIGHT",6,0)
             row.down:SetScript("OnClick",function() self:MoveLayout(key,1) end)
             FT:Tooltip(row.down,"Move down","Show "..label:lower().." later.")
-            row.join=FT:QuietButton(frame,"",112,34)
+            row.join=FT:QuietButton(frame,"",96,34)
             row.join:SetPoint("LEFT",row.down,"RIGHT",6,0)
             if row.join.SetMotionScriptsWhileDisabled then row.join:SetMotionScriptsWhileDisabled(true) end
             row.join:SetScript("OnClick",function() self:ToggleJoin(key) end)
@@ -421,35 +423,38 @@ function Tip:Open()
         end
         local previewTop=self.layoutTop+#partKeys*38+6
         local ph=FT:Label(frame,"Preview",16,true); ph:SetPoint("TOPLEFT",24,-previewTop); ph:SetTextColor(1,.82,0); FT:SectionHeading(ph,"INV_Misc_Note_01",200)
-        local box=CreateFrame("Frame",nil,frame); box:SetPoint("TOPLEFT",24,-previewTop-30); box:SetWidth(380)
+        local box=CreateFrame("Frame",nil,frame); box:SetPoint("TOPLEFT",24,-previewTop-30); box:SetWidth(324)
         FT:RoundedFill(box,0,0,0,.85)
         box.lines={}
-        for i=1,8 do local fs=box:CreateFontString(nil,"OVERLAY"); fs:SetFont(FT.bodyFont,12,""); fs:SetJustifyH("LEFT"); fs:SetWidth(360); box.lines[i]=fs end
+        for i=1,8 do local fs=box:CreateFontString(nil,"OVERLAY"); fs:SetFont(FT.bodyFont,12,""); fs:SetJustifyH("LEFT"); fs:SetWidth(304); box.lines[i]=fs end
         self.preview=box
         local divider=frame:CreateTexture(nil,"ARTWORK"); divider:SetColorTexture(.61,.51,.31,.6); divider:SetWidth(1)
-        divider:SetPoint("TOPLEFT",412,-96); divider:SetPoint("BOTTOMLEFT",412,24)
+        divider:SetPoint("TOPLEFT",356,-96); divider:SetPoint("BOTTOMLEFT",356,24)
         -- Right column.
-        local R=422
-        section(R,-66,"Extras","Guild color, health bar and IDs.")
-        self.guildColor=FT:QuietButton(frame,"",314,34,"INV_Shirt_GuildTabard_01"); self.guildColor:SetPoint("TOPLEFT",R,-96)
+        local R=366
+        section(R,-106,"Extras","Guild color, health bar, IDs and who targets.")
+        self.guildColor=FT:QuietButton(frame,"",230,34,"INV_Shirt_GuildTabard_01"); self.guildColor:SetPoint("TOPLEFT",R,-136)
         self.guildColor:SetScript("OnClick",function() local s=self:Settings();s.guildFactionColor=not s.guildFactionColor;self:Refresh() end)
         FT:Tooltip(self.guildColor,"Faction-colored guild name","Guild name in red (Horde) or blue (Alliance).")
-        self.health=FT:QuietButton(frame,"",314,34,"Spell_Holy_Heal"); self.health:SetPoint("TOPLEFT",R,-134)
+        self.health=FT:QuietButton(frame,"",230,34,"Spell_Holy_Heal"); self.health:SetPoint("TOPLEFT",R,-174)
         self.health:SetScript("OnClick",function() local s=self:Settings();s.healthBar=not s.healthBar;self:Refresh();if GameTooltip then self:ApplyTooltip(GameTooltip) end end)
         FT:Tooltip(self.health,"Tooltip health bar","Small health bar under unit tooltips.")
         -- Stored under System for profile compatibility; it belongs with tooltips.
-        self.ids=FT:QuietButton(frame,"",314,34,"spellID"); self.ids:SetPoint("TOPLEFT",R,-172)
+        self.ids=FT:QuietButton(frame,"",230,34,"spellID"); self.ids:SetPoint("TOPLEFT",R,-212)
         self.ids:SetScript("OnClick",function() local s=FT.modules.System:Settings();s.spellID=not s.spellID;self:Refresh() end)
         FT:Tooltip(self.ids,"Show tooltip IDs","Spell, item, quest and achievement IDs.")
-        local line=frame:CreateTexture(nil,"ARTWORK"); line:SetColorTexture(.61,.51,.31,.6); line:SetSize(314,1); line:SetPoint("TOPLEFT",R,-218)
-        section(R,-230,"Text size","0 keeps the game's size.")
+        self.targetedBy=FT:QuietButton(frame,"",230,34,"Ability_Hunter_SniperShot"); self.targetedBy:SetPoint("TOPLEFT",R,-250)
+        self.targetedBy:SetScript("OnClick",function() local s=self:Settings();s.targetedBy=not s.targetedBy;self:Refresh() end)
+        FT:Tooltip(self.targetedBy,"Targeted by","A line on unit tooltips with who has that unit targeted: you, your party or raid, and enemies with a nameplate on screen. In a fight the game sometimes hides who targets what; those are left out.")
+        local line=frame:CreateTexture(nil,"ARTWORK"); line:SetColorTexture(.61,.51,.31,.6); line:SetSize(230,1); line:SetPoint("TOPLEFT",R,-296)
+        section(R,-308,"Text size","0 keeps the game's size.")
         self.sizes={}
         for i,entry in ipairs({{"name","Name line"},{"details","Other lines"},{"targetSize","Target line"}}) do
-            local part=entry[1]; local y=-262-(i-1)*38
+            local part=entry[1]; local y=-340-(i-1)*38
             local label=FT:Label(frame,entry[2],14);label:SetPoint("TOPLEFT",R,y-6)
-            local minus=FT:QuietButton(frame,"-",34,30,"reset");minus:SetPoint("TOPLEFT",R+128,y)
-            local value=FT:QuietButton(frame,"",110,30,"fonts");value:SetPoint("LEFT",minus,"RIGHT",4,0)
-            local plus=FT:QuietButton(frame,"+",34,30,"add");plus:SetPoint("LEFT",value,"RIGHT",4,0)
+            local minus=FT:QuietButton(frame,"-",30,30,"reset");minus:SetPoint("TOPLEFT",R+100,y)
+            local value=FT:QuietButton(frame,"",64,30);value:SetPoint("LEFT",minus,"RIGHT",4,0)
+            local plus=FT:QuietButton(frame,"+",30,30,"add");plus:SetPoint("LEFT",value,"RIGHT",4,0)
             self.sizes[part]=value
             FT:Tooltip(minus,"Smaller","Make the "..entry[2]:lower().." one size smaller.")
             FT:Tooltip(plus,"Larger","Make the "..entry[2]:lower().." one size larger.")
@@ -467,13 +472,12 @@ function Tip:Open()
             end)
             FT:Tooltip(value,entry[2].." size","+ and - change the size. Click the number for the game's size.")
         end
-        local line2=frame:CreateTexture(nil,"ARTWORK"); line2:SetColorTexture(.61,.51,.31,.6); line2:SetSize(314,1); line2:SetPoint("TOPLEFT",R,-378)
-        section(R,-390,"Position","Where tooltips appear on screen.")
-        self.moveButton=FT:QuietButton(frame,"",314,34,"move");self.moveButton:SetPoint("TOPLEFT",R,-422)
-        self.moveButton:SetScript("OnClick",function() self:SetMoving(not self.moving) end)
-        FT:Tooltip(self.moveButton,"Move tooltip","Unlock, drag the preview, then click again to lock.")
-        frame:SetHeight(math.max(previewTop+30+150,518)+30)
-        frame:HookScript("OnHide",function() self:SetMoving(false) end)
+        local line2=frame:CreateTexture(nil,"ARTWORK"); line2:SetColorTexture(.61,.51,.31,.6); line2:SetSize(230,1); line2:SetPoint("TOPLEFT",R,-456)
+        section(R,-468,"Position","Where tooltips appear on screen. Turn on Preview (top right) to drag it.")
+        local where=FT:Label(frame,"Turn on Preview (top right), then drag the sample tooltip where you want tooltips.",12)
+        where:SetPoint("TOPLEFT",R,-496); where:SetWidth(230); where:SetTextColor(.66,.59,.48)
+        self.moveButton=FT:TopPreview(frame,nil,{get=function() return self.moving==true end,set=function(on) self:SetMoving(on) end,tip="A sample tooltip."})
+        frame:SetHeight(math.max(previewTop+30+150,556)+30)
     end
     self:Refresh();self.frame:Show()
 end

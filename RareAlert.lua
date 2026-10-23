@@ -77,6 +77,7 @@ function Rare:Notice()
     local f=CreateFrame("Button","ForeverToolsRareAlert",UIParent)
     f:SetSize(300,46); f:SetFrameStrata("MEDIUM"); f:SetClampedToScreen(true)
     FT:Panel(f); FT:Paint(f,{.06,.045,.02,.95},{.85,.66,.25,1}); FT:MeterSkin(f)
+    local skins=FT.modules.IconStyles; if skins and skins.SkinPanel then skins:SkinPanel(f,"notices",{.06,.045,.02,.95},{.85,.66,.25,1}) end
     f.glow=glowRings(f)
     f.icon=f:CreateTexture(nil,"ARTWORK"); f.icon:SetSize(30,30); f.icon:SetPoint("LEFT",9,0)
     if C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("VignetteKill") then f.icon:SetAtlas("VignetteKill") else f.icon:SetTexture("Interface\\Icons\\Ability_Hunter_SniperShot") end
@@ -252,11 +253,10 @@ function Rare:Refresh()
     self.sizeLabel:SetText(string.format("Size: %d%%",math.floor(s.size*100+.5)))
     self.settingSize=true; self.sizeSlider:SetValue(s.size); self.settingSize=false
     self.glowSwatch:SetVertexColor(unpack(s.glow)); self:PaintGlow()
-    if self.previewButton then self.previewButton.label:SetText("Preview: "..(self.previewOn and "On" or "Off")) end
     local warn=s.sound and self:VolumeWarning()
     if warn then self.volumeNote:SetText(warn); self.volumeNote:SetTextColor(1,.62,.35)
     else self.volumeNote:SetText("") end
-    self.move.label:SetText(self.moving and "Lock position" or "Move alert"); FT:SetSelected(self.move,self.moving)
+    FT:RefreshPreview(self.frame)
 end
 function Rare:Open()
     if not self.frame then
@@ -266,6 +266,8 @@ function Rare:Open()
         self.toggle=FT:AccentButton(frame,"",492,34,"Ability_Hunter_SniperShot"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function() local s=self:Settings(); s.enabled=not s.enabled; self:Apply() end)
         FT:Tooltip(self.toggle,"Rare alerts","Show a notice when a rare is nearby.")
+        self.previewButton=FT:TopPreview(frame,self.toggle,{get=function() return self.previewOn or self.moving end,
+            set=function(on) self.previewOn=on and true or nil; self:SetMoving(on and true or false,"Example rare") end})
         self.soundToggle=FT:QuietButton(frame,"",240,32,"INV_Misc_Bell_01"); self.soundToggle:SetPoint("TOPLEFT",24,-108)
         self.soundToggle:SetScript("OnClick",function() local s=self:Settings(); s.sound=not s.sound; self:Refresh() end)
         FT:Tooltip(self.soundToggle,"Sound","Also play a sound (at your master volume).")
@@ -308,20 +310,11 @@ function Rare:Open()
                 cancelFunc=function() s.glow=old; self:Refresh() end})
         end)
         FT:Tooltip(self.glowButton,"Glow color","Glow color around the notice.")
-        local preview=FT:QuietButton(frame,"Preview: Off",240,32,"Ability_Hunter_SniperShot"); preview:SetPoint("TOPLEFT",276,-260)
-        preview:SetScript("OnClick",function() self:SetPreview(not self.previewOn) end)
-        FT:Tooltip(preview,"Preview","Show an example notice until switched off.")
-        self.previewButton=preview
-        self.move=FT:QuietButton(frame,"",240,32,"move"); self.move:SetPoint("TOPLEFT",24,-302)
-        self.move:SetScript("OnClick",function() self:SetMoving(not self.moving) end)
-        FT:Tooltip(self.move,"Move alert","Unlock, drag the notice, then click again to lock.")
-        local reset=FT:QuietButton(frame,"Reset position",240,32,"reset"); reset:SetPoint("TOPLEFT",276,-302)
+        local reset=FT:QuietButton(frame,"Reset position",240,32,"reset"); reset:SetPoint("TOPLEFT",276,-260)
         reset:SetScript("OnClick",function() local s=self:Settings(); s.x,s.y=nil,nil; self:Position() end)
         FT:Tooltip(reset,"Reset position","Put the notice back at the top of the screen.")
-        FT:Sections(frame,{{"Sound",self.soundToggle},{"Notice",self.durationChoice},{"Position",self.move}})
+        FT:Sections(frame,{{"Sound",self.soundToggle},{"Notice",self.durationChoice},{"Look",self.sizeLabel}})
         frame:HookScript("OnHide",function()
-            if self.moving then self:SetMoving(false) end
-            if self.previewOn then self:SetPreview(false) end
             if self.pickingGlow and ColorPickerFrame and ColorPickerFrame:IsShown() then ColorPickerFrame:Hide() end
         end)
     end

@@ -89,6 +89,11 @@ local elements={
         start=function(m) m:SetMoving(true) end, stop=function(m) if m.moving then m:SetMoving(false) end end,
         frame=function(m) return m.bar end, nudge=function(m,dx,dy) byFrame(m.bar,dx,dy) end,
         reset=function(m) m:ResetPosition() end, resetTip="Back in its starting place."},
+    {key="enemyCooldowns",name="Enemy cooldowns",module="EnemyCooldowns",open="EnemyCooldowns",
+        used=function(m) local s=m:Settings(); return s.enabled==true and s.bar==true end,
+        start=function(m) m:SetMoving(true) end, stop=function(m) if m.moving then m:SetMoving(false) end end,
+        frame=function(m) return m.bar end, nudge=function(m,dx,dy) byFrame(m.bar,dx,dy) end,
+        reset=function(m) m:ResetPosition() end, resetTip="Back in its starting place."},
     {key="diminish",name="Diminishing returns",module="Diminish",open="Diminish",
         used=function(m) return m:Settings().enabled==true end,
         start=function(m) m:SetMoving(true) end, stop=function(m) if m.moving then m:SetMoving(false) end end,
@@ -254,7 +259,7 @@ function Movers:Label(e,frame)
         self.labels[e.key]=tag
     end
     tag.caption.frame=frame
-    tag:SetParent(frame); tag:SetFrameStrata("TOOLTIP")
+    tag:SetParent(frame); tag:SetFrameStrata(frame:GetFrameStrata()); tag:SetFrameLevel(math.min(9000,(frame:GetFrameLevel() or 1)+30))
     tag:ClearAllPoints(); tag:SetAllPoints(frame)
     tag:Show(); tag.text:Show(); tag.text:SetShown(true)
 end
@@ -264,8 +269,10 @@ function Movers:Start()
     -- open again on Done.
     self.shrunk={}
     for frame in pairs(FT.controlWindows or {}) do
-        if frame:IsShown() and frame.minButton and frame.minButton:IsShown() and not frame.minimized then
-            FT:SetMinimized(frame,true); self.shrunk[frame]=true
+        -- Already shrunk by hand (Move from its title bar): opened again on Done too.
+        if frame:IsShown() and frame.minButton and frame.minButton:IsShown() then
+            if not frame.minimized then FT:SetMinimized(frame,true) end
+            self.shrunk[frame]=true
         end
     end
     self.active=true

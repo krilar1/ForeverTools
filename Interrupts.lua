@@ -32,6 +32,7 @@ I.SPELLS=SPELLS
 local SHARED={["Flame Shock"]="Earth Shock",["Frost Shock"]="Earth Shock"}
 local PREFIX="FTINT"
 local ROW_GAP=2
+local ROW_BACK={0,0,0,.6}
 local function safe(v) return v~=nil and not (issecretvalue and issecretvalue(v)) end
 local function now() return GetTime and GetTime() or 0 end
 local function busy() return InCombatLockdown and InCombatLockdown() end
@@ -289,6 +290,7 @@ function I:Paint()
             r.bar:SetValue(1); r.bar:SetStatusBarColor(cr,cg,cb,.85)
             r.time:SetText("Ready"); r.time:SetTextColor(.6,1,.6); r.icon:SetDesaturated(false)
         end
+        local skins=FT.modules.IconStyles; if skins and skins.BarRow then skins:BarRow(r,ROW_BACK) end
         r:Show()
     end
     for i=#list+1,#self.rows do self.rows[i]:Hide() end
@@ -391,8 +393,7 @@ function I:Refresh()
     self.widthLabel:SetText(string.format("Width: %d",s.width))
     self.rowsLabel:SetText(string.format("Most rows: %d",s.rows))
     self.settingSlider=true; self.sizeSlider:SetValue(s.size); self.widthSlider:SetValue(s.width); self.rowsSlider:SetValue(s.rows); self.settingSlider=false
-    self.previewButton.label:SetText("Preview: "..(self.preview and "On" or "Off")); FT:SetSelected(self.previewButton,self.preview)
-    self.move.label:SetText(self.moving and "Lock position" or "Move bar"); FT:SetSelected(self.move,self.moving)
+    FT:RefreshPreview(self.frame)
     if FT.RefreshDock then FT:RefreshDock(self.frame) end
 end
 function I:Open()
@@ -403,11 +404,12 @@ function I:Open()
         self.toggle=FT:AccentButton(frame,"",492,34,"Ability_Kick"); self.toggle:SetPoint("TOPLEFT",24,-90)
         self.toggle:SetScript("OnClick",function()
             local s=self:Settings(); s.enabled=not s.enabled; self:Apply()
-            -- Turned on: sample rows to drag into place.
-            if s.enabled then self:SetMoving(true); FT:Toast("Drag the bar into place, then click Lock position.",4)
-            elseif self.moving then self:SetMoving(false) end
+            -- Turned on: a quick look at the bar.
+            if s.enabled then self:Peek() elseif self.moving then self:SetMoving(false) end
         end)
         FT:Tooltip(self.toggle,"Interrupt bar","Show your group's interrupts and cooldowns.")
+        self.previewButton=FT:TopPreview(frame,self.toggle,{get=function() return self.preview or self.moving end,
+            set=function(on) if not on and self.moving then self.moving=false end; self:SetPreview(on) end,tip="Made-up players of several classes."})
         self.when=FT:QuietButton(frame,"",240,32,"Ability_DualWield"); self.when:SetPoint("TOPLEFT",24,-136)
         FT:MakeChoice(self.when,{{"group","In a group","Whenever you are in a group."},{"combat","In fights","Only during a fight."},{"always","Always","All the time."}},function() return self:Settings().when end,function(v) self:Settings().when=v; self:Paint(); self:Refresh() end)
         FT:Tooltip(self.when,"When to show","When the bar shows.")
@@ -434,17 +436,11 @@ function I:Open()
         self.sizeLabel,self.sizeSlider=slider(266,.7,1.5,.05,"Size","Bar size (70% to 150%).",function(v) self:Settings().size=math.floor(v*20+.5)/20 end)
         self.widthLabel,self.widthSlider=slider(306,120,320,10,"Width","How wide the bars are.",function(v) self:Settings().width=math.floor(v/10+.5)*10 end)
         self.rowsLabel,self.rowsSlider=slider(346,1,20,1,"Most rows","The most rows shown, so a 40-player battleground never fills your screen. Ready soonest first.",function(v) self:Settings().rows=math.floor(v+.5); self.samples=nil end)
-        self.previewButton=FT:QuietButton(frame,"",156,32,"Spell_Holy_MindVision"); self.previewButton:SetPoint("TOPLEFT",24,-386)
-        self.previewButton:SetScript("OnClick",function() self:SetPreview(not self.preview) end)
-        FT:Tooltip(self.previewButton,"Preview","Fill the bar with made-up players to set its size and place.")
-        self.move=FT:QuietButton(frame,"",156,32,"move"); self.move:SetPoint("TOPLEFT",192,-386)
-        self.move:SetScript("OnClick",function() self:SetMoving(not self.moving) end)
-        FT:Tooltip(self.move,"Move bar","Unlock, drag the bar, then click again to lock.")
-        local reset=FT:QuietButton(frame,"Reset position",156,32,"reset"); reset:SetPoint("TOPLEFT",360,-386)
+        local reset=FT:QuietButton(frame,"Reset position",240,32,"reset"); reset:SetPoint("TOPLEFT",24,-386)
         reset:SetScript("OnClick",function() self:ResetPosition() end)
         FT:Tooltip(reset,"Reset position","Put the bar back in its starting place.")
-        frame:HookScript("OnHide",function() if self.moving then self:SetMoving(false) end; if self.preview then self:SetPreview(false) end end)
-        FT:Sections(frame,{{"When it shows",self.when},{"Look",self.grow},{"Place",self.previewButton}})
+        frame:HookScript("OnHide",function() if self.moving then self:SetMoving(false) end end)
+        FT:Sections(frame,{{"When it shows",self.when},{"Look",self.grow},{"Place",reset}})
     end
     self:Refresh(); self.frame:Show()
 end

@@ -35,7 +35,7 @@ function Report:Features()
     add("totemRange",db.totems and db.totems.range); add("totemWarning",db.totems and db.totems.leftBehind)
     local bags=db.bags or {}
     local enemies=db.enemies or {}
-    add("stealthAlerts",enemies.stealth); add("markedAlerts",enemies.marks); add("nearbyEnemies",enemies.nearby); add("trinketMenu",type(db.trinkets)=="table" and db.trinkets.enabled); add("diminish",type(db.diminish)=="table" and db.diminish.enabled); add("autoRelease",type(db.autoRelease)=="table" and db.autoRelease.enabled); add("interruptBar",type(db.interrupts)=="table" and db.interrupts.enabled); add("thankForBuffs",type(db.thanks)=="table" and db.thanks.enabled)
+    add("stealthAlerts",enemies.stealth); add("markedAlerts",enemies.marks); add("nearbyEnemies",enemies.nearby); add("trinketMenu",type(db.trinkets)=="table" and db.trinkets.enabled); add("diminish",type(db.diminish)=="table" and db.diminish.enabled); add("enemyCooldowns",type(db.enemyCooldowns)=="table" and db.enemyCooldowns.enabled); add("autoRelease",type(db.autoRelease)=="table" and db.autoRelease.enabled); add("interruptBar",type(db.interrupts)=="table" and db.interrupts.enabled); add("thankForBuffs",type(db.thanks)=="table" and db.thanks.enabled)
     add("bagGold",bags.gold); add("bagView",bags.view); add("itemCounts",bags.counts)
     return #out>0 and table.concat(out,", ") or "none (all defaults)"
 end

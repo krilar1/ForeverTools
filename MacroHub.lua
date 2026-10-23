@@ -556,7 +556,7 @@ end
 -- that opens beside the window.
 function M:CreateAdvanced(frame)
     local panel = CreateFrame("Frame", nil, frame); self.advancedPanel = panel
-    panel:SetSize(462, 232); panel:SetFrameLevel(frame:GetFrameLevel() + 20); panel:SetFrameStrata("DIALOG"); panel:SetClampedToScreen(true)
+    panel:SetSize(462, 232); panel:SetFrameLevel(frame:GetFrameLevel() + 20); panel:SetFrameStrata("FULLSCREEN"); panel:SetClampedToScreen(true)
     KT:MakeDraggable(panel, frame); KT:Panel(panel); panel:Hide()
     self.advancedButton:SetScript("OnClick", function()
         if not panel:IsShown() then

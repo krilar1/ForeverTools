@@ -43,6 +43,9 @@ local function stops()
             set=function(on) mod("Tooltip"):Settings().target=on and true or false end},
         {key="itemCounts",chapter="Appearance",page="ItemCounts",title="Item counts",text="Item tooltips show how many you have on every character.",
             find="Item counts",get=bags("counts").get,set=bags("counts").set},
+        {key="chatHistory",chapter="Appearance",page="Chat",title="Keep chat after reload",text="Today's chat comes back after a /reload or logging in again.",
+            find="Keep chat after reload",get=function() return type(FT.db.chat)=="table" and FT.db.chat.history==true end,
+            set=function(on) if type(FT.db.chat)~="table" then FT.db.chat={} end; FT.db.chat.history=on and true or nil; local c=FT.modules.Chat; if c then if on then c.restored=true end; c:ApplyHistory() end end},
         {key="thanks",chapter="Appearance",page="Chat",title="Thank for buffs",text="A /thank to strangers who buff you.",
             find="Thank for buffs",get=function() return type(FT.db.thanks)=="table" and FT.db.thanks.enabled==true end,
             set=function(on) if type(FT.db.thanks)~="table" then FT.db.thanks={} end; FT.db.thanks.enabled=on and true or false end},
@@ -78,6 +81,10 @@ local function stops()
         {key="trinkets",chapter="PvP",page="Trinkets",title="Trinket menu",text="Two trinket buttons with cooldowns. Point at one to swap.",
             find="Trinket menu",target=function() local t=mod("Trinkets"); return t and t.bar end,
             get=field("Trinkets","enabled").get,set=field("Trinkets","enabled").set},
+        {key="enemyCooldowns",chapter="PvP",page="EnemyCooldowns",title="Enemy cooldowns",text="Big cooldowns enemy players used (trinket, Blind, Ice Block...), with the time left.",
+            find="Enemy cooldowns",target=function() local c=mod("EnemyCooldowns"); return c and c.bar end,
+            preview=function() local c=mod("EnemyCooldowns"); if c and c.Peek then c:Peek() end end,
+            get=field("EnemyCooldowns","enabled").get,set=field("EnemyCooldowns","enabled").set},
         {key="diminish",chapter="PvP",page="Diminish",title="Diminishing returns",text="Icons by your target when crowd control will be shorter. Red: immune.",
             find="Diminishing returns",preview=function() local d=mod("Diminish"); if d and d.Peek then d:Peek() end end,
             get=field("Diminish","enabled").get,set=field("Diminish","enabled").set},
@@ -99,6 +106,8 @@ local function stops()
             find="Move game windows",get=field("MoveWindows","enabled").get,set=field("MoveWindows","enabled").set},
         {key="flight",chapter="On-screen info",page="FlightTimer",title="Flight timer",text="How long until you land.",
             find="Flight timer",get=field("FlightTimer","enabled").get,set=field("FlightTimer","enabled").set},
+        {key="shortKeys",chapter="System",page="SystemKeybinds",title="Short key text",text="The keys on your action buttons, short: S1 for Shift-1, M5 for mouse button 5.",
+            find="Short key text",get=sys("shortKeys").get,set=sys("shortKeys").set},
         {key="fastLoot",chapter="System",page="SystemMerchant",title="Faster looting",text="Everything is looted at once (with auto loot on).",
             find="Faster looting",quick=true,get=sys("fastLoot").get,set=sys("fastLoot").set},
         {key="autoSell",chapter="System",page="SystemMerchant",title="Sell grey items",text="Grey items are sold at merchants.",
@@ -477,7 +486,7 @@ function Tour:ShowStart(again,demo)
         f.lookNote:SetPoint("TOPLEFT",24,-214); f.lookNote:SetTextColor(.66,.59,.48)
         local h2=FT:Label(f,"How long?",15,true); h2:SetPoint("TOPLEFT",24,-244); FT:SectionHeading(h2,"INV_Misc_PocketWatch_01",420)
         f.modes={}
-        for i,m in ipairs({{"quick","Quick tour","The most useful features · about 3 min"},{"full","Full tour","Every menu, stop by stop · about 5–10 min"}}) do
+        for i,m in ipairs({{"quick","Quick tour","The most useful features · about 3 min"},{"full","Full tour","Every menu, step by step · about 5–10 min"}}) do
             local b=FT:QuietButton(f,"",270,52); b:SetPoint("TOPLEFT",24+(i-1)*282,-270)
             b.label:ClearAllPoints(); b.label:SetPoint("TOPLEFT",14,-9); b.label:SetText(m[2])
             b.sub=FT:Label(b,m[3],11); b.sub:SetPoint("TOPLEFT",14,-29); b.sub:SetWidth(246); b.sub:SetTextColor(.66,.59,.48)

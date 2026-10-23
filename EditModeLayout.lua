@@ -170,11 +170,11 @@ function Layout:Remind(force)
     if not UIParent:IsShown() then C_Timer.After(5,function() self:Remind(force) end); return end
     local frame=self.reminder
     if not frame then
-        -- "Get ready for launch": the two strings to keep, each one click away.
-        frame=FT:Window("ForeverToolsEditModeReminder","Get ready for launch",470,360); self.reminder=frame
+        -- "Back up your setup" (/ft launch): the two strings to keep, each one click away.
+        frame=FT:Window("ForeverToolsEditModeReminder","Back up your setup",470,360); self.reminder=frame
         frame.ignorePlacement=true; frame.noSavePrompt=true; frame.homeButton:Hide()
         frame:SetFrameStrata("FULLSCREEN_DIALOG")
-        local text=FT:Label(frame,"The beta ends October 21. Nothing here carries over, so save these two strings in a text file. Paste them back on launch day.",13)
+        local text=FT:Label(frame,"Save these two strings in a text file. They bring your setup back on a new install, another computer or another character.",13)
         text:SetPoint("TOPLEFT",24,-58); text:SetWidth(422); text:SetTextColor(.85,.80,.70)
         local function step(top,number,title,detail,buttonText,icon,onClick,doneKey)
             local num=FT:Label(frame,number,20,true); num:SetPoint("TOPLEFT",24,top); num:SetTextColor(1,.82,0)
@@ -187,7 +187,7 @@ function Layout:Remind(force)
             return {done=done,doneText=doneText,key=doneKey}
         end
         frame.steps={
-            step(-112,"1","Your ForeverTools settings","On launch: /ft > Profiles > Export and import.","Export settings","INV_Misc_Note_06",
+            step(-112,"1","Your ForeverTools settings","To bring it back: /ft > Profiles > Export and import.","Export settings","INV_Misc_Note_06",
                 function()
                     frame:Hide()
                     local P=FT.modules.Profiles; if not P then return end
@@ -195,7 +195,7 @@ function Layout:Remind(force)
                     -- Closing the export brings this window back once, for step 2.
                     self:WaitForExportClosed()
                 end,"launchExported"),
-            step(-206,"2","Your Edit Mode layout","On launch: Esc > Edit Mode > Import.","Export layout","INV_Scroll_03",
+            step(-206,"2","Your Edit Mode layout","To bring it back: Esc > Edit Mode > Import.","Export layout","INV_Scroll_03",
                 function() frame:Hide(); self:Show() end,"launchLayoutShown"),
         }
         function frame:Refresh()
@@ -203,7 +203,7 @@ function Layout:Remind(force)
         end
         local close=FT:QuietButton(frame,"Later",96,30); close:SetPoint("BOTTOMRIGHT",-24,18)
         close:SetScript("OnClick",function() frame:Hide() end)
-        FT:Tooltip(close,"Later","Shows again tomorrow until the beta ends.")
+        FT:Tooltip(close,"Later","Close. /ft launch opens it again.")
         local never=FT:QuietButton(frame,"Don't remind me",150,30); never:SetPoint("RIGHT",close,"LEFT",-8,0)
         never:SetScript("OnClick",function() FT.db.editModeReminderOff=true; frame:Hide(); FT:Toast("Reminder turned off. /ft launch shows it again.",4) end)
     end

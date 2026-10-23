@@ -47,11 +47,11 @@ function F:EffectiveSize(id)
 end
 function F:UpdateScene(path)
     if not self.scene then
-        self.scene=CreateFrame("Frame",nil,self.frame); self.scene:SetSize(494,100); self.scene:SetPoint("TOPLEFT",240,-282)
+        self.scene=CreateFrame("Frame",nil,self.frame); self.scene:SetSize(392,100); self.scene:SetPoint("TOPLEFT",204,-282)
         FT:Panel(self.scene)
         self.scene.icon=self.scene:CreateTexture(nil,"ARTWORK"); self.scene.icon:SetSize(64,64); self.scene.icon:SetPoint("LEFT",16,0)
         self.scene.icon:SetTexture("Interface\\Icons\\Spell_Frost_FrostBolt02")
-        self.scene.text=FT:Label(self.scene,"",24); self.scene.text:SetPoint("LEFT",98,0); self.scene.text:SetWidth(380)
+        self.scene.text=FT:Label(self.scene,"",24); self.scene.text:SetPoint("LEFT",98,0); self.scene.text:SetWidth(280)
         FT:Tooltip(self.scene,"Simulated preview","Sample text. Real numbers may look a little different.")
         self.frame:HookScript("OnHide",function() self.scene:SetScript("OnUpdate",nil) end)
     end
@@ -81,13 +81,20 @@ function F:UpdateScene(path)
         for i,key in ipairs({"1","F","s-2","s-X"}) do
             local slot=self.scene.slots[i]
             if not slot then
-                slot=CreateFrame("Frame",nil,self.scene); slot:SetSize(64,64); slot:SetPoint("LEFT",16+(i-1)*86,0)
+                slot=CreateFrame("Frame",nil,self.scene); slot:SetSize(64,64); slot:SetPoint("LEFT",16+(i-1)*80,0)
                 FT:Panel(slot)
                 slot.icon=slot:CreateTexture(nil,"ARTWORK"); slot.icon:SetPoint("TOPLEFT",2,-2); slot.icon:SetPoint("BOTTOMRIGHT",-2,2)
                 slot.icon:SetTexture("Interface\\Icons\\"..({"Spell_Frost_FrostBolt02","Spell_Fire_FlameBolt","Spell_Holy_Heal","Ability_Warrior_Charge"})[i])
                 slot.text=FT:Label(slot,key,14); slot.text:SetPoint("TOPRIGHT",-3,-3)
                 self.scene.slots[i]=slot
             end
+            -- With Short key text on, the sample keys look the same way, and
+            -- the key text nudge moves them too.
+            local K=FT.modules.KeyText
+            local binding=({"1","F","SHIFT-2","SHIFT-X"})[i]
+            slot.text:SetText(K and K:On() and K.Short(binding) or key)
+            local nx,ny=0,0; if K then nx,ny=K:Offset() end
+            slot.text:ClearAllPoints(); slot.text:SetPoint("TOPRIGHT",-3+nx,-3+ny)
             slot.text:SetFont(path,self:EffectiveSize(id),self:Flags(s.outline,"OUTLINE"))
             self:ThinShadow(slot.text,s.outline)
             slot:Show()

@@ -20,7 +20,7 @@ local classMacros = {
         {"Fireball", 12, nil, "spell_fire_fireball02"}, {"Frostbolt", 11, nil, "spell_frost_frostbolt02"}, {"Arcane Missiles", 8, nil, "spell_nature_starfall"}, {"Polymorph", 4, nil, "spell_nature_polymorph"}, {"Counterspell", 1, nil, "spell_frost_iceshock"}, {"Fire Blast", 7, nil, "spell_fire_fireball"}, {"Scorch", 7, nil, "spell_fire_soulburn"}, {"Blink", 1, "self", "spell_arcane_blink"}, {"Frost Nova", 4, nil, "spell_frost_frostnova"}, {"Ice Block", 1, "self", "spell_frost_frost"}, {"Mana Shield", 6, "self", "spell_shadow_detectlesserinvisibility"},
     },
     Paladin = {
-        {"Holy Light", 11, "friendly", "spell_holy_holybolt"}, {"Flash of Light", 7, "friendly", "spell_holy_flashheal"}, {"Blessing of Might", 7, "friendly", "spell_holy_fistofjustice"}, {"Blessing of Wisdom", 6, "friendly", "spell_holy_sealofwisdom"}, {"Blessing of Protection", 3, "friendly", "spell_holy_sealofprotection"}, {"Blessing of Freedom", 1, "friendly", "spell_holy_sealofvalor"}, {"Blessing of Kings", 1, "friendly", "spell_magic_magearmor"}, {"Blessing of Salvation", 1, "friendly", "spell_holy_sealofsalvation"}, {"Blessing of Sacrifice", 1, "friendly", "spell_holy_sealofsacrifice"}, {"Purify", 1, "friendly", "spell_holy_purify"}, {"Cleanse", 1, "friendly", "spell_holy_renew"}, {"Lay on Hands", 3, "friendly", "spell_holy_layonhands"}, {"Redemption", 5, "friendly", "spell_holy_resurrection"}, {"Judgement", 6, "startattack", "spell_holy_righteousfury"}, {"Hammer of Justice", 4, "startattack", "spell_holy_sealofmight"}, {"Holy Strike", 1, "startattack", "inv_sword_2h_ashbringercorrupt"}, {"Seal of Righteousness", 8, "self", "ability_thunderbolt"}, {"Seal of Command", 5, "self", "ability_warrior_innerrage"}, {"Seal of Wisdom", 5, "self", "spell_holy_sealofwisdom"}, {"Seal of Light", 4, "self", "spell_holy_healingaura"}, {"Consecration", 5, nil, "spell_holy_innerfire"}, {"Divine Shield", 2, "self", "spell_holy_divineshield"}, {"Divine Intervention", 1, "friendly", "spell_holy_divineintervention"},
+        {"Holy Light", 11, "friendly", "spell_holy_holybolt"}, {"Flash of Light", 7, "friendly", "spell_holy_flashheal"}, {"Blessing of Might", 7, "friendly", "spell_holy_fistofjustice"}, {"Blessing of Wisdom", 6, "friendly", "spell_holy_sealofwisdom"}, {"Blessing of Protection", 3, "friendly", "spell_holy_sealofprotection"}, {"Blessing of Freedom", 1, "friendly", "spell_holy_sealofvalor"}, {"Blessing of Kings", 1, "friendly", "spell_magic_magearmor"}, {"Salvation", 1, "friendly", "spell_holy_sealofsalvation"}, {"Blessing of Sacrifice", 1, "friendly", "spell_holy_sealofsacrifice"}, {"Purify", 1, "friendly", "spell_holy_purify"}, {"Cleanse", 1, "friendly", "spell_holy_renew"}, {"Lay on Hands", 3, "friendly", "spell_holy_layonhands"}, {"Redemption", 5, "friendly", "spell_holy_resurrection"}, {"Judgement", 6, "startattack", "spell_holy_righteousfury"}, {"Hammer of Justice", 4, "startattack", "spell_holy_sealofmight"}, {"Holy Strike", 1, "startattack", "inv_sword_2h_ashbringercorrupt"}, {"Seal of Righteousness", 8, "self", "ability_thunderbolt"}, {"Seal of Command", 5, "self", "ability_warrior_innerrage"}, {"Seal of Wisdom", 5, "self", "spell_holy_sealofwisdom"}, {"Seal of Light", 4, "self", "spell_holy_healingaura"}, {"Consecration", 5, nil, "spell_holy_innerfire"}, {"Divine Shield", 2, "self", "spell_holy_divineshield"}, {"Divine Intervention", 1, "friendly", "spell_holy_divineintervention"},
     },
     Priest = {
         {"Lesser Heal", 3, "friendly", "spell_holy_lesserheal"}, {"Heal", 4, "friendly", "spell_holy_heal"}, {"Flash Heal", 7, "friendly", "spell_holy_flashheal"}, {"Renew", 10, "friendly", "spell_holy_renew"}, {"Power Word: Shield", 10, "friendly", "spell_holy_powerwordshield"}, {"Dispel Magic", 2, "friendly", "spell_holy_dispelmagic"}, {"Cure Disease", 1, "friendly", "spell_holy_nullifydisease"}, {"Levitate", 1, "friendly", "spell_holy_layonhands"}, {"Resurrection", 5, "friendly", "spell_holy_resurrection"}, {"Mind Blast", 9, nil, "spell_shadow_unholyfrenzy"}, {"Shadow Word: Pain", 8, nil, "spell_shadow_shadowwordpain"}, {"Mind Flay", 6, nil, "spell_shadow_siphonmana"}, {"Psychic Scream", 4, nil, "spell_shadow_psychicscream"}, {"Silence", 1, nil, "spell_shadow_impphaseshift"},
@@ -182,10 +182,10 @@ local classIcons = {
 -- Spells that "Add all class macros" never adds (utility, tracking and
 -- teleports). They still appear in the list and can be added one by one.
 local bulkExcluded = {
-    Druid = {"Nature's Grasp", "Teleport: Moonglade"},
+    Druid = {"Nature's Grasp", "Teleport: Moonglade", "Aquatic Form"},
     Hunter = {"Track Beasts", "Track Undead"},
     Mage = {},
-    Paladin = {"Sense Undead"},
+    Paladin = {"Revoke", "Sense Undead"},
     Priest = {"Confounding Flash", "Hex of Weakness", "Fade", "Touch of Weakness", "Elune's Grace", "Shadowguard"},
 }
 local excludedSet = {}
@@ -633,6 +633,7 @@ function MacroForge:SetHidden(entry, hidden, deleted)
     local count = 0; for _ in pairs(KT.db.hiddenMacros) do count = count + 1 end
     if count == 0 then self.showHidden = false end
     self:RenderList()
+    if KT.RefreshDock and self.frame then KT:RefreshDock(self.frame) end
     if hidden then KT:Toast(entry.name .. (deleted and " deleted." or " hidden.") .. " Open Hidden to bring it back.", 3)
     else KT:Toast(entry.name .. " is back in the list.", 2) end
 end
@@ -652,6 +653,7 @@ function MacroForge:DeleteEntry(entry)
         if self:HiddenCount() == 0 then self.showHidden = false end
         if self.selectedMacro == entry then self.selectedMacro = nil; self:Select(self:AllEntries()[1])
         else self:RenderList() end
+        if KT.RefreshDock and self.frame then KT:RefreshDock(self.frame) end
         KT:Toast(entry.name .. " deleted.", 2)
     end)
 end

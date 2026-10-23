@@ -34,7 +34,7 @@ local known={
     ["arcane power"]={"offensive"},["combustion"]={"offensive"},["presence of mind"]={"offensive"},["icy veins"]={"offensive"},
     ["power infusion"]={"offensive"},["inner focus"]={"offensive"},["elemental mastery"]={"offensive"},["rapid fire"]={"offensive"},
     ["bestial wrath"]={"offensive"},["amplify curse"]={"offensive"},["avenging wrath"]={"offensive"},["bloodlust"]={"offensive"},
-    ["heroism"]={"offensive"},["nature's swiftness"]={"offensive"},["tiger's fury"]={"offensive"},
+    ["heroism"]={"offensive"},["nature's swiftness"]={"offensive"},
     ["shield wall"]={"defensive",need="burst"},["last stand"]={"defensive",need="burst"},["retaliation"]={"defensive",need="burst"},
     ["evasion"]={"defensive",need="burst"},["vanish"]={"defensive",need="burst"},["ice block"]={"defensive",need="burst"},
     ["divine shield"]={"defensive",need="burst"},["divine protection"]={"defensive",need="burst"},["blessing of protection"]={"defensive",need="burst"},
@@ -280,6 +280,7 @@ function CD:Notice()
     if self.notice then return self.notice end
     local f=CreateFrame("Frame","ForeverToolsCooldownReminder",UIParent)
     f:SetSize(285,34); f:SetFrameStrata("LOW"); FT:Panel(f); FT:MeterSkin(f)
+    local skins=FT.modules.IconStyles; if skins and skins.SkinPanel then skins:SkinPanel(f,"notices",{0.075,0.058,0.04,1},{.61,.51,.31,1}) end
     f.icons={}
     for i=1,3 do local t=f:CreateTexture(nil,"ARTWORK"); t:SetSize(22,22); t:SetPoint("LEFT",8+(i-1)*26,0); t:SetTexCoord(.07,.93,.07,.93); FT:RoundIcon(t); f.icons[i]=t end
     f.text=FT:Label(f,"",13); f.text:SetJustifyH("LEFT")
@@ -386,7 +387,6 @@ events:SetScript("OnEvent",function(_,event,unit,a,b,c)
         -- Last look before the game may hide things for the fight.
         CD:Sample()
         local answer=toughNow(); if answer~=nil then CD.targetTough=answer end
-        events:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED","player")
         local s=CD:Settings()
         if s.defensive and #CD:Defensives()>0 then
             events:RegisterUnitEvent("UNIT_COMBAT","player"); events:RegisterUnitEvent("UNIT_AURA","player")
@@ -405,7 +405,8 @@ events:SetScript("OnEvent",function(_,event,unit,a,b,c)
     elseif event=="PLAYER_REGEN_ENABLED" then
         CD.fight=nil; CD.damage=nil
         FT:Coalesce("cdSample",function() if not InCombatLockdown() then CD:Sample() end end,1)
-        for _,e in ipairs({"UNIT_SPELLCAST_SUCCEEDED","UNIT_COMBAT","UNIT_AURA","LOSS_OF_CONTROL_ADDED"}) do events:UnregisterEvent(e) end
+        CD.foughtAt=GetTime()
+        for _,e in ipairs({"UNIT_COMBAT","UNIT_AURA","LOSS_OF_CONTROL_ADDED"}) do events:UnregisterEvent(e) end
         if CD.notice then CD.notice:Hide() end
     elseif event=="UNIT_COMBAT" then
         -- a=action, c=amount (readable in the open world; skipped if hidden).
@@ -419,15 +420,26 @@ events:SetScript("OnEvent",function(_,event,unit,a,b,c)
         FT:Coalesce("cdControl",function() CD:CheckDefensive("control") end,.1)
     elseif event=="UNIT_SPELLCAST_SUCCEEDED" then
         -- You used one of your offensive cooldowns: no reminder this fight.
+        -- Heard in and out of fights: a racial used just before a pull is on
+        -- cooldown too, so it is never suggested while it can't be used.
         local spellID=b
-        if not CD.fight or secret(spellID) or type(spellID)~="number" then return end
+        if secret(spellID) or type(spellID)~="number" then return end
         local function used(entry)
             -- Every cooldown you use is on cooldown from now, whatever its role.
             CD:Used(entry)
-            if CD:Chosen(entry) then CD.fight.used=true; CD.kills=0; if CD.notice then CD.notice:Hide() end end
+            if CD:Chosen(entry) then CD.kills=0; if CD.fight then CD.fight.used=true end; if CD.notice then CD.notice:Hide() end end
         end
         for _,entry in ipairs(CD:Candidates()) do if entry.id==spellID then used(entry); return end end
         for _,entry in ipairs(CD:Trinkets()) do if entry.spellID==spellID then used(entry); return end end
+    elseif event=="PLAYER_XP_UPDATE" then
+        -- One kill: experience gained in a fight or right after it (quest
+        -- rewards come out of a fight and don't count). Reads only your own
+        -- numbers, which the game never hides.
+        local xp=safe(UnitXP,"player")
+        if secret(xp) or type(xp)~="number" then return end
+        local before=CD.lastXP; CD.lastXP=xp
+        local fighting=InCombatLockdown() or (CD.foughtAt and GetTime()-CD.foughtAt<=3)
+        if before and fighting and (xp>before or xp<before) then CD.kills=(CD.kills or 0)+1 end
     elseif event=="CHAT_MSG_COMBAT_XP_GAIN" then
         -- One kill ("X dies, you gain N experience"); quest XP doesn't count.
         if secret(unit) or type(unit)~="string" then return end
@@ -443,7 +455,14 @@ function CD:Apply()
     if not FT.dbReady then return end
     if self:Settings().enabled then
         for _,event in ipairs({"PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","LEARNED_SPELL_IN_SKILL_LINE","PLAYER_LEVEL_UP","PLAYER_TALENT_UPDATE","PLAYER_TARGET_CHANGED","SPELL_UPDATE_COOLDOWN","PLAYER_ENTERING_WORLD","SPELLS_CHANGED"}) do pcall(events.RegisterEvent,events,event) end
-        if self:Settings().leveling then pcall(events.RegisterEvent,events,"CHAT_MSG_COMBAT_XP_GAIN") else events:UnregisterEvent("CHAT_MSG_COMBAT_XP_GAIN") end
+        events:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED","player")
+        -- Kills are counted from your experience (the kill line in chat can
+        -- be hidden or worded differently).
+        events:UnregisterEvent("CHAT_MSG_COMBAT_XP_GAIN")
+        if self:Settings().leveling then
+            pcall(events.RegisterEvent,events,"PLAYER_XP_UPDATE")
+            local xp=safe(UnitXP,"player"); if not secret(xp) and type(xp)=="number" then self.lastXP=xp end
+        else events:UnregisterEvent("PLAYER_XP_UPDATE") end
     else events:UnregisterAllEvents(); self.fight=nil; if self.notice then self.notice:Hide() end end
     self:Refresh()
 end
@@ -473,7 +492,7 @@ end
 function CD:Refresh()
     if not self.frame then return end
     local s=self:Settings()
-    if self.previewButton then self.previewButton.label:SetText("Preview: "..(self.previewOn and "On" or "Off")) end
+    FT:RefreshPreview(self.frame)
     self.toggle.label:SetText("Cooldown reminders: "..(s.enabled and "On" or "Off")); FT:SetSelected(self.toggle,s.enabled)
     self.toughToggle.label:SetText("Tough targets: "..(s.tough and "On" or "Off")); FT:SetSelected(self.toughToggle,s.tough)
     self.pullToggle.label:SetText("Big pulls: "..(s.pulls and "On" or "Off")); FT:SetSelected(self.pullToggle,s.pulls)
@@ -520,6 +539,8 @@ function CD:Open()
         self.toggle=FT:AccentButton(frame,"",472,34,"Spell_Nature_TimeStop"); self.toggle:SetPoint("TOPLEFT",24,-62)
         self.toggle:SetScript("OnClick",function() local s=self:Settings(); s.enabled=not s.enabled; self:Apply() end)
         FT:Tooltip(self.toggle,"Cooldown reminders","A short reminder to use a ready cooldown when it matters. Nothing is used for you.")
+        self.previewButton=FT:TopPreview(frame,self.toggle,{get=function() return self.previewOn end,set=function(on) self:SetPreview(on) end,
+            tip="It sits below your buff reminders and moves with them."})
         self.toughToggle=FT:QuietButton(frame,"",230,32,"Ability_Warrior_Sunder"); self.toughToggle:SetPoint("TOPLEFT",24,-106)
         self.toughToggle:SetScript("OnClick",function() local s=self:Settings(); s.tough=not s.tough; self:Refresh() end)
         FT:Tooltip(self.toughToggle,"Tough targets","When your target is elite, rare, a boss, or 3+ levels above you.")
@@ -535,11 +556,6 @@ function CD:Open()
         self.levelToggle=FT:QuietButton(frame,"",230,32,"fps"); self.levelToggle:SetPoint("TOPLEFT",266,-146)
         self.levelToggle:SetScript("OnClick",function() local s=self:Settings(); s.leveling=not s.leveling; self:Apply() end)
         FT:Tooltip(self.levelToggle,"Remind while leveling","While leveling: a quiet reminder after about 8 kills without using a ready cooldown. At most every 5 minutes.")
-        local preview=FT:QuietButton(frame,"Preview: Off",230,32,"buffs"); preview:SetPoint("TOPLEFT",266,-186)
-        preview:SetScript("OnClick",function() self:SetPreview(not self.previewOn) end)
-        FT:Tooltip(preview,"Preview","Show an example reminder until switched off.")
-        self.previewButton=preview
-        frame:HookScript("OnHide",function() if self.previewOn then self:SetPreview(false) end end)
         local head=FT:Label(frame,"Your cooldowns",15,true); head:SetPoint("TOPLEFT",24,-232)
         FT:SectionHeading(head,"Spell_Nature_TimeStop",280)
         FT:PageInfo(frame,"Cooldown reminders","A short reminder to use a ready cooldown when it matters. Nothing is used for you.\n\nThe list shows your on-use trinkets and spells with a cooldown of a minute or more. Click a row to change its role.")
