@@ -669,7 +669,8 @@ function Threat:Update()
     if not FT.dbReady then return end
     self:UpdateMeter(); self:UpdateText()
 end
-function Threat:Changed() FT:Coalesce("threat",function() self:Update() end,.2) end
+local function updateNow() Threat:Update() end
+function Threat:Changed() FT:Coalesce("threat",updateNow,.2) end
 local events=CreateFrame("Frame")
 local watched={"PLAYER_TARGET_CHANGED","UNIT_THREAT_LIST_UPDATE","UNIT_THREAT_SITUATION_UPDATE","GROUP_ROSTER_UPDATE","UNIT_PET","PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","EDIT_MODE_LAYOUTS_UPDATED","UI_SCALE_CHANGED"}
 function Threat:Apply()

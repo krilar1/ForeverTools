@@ -39,7 +39,7 @@ local function safe(value) return (not issecretvalue or not issecretvalue(value)
 -- always puts a new table in place, which is checked again on first use.
 -- (This runs many times a second, so the check must not repeat.)
 local checkedSettings=setmetatable({},{__mode="k"})
-local WHERE_DEFAULTS={selfWhere={world=true,city=true,dungeon=true,raid=true,pvp=true},groupWhere={world=false,city=false,dungeon=true,raid=true,pvp=true}}
+local WHERE_DEFAULTS={selfWhere={world=true,city=false,dungeon=true,raid=true,pvp=true},groupWhere={world=false,city=false,dungeon=true,raid=true,pvp=true}}
 function Reminder:Settings()
     local s=FT.db.buffReminder
     if checkedSettings[s] then return s end
@@ -63,6 +63,9 @@ function Reminder:Settings()
         if type(s[field])~="table" then s[field]={} end
         for key,on in pairs(defaults) do if type(s[field][key])~="boolean" then s[field][key]=on end end
     end
+    -- 1.2.0: no notices in cities and inns by default (rebuff before you
+    -- leave instead). Once for saved settings too; it can be turned on again.
+    if s.cityOff120~=true then s.selfWhere.city=false; s.cityOff120=true end
     if type(s.selected)~="table" then s.selected={} end
     if type(s.specSelected)~="table" then s.specSelected={} end
     -- Forever renamed Blessing of Salvation to Salvation (not a blessing any
@@ -120,6 +123,16 @@ local function tooltipText(data)
     end
     return table.concat(parts," "):lower()
 end
+-- Only consumables count (food and drink); a tent or a toy whose text talks
+-- about experience is not food. Unknown item info: let the text decide.
+local function isFood(id)
+    local fn=(C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    if not fn then return true end
+    local ok,_,_,_,_,_,classID=pcall(fn,id)
+    if not ok or not safe(classID) or type(classID)~="number" then return true end
+    return classID==0
+end
+Reminder.IsFood=isFood
 function Reminder:FoodKinds()
     if self.foodKinds then return self.foodKinds end
     local kinds={xp=false,stat=false}
@@ -137,9 +150,10 @@ function Reminder:FoodKinds()
                 if okID and safe(id) and type(id)=="number" and not seen[id] then
                     seen[id]=true
                     local okTip,data=pcall(C_TooltipInfo.GetBagItem,bag,slot)
-                    local text=okTip and tooltipText(data)
+                    local text=okTip and isFood(id) and tooltipText(data)
                     if text then
-                        if text:find("experience",1,true) and (text:find("well fed",1,true) or text:find("eat",1,true)) then kinds.xp=true
+                        -- "eat" as a word: a tent ("create ... rested experience") is not food.
+                        if text:find("experience",1,true) and (text:find("well fed",1,true) or text:find("%f[%a]eat")) then kinds.xp=true
                         elseif text:find("well fed",1,true) then kinds.stat=true end
                     end
                 end
@@ -654,6 +668,13 @@ function Reminder:NoticeVisible(key,entries)
     if fresh then notice={names=names,started=now};self.notices[key]=notice
     else notice.names=names end
     if #entries==0 then self.notices[key]=nil; return false end
+    -- Clicked away: those buffs stay quiet for 10 minutes.
+    local snoozed=self.snoozed
+    if snoozed then
+        local quiet=true
+        for name in pairs(names) do if not snoozed[name] or snoozed[name]<=now then quiet=false; break end end
+        if quiet then return false end
+    end
     local limit=self:Settings().hideAfter
     return not notice.dismissed and (limit==0 or now<notice.started+limit)
 end
@@ -665,16 +686,21 @@ function Reminder:HideAfterText()
 end
 function Reminder:HideHint()
     local v=self:Settings().hideAfter
-    return (v==0 and "Stays until the buff is back." or ("Hides after "..(v>=60 and (v/60).." minute"..(v>60 and "s" or "") or v.." seconds")..".")).." Left-click to dismiss, right-click for settings."
+    return (v==0 and "Stays until the buff is back." or ("Hides after "..(v>=60 and (v/60).." minute"..(v>60 and "s" or "") or v.." seconds")..".")).." Click to hide it for 10 minutes."
 end
+Reminder.SNOOZE=600
 function Reminder:ClickNotice(key,button)
-    if button=="RightButton" then
-        if not InCombatLockdown() then FT:OpenModule("BuffReminder") end
-    elseif not self.moving then
-        if key=="self" then self.previewSelf=nil elseif key=="group" then self.previewGroup=nil end
-        if self.notices and self.notices[key] then self.notices[key].dismissed=true end
-        self:Refresh(self.learnedCache)
+    if self.moving then return end
+    -- Left or right click: hide it, and keep those buffs quiet for 10 minutes.
+    if key=="self" then self.previewSelf=nil elseif key=="group" then self.previewGroup=nil end
+    local notice=self.notices and self.notices[key]
+    if notice then
+        notice.dismissed=true
+        self.snoozed=self.snoozed or {}
+        local now=GetTime and GetTime() or 0
+        for name in pairs(notice.names or {}) do self.snoozed[name]=now+self.SNOOZE end
     end
+    self:Refresh(self.learnedCache)
 end
 -- Reminders in a fight. Notices normally pause in combat; a buff with
 -- "Also remind in combat" on keeps its notice (Battle Shout needs rage, so a
@@ -1041,13 +1067,20 @@ function Reminder:Refresh(cachedSpells)
         -- Samples and previews are for the settings page, never for a fight.
         local showing=not fighting and (self.moving or self.previewSelf or sampleName~=nil)
         self.badge:SetShown(self:NoticeVisible("self",self.missing) or showing)
-        if #self.missing>0 then
+        -- While its look is open, the shared notice shows the buff being
+        -- edited (missing or not), never the next missing one.
+        local edited
+        if sampleName then for _,entry in ipairs(self.missing) do if styleKeys[entry]==self.styleKey then edited=entry; break end end end
+        if edited then
+            self.badge.icon:SetTexture(edited.spell.icon or 134400)
+            self.badge.text:SetText(edited.message or edited.name.." missing")
+        elseif sampleName then
+            self.badge.icon:SetTexture(sampleIcon or 134400);self.badge.text:SetText(sampleName.." missing — preview")
+        elseif #self.missing>0 then
             self.cycle=math.max(1,math.min(self.cycle,#self.missing))
             local entry=self.missing[self.cycle]
             self.badge.icon:SetTexture(entry.spell.icon or 134400)
             self.badge.text:SetText((entry.message or entry.name.." missing")..(#self.missing>1 and "  +"..(#self.missing-1) or ""))
-        elseif sampleName then
-            self.badge.icon:SetTexture(sampleIcon or 134400);self.badge.text:SetText(sampleName.." missing — preview")
         elseif self.moving or self.previewSelf then self.badge.icon:SetTexture("Interface\\Icons\\Spell_Holy_WordFortitude");self.badge.text:SetText(next(s.styles) and "Shared notice (buffs without their own look) — preview" or "Self buff missing — preview")
         end
         self.groupBadge:SetShown(self:NoticeVisible("group",self.groupMissing) or (not fighting and (self.previewGroup or self.moving)))
@@ -1163,6 +1196,9 @@ function Reminder:Style(key)
     if type(st.border)~="boolean" then st.border=st.mode~="bar" end
     if type(st.pulse)~="boolean" then st.pulse=false end
     for _,field in ipairs({"x","y","screenWidth","screenHeight"}) do if type(st[field])~="number" or st[field]~=st[field] then st[field]=nil end end
+    -- Your own words instead of "<buff> missing" (empty: the usual text), and a font.
+    if type(st.text)~="string" or st.text:match("^%s*$") then st.text=nil else st.text=st.text:sub(1,80) end
+    if type(st.font)~="string" or st.font=="" then st.font=nil end
     checkedStyles[st]=true
     return st
 end
@@ -1211,7 +1247,7 @@ function Reminder:CustomNotice(key)
     notice:RegisterForClicks("LeftButtonUp","RightButtonUp")
     notice:SetScript("OnClick",function(_,button)
         -- While you are styling or moving it, a click must not dismiss it.
-        if button~="RightButton" and (self.moving or self.styleKey==key) then return end
+        if self.moving or self.styleKey==key then return end
         self:ClickNotice("style:"..key,button)
     end)
     notice:SetMovable(true); notice:SetClampedToScreen(true); notice:RegisterForDrag("LeftButton")
@@ -1256,7 +1292,12 @@ function Reminder:LayoutCustom(notice,st)
         text:SetPoint("LEFT",icon,"RIGHT",8,0); text:SetWidth(242); text:Show()
     end
     notice.bar:SetShown(st.mode=="bar")
-    local font=text:GetFont()
+    local font=FT.bodyFont
+    local fonts=FT.modules.FontManager
+    if st.font and fonts and fonts.Resolve then
+        local path=fonts:Resolve({font=st.font})
+        if path and fonts:ValidFont(path) then font=path end
+    end
     local size=(st.mode=="both" or st.mode=="text") and 15 or 13
     local okFont=text:SetFont(font or FT.bodyFont,size,st.outline)
     if okFont==false or not text:GetFont() then text:SetFont("Fonts\\FRIZQT__.TTF",size,st.outline) end
@@ -1268,6 +1309,19 @@ function Reminder:LayoutCustom(notice,st)
     if st.pulse then if not notice.pulse:IsPlaying() then notice.pulse:Play() end
     elseif notice.pulse:IsPlaying() then notice.pulse:Stop() end
     notice.placedAt=nil
+end
+-- The notice is as wide as its words (a long message was cut short).
+function Reminder:FitCustom(notice,st)
+    if st.mode=="icon" then return end
+    local text=notice.text
+    text:SetWidth(900)
+    local w=(text.GetUnboundedStringWidth and text:GetUnboundedStringWidth()) or text:GetStringWidth()
+    if type(w)~="number" or (issecretvalue and issecretvalue(w)) then w=220 end
+    w=math.min(600,math.ceil(w)+2)
+    text:SetWidth(w)
+    if st.mode=="text" then notice:SetWidth(math.max(80,w+16))
+    elseif st.mode=="both" then notice:SetWidth(36+8+w+8)
+    else notice:SetWidth(math.max(160,8+20+8+w+12)) end
 end
 -- Where it sits: where you dragged it, or (flowX, flowY) in the column
 -- that starts at the shared notice's own spot.
@@ -1317,14 +1371,13 @@ function Reminder:ShowCustom(custom,fighting)
         if st then
             local notice=self:CustomNotice(key)
             local message,icon
-            if entry then message=entry.message or (entry.name.." missing"); icon=entry.spell and entry.spell.icon
-            else local name,sample=self:StyleInfo(key); message=(name or key).." missing — preview"; icon=sample end
+            if entry then message=st.text or entry.message or (entry.name.." missing"); icon=entry.spell and entry.spell.icon
+            else local name,sample=self:StyleInfo(key); message=st.text or ((name or key).." missing"); icon=sample end
             notice.message=message
             notice.icon:SetTexture(icon or 134400)
-            if notice.shownText~=message then notice.shownText=message; notice.text:SetText(message) end
-            if notice.styleRef~=st or notice.styleStamp~=self.styleStamp then
-                notice.styleRef=st; notice.styleStamp=self.styleStamp; self:LayoutCustom(notice,st)
-            end
+            local relayout=notice.styleRef~=st or notice.styleStamp~=self.styleStamp
+            if relayout then notice.styleRef=st; notice.styleStamp=self.styleStamp; self:LayoutCustom(notice,st) end
+            if relayout or notice.shownText~=message then notice.shownText=message; notice.text:SetText(message); self:FitCustom(notice,st) end
             local height=(st.mode=="icon" and 40 or st.mode=="both" and 36 or st.mode=="text" and 26 or 34)*st.size
             if st.x and st.y then self:PlaceCustom(notice,st)
             else self:PlaceCustom(notice,st,baseX,top-used-height/2); used=used+height+8 end
@@ -1378,7 +1431,7 @@ function Reminder:OpenStyle(key,title)
     if not self.stylePanel then
         local frame=self.frame
         local panel=CreateFrame("Frame",nil,frame); self.stylePanel=panel
-        panel:SetSize(300,474); panel:SetFrameStrata("FULLSCREEN"); panel:SetFrameLevel(frame:GetFrameLevel()+20); panel:SetClampedToScreen(true)
+        panel:SetSize(300,546); panel:SetFrameStrata("FULLSCREEN"); panel:SetFrameLevel(frame:GetFrameLevel()+20); panel:SetClampedToScreen(true)
         FT:MakeDraggable(panel,frame); FT:Panel(panel); panel:Hide()
         FT:AddClose(panel,nil,8)
         panel.title=FT:Label(panel,"",16,true); panel.title:SetPoint("TOPLEFT",16,-14); panel.title:SetWidth(236); panel.title:SetJustifyH("LEFT"); panel.title:SetTextColor(1,.82,0)
@@ -1453,19 +1506,45 @@ function Reminder:OpenStyle(key,title)
         panel.outline:SetPoint("TOPLEFT",16,-284); panel.outline.menuWidth=268
         if panel.outline.label.SetWordWrap then panel.outline.label:SetWordWrap(false) end
         FT:Tooltip(panel.outline,"Text outline","A dark edge so the text stays readable.")
-        panel.border=FT:QuietButton(panel,"",130,30); panel.border:SetPoint("TOPLEFT",16,-320)
+        -- Your own words, and a font (any font from Fonts, or the usual one).
+        panel.textBox=CreateFrame("EditBox",nil,panel,"InputBoxTemplate"); panel.textBox:SetSize(260,26); panel.textBox:SetPoint("TOPLEFT",22,-322)
+        panel.textBox:SetAutoFocus(false); panel.textBox:SetMaxLetters(80); panel.textBox:SetFont(FT.bodyFont,13,"")
+        panel.textHint=FT:Label(panel,"",12); panel.textHint:SetPoint("LEFT",panel.textBox,"LEFT",4,0); panel.textHint:SetTextColor(.5,.45,.38)
+        local function saveText(box)
+            local st=current(); if not st then return end
+            local v=(box:GetText() or ""):match("^%s*(.-)%s*$")
+            st.text=v~="" and v or nil; checkedStyles[st]=nil; self:StyleChanged()
+        end
+        panel.textBox:SetScript("OnEnterPressed",function(box) saveText(box); box:ClearFocus() end)
+        panel.textBox:SetScript("OnEditFocusLost",saveText)
+        panel.textBox:SetScript("OnEscapePressed",function(box) box:ClearFocus() end)
+        panel.textBox:SetScript("OnTextChanged",function(box) panel.textHint:SetShown(box:GetText()=="" and not box:HasFocus()) end)
+        panel.textBox:HookScript("OnEditFocusGained",function() panel.textHint:Hide() end)
+        FT:Tooltip(panel.textBox,"Text","Your own words for this notice, for example \"Poison MH!\". Empty: the usual text. Enter saves.")
+        panel.font=FT:Dropdown(panel,268,function()
+            local list={{value="",label="Font: Usual",icon=icon}}
+            local fonts=FT.modules.FontManager
+            for _,f in ipairs(fonts and fonts.Catalogue and fonts:Catalogue() or {}) do
+                if not fonts.ValidFont or fonts:ValidFont(f.value=="expressway" and fonts:Resolve({font="expressway"}) or f.path) then list[#list+1]={value=f.value,label="Font: "..f.label,icon=icon} end
+            end
+            return list
+        end,function(value) change(function(st) st.font=value~="" and value or nil; checkedStyles[st]=nil end) end,"fonts")
+        panel.font:SetPoint("TOPLEFT",16,-356); panel.font.menuWidth=268
+        if panel.font.label.SetWordWrap then panel.font.label:SetWordWrap(false) end
+        FT:Tooltip(panel.font,"Font","The font of this notice's text. Usual: the ForeverTools font.")
+        panel.border=FT:QuietButton(panel,"",130,30); panel.border:SetPoint("TOPLEFT",16,-392)
         panel.border:SetScript("OnClick",function() change(function(st) st.border=not st.border end) end)
         FT:Tooltip(panel.border,"Icon border","A thin rounded border around the icon.")
-        panel.borderColor=colorButton("Border",320,154,130,"borderColor","The color of the icon's border.")
-        panel.pulse=FT:QuietButton(panel,"",130,30); panel.pulse:SetPoint("TOPLEFT",16,-356)
+        panel.borderColor=colorButton("Border",392,154,130,"borderColor","The color of the icon's border.")
+        panel.pulse=FT:QuietButton(panel,"",130,30); panel.pulse:SetPoint("TOPLEFT",16,-428)
         panel.pulse:SetScript("OnClick",function() change(function(st) st.pulse=not st.pulse end) end)
         FT:Tooltip(panel.pulse,"Gentle pulse","Slowly fade the notice in and out.")
-        panel.reset=FT:QuietButton(panel,"Reset position",130,30); panel.reset:SetPoint("TOPLEFT",154,-356)
+        panel.reset=FT:QuietButton(panel,"Reset position",130,30); panel.reset:SetPoint("TOPLEFT",154,-428)
         panel.reset:SetScript("OnClick",function() change(function(st) st.x,st.y,st.screenWidth,st.screenHeight=nil,nil,nil,nil end) end)
         FT:Tooltip(panel.reset,"Reset position","Back to the shared notice's spot.")
         for _,b in ipairs({panel.border,panel.pulse,panel.reset}) do if b.label.SetWordWrap then b.label:SetWordWrap(false) end end
         -- Not part of the look: works with the shared notice too.
-        panel.combat=FT:QuietButton(panel,"",268,30,"Ability_Warrior_BattleShout"); panel.combat:SetPoint("TOPLEFT",16,-394)
+        panel.combat=FT:QuietButton(panel,"",268,30,"Ability_Warrior_BattleShout"); panel.combat:SetPoint("TOPLEFT",16,-466)
         if panel.combat.label.SetWordWrap then panel.combat.label:SetWordWrap(false) end
         panel.combat:SetScript("OnClick",function()
             local key=self.styleKey; if not key then return end
@@ -1475,8 +1554,8 @@ function Reminder:OpenStyle(key,title)
             self:RefreshStyle(); self:Refresh(self.learnedCache)
         end)
         FT:Tooltip(panel.combat,"Also remind in combat","Also show this buff's notice in a fight, for buffs you cast in combat like Battle Shout.")
-        panel.note=FT:Label(panel,"",11); panel.note:SetPoint("TOPLEFT",16,-434); panel.note:SetWidth(268); panel.note:SetJustifyH("LEFT"); panel.note:SetTextColor(.66,.59,.48)
-        panel.styled={panel.sizeText,panel.size,panel.alphaText,panel.alpha,panel.color,panel.outline,panel.border,panel.borderColor,panel.pulse,panel.reset}
+        panel.note=FT:Label(panel,"",11); panel.note:SetPoint("TOPLEFT",16,-506); panel.note:SetWidth(268); panel.note:SetJustifyH("LEFT"); panel.note:SetTextColor(.66,.59,.48)
+        panel.styled={panel.sizeText,panel.size,panel.alphaText,panel.alpha,panel.color,panel.outline,panel.textBox,panel.font,panel.border,panel.borderColor,panel.pulse,panel.reset}
         panel:HookScript("OnHide",function() if self.styleKey then self.styleKey=nil; self:Refresh(self.learnedCache) end end)
         frame:HookScript("OnHide",function() panel:Hide() end)
     end
@@ -1519,6 +1598,17 @@ function Reminder:RefreshStyle()
     local color,border=st and st.color or {1,1,1},st and st.borderColor or {0,0,0}
     panel.color.swatch:SetVertexColor(color[1],color[2],color[3]); panel.borderColor.swatch:SetVertexColor(border[1],border[2],border[3])
     panel.outline.value=st and st.outline or ""; panel.outline.label:SetText("Text outline: "..outlineNames[st and st.outline or ""])
+    if not panel.textBox:HasFocus() then panel.textBox:SetText(st and st.text or "") end
+    panel.textHint:SetText(st and "Your own text (empty: the usual)" or "Pick a look to set your own text")
+    panel.textHint:SetShown(panel.textBox:GetText()=="" and not panel.textBox:HasFocus())
+    panel.textBox:EnableMouse(st~=nil)
+    local fontLabel="Usual"
+    if st and st.font then
+        fontLabel=st.font
+        local fonts=FT.modules.FontManager
+        for _,f in ipairs(fonts and fonts.Catalogue and fonts:Catalogue() or {}) do if f.value==st.font then fontLabel=f.label end end
+    end
+    panel.font.value=st and st.font or ""; panel.font.label:SetText("Font: "..fontLabel)
     panel.border.label:SetText("Icon border: "..(st and st.border and "On" or "Off")); FT:SetSelected(panel.border,st~=nil and st.border)
     panel.pulse.label:SetText("Pulse: "..(st and st.pulse and "On" or "Off")); FT:SetSelected(panel.pulse,st~=nil and st.pulse)
     -- Text only has no icon, so no icon border.
@@ -1935,7 +2025,7 @@ function Reminder:Build()
             self.previewSelf=nil;self.previewGroup=nil;self.peekingSelf=nil
             self:SetMoving(false)
         end)
-        FT:PageInfo(frame,"Buff reminders","A small notice when one of your buffs is missing. Pick a section on the left.\n\nNotices hide in combat, on flights and while dead. Left-click a notice to dismiss it, right-click for settings.")
+        FT:PageInfo(frame,"Buff reminders","A small notice when one of your buffs is missing. Pick a section on the left.\n\nNotices hide in combat, on flights and while dead. Click a notice (left or right) to hide it for 10 minutes. Not in cities and inns unless you turn that on.")
     end
 end
 function Reminder:ShowPage(pane)
@@ -2024,7 +2114,8 @@ events:SetScript("OnEvent",function(_,event,unit,castGUID,spellID)
     end
     -- Aura changes come in bursts (many per second in a raid): check at most
     -- four times a second. Other events are handled on the next frame.
-    Reminder:QueueApply(event=="UNIT_AURA" and .25 or 0)
+    if event=="PLAYER_REGEN_ENABLED" then FT:AfterCombat("reminders",function() if FT.dbReady then Reminder:Apply() end end)
+    else Reminder:QueueApply(event=="UNIT_AURA" and .25 or 0) end
     if event=="PLAYER_ENTERING_WORLD" or event=="ZONE_CHANGED_NEW_AREA" then
         C_Timer.After(1.5,function() if FT.dbReady then Reminder:Apply() end end)
     end

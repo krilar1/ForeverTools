@@ -6,8 +6,10 @@ local _,FT=...
 --    pulses red once you are farther from it than a distance you choose.
 --
 -- The game doesn't say where a totem stands, so the spot is your own map
--- position at the moment you place it. After Totemic Projection moves your
--- totems the new spot is unknown, so the circles hide until you place again.
+-- position at the moment you place it. Totemic Call brings your totems to
+-- you, so their spot becomes where you stand when you cast it. (The older
+-- Totemic Projection moved them to a spot we can't see: the circles hide
+-- until you place again.)
 -- Where the game hides your position (dungeons, raids) nothing is drawn.
 local Totems={}
 local RANGE=30 -- WoW Forever buff totems reach party members within 30 yards
@@ -421,13 +423,29 @@ function Totems:PaintWarnings()
     end
     self.ringsUsed=any
 end
+-- Totemic Call: every standing totem is now where you stand. Where the game
+-- hides your position the spots are unknown (as after Totemic Projection),
+-- and the yards counted since placing start again from here.
+function Totems:CalledHere()
+    local continent,wx,wy=here()
+    for slot=1,4 do
+        local up,p=self.up[slot],self.placed[slot]
+        if continent then
+            if p then p.continent,p.x,p.y=continent,wx,wy
+            elseif up then self.placed[slot]={continent=continent,x=wx,y=wy,start=up.start,castAt=up.castAt,name=up.name,hidden=up.hidden} end
+        else self.placed[slot]=nil end
+        if up and up.moved then up.moved=0 end
+    end
+    if self.layer then self:Draw() end
+    self:Check(0)
+end
 local events=CreateFrame("Frame")
 events:SetScript("OnEvent",function(_,event,a,_,spellID)
     if event=="PLAYER_TOTEM_UPDATE" then Totems:Scan(a)
     elseif event=="PLAYER_REGEN_ENABLED" then
         -- The fight is over: details are readable again, so check every slot
         -- against the game (now, and once more in case they lag a moment).
-        Totems:Scan(); C_Timer.After(1,function() Totems:Scan() end)
+        FT:AfterCombat("totems",function() Totems:Scan() end); C_Timer.After(1,function() Totems:Scan() end)
     elseif event=="UNIT_SPELLCAST_SUCCEEDED" then
         if secret(spellID) or type(spellID)~="number" then
             -- The game won't say what you cast; remember only that you did.
@@ -436,8 +454,11 @@ events:SetScript("OnEvent",function(_,event,a,_,spellID)
         end
         local name=C_Spell and C_Spell.GetSpellName and safe(C_Spell.GetSpellName,spellID) or (GetSpellInfo and safe(GetSpellInfo,spellID))
         if type(name)~="string" or secret(name) then return end
+        local lname=name:lower()
+        -- Totemic Call brings your standing totems to where you are.
+        if lname=="totemic call" then Totems:CalledHere()
         -- Totemic Projection moves your totems to a spot we can't see.
-        if name:lower()=="totemic projection" then
+        elseif lname=="totemic projection" then
             Totems.placed={}; if Totems.layer then Totems:Draw() end
             for _,up in pairs(Totems.up) do up.moved=nil end
         elseif isTotemSpell(name) then seen.casts=seen.casts+1; Totems:NoteCast(name) end

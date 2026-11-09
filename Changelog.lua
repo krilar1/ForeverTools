@@ -1,9 +1,21 @@
 local _,FT=...
 -- Short player-facing notes for the "What's new" window. Newest first.
 -- Versions whose What's new doesn't open by itself after updating.
-FT.quietReleases={["1.0.0"]=true}
+FT.quietReleases={["1.0.0"]=true,["1.0.1"]=true}
 FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
+    {version="1.2.0",notes={
+        {icon="Spell_Nature_TimeStop",title="No lag after fights",text="Leaving combat no longer stutters."},
+        {icon="Spell_Holy_WordFortitude",title="Less in your way",text="Reminders: any click hides them for 10 min."},
+        {icon="Trade_BlackSmithing",title="Bug fixes",text="Class colors, thanks, loot rolls, trinkets."},
+    }},
+    {version="1.1.0",notes={
+        {icon="Trade_BlackSmithing",title="Forever patch fixes",text="Reminders, totems, DR, cooldowns, macros."},
+    }},
+    {version="1.0.1",notes={
+        {icon="Ability_Stealth",title="Smoother in crowds",text="Enemy lists and alerts do less work."},
+        {icon="Trade_BlackSmithing",title="Lighter and faster",text="Smaller saves, no hitch after a fight."},
+    }},
     {version="1.0.0",notes={
         {icon="Spell_Holy_BorrowedTime",title="Enemy cooldowns",text="See the big cooldowns enemies used. PvP."},
         {icon="Spell_Shadow_Twilight",title="Darker notices & meters",text="Notices, bars and the damage meter."},

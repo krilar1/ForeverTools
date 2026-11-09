@@ -635,8 +635,19 @@ function S:PaintEmptyBagSlot(button,record)
     if not icon or not icon.GetAlpha or not icon.SetAlpha then return end
     local s=self:Area(record.key)
     local hide=self:SkinOn(record,s) and s.hideSlotArt and record.empty==true
-    if hide and not record.iconHidden then record.iconAlpha=icon:GetAlpha();record.iconHidden=true;icon:SetAlpha(0)
-    elseif not hide and record.iconHidden then icon:SetAlpha(record.iconAlpha or 1);record.iconHidden=false end
+    -- Combined bags draw a grey bag in empty slots (EmptyBagIcon): it goes and comes back with the icon.
+    local bag=button.EmptyBagIcon
+    if bag and not (bag.GetAlpha and bag.SetAlpha) then bag=nil end
+    if hide and not record.iconHidden then
+        record.iconAlpha=icon:GetAlpha();record.iconHidden=true;icon:SetAlpha(0)
+        if bag then record.bagIconAlpha=bag:GetAlpha();bag:SetAlpha(0) end
+    elseif hide and bag and record.bagIconAlpha==nil then
+        -- The grey bag came after the icon was hidden.
+        record.bagIconAlpha=bag:GetAlpha();bag:SetAlpha(0)
+    elseif not hide and record.iconHidden then
+        icon:SetAlpha(record.iconAlpha or 1);record.iconHidden=false
+        if bag and record.bagIconAlpha~=nil then bag:SetAlpha(record.bagIconAlpha);record.bagIconAlpha=nil end
+    end
 end
 -- Bank pieces (records marked bank) follow Skins > Bank, with the Bag
 -- menu's look; everything else follows its own area's switch.

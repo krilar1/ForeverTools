@@ -36,11 +36,18 @@ local ROW_BACK={0,0,0,.6}
 local function safe(v) return v~=nil and not (issecretvalue and issecretvalue(v)) end
 local function now() return GetTime and GetTime() or 0 end
 local function busy() return InCombatLockdown and InCombatLockdown() end
+-- Dungeons, raids, battlegrounds and arenas.
+local function inInstance()
+    if not IsInInstance then return false end
+    local ok,inside,kind=pcall(IsInInstance)
+    if not ok or not safe(inside) then return false end
+    return inside==true and kind~="none"
+end
 function I:Settings()
     if type(FT.db.interrupts)~="table" then FT.db.interrupts={} end
     local s=FT.db.interrupts
     if type(s.enabled)~="boolean" then s.enabled=false end
-    if s.when~="group" and s.when~="combat" and s.when~="always" then s.when="group" end
+    if s.when~="group" and s.when~="combat" and s.when~="always" and s.when~="instance" then s.when="group" end
     if s.grow~="up" and s.grow~="down" then s.grow=s.dock=="bottom" and "up" or "down" end
     if type(s.self)~="boolean" then s.self=true end
     if type(s.solo)~="boolean" then s.solo=false end
@@ -245,6 +252,7 @@ function I:Wanted()
     if s.when=="always" then return true end
     if not self:InGroup() and not s.solo then return false end
     if s.when=="combat" and not busy() and not self.fighting then return false end
+    if s.when=="instance" and not inInstance() then return false end
     return true
 end
 local function short(left)
@@ -375,7 +383,7 @@ end
 function I:SetEvents(on)
     if self.listening==on then return end
     self.listening=on
-    local events={"UNIT_SPELLCAST_SUCCEEDED","CHAT_MSG_ADDON","GROUP_ROSTER_UPDATE","SPELLS_CHANGED","PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED"}
+    local events={"UNIT_SPELLCAST_SUCCEEDED","CHAT_MSG_ADDON","GROUP_ROSTER_UPDATE","SPELLS_CHANGED","PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","PLAYER_ENTERING_WORLD"}
     for _,event in ipairs(events) do
         if on then pcall(self.events.RegisterEvent,self.events,event) else pcall(self.events.UnregisterEvent,self.events,event) end
     end
@@ -385,7 +393,7 @@ function I:Refresh()
     if not self.frame then return end
     local s=self:Settings()
     self.toggle.label:SetText("Interrupt bar: "..(s.enabled and "On" or "Off")); FT:SetSelected(self.toggle,s.enabled)
-    self.when.label:SetText("Show: "..({group="In a group",combat="In fights",always="Always"})[s.when])
+    self.when.label:SetText("Show: "..({group="In a group",combat="In fights",instance="In instances",always="Always"})[s.when])
     self.grow.label:SetText("Grow: "..(s.grow=="up" and "Up" or "Down"))
     self.selfRow.label:SetText("Your own row: "..(s.self and "On" or "Off")); FT:SetSelected(self.selfRow,s.self)
     self.solo.label:SetText("Also when alone: "..(s.solo and "On" or "Off")); FT:SetSelected(self.solo,s.solo)
@@ -411,7 +419,7 @@ function I:Open()
         self.previewButton=FT:TopPreview(frame,self.toggle,{get=function() return self.preview or self.moving end,
             set=function(on) if not on and self.moving then self.moving=false end; self:SetPreview(on) end,tip="Made-up players of several classes."})
         self.when=FT:QuietButton(frame,"",240,32,"Ability_DualWield"); self.when:SetPoint("TOPLEFT",24,-136)
-        FT:MakeChoice(self.when,{{"group","In a group","Whenever you are in a group."},{"combat","In fights","Only during a fight."},{"always","Always","All the time."}},function() return self:Settings().when end,function(v) self:Settings().when=v; self:Paint(); self:Refresh() end)
+        FT:MakeChoice(self.when,{{"group","In a group","Whenever you are in a group."},{"combat","In fights","Only during a fight."},{"instance","In instances","Only in dungeons, raids, battlegrounds and arenas."},{"always","Always","All the time."}},function() return self:Settings().when end,function(v) self:Settings().when=v; self:Paint(); self:Refresh() end)
         FT:Tooltip(self.when,"When to show","When the bar shows.")
         self.selfRow=FT:QuietButton(frame,"",240,32,"Ability_Kick"); self.selfRow:SetPoint("TOPLEFT",24,-176)
         self.selfRow:SetScript("OnClick",function() local s=self:Settings(); s.self=not s.self; self:Paint(); self:Refresh() end)
@@ -462,6 +470,8 @@ I.events:SetScript("OnEvent",function(_,event,a,b,c,d)
         I:Changed()
     elseif event=="SPELLS_CHANGED" then
         FT:Coalesce("interruptsOwn",function() I:Own(); I.announced=nil; I:Announce() end,1)
+    elseif event=="PLAYER_ENTERING_WORLD" then
+        I:Changed() -- in or out of an instance
     elseif event=="PLAYER_REGEN_DISABLED" then
         I.fighting=true; I:Changed()
     elseif event=="PLAYER_REGEN_ENABLED" then

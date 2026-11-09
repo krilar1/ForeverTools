@@ -110,6 +110,8 @@ local function stops()
             find="Short key text",get=sys("shortKeys").get,set=sys("shortKeys").set},
         {key="fastLoot",chapter="System",page="SystemMerchant",title="Faster looting",text="Everything is looted at once (with auto loot on).",
             find="Faster looting",quick=true,get=sys("fastLoot").get,set=sys("fastLoot").set},
+        {key="softRes",chapter="System",page="SystemMerchant",title="Soft reserves",text="Paste your raid's soft reserves from the guild website (/ft sr): who reserved what shows on loot, in raid chat and on tooltips.",
+            find="Soft reserves",get=sys("softRes").get,set=sys("softRes").set},
         {key="autoSell",chapter="System",page="SystemMerchant",title="Sell grey items",text="Grey items are sold at merchants.",
             find="Auto-sell grey items",quick=true,get=sys("autoSell").get,set=sys("autoSell").set},
         {key="autoRepair",chapter="System",page="SystemMerchant",title="Auto-repair",text="Your gear is repaired at merchants.",

@@ -355,7 +355,8 @@ Glow.events:SetScript("OnEvent",function(_,event,unit)
     elseif event=="PLAYER_TARGET_CHANGED" then Glow:UpdateUnit("target")
     elseif event=="PLAYER_FOCUS_CHANGED" then Glow:UpdateUnit("focus")
     elseif event=="PLAYER_LOGIN" then Glow:Apply()
-    elseif event=="GROUP_ROSTER_UPDATE" or event=="PLAYER_REGEN_ENABLED" or event=="PLAYER_ENTERING_WORLD" then
+    elseif event=="PLAYER_REGEN_ENABLED" then FT:AfterCombat("dispelGlow",function() Glow:Apply() end)
+    elseif event=="GROUP_ROSTER_UPDATE" or event=="PLAYER_ENTERING_WORLD" then
         -- Raid-style frames can appear with the group: collect them (in combat too).
         C_Timer.After(.2,function() Glow:Apply() end)
     else Glow:UpdateAll() end

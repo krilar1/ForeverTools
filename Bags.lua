@@ -283,8 +283,11 @@ function Bags:ScanGuild()
     entry.seen=now()
     self:Changed("guild:"..key,true)
 end
+-- The playing character's counts, kept between tooltip refreshes (see LiveIndex).
+local liveCache={index=nil,at=0}
 -- Something changed: drop the cached counts and redraw what is open.
 function Bags:Changed(who,quiet)
+    liveCache.index=nil
     self.indexes=self.indexes or {}
     if who then self.indexes[who]=nil end
     if quiet then return end
@@ -330,7 +333,22 @@ end
 -- saved a moment after the last change), so a tooltip is right straight
 -- away: every slot counts, stacked or not. The bank is the saved copy unless
 -- it is open.
+-- Item tooltips refresh several times a second while you point at an item:
+-- the count is kept until the bags, gear, bank or mail change (or 5 seconds).
+local liveWatch=CreateFrame("Frame")
+for _,event in ipairs({"BAG_UPDATE","BAG_UPDATE_DELAYED","PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","PLAYERBANKSLOTS_CHANGED",
+    "BANKFRAME_OPENED","BANKFRAME_CLOSED","MAIL_INBOX_UPDATE","MAIL_SEND_SUCCESS","GET_ITEM_INFO_RECEIVED","PLAYER_ENTERING_WORLD"}) do
+    pcall(liveWatch.RegisterEvent,liveWatch,event)
+end
+liveWatch:SetScript("OnEvent",function() liveCache.index=nil end)
 function Bags:LiveIndex()
+    local t=GetTime and GetTime() or 0
+    if liveCache.index and t-liveCache.at<5 then return liveCache.index end
+    local index=self:BuildLiveIndex()
+    liveCache.index,liveCache.at=index,t
+    return index
+end
+function Bags:BuildLiveIndex()
     local index={}
     local function add(link,count,field)
         local id=itemID(link); if not id then return end
@@ -453,6 +471,9 @@ end
 function Bags:AuctionWon(msg)
     if not self:Recording() or type(msg)~="string" or not plain(msg) then return end
     local name=msg:match(self:AuctionWonPattern()); if not name then return end
+    -- Already counted from the purchase itself.
+    local bought=self.purchased and self.purchased[name]
+    if bought and now()-bought<30 then self.purchased[name]=nil; return end
     local c,guid=self:Record(true); if not c then return end
     local item
     for i,bid in ipairs(self.auctionBids or {}) do
@@ -465,6 +486,29 @@ function Bags:AuctionWon(msg)
     if not item then return end
     c.mailSent=type(c.mailSent)=="table" and c.mailSent or {}
     c.mailSent[#c.mailSent+1]={item[1],item[2] or 1,now()}
+    self:Changed(guid,true)
+end
+-- Buying out on the newer auction house: the game names the item and
+-- count (COMMODITY_PURCHASED, ITEM_PURCHASED) and mails it. It counts as
+-- in your mail until you open the mailbox. "You won an auction" for the
+-- same item a moment later is not counted again.
+function Bags:AuctionPurchased(id,quantity)
+    if not self:Recording() then return end
+    id=number(id); if not id then return end
+    local c,guid=self:Record(true); if not c then return end
+    local link,count="item:"..id,number(quantity)
+    for i,bid in ipairs(self.auctionBids or {}) do
+        if itemID(bid[1])==id then
+            link=bid[1]; count=count or bid[2]; table.remove(self.auctionBids,i)
+            break
+        end
+    end
+    count=count or 1
+    c.mailSent=type(c.mailSent)=="table" and c.mailSent or {}
+    c.mailSent[#c.mailSent+1]={link,count,now()}
+    local name=linkName(link)
+    if not name and GetItemInfo then local ok,n=pcall(GetItemInfo,id); if ok then name=text(n) end end
+    if name then self.purchased=self.purchased or {}; self.purchased[name]=now() end
     self:Changed(guid,true)
 end
 function Bags:HookAuctions()
@@ -1305,11 +1349,11 @@ function Bags:KeyringIcon() end
 local events=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_LOGIN","PLAYER_MONEY","BAG_UPDATE_DELAYED","PLAYER_EQUIPMENT_CHANGED","PLAYER_REGEN_ENABLED",
     "PLAYER_INTERACTION_MANAGER_FRAME_SHOW","PLAYER_INTERACTION_MANAGER_FRAME_HIDE","BANKFRAME_OPENED","BANKFRAME_CLOSED",
-    "CHAT_MSG_SYSTEM","AUCTION_HOUSE_SHOW","MAIL_SEND_SUCCESS","MAIL_FAILED","MAIL_INBOX_UPDATE","MAIL_SHOW","MAIL_SEND_INFO_UPDATE",
+    "CHAT_MSG_SYSTEM","AUCTION_HOUSE_SHOW","COMMODITY_PURCHASED","ITEM_PURCHASED","MAIL_SEND_SUCCESS","MAIL_FAILED","MAIL_INBOX_UPDATE","MAIL_SHOW","MAIL_SEND_INFO_UPDATE",
     "PLAYERBANKSLOTS_CHANGED","PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED","BANK_TABS_CHANGED","GUILDBANKBAGSLOTS_CHANGED","PLAYER_GUILD_UPDATE","PLAYER_LOGOUT"}) do
     pcall(events.RegisterEvent,events,event)
 end
-events:SetScript("OnEvent",function(_,event,kind)
+events:SetScript("OnEvent",function(_,event,kind,extra)
     if not FT.dbReady then return end
     if event=="PLAYER_LOGIN" then
         Bags:KeyringIcon(); C_Timer.After(2,function() Bags:KeyringIcon() end)
@@ -1324,6 +1368,7 @@ events:SetScript("OnEvent",function(_,event,kind)
     end
     if not Bags:Recording() then return end
     if event=="CHAT_MSG_SYSTEM" then Bags:AuctionWon(kind); return
+    elseif event=="COMMODITY_PURCHASED" or event=="ITEM_PURCHASED" then Bags:AuctionPurchased(kind,event=="COMMODITY_PURCHASED" and extra or nil); return
     elseif event=="AUCTION_HOUSE_SHOW" then Bags:HookAuctions(); return
     elseif event=="MAIL_SEND_SUCCESS" then Bags:MailSent(); return
     elseif event=="MAIL_FAILED" then Bags.outgoing=nil; return

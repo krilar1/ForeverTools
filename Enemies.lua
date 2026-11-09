@@ -30,14 +30,19 @@ local function spellIcon(id)
     if not tex and GetSpellTexture then local ok,t=pcall(GetSpellTexture,id); if ok then tex=t end end
     if tex and plain(tex) and (type(tex)=="number" or type(tex)=="string") then return tex end
 end
+-- Settings() runs on every aura change and sighting: its lists are made once.
+local OFF_KEYS={"stealth","fade","marks","nearby","instances"}
+local ON_KEYS={"sound","flash","markTooltip"}
+local NEAR_TIMES={[15]=15,[30]=30,[60]=60,[120]=120}
+local PLACE_PAIRS={{"x","y"},{"nearX","nearY"}}
 function E:Settings()
     if type(FT.db.enemies)~="table" then FT.db.enemies={} end
     local s=FT.db.enemies
-    for _,key in ipairs({"stealth","fade","marks","nearby","instances"}) do if type(s[key])~="boolean" then s[key]=false end end
-    for _,key in ipairs({"sound","flash","markTooltip"}) do if type(s[key])~="boolean" then s[key]=true end end
+    for _,key in ipairs(OFF_KEYS) do if type(s[key])~="boolean" then s[key]=false end end
+    for _,key in ipairs(ON_KEYS) do if type(s[key])~="boolean" then s[key]=true end end
     s.size=math.max(.7,math.min(1.5,tonumber(s.size) or 1))
     s.nearSize=math.max(.7,math.min(1.5,tonumber(s.nearSize) or 1))
-    s.nearTime=({[15]=15,[30]=30,[60]=60,[120]=120})[tonumber(s.nearTime) or 30] or 30
+    s.nearTime=NEAR_TIMES[tonumber(s.nearTime) or 30] or 30
     if s.nearDock~="top" and s.nearDock~="bottom" and s.nearDock~="left" and s.nearDock~="right" then s.nearDock="free" end
     if type(s.nearCollapsed)~="boolean" then s.nearCollapsed=false end
     if type(s.nearShowEmpty)~="boolean" then s.nearShowEmpty=false end
@@ -45,7 +50,10 @@ function E:Settings()
     if s.nearCorner~="TOPLEFT" and s.nearCorner~="BOTTOMLEFT" and s.nearCorner~="TOPRIGHT" then s.nearCorner=nil end
     s.nearRows=math.max(1,math.min(8,math.floor(tonumber(s.nearRows) or 8)))
     if type(s.nearFade)~="boolean" then s.nearFade=false end
-    for _,pair in ipairs({{"x","y"},{"nearX","nearY"}}) do
+    -- 1.2.0: "drops from view" is a guess that also fires when someone just
+    -- walks out of sight. Off once for everyone; only real stealth alerts.
+    if not s.fadeOff120 then s.fade=false; s.fadeOff120=true end
+    for _,pair in ipairs(PLACE_PAIRS) do
         if type(s[pair[1]])~="number" or type(s[pair[2]])~="number" then s[pair[1]],s[pair[2]]=nil,nil end
     end
     return s
@@ -136,8 +144,11 @@ function E:Saw(info,unit)
         -- they have been out of view and come back.
         if self:Settings().marks and not entry.markedHere then self:Alert(info,"marked") end
     end
-    self:UpdateStrip()
+    -- Many sightings come at once in a crowd: the list is redrawn once for them.
+    self:QueueStrip()
 end
+local function stripNow() E:UpdateStrip() end
+function E:QueueStrip() FT:Coalesce("enemyStrip",stripNow,.2) end
 -- A player you can see while they are in stealth (close enough to spot
 -- them): their Stealth / Prowl buff is read when they come into view.
 function E:InStealth(unit)
@@ -162,7 +173,6 @@ E.inStealth={}
 function E:AuraChanged(unit,info)
     if not plain(unit) or type(unit)~="string" then return end
     if not (unit=="target" or unit=="focus" or unit=="mouseover" or unit:find("^nameplate")) then return end
-    if not self:Settings().stealth or not self:Active() then return end
     local look=false
     if plain(info) and type(info)=="table" then
         local full=info.isFullUpdate
@@ -182,7 +192,8 @@ function E:AuraChanged(unit,info)
             if okG and plain(g) and self.inStealth[g] then look=true end
         end
     else look=true end
-    if not look then return end
+    -- Most aura changes are not a stealth buff: settled before reading settings.
+    if not look or not self:Settings().stealth or not self:Active() then return end
     local info2=self:Read(unit,true); if not info2 then return end
     local spell,icon=self:InStealth(unit)
     local was=self.inStealth[info2.guid]
@@ -211,6 +222,7 @@ end
 -- A rogue or druid that drops from view without dying may have stealthed
 -- (or simply walked out of sight); that guess is its own switch.
 function E:PlateRemoved(unit)
+    if not plain(unit) or type(unit)~="string" then return end
     local guid=self.plates[unit]; self.plates[unit]=nil
     if not guid or not self:Active() then return end
     local entry=self.seen[guid]; if not entry then return end
@@ -335,11 +347,14 @@ function E:Alert(info,kind,preview)
         if kind=="marked" and not s.marks then return end
         if kind~="marked" and not s.stealth then return end
         -- Once per player per minute (marked) or half minute (stealth).
-        local key=kind..":"..(info.guid or info.name or "?")
+        -- Seen going into stealth and seen while stealthed: one alert.
+        local key=(kind=="spotted" and "stealth" or kind)..":"..(info.guid or info.name or "?")
         local last=self.alerted[key]
         -- Stealth warnings may come again quickly (a stealthed player in a
         -- fight keeps popping in and out of view); marked players once a minute.
-        local gap=kind=="marked" and 60 or kind=="spotted" and 4 or 8
+        -- A stealthed player you can see stays one alert: their nameplate
+        -- comes and goes as they move, which was a new alert every time.
+        local gap=kind=="marked" and 60 or kind=="stealth" and 15 or 30
         if last and now()-last<gap then return end
         self.alerted[key]=now()
     end
@@ -486,7 +501,7 @@ local function rowMenu(row)
             root:CreateButton("Remove mark",function() E:Unmark(key) end)
         else
             root:CreateButton("Mark player...",function()
-                local k=E:Mark(e); FT:Toast("Marked "..e.name..".",3); E:AskReason(k)
+                E:AskMark(e)
             end)
         end
     end)
@@ -1009,14 +1024,30 @@ function E:AskReason(key)
         m.note=value~="" and value:sub(1,60) or nil; self:RefreshMarks()
     end,60)
 end
+-- Mark someone only once you have pressed OK (a reason is optional);
+-- Cancel or Escape leaves them unmarked. In a fight the game blocks the
+-- question, so they are marked right away (add the reason later).
+function E:AskMark(info,done)
+    if not info or not info.name then return end
+    local function mark(note)
+        local key=self:Mark(info,note)
+        if done then done(key) else FT:Toast("Marked "..info.name..".",3) end
+    end
+    if InCombatLockdown() then mark(nil); return end
+    FT:AskText("Mark "..info.name.."? Why (optional):","",function(value)
+        value=type(value)=="string" and value or ""
+        mark(value~="" and value:sub(1,60) or nil)
+    end,60)
+end
 function E:MarkUnit(unit)
     local info=self:Read(unit)
     if not info then FT:Toast("Target an enemy player to mark them.",3); return end
     local key=self:Key(info)
     if self:Marks()[key] then FT:Toast(info.name.." is already marked.",3); return key end
-    key=self:Mark(info); FT:Toast("Marked "..info.name..". You will be alerted when they are near.",4)
-    if not self:Settings().marks then FT:Toast("Marked "..info.name..". Turn on Marked player alerts to be warned.",5) end
-    self:AskReason(key)
+    self:AskMark(info,function()
+        if not self:Settings().marks then FT:Toast("Marked "..info.name..". Turn on Marked player alerts to be warned.",5)
+        else FT:Toast("Marked "..info.name..". You will be alerted when they are near.",4) end
+    end)
     return key
 end
 -- "Mark player" in the right-click menu of an enemy player's portrait.
@@ -1031,7 +1062,7 @@ function E:HookMenus()
             local key=self:Key(info); local marked=self:Marks()[key]~=nil
             root:CreateDivider()
             root:CreateButton(marked and "Remove mark (ForeverTools)" or "Mark player (ForeverTools)",function()
-                if marked then self:Unmark(key) else self:Mark(info); FT:Toast("Marked "..info.name..".",3); self:AskReason(key) end
+                if marked then self:Unmark(key) else self:AskMark(info) end
             end)
         end)
     end
@@ -1085,7 +1116,7 @@ FT.Enemies=E
 local function width(name) local hub=FT:HubOf(name); return hub and hub.width or 540 end
 local alertSwitches={
     {"stealth","Stealth alerts","Ability_Stealth","Alert when an enemy player near you goes into stealth."},
-    {"fade","Also when a rogue or druid drops from view","Ability_Vanish","Also alert when an enemy rogue, druid or night elf vanishes without dying. Alerts more often."},
+    {"fade","Also when a rogue or druid drops from view","Ability_Vanish","A guess: also alert when an enemy rogue or druid vanishes without dying. Also fires when they just walk out of sight."},
     {"marks","Marked player alerts","Ability_Hunter_SniperShot","Red alert when a player you marked shows up."},
     {"flash","Screen-edge flash","Spell_Holy_SearingLight","The screen edges glow briefly with every alert."},
     {"sound","Sound","INV_Misc_Bell_01","Play the raid warning sound with every alert."},

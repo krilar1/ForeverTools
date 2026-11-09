@@ -254,7 +254,9 @@ function Icons:Restore()
     if self.launcher then self.launcher:Hide() end
 end
 function Icons:Apply()
-    if not FT.dbReady or not FT.profilesReady or FT:LooksWait() then return end
+    if not FT.dbReady or not FT.profilesReady then return end
+    if FT:LooksWait() then self.pending=true; return end
+    self.pending=false
     self.active=self:Enabled()
     if not self.active then self:Restore();return end
     local fresh=not self.launcher
@@ -290,7 +292,10 @@ local events=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","ADDON_LOADED","PLAYER_REGEN_ENABLED","PLAYER_REGEN_DISABLED"}) do events:RegisterEvent(event) end
 events:SetScript("OnEvent",function(_,event)
     if event=="PLAYER_REGEN_DISABLED" then Icons.dragging=false;return end
-    if FT.dbReady then FT:Coalesce("minimapIcons",function() Icons:Apply() end) end
+    if not FT.dbReady then return end
+    -- The 3-second scan keeps the buttons in place; after a fight only a held-back Apply runs.
+    if event=="PLAYER_REGEN_ENABLED" then if Icons.pending then FT:AfterCombat("minimapIcons",function() Icons:Apply() end) end; return end
+    FT:Coalesce("minimapIcons",function() Icons:Apply() end)
 end)
 events:SetScript("OnUpdate",function(_,dt)
     if not Icons.active or FT:LooksWait() then return end

@@ -11,7 +11,7 @@ local MacroForge = {
 -- Add future utilities as their own module files; Macro Forge owns only macro data and UI.
 local classMacros = {
     Druid = {
-        {"Healing Touch", 11, "friendly", "spell_nature_healingtouch"}, {"Rejuvenation", 11, "friendly", "spell_nature_rejuvenation"}, {"Regrowth", 9, "friendly", "spell_nature_resistnature"}, {"Moonfire", 12, nil, "spell_nature_starfall"}, {"Entangling Roots", 6, nil, "spell_nature_stranglevines"}, {"Faerie Fire", 4, nil, "spell_nature_faeriefire"}, {"Bash", 3, "startattack", "ability_druid_bash"}, {"Maul", 9, "startattack", "ability_druid_maul"}, {"Swipe", 5, "startattack", "inv_misc_monsterclaw_03"}, {"Rake", 4, "startattack", "ability_druid_disembowel"}, {"Rip", 6, "startattack", "ability_ghoulfrenzy"}, {"Shred", 6, "startattack", "spell_shadow_vampiricaura"}, {"Ferocious Bite", 5, "startattack", "ability_druid_ferociousbite"}, {"Bear Form", 1, "self", "ability_racial_bearform"}, {"Cat Form", 1, "self", "ability_druid_catform"}, {"Travel Form", 1, "self", "ability_druid_travelform"}, {"Prowl", 3, "self", "ability_druid_disembowel"},
+        {"Healing Touch", 11, "friendly", "spell_nature_healingtouch"}, {"Rejuvenation", 11, "friendly", "spell_nature_rejuvenation"}, {"Regrowth", 9, "friendly", "spell_nature_resistnature"}, {"Moonfire", 12, nil, "spell_nature_starfall"}, {"Entangling Roots", 6, nil, "spell_nature_stranglevines"}, {"Faerie Fire", 4, nil, "spell_nature_faeriefire"}, {"Bash", 3, "startattack", "ability_druid_bash"}, {"Maul", 9, "startattack", "ability_druid_maul"}, {"Swipe", 5, "startattack", "inv_misc_monsterclaw_03"}, {"Rake", 4, "startattack", "ability_druid_disembowel"}, {"Rip", 6, "startattack", "ability_ghoulfrenzy"}, {"Shred", 6, "startattack", "spell_shadow_vampiricaura"}, {"Ferocious Bite", 6, "startattack", "ability_druid_ferociousbite"}, {"Bear Form", 1, "self", "ability_racial_bearform"}, {"Cat Form", 1, "self", "ability_druid_catform"}, {"Travel Form", 1, "self", "ability_druid_travelform"}, {"Prowl", 3, "self", "ability_druid_disembowel"},
     },
     Hunter = {
         {"Arcane Shot", 8, nil, "ability_impalingbolt"}, {"Aimed Shot", 6, nil, "inv_spear_07"}, {"Serpent Sting", 9, nil, "ability_hunter_quickshot"}, {"Concussive Shot", 1, nil, "spell_frost_stun"}, {"Multi-Shot", 5, nil, "ability_upgrademoonglaive"}, {"Freezing Trap", 3, nil, "spell_frost_chainsofice"}, {"Wing Clip", 3, "startattack", "ability_rogue_trip"}, {"Raptor Strike", 8, "startattack", "ability_meleedamage"}, {"Mongoose Bite", 4, "startattack", "ability_hunter_swiftstrike"}, {"Aspect of the Hawk", 1, "self", "spell_nature_ravenform"}, {"Aspect of the Cheetah", 1, "self", "ability_mount_jungletiger"}, {"Aspect of the Pack", 1, "self", "ability_mount_jungletiger"}, {"Pet Attack", 1, "self", "ability_hunter_beastcall"},
@@ -20,7 +20,7 @@ local classMacros = {
         {"Fireball", 12, nil, "spell_fire_fireball02"}, {"Frostbolt", 11, nil, "spell_frost_frostbolt02"}, {"Arcane Missiles", 8, nil, "spell_nature_starfall"}, {"Polymorph", 4, nil, "spell_nature_polymorph"}, {"Counterspell", 1, nil, "spell_frost_iceshock"}, {"Fire Blast", 7, nil, "spell_fire_fireball"}, {"Scorch", 7, nil, "spell_fire_soulburn"}, {"Blink", 1, "self", "spell_arcane_blink"}, {"Frost Nova", 4, nil, "spell_frost_frostnova"}, {"Ice Block", 1, "self", "spell_frost_frost"}, {"Mana Shield", 6, "self", "spell_shadow_detectlesserinvisibility"},
     },
     Paladin = {
-        {"Holy Light", 11, "friendly", "spell_holy_holybolt"}, {"Flash of Light", 7, "friendly", "spell_holy_flashheal"}, {"Blessing of Might", 7, "friendly", "spell_holy_fistofjustice"}, {"Blessing of Wisdom", 6, "friendly", "spell_holy_sealofwisdom"}, {"Blessing of Protection", 3, "friendly", "spell_holy_sealofprotection"}, {"Blessing of Freedom", 1, "friendly", "spell_holy_sealofvalor"}, {"Blessing of Kings", 1, "friendly", "spell_magic_magearmor"}, {"Salvation", 1, "friendly", "spell_holy_sealofsalvation"}, {"Blessing of Sacrifice", 1, "friendly", "spell_holy_sealofsacrifice"}, {"Purify", 1, "friendly", "spell_holy_purify"}, {"Cleanse", 1, "friendly", "spell_holy_renew"}, {"Lay on Hands", 3, "friendly", "spell_holy_layonhands"}, {"Redemption", 5, "friendly", "spell_holy_resurrection"}, {"Judgement", 6, "startattack", "spell_holy_righteousfury"}, {"Hammer of Justice", 4, "startattack", "spell_holy_sealofmight"}, {"Holy Strike", 1, "startattack", "inv_sword_2h_ashbringercorrupt"}, {"Seal of Righteousness", 8, "self", "ability_thunderbolt"}, {"Seal of Command", 5, "self", "ability_warrior_innerrage"}, {"Seal of Wisdom", 5, "self", "spell_holy_sealofwisdom"}, {"Seal of Light", 4, "self", "spell_holy_healingaura"}, {"Consecration", 5, nil, "spell_holy_innerfire"}, {"Divine Shield", 2, "self", "spell_holy_divineshield"}, {"Divine Intervention", 1, "friendly", "spell_holy_divineintervention"},
+        {"Holy Light", 11, "friendly", "spell_holy_holybolt"}, {"Flash of Light", 7, "friendly", "spell_holy_flashheal"}, {"Blessing of Might", 7, "friendly", "spell_holy_fistofjustice"}, {"Blessing of Wisdom", 6, "friendly", "spell_holy_sealofwisdom"}, {"Blessing of Protection", 3, "friendly", "spell_holy_sealofprotection"}, {"Blessing of Freedom", 1, "friendly", "spell_holy_sealofvalor"}, {"Blessing of Kings", 1, "friendly", "spell_magic_magearmor"}, {"Blessing of Sacrifice", 1, "friendly", "spell_holy_sealofsacrifice"}, {"Purify", 1, "friendly", "spell_holy_purify"}, {"Cleanse", 1, "friendly", "spell_holy_renew"}, {"Lay on Hands", 3, "friendly", "spell_holy_layonhands"}, {"Redemption", 5, "friendly", "spell_holy_resurrection"}, {"Judgement", 6, "startattack", "spell_holy_righteousfury"}, {"Hammer of Justice", 4, "startattack", "spell_holy_sealofmight"}, {"Holy Strike", 1, "startattack", "inv_sword_2h_ashbringercorrupt"}, {"Seal of Righteousness", 8, "self", "ability_thunderbolt"}, {"Seal of Command", 5, "self", "ability_warrior_innerrage"}, {"Seal of Wisdom", 5, "self", "spell_holy_sealofwisdom"}, {"Seal of Light", 4, "self", "spell_holy_healingaura"}, {"Consecration", 5, nil, "spell_holy_innerfire"}, {"Divine Shield", 2, "self", "spell_holy_divineshield"}, {"Divine Intervention", 1, "friendly", "spell_holy_divineintervention"},
     },
     Priest = {
         {"Lesser Heal", 3, "friendly", "spell_holy_lesserheal"}, {"Heal", 4, "friendly", "spell_holy_heal"}, {"Flash Heal", 7, "friendly", "spell_holy_flashheal"}, {"Renew", 10, "friendly", "spell_holy_renew"}, {"Power Word: Shield", 10, "friendly", "spell_holy_powerwordshield"}, {"Dispel Magic", 2, "friendly", "spell_holy_dispelmagic"}, {"Cure Disease", 1, "friendly", "spell_holy_nullifydisease"}, {"Levitate", 1, "friendly", "spell_holy_layonhands"}, {"Resurrection", 5, "friendly", "spell_holy_resurrection"}, {"Mind Blast", 9, nil, "spell_shadow_unholyfrenzy"}, {"Shadow Word: Pain", 8, nil, "spell_shadow_shadowwordpain"}, {"Mind Flay", 6, nil, "spell_shadow_siphonmana"}, {"Psychic Scream", 4, nil, "spell_shadow_psychicscream"}, {"Silence", 1, nil, "spell_shadow_impphaseshift"},
@@ -73,6 +73,23 @@ local racials = {
     ["Skyborne (Horde)"] = {{"Walk on Air", 1, "self", "spell_frost_windwalkon"}, {"Skysight", 1, "self", "spell_nature_farsight"}},
 }
 
+-- One button for every ranged weapon: Throw, Shoot Bow, Shoot Gun, Shoot
+-- Crossbow and Shoot (wands), picked by what you have equipped, so swapping
+-- a bow for a thrown weapon needs no new button. A clause for a weapon you
+-- don't use (or a spell you don't know) is simply skipped by the game.
+local RANGED = {{"Thrown", "Throw"}, {"Bows", "Shoot Bow"}, {"Guns", "Shoot Gun"}, {"Crossbows", "Shoot Crossbow"}, {"Wands", "Shoot"}}
+local function rangedBody()
+    local parts = {}
+    for _, r in ipairs(RANGED) do parts[#parts + 1] = "[equipped:" .. r[1] .. "] " .. r[2] end
+    return "#showtooltip\n/cast " .. table.concat(parts, "; ")
+end
+MacroForge.RangedBody = rangedBody
+-- Rogue poisons: cast the poison, then click the weapon (left-click: main
+-- hand, right-click: off hand) and confirm replacing the old one.
+local function isPoison(entry) return entry and entry.class == "Rogue" and type(entry.name) == "string" and entry.name:find(" Poison$") ~= nil end
+MacroForge.IsPoison = isPoison
+local POISON_NOTE = "Left-click: main hand. Right-click: off hand. (A key bind always counts as a left-click.) Replacing a poison already on the weapon asks first, unless Macro settings > Confirm poison replacing for you is on."
+
 local genericMacros = {
     {"1-shot combo", 1, "generic", "spell_nature_bloodlust", "#showtooltip"},
     {"Start attack", 1, "generic", "inv_sword_04", "#showtooltip\n/startattack"},
@@ -81,6 +98,8 @@ local genericMacros = {
     {"Role Poll", 1, "generic", "spell_holy_powerwordshield", "#showtooltip\n/run InitiateRolePoll()"},
     {"Party GZ", 1, "generic", "inv_misc_rabbit", "#showtooltip GZ\n/P GZ!!!\n/P (\\ /)\n/P (^_^)\n/p (*(\")(\")", "#showtooltip\n/P GZ!!!\n/P (\\ /)\n/P (^_^)\n/p (*(\")(\")"},
     {"Target nearest enemy", 1, "generic", "ability_hunter_assassinate2", "#showtooltip\n/targetenemy [noharm][dead]\n/startattack"},
+    {"Ranged attack", 1, "generic", "ability_throw", rangedBody, nil,
+        "One button for Throw, Shoot Bow, Shoot Gun, Shoot Crossbow and wands: uses the one for the ranged weapon you have equipped, so a weapon swap needs no new button."},
     -- Text and note from Bandage.lua: it follows the bandages in your bags.
     {"Bandage", 1, "generic", "inv_misc_bandage_12", function() return KT.modules.Bandage and KT.modules.Bandage:Body() or "#showtooltip\n/stopattack" end, nil,
         "Stops your attack and uses your best bandage. Kept up to date as your bags change. Edit it yourself and it is left alone."},
@@ -109,7 +128,9 @@ local function addEntries(destination, entries, className, raceName, category)
         local code = data[5]
         -- A text that follows the game (the Bandage macro) is built when listed.
         if type(code) == "function" then code = code() end
-        destination[#destination + 1] = { name = data[1], ranks = data[2], kind = data[3], icon = data[4], code = code, old = data[6], note = data[7], class = className, race = raceName, category = category, named = data.named }
+        local entry = { name = data[1], ranks = data[2], kind = data[3], icon = data[4], code = code, old = data[6], note = data[7], class = className, race = raceName, category = category, named = data.named }
+        if not entry.note and isPoison(entry) then entry.note = POISON_NOTE end
+        destination[#destination + 1] = entry
     end
 end
 
@@ -127,6 +148,7 @@ local learnedMelee = {
     ["Stormstrike"] = true, ["Crusader Strike"] = true, ["Riposte"] = true, ["Ghostly Strike"] = true,
     ["Hemorrhage"] = true, ["Shield Slam"] = true, ["Whirlwind"] = true, ["Mangle"] = true,
     ["Lacerate"] = true, ["Counterattack"] = true, ["Devastate"] = true,
+    ["Primal Bite"] = true, ["Shank"] = true,
 }
 -- Pressing these again while stealthed would drop stealth; the macro only
 -- enters stealth, it never leaves it by accident.
@@ -156,6 +178,11 @@ function MacroForge:BuildMacro(entry)
     if entry.code then return entry.code end
     local spell = entry.name
     if self.selectedRank ~= "max" and entry.ranks and entry.ranks > 1 then spell = spell .. "(Rank " .. self.selectedRank .. ")" end
+    if isPoison(entry) then
+        -- "Replace the poison on this weapon?" is clicked for you only with
+        -- Macro settings > Confirm poison replacing for you (off at first).
+        return "#showtooltip " .. spell .. "\n/cast " .. spell .. "\n/use [btn:2] 17; 16" .. (KT.db.macroPoisonConfirm == true and "\n/click StaticPopup1Button1" or "")
+    end
     local lines = {"#showtooltip " .. spell}
     if entry.kind == "startattack" then lines[#lines + 1] = "/startattack" end
     if entry.name=="Dispel Magic" then
@@ -185,7 +212,7 @@ local bulkExcluded = {
     Druid = {"Nature's Grasp", "Teleport: Moonglade", "Aquatic Form"},
     Hunter = {"Track Beasts", "Track Undead"},
     Mage = {},
-    Paladin = {"Revoke", "Sense Undead"},
+    Paladin = {},
     Priest = {"Confounding Flash", "Hex of Weakness", "Fade", "Touch of Weakness", "Elune's Grace", "Shadowguard"},
 }
 local excludedSet = {}
@@ -211,6 +238,7 @@ function MacroForge:AddLearnedEntries(entries,className,includeGeneral)
             if not known[spell.name] then
                 -- Unknown targeting stays a plain cast; never guess help/harm.
                 local entry={name=spell.name,ranks=rank,class=className,category="class",liveIcon=spell.icon,kind=learnedMelee[spell.name] and "startattack" or "self",fromSpellbook=true}
+                if isPoison(entry) then entry.note=POISON_NOTE end
                 entries[#entries+1]=entry;known[spell.name]=entry
             else known[spell.name].ranks=math.max(known[spell.name].ranks or 1,rank);known[spell.name].liveIcon=spell.icon end
         end
@@ -791,7 +819,17 @@ function MacroForge:EditQuickLine(line)
     for row in (old.."\n"):gmatch("(.-)\n") do
         if row==line then found=true else rows[#rows+1]=row end
     end
-    if not found then rows[#rows+1]=line end
+    while #rows>0 and rows[#rows]=="" do table.remove(rows) end
+    if not found then
+        -- Stop casting and item uses go before the spell (after the # lines
+        -- and equip lines), so they happen first; start attack goes last.
+        local at=#rows+1
+        if line=="/stopcasting" or line:match("^/use %d+$") then
+            at=1
+            while rows[at] and (rows[at]:sub(1,1)=="#" or rows[at]:match("^/equipslot") or (line~="/stopcasting" and (rows[at]=="/stopcasting" or rows[at]:match("^/use %d+$")))) do at=at+1 end
+        end
+        table.insert(rows,at,line)
+    end
     local body=table.concat(rows,"\n")
     if #body>255 then self:Status("Too long for a WoW macro (255 bytes).",true);return end
     self.preview:SetText(body)
@@ -819,7 +857,15 @@ function MacroForge:RefreshQuickButtons()
     if not self.quickButtons or not self.preview then return end
     local body="\n"..(self.preview:GetText() or "").."\n"
     for _,entry in ipairs(self.quickButtons) do
-        KT:SetSelected(entry.button,body:find("\n"..entry.line.."\n",1,true)~=nil)
+        local on=body:find("\n"..entry.line.."\n",1,true)~=nil
+        KT:SetSelected(entry.button,on)
+        if entry.name then entry.button.label:SetText(entry.name..(on and ": On" or "")) end
+    end
+    if self.otherGear then
+        local n=0
+        for row in body:gmatch("[^\n]+") do local slot=row:match("^/use (%d+)$"); if slot and slot~="13" and slot~="14" then n=n+1 end end
+        self.otherGear.label:SetText(n>0 and ("Other gear: "..n) or "Other gear...")
+        KT:SetSelected(self.otherGear,n>0)
     end
     self:RefreshEquip()
 end
@@ -849,9 +895,19 @@ local function fits(item,slot)
     if not instant or item==nil then return false end
     local ok,_,_,_,equipLoc=pcall(instant,item)
     if not ok or not plain(equipLoc) then return false end
+    -- A one-hand weapon only goes in the off hand if you can dual wield.
+    if slot==17 and equipLoc=="INVTYPE_WEAPON" and CanDualWield then
+        local okDual,dual=pcall(CanDualWield)
+        if okDual and plain(dual) and not dual then return false end
+    end
     for _,candidate in ipairs(EQUIP_FITS[equipLoc] or {}) do if candidate==slot then return true end end
     return false
 end
+MacroForge.Fits=fits
+-- Worn slots whose item can also go in another slot (the other hand, the
+-- other ring or trinket).
+local PAIRED={[16]={17,18},[17]={16},[18]={16},[11]={12},[12]={11},[13]={14},[14]={13}}
+local SLOT_NAMES={[16]="main hand",[17]="off hand",[18]="ranged slot",[11]="ring 1",[12]="ring 2",[13]="trinket 1",[14]="trinket 2"}
 -- The item this macro equips in a slot, read from its text (nil if none).
 function MacroForge:EquipLine(slot,text)
     text=text or (self.preview and self.preview:GetText()) or ""
@@ -913,6 +969,16 @@ function MacroForge:EquipChoices(slot)
             local icon; if GetInventoryItemTexture then local okIcon,texture=pcall(GetInventoryItemTexture,"player",slot); if okIcon then icon=texture end end
             add(linkName(link),icon," (equipped)")
         end
+        -- Worn in the other hand (or the other ring or trinket slot) and fits
+        -- here too: a dual wielder can swap hands.
+        for _,other in ipairs(PAIRED[slot] or {}) do
+            local okOther,otherLink=pcall(GetInventoryItemLink,"player",other)
+            local id=okOther and plain(otherLink) and type(otherLink)=="string" and tonumber(otherLink:match("item:(%d+)"))
+            if id and fits(id,slot) then
+                local icon; if GetInventoryItemTexture then local okIcon,texture=pcall(GetInventoryItemTexture,"player",other); if okIcon then icon=texture end end
+                add(linkName(otherLink),icon," (in your "..SLOT_NAMES[other]..")")
+            end
+        end
     end
     if C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemInfo then
         for bag=0,(NUM_BAG_SLOTS or 4) do
@@ -954,7 +1020,12 @@ function MacroForge:SetEquipLine(slot,name)
     self.preview:SetText(body)
     KT:StoreMacroBody(self.selectedMacro, body)
     self:RefreshQuickButtons(); self:UpdateDefaultButton()
-    if type(name)=="string" and name~="" then self:Status("This macro now equips "..name..".") end
+    if type(name)=="string" and name~="" then
+        local other=(slot==16 and 17) or (slot==17 and 16) or (slot==11 and 12) or (slot==12 and 11) or (slot==13 and 14) or (slot==14 and 13)
+        if other and self:EquipLine(other,body)==name then
+            self:Status("Both slots name "..name..": with two of the same, the game can move the same one twice.",true)
+        else self:Status("This macro now equips "..name..".") end
+    end
 end
 function MacroForge:RefreshEquip()
     if not self.equipSlot or not self.equipItem then return end

@@ -65,7 +65,10 @@ function Fonts:Catalogue()
     if shared then
         local extra = {}
         for name, path in pairs(shared:HashTable("font") or {}) do
-            extra[#extra+1] = {value="shared:" .. name, label=name .. " (SharedMedia)", path=path}
+            -- Our own fonts (shared above) are already in the list.
+            if not (type(path) == "string" and path:sub(1, #media):lower() == media:lower()) then
+                extra[#extra+1] = {value="shared:" .. name, label=name .. " (SharedMedia)", path=path}
+            end
         end
         table.sort(extra, function(a,b) return a.label < b.label end)
         for _, entry in ipairs(extra) do list[#list+1] = entry end
@@ -351,8 +354,16 @@ function Fonts:ApplyArea(id)
     self.counts[id] = count
 end
 function Fonts:Apply(only)
-    if FT:LooksWait() then self.deferred = true; self:RefreshShown(); return end
-    if not only then self.deferred = false end
+    if FT:LooksWait() then
+        -- Remember only what was asked for, so the end of a fight redoes
+        -- those areas (a target change: unit frame text) and not every font.
+        if only and self.deferredAreas ~= "all" then
+            self.deferredAreas = self.deferredAreas or {}
+            for id in pairs(only) do self.deferredAreas[id] = true end
+        else self.deferredAreas = "all" end
+        self.deferred = true; self:RefreshShown(); return
+    end
+    if not only then self.deferred = false; self.deferredAreas = nil end
     for _, id in ipairs(self.order) do
         if not only or only[id] then self:ApplyArea(id) end
     end
@@ -572,11 +583,49 @@ events:SetScript("OnEvent", function(_, event, loaded)
     if event == "ADDON_LOADED" then
         if loaded == addonName then FT:InitializeDB(); ready = true; Fonts:Apply() end
     elseif ready then
-        if event == "PLAYER_REGEN_ENABLED" and not Fonts.deferred then return end
+        if event == "PLAYER_REGEN_ENABLED" then
+            if not Fonts.deferred then return end
+            local areas = Fonts.deferredAreas; Fonts.deferredAreas = nil
+            if type(areas) == "table" then Fonts.deferred = false; FT:AfterCombat("fonts", function() Fonts:Queue(areas) end)
+            else FT:AfterCombat("fonts", function() Fonts:Queue() end) end
+            return
+        end
         Fonts:Queue(eventAreas[event])
     end
 end)
 
+-- Fonts for other addons: WeakAuras-style addons (ForeverAuras), ElvUI-like
+-- frames and many others pick fonts from LibSharedMedia. A font that only
+-- sits in ForeverTools' folder (Expressway, the bundled ones, your own
+-- files) is handed to it, so those addons list it too. Only when an addon
+-- has loaded LibSharedMedia; never replaces a name already there.
+function Fonts:ShareFonts()
+    local lsm = LibStub and LibStub("LibSharedMedia-3.0", true)
+    if not lsm or not lsm.Register then return 0 end
+    local added = 0
+    local function share(name, path)
+        if type(name) ~= "string" or type(path) ~= "string" or not self:ValidFont(path) then return end
+        if lsm.IsValid and lsm:IsValid("font", name) then return end
+        if pcall(lsm.Register, lsm, "font", name, path) then added = added + 1 end
+    end
+    local expressway = self:Resolve({font = "expressway"})
+    share("Expressway", expressway)
+    for _, entry in ipairs(stock) do
+        if entry.path:sub(1, #media) == media and entry.value ~= "expressway" then share(entry.label, entry.path) end
+    end
+    for _, file in ipairs(FT.db and FT.db.customFonts or {}) do
+        if type(file) == "string" then share((file:gsub("%.[^%.]+$", "")), media .. file) end
+    end
+    self.shared = (self.shared or 0) + added
+    return added
+end
+local shareEvents = CreateFrame("Frame")
+shareEvents:RegisterEvent("PLAYER_LOGIN"); shareEvents:RegisterEvent("ADDON_LOADED")
+shareEvents:SetScript("OnEvent", function(_, event)
+    if not FT.dbReady then return end
+    -- After login, addons loaded later (on demand) can bring the library.
+    FT:Coalesce("shareFonts", function() Fonts:ShareFonts() end, event == "PLAYER_LOGIN" and 0 or 1)
+end)
 -- RestedXP creates rows as guide steps change. A bounded scan discovers these
 -- without touching other addons or scanning the entire UI every frame.
 -- The quest tracker is redone when quests change or the tracker resizes (new

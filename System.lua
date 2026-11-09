@@ -85,6 +85,8 @@ function System:Settings()
     -- Forever shows coordinates under the minimap by default; match that.
     if s.coordinates==nil then s.coordinates=true end
     if type(s.quietNoControl)~="boolean" then s.quietNoControl=true end
+    -- New version notice: on at first (Lars, 2026-11-09).
+    if type(s.versionCheck)~="boolean" then s.versionCheck=true end
     return s
 end
 function System:Apply()
@@ -98,6 +100,7 @@ function System:Apply()
     FT:UpdateMinimap(); if FT.modules.MinimapIcons then FT.modules.MinimapIcons:Apply() end
     self:ApplyErrors()
     if FT.modules.KeyText then FT.modules.KeyText:Apply() end
+    if FT.modules.SoftRes then FT.modules.SoftRes:Apply() end
     self:Refresh()
 end
 -- Error messages (On-screen info > Error messages). With the switch on, the
@@ -147,6 +150,7 @@ local pages={
         {"quietLogin","Hide other addons' login messages","Spell_Holy_Silence","Hide other addons' \"loaded\" lines at login. Player and game chat is never hidden."},
         {"hiddenUIHint","Show key when interface is hidden","INV_Misc_Eye_01","Show which key brings the interface back after hiding it (Alt+Z)."},
         {"whatsNew","What's new after updates","INV_Misc_Note_05","Show what changed after an update."},
+        {"versionCheck","Tell me when a new version is out","INV_Misc_Note_06","ForeverTools copies in your guild and group tell each other their version (a hidden addon message with only the version number). When someone has a newer one, you get a line in chat."},
         {"setup","First-time tour","INV_Misc_Book_09","Take the tour again, or continue where you paused."},
         {"reset","Reset all settings","reset","Everything back to off and reload. Profiles, macros and flight times are kept."},
         {"scriptErrors","Show Lua errors","errors","Show the game's Lua error pop-ups."},
@@ -155,6 +159,7 @@ local pages={
     {key="SystemMinimap",sections={{"Buttons","minimap"},{"Grouping","minimapIcons"}},title="Minimap",hint="ForeverTools button, coordinates, button grouping.",items={
         {"minimap","ForeverTools minimap button","map","Show the ForeverTools button. /ft always works."},
         {"coordinates","Minimap coordinates","INV_Misc_Spyglass_02","Show coordinates below the minimap."},
+        {"minimapTarget","Show your target on the minimap","Ability_Hunter_SniperShot","Turns on the game's own \"Target\" minimap tracking: what you target shows on the minimap. The game saves it."},
         {"minimapIcons","Group minimap buttons","INV_Misc_Bag_08","Put other addons' minimap buttons into one menu."},
         {"minimapIconsVertical","Grouped buttons","INV_Misc_Bag_08","Layout of the grouped buttons."},
     }},
@@ -166,11 +171,12 @@ local pages={
     }},
     {key="SystemQuests",sections={{"Quest tracker","objectives"},{"Loot rolls","lootMove"}},title="Quests and loot rolls",hint="Quest tracker at login, loot-roll position.",items={
         {"objectives","Quest tracker at login","INV_Misc_Note_01","How the quest tracker starts at login."},
-        {"lootMove","Move loot rolls","move","Drag a sample loot roll. Click again to lock."},
+        {"lootMove","Move loot rolls","move","Drag a sample loot roll. Stays movable with this window closed; click again or right-click the sample to lock."},
         {"lootDefault","Revert to default position","reset","Let the game place loot rolls again."},
     }},
-    {key="SystemMerchant",sections={{"Looting","fastLoot"},{"Selling","autoSell"},{"Repairing","autoRepair"}},title="Loot and merchant",hint="Faster looting, selling and repairing.",items={
+    {key="SystemMerchant",sections={{"Looting","fastLoot"},{"Raid loot","softRes"},{"Selling","autoSell"},{"Repairing","autoRepair"}},title="Loot and merchant",hint="Faster looting, raid soft reserves, selling and repairing.",items={
         {"fastLoot","Faster looting","INV_Misc_Bag_10","Take everything at once (with auto loot on)."},
+        {"softRes","Soft reserves (custom)","INV_Misc_Note_06","A custom function for our guild website's lists, not for softres.it or other soft reserve sites. Who reserved which raid items: paste the list from the guild website, then see it on loot, in raid chat and on tooltips. Also /ft sr."},
         {"autoSell","Auto-sell grey items","INV_Misc_Coin_05","Sell grey items at merchants, 12 per visit so all can be bought back."},
         {"sellWhite","Also sell white gear","INV_Misc_Coin_03","Also sell white weapons and armor you don't need. Can be bought back."},
         {"autoRepair","Auto-repair","Trade_BlackSmithing","Repair your gear at merchants."},
@@ -189,7 +195,7 @@ local pages={
     }},
 }
 System.pages=pages
-local toggles={hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,shortKeys=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietLogin=true,quietNoControl=true}
+local toggles={versionCheck=true,minimapTarget=true,hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,shortKeys=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietLogin=true,quietNoControl=true}
 -- Switches that are the game's own settings: read and written directly,
 -- never stored by ForeverTools. "Unavailable" when the game has no such setting.
 local gameOptions={scriptErrors="scriptErrors",deathGlow="ffxDeath"}
@@ -200,25 +206,41 @@ local function gameOption(name)
     if ok and type(value)=="string" then return value end
 end
 System.gameOptions=gameOptions
+-- The game's minimap tracking for your target (Enum.MinimapTrackingFilter.Target):
+-- its index in the tracking list, or nil when this game version has none.
+local TARGET_FILTER=Enum and Enum.MinimapTrackingFilter and Enum.MinimapTrackingFilter.Target
+if type(TARGET_FILTER)~="number" or TARGET_FILTER==0 then TARGET_FILTER=16384 end
+function System:TargetTracking()
+    local M=C_Minimap
+    if not (M and M.GetNumTrackingTypes and M.GetTrackingFilter and M.GetTrackingInfo) then return nil end
+    local ok,n=pcall(M.GetNumTrackingTypes); if not ok or type(n)~="number" then return nil end
+    for i=1,n do
+        local okF,f=pcall(M.GetTrackingFilter,i)
+        if okF and type(f)=="table" and f.filterID==TARGET_FILTER then
+            local okI,info=pcall(M.GetTrackingInfo,i)
+            return i,okI and type(info)=="table" and info.active==true
+        end
+    end
+end
 function System:Values()
     local s=self:Settings()
     local getter=(C_CVar and C_CVar.GetCVar) or GetCVar
     local coords=s.coordinates
     if coords==nil then coords=not getter or getter("minimapShowPlayerCoords")=="1" end
     return {welcome=FT.db.welcome==true,whatsNew=s.hideWhatsNew~=true,minimap=FT.db.minimapEnabled~=false,coordinates=coords,
-        minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=gameOption("scriptErrors")=="1",deathGlow=gameOption("ffxDeath")~="0",
+        minimapTarget=select(2,self:TargetTracking())==true,minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=gameOption("scriptErrors")=="1",deathGlow=gameOption("ffxDeath")~="0",
         hiddenUIHint=s.hiddenUIHint==true,autoRole=s.autoRole==true,shortKeys=s.shortKeys==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true,
-        hideErrors=s.hideErrors==true,errorsInCombat=s.errorsInCombat==true,quietLogin=s.quietLogin==true,quietNoControl=s.quietNoControl~=false}
+        hideErrors=s.hideErrors==true,errorsInCombat=s.errorsInCombat==true,quietLogin=s.quietLogin==true,quietNoControl=s.quietNoControl~=false,versionCheck=s.versionCheck~=false}
 end
 function System:Refresh()
     if not self.buttons then return end
     local values=self:Values()
     for key,button in pairs(self.buttons) do
         if toggles[key] then
-            local missing=gameOptions[key] and gameOption(gameOptions[key])==nil
+            local missing=(gameOptions[key] and gameOption(gameOptions[key])==nil) or (key=="minimapTarget" and self:TargetTracking()==nil)
             button.label:SetText(button.title..": "..(missing and "Unavailable" or (values[key] and "On" or "Off")))
             FT:SetSelected(button,values[key])
-            if gameOptions[key] then button:SetEnabled(not missing); button:SetAlpha(missing and .45 or 1) end
+            if gameOptions[key] or key=="minimapTarget" then button:SetEnabled(not missing); button:SetAlpha(missing and .45 or 1) end
         end
         if key=="minimapIconsVertical" then
             local vertical=self:Settings().minimapIconsVertical==true
@@ -314,6 +336,7 @@ function System:Click(key)
     if key=="spellBinds" then FT:OpenModule("SpellBinds");return end
     if key=="smartKey" then FT:OpenModule("SmartKey");return end
     if key=="sellMarks" then FT:OpenModule("SellMarks");return end
+    if key=="softRes" then FT:OpenModule("SoftRes");return end
     if key=="wheelCasting" then FT:OpenModule("CustomKeybinds");return end
     if key=="leveling" then FT:OpenModule("Leveling");return end
     if key=="movers" then FT:OpenModule("Movers");return end
@@ -348,6 +371,11 @@ function System:Click(key)
     end
     if key=="lootDefault" then FT.modules.LootRoll:UseDefault(); self:Refresh(); return end
     if key=="keyX" or key=="keyY" then self:Settings()[key]=nil; self:Apply(); return end
+    if key=="minimapTarget" then
+        local index,on=self:TargetTracking()
+        if index and C_Minimap.SetTracking then pcall(C_Minimap.SetTracking,index,not on) end
+        self:Refresh(); return
+    end
     if gameOptions[key] then
         local name=gameOptions[key]
         local set=(C_CVar and C_CVar.SetCVar) or SetCVar
@@ -377,7 +405,6 @@ local function buildPage(page)
             self.frame=FT:Window("ForeverTools"..page.key,page.title,width,height)
             local hint=FT:Label(self.frame,page.hint or "",12); hint:SetPoint("TOPLEFT",24,-66); hint:SetWidth(width-48); hint:SetTextColor(.66,.59,.48)
             if hint.SetWordWrap then hint:SetWordWrap(true) end
-            if page.key=="SystemQuests" then self.frame:HookScript("OnHide",function() FT.modules.LootRoll:FinishMove() end) end
             for i,entry in ipairs(page.items) do
                 local key=entry[1]
                 local b=FT:QuietButton(self.frame,entry[2],width-48,32,entry[3]); b.title=entry[2]
@@ -686,8 +713,16 @@ function System:TargetedByNames(unit)
         if result~=true then return end
         seen[name]=true; seen[source]=true
         if you then table.insert(names,1,"|cffff5a5aYou|r"); return end
-        local okC,_,token=pcall(UnitClass,source); if not okC then token=nil end
-        local c=usable(token) and (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS or {})[token]
+        -- Only players get a class color: NPCs report a class too (most are
+        -- "warriors"), which painted mobs brown. The GUID tells players apart
+        -- when UnitIsPlayer is hidden.
+        local okP,isPlayer=pcall(UnitIsPlayer,source)
+        if not okP or not usable(isPlayer) then
+            local okG,guid=pcall(UnitGUID,source)
+            isPlayer=okG and usable(guid) and type(guid)=="string" and guid:find("^Player%-")~=nil
+        end
+        local okC,_,token=pcall(UnitClass,source); if not okC or isPlayer~=true then token=nil end
+        local c=token and usable(token) and (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS or {})[token]
         local hostile=UnitCanAttack and UnitCanAttack("player",source)
         local color=c and FT.modules.Tooltip.hex(c.r,c.g,c.b) or (usable(hostile) and hostile and "|cffff4040" or "|cffffffff")
         names[#names+1]=color..name.."|r"

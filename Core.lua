@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "1.0.0"
+FT.version = "1.2.0"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -95,7 +95,11 @@ databaseEvents:SetScript("OnEvent", function(_, event, name)
             C_Timer.After(2, function() if not InCombatLockdown() then FT.combatReload = nil end end)
         end
     elseif event == "PLAYER_REGEN_ENABLED" then FT.combatReload = nil
-    elseif event == "PLAYER_LOGOUT" and FT.dbReady then ForeverToolsDB = FT.db; KrilarToolsDB = FT.db end
+    elseif event == "PLAYER_LOGOUT" and FT.dbReady then
+        -- Saved once: the old name pointing at the same table made the game
+        -- write every setting twice (twice the file, twice the loading).
+        ForeverToolsDB = FT.db; KrilarToolsDB = nil
+    end
 end)
 
 function FT:RegisterModule(name, module) self.modules[name] = module end
@@ -107,6 +111,23 @@ function FT:Coalesce(key, fn, delay)
     self.coalesced[key] = true
     C_Timer.After(delay or 0, function() self.coalesced[key] = nil; fn() end)
 end
+-- Work held back during a fight runs after it one job per frame, so leaving
+-- combat never does it all in the same frame (that was a big CPU spike).
+-- Each key runs once, with the newest function given for it.
+local afterQueue,afterJobs={},{}
+local afterFrame=CreateFrame("Frame"); afterFrame:Hide()
+function FT:AfterCombat(key,fn)
+    if not afterJobs[key] then afterQueue[#afterQueue+1]=key end
+    afterJobs[key]=fn
+    afterFrame:Show()
+end
+afterFrame:SetScript("OnUpdate",function(frame)
+    if InCombatLockdown() then return end
+    local key=table.remove(afterQueue,1)
+    if not key then frame:Hide(); return end
+    local fn=afterJobs[key]; afterJobs[key]=nil
+    if fn then local ok,err=pcall(fn); if not ok and geterrorhandler then geterrorhandler()(err) end end
+end)
 function FT:CombatOpenRequest()
     if not InCombatLockdown() then return false end
     if not self.openAfterCombat then
@@ -227,8 +248,11 @@ function FT:PeekSliders(frame, depth)
 end
 -- Open ForeverTools where you left it this session: the page you last had
 -- open, or the main menu. A reload or login starts at the main menu again.
+FT.LAST_PAGE_KEEP = 180
 function FT:OpenLast()
     local last = self.lastPage
+    -- Closed a while ago (3 minutes): start from the main menu again.
+    if last and self.closedAt and GetTime() - self.closedAt > self.LAST_PAGE_KEEP then last = nil; self.lastPage = nil end
     if last and self.modules[last] and not InCombatLockdown() then
         local ok, err = pcall(self.OpenModule, self, last)
         if ok and self.modules[last].frame and self.modules[last].frame:IsShown() then return end
@@ -1025,6 +1049,7 @@ function FT:Window(name, title, width, height)
     -- The profile switcher lives only on the home window (Profiles button).
     if UISpecialFrames then table.insert(UISpecialFrames, name) end
     frame:HookScript("OnHide",function()
+        FT.closedAt = GetTime()
         -- Closing a settings page saves its changes into the profile.
         if frame.noSavePrompt then return end
         C_Timer.After(0,function() if FT.modules.Profiles then FT.modules.Profiles:AutoSave() end end)
@@ -1120,6 +1145,7 @@ end
 
 -- Addon controls should never remain over combat gameplay. Saved changes remain
 -- available; closing only hides the interface until the player opens it again.
+local COMBAT_WINDOW_KEYS={"frame","transfer","panel","saveDialog","advancedPanel","previewFrame","rolePrompt"}
 function FT:CloseCombatControls()
     -- The page that was open stays remembered (FT.lastPage), so opening
     -- ForeverTools again after the fight brings you back to it.
@@ -1134,7 +1160,7 @@ function FT:CloseCombatControls()
     self.hidingForCombat=nil
     if self.home then self.home:Hide() end
     for _,module in pairs(self.modules) do
-        for _,key in ipairs({"frame","transfer","panel","saveDialog","advancedPanel","previewFrame","rolePrompt"}) do
+        for _,key in ipairs(COMBAT_WINDOW_KEYS) do
             local frame=module[key];if frame and frame.Hide then frame:Hide() end
         end
     end
@@ -1207,6 +1233,13 @@ SlashCmdList.FOREVERTOOLS = function(message)
     elseif command == "enemies" or command == "stealth" then FT:OpenModule("EnemyAlerts")
     elseif command == "screen" or command == "info" then FT:OpenModule("SystemDisplay")
     elseif command == "threat" then FT:OpenModule("Threat")
+    elseif command == "recipes" then if FT.Recipes then FT.Recipes:Open() end
+    elseif command == "colordebug" then
+        local c = FT.modules.UnitColors
+        print("|cffffd100ForeverTools:|r " .. (c and (c:Report() or "Target class colors are off.") or "?"))
+    elseif command == "recipesdebug" then if FT.Recipes then FT:DebugBox("Recipes debug", function() FT.Recipes:Debug() end) end
+    elseif command == "sr" or command == "softres" then FT:OpenModule("SoftRes")
+    elseif command == "srdebug" then if FT.SoftRes then FT:DebugBox("Soft reserves debug", function() FT.SoftRes:Debug() end) end
     elseif command == "dr" then if FT.modules.Diminish then FT:DebugBox("Diminishing returns", function() FT.modules.Diminish:Diagnose() end) end
     elseif command == "countdebug" then if FT.Bags and FT.Bags.Debug then FT:DebugBox("Item counts debug", function() FT.Bags:Debug() end) end
     elseif command == "nearbydebug" then if FT.Enemies and FT.Enemies.NearbyDebug then FT:DebugBox("Nearby enemies debug", function() FT.Enemies:NearbyDebug() end) end
@@ -1372,7 +1405,10 @@ function FT:ShowChoices(owner)
     if bar then bar:SetShown(scrolls) end
     menu.scroll:ClearAllPoints(); menu.scroll:SetPoint("TOPLEFT", 8, -8); menu.scroll:SetPoint("BOTTOMRIGHT", scrolls and -26 or -8, 8)
     local inner = scrolls and 34 or 16
-    menu:SetFrameLevel(owner:GetFrameLevel() + 30)
+    -- Always on top: above the window and any panel or editor beside it
+    -- (the macro editor and "More lines" sit in high layers of their own).
+    menu:SetFrameStrata("FULLSCREEN_DIALOG"); menu:SetToplevel(true)
+    menu:SetFrameLevel(math.min(9000, math.max(owner:GetFrameLevel() + 30, 1000)))
     menu:ClearAllPoints(); menu:SetPoint("TOPLEFT", owner, "BOTTOMLEFT", 0, -3)
     -- Some lists open beside their window instead (the font list), so what
     -- they change stays in view while you pick.
@@ -1422,7 +1458,7 @@ function FT:ShowChoices(owner)
         row:SetEnabled(not item.disabled); row:SetAlpha(item.disabled and .45 or 1)
         row:Show()
     end
-    menu:Show()
+    menu:Show(); menu:Raise()
 end
 
 -- Point a subpage's Home button back to its hub, like Appearance.
@@ -1869,6 +1905,8 @@ function FT:CopyBox(title, text, hint, tall)
         local box = CreateFrame("EditBox", nil, frame.scroll)
         box:SetMultiLine(true); box:SetAutoFocus(false); box:SetFont(self.bodyFont, 13, "")
         box:SetWidth(488); box:SetTextInsets(4, 4, 4, 4)
+        -- Long texts (a recipe export, a lag report) are never cut off.
+        if box.SetMaxLetters then box:SetMaxLetters(0) end
         box:SetScript("OnEscapePressed", function() frame:Hide() end)
         -- Read-only: typing restores the original text.
         box:SetScript("OnTextChanged", function(owner, user) if user then owner:SetText(frame.original or ""); owner:HighlightText() end end)

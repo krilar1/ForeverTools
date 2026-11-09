@@ -21,6 +21,15 @@ function Loot:Place()
         self.native={}
         for i=1,container:GetNumPoints() do self.native[i]={container:GetPoint(i)} end
     end
+    -- The game stacks loot rolls in its bottom frame manager, which moves
+    -- them back (and keeps their old place) each time a roll shows. Take
+    -- them out of it, the way the game lets addons, while a place is chosen.
+    if not container.ignoreFramePositionManager and not InCombatLockdown() then
+        container.ignoreFramePositionManager=true
+        local manager=container.layoutParent
+        if manager and manager.RemoveManagedFrame then pcall(manager.RemoveManagedFrame,manager,container) end
+        if container:GetParent()~=UIParent then pcall(container.SetParent,container,UIParent) end
+    end
     -- Blizzard can lay out alerts again during combat. Re-anchor immediately
     -- when permitted by the client, without changing roll buttons or timers.
     pcall(function()
@@ -73,7 +82,11 @@ function Loot:Apply()
         timer:SetPoint("BOTTOMLEFT",8,7); timer:SetColorTexture(.65,.8,.15,1)
         self.sample=card
         box:EnableMouse(true); box:RegisterForDrag("LeftButton")
-        local hint=FT:Label(box,"Drag to move",12); FT:Caption(hint,box,"below",0)
+        local hint=FT:Label(box,"Drag to move · right-click to lock",12); FT:Caption(hint,box,"below",0)
+        -- Stays movable with the settings closed (close them to see the
+        -- spot); a right-click or "Move loot rolls" again locks it.
+        box:SetScript("OnMouseUp",function(_,button) if button=="RightButton" and self.moving then self:FinishMove() end end)
+        FT:Tooltip(box,"Loot rolls","Drag to place where loot rolls appear. Right-click to lock.")
         box:SetScript("OnDragStart",function()
             if not self.moving or InCombatLockdown() then return end
             local x,y=GetCursorPosition(); local cx,cy=a:GetCenter()
@@ -98,13 +111,19 @@ function Loot:UseDefault()
     if self.moving then self:FinishMove() end
     local s=self:Settings(); s.custom=false; s.x=nil; s.y=nil; self:Settings()
     local container=GroupLootContainer
-    if container and self.native and #self.native>0 then
-        self.placing=true
-        pcall(function()
-            container:ClearAllPoints()
-            for _,point in ipairs(self.native) do container:SetPoint(unpack(point)) end
-        end)
-        self.placing=false
+    if container and container.ignoreFramePositionManager then
+        -- Back to the game's own stacking.
+        container.ignoreFramePositionManager=nil
+        local manager=container.layoutParent
+        if container:IsShown() and manager and manager.AddManagedFrame then pcall(manager.AddManagedFrame,manager,container)
+        elseif self.native and #self.native>0 then
+            self.placing=true
+            pcall(function()
+                container:ClearAllPoints()
+                for _,point in ipairs(self.native) do container:SetPoint(unpack(point)) end
+            end)
+            self.placing=false
+        end
     end
     FT:Toast("Loot rolls use Blizzard's position.")
 end
@@ -128,5 +147,6 @@ events:SetScript("OnEvent",function(_,event)
         Loot.moving=false; Loot.dragging=nil
         if Loot.anchor then Loot.anchor:Hide() end
         if FT.modules.System then FT.modules.System:Refresh() end
+    elseif event=="PLAYER_REGEN_ENABLED" then FT:AfterCombat("lootRoll",function() Loot:Apply() end)
     else FT:Coalesce("lootRoll",function() Loot:Apply() end) end
 end)

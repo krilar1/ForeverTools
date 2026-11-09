@@ -19,6 +19,7 @@ local DR={states={},seen=0,hidden=0}
 local ICON=24
 local PVP_RULES=2
 local function plain(v) return not (issecretvalue and issecretvalue(v)) end
+local EMPTY={}
 local function now() return GetTime and GetTime() or 0 end
 -- Icons when the game gives none (Enum.SpellDiminishCategory order).
 local FALLBACK={[0]="Spell_Frost_FrostNova",[1]="Spell_Nature_Reincarnation",[2]="Ability_Rogue_KidneyShot",[3]="Spell_Nature_Thorns",
@@ -48,7 +49,16 @@ function DR:Settings()
     s.size=math.max(.7,math.min(1.6,tonumber(s.size) or 1))
     s.fontSize=math.max(6,math.min(16,math.floor(tonumber(s.fontSize) or 9)))
     if s.text~="on" and s.text~="below" and s.text~="none" then s.text="on" end
+    -- Which way the icons line up: away from the frame (auto), or a set way.
+    if s.grow~="right" and s.grow~="left" and s.grow~="up" and s.grow~="down" then s.grow="auto" end
     return s
+end
+local GROW_NAMES={auto="Away from the frame",right="Right",left="Left",up="Up",down="Down"}
+-- The way a unit's row grows: "auto" is right, except left of the frame.
+function DR:Grow(unit)
+    local s=self:Settings()
+    if s.grow~="auto" then return s.grow end
+    return s.places[unit].side=="left" and "left" or "right"
 end
 -- Does the game send DR data right now?
 function DR:Supported()
@@ -142,7 +152,12 @@ end
 function DR:Dropped(row)
     local frame=_G[UNITS[row.unit] or ""]
     local p=self:Settings().places[row.unit]
+    -- Saved: the row's fixed corner (where it grows from), from the frame's
+    -- bottom left.
+    local old=p.side; p.side="free"
+    local grow=self:Grow(row.unit); p.side=old
     local l,b=row:GetLeft(),row:GetBottom()
+    if grow=="left" then l=row:GetRight() elseif grow=="down" then b=row:GetTop() end
     if frame and l and b and frame:GetLeft() and frame:GetBottom() then
         local rs,fs=row:GetEffectiveScale(),frame:GetEffectiveScale()
         p.side="free"
@@ -187,11 +202,24 @@ function DR:Anchor(row)
     local frame=_G[UNITS[row.unit] or ""]
     row:SetScale(s.size); row:ClearAllPoints()
     if not frame then row:SetPoint("CENTER",UIParent,"CENTER",0,row.unit=="player" and -120 or -60); return end
-    if p.side=="free" then row:SetPoint("BOTTOMLEFT",frame,"BOTTOMLEFT",p.x,p.y)
-    elseif p.side=="above" then row:SetPoint("BOTTOMLEFT",frame,"TOPLEFT",8,2+(s.text=="below" and 10 or 0))
-    elseif p.side=="below" then row:SetPoint("TOPLEFT",frame,"BOTTOMLEFT",8,-2)
-    elseif p.side=="left" then row:SetPoint("RIGHT",frame,"LEFT",-4,0)
-    else row:SetPoint("LEFT",frame,"RIGHT",4,0) end
+    -- The row's fixed corner is where its first icon sits; it grows away
+    -- from there. Same spots on the frame as before.
+    local grow=self:Grow(row.unit)
+    local side=p.side
+    local v=(side=="above" or side=="free") and "BOTTOM" or side=="below" and "TOP" or ""
+    local h=side=="left" and "RIGHT" or "LEFT"
+    local point
+    if grow=="right" then point=v.."LEFT" elseif grow=="left" then point=v.."RIGHT"
+    elseif grow=="up" then point="BOTTOM"..h else point="TOP"..h end
+    -- Left or right of the frame, growing up or down: start level with
+    -- the middle of the frame.
+    local dy=0
+    if v=="" and grow=="up" then dy=-ICON/2 elseif v=="" and grow=="down" then dy=ICON/2 end
+    if side=="free" then row:SetPoint(point,frame,"BOTTOMLEFT",p.x,p.y)
+    elseif side=="above" then row:SetPoint(point,frame,"TOPLEFT",8,2+(s.text=="below" and 10 or 0))
+    elseif side=="below" then row:SetPoint(point,frame,"BOTTOMLEFT",8,-2)
+    elseif side=="left" then row:SetPoint(point,frame,"LEFT",-4,dy)
+    else row:SetPoint(point,frame,"RIGHT",4,dy) end
 end
 -- The swipe's numbers: size and place (on the icon, under it, or none).
 function DR:FontObject()
@@ -257,11 +285,18 @@ function DR:Paint(unit)
     if #list==0 and not row then return end
     row=row or self:Row(unit)
     local p=s.places[unit]
-    local place=p.side..(p.x or "")..(p.y or "")..s.size..s.text
+    local grow=self:Grow(unit)
+    local place=p.side..(p.x or "")..(p.y or "")..s.size..s.text..grow
     if row.place~=place then row.place=place; self:Anchor(row) end
+    local vertical=grow=="up" or grow=="down"
+    local step=ICON+3+((vertical and s.text=="below") and 10 or 0)
     for i,st in ipairs(list) do
         local b=self:Icon(row,i); b.state=st
-        b:ClearAllPoints(); b:SetPoint("LEFT",row,"LEFT",(i-1)*(ICON+3),0)
+        b:ClearAllPoints()
+        if grow=="left" then b:SetPoint("RIGHT",row,"RIGHT",-(i-1)*step,0)
+        elseif grow=="up" then b:SetPoint("BOTTOM",row,"BOTTOM",0,(i-1)*step)
+        elseif grow=="down" then b:SetPoint("TOP",row,"TOP",0,-(i-1)*step)
+        else b:SetPoint("LEFT",row,"LEFT",(i-1)*step,0) end
         b.tex:SetTexture(self:Texture(st.category)); self:StyleText(b)
         -- Red when immune, gold while the next one still lands (shorter).
         if st.own then
@@ -285,7 +320,8 @@ function DR:Paint(unit)
         b:Show()
     end
     for i=#list+1,#row.icons do local b=row.icons[i]; b.state=nil; b.cdFor=nil; b:Hide() end
-    row:SetWidth(math.max(ICON,#list*(ICON+3)-3))
+    local length=math.max(ICON,#list*step-(step-ICON))
+    if vertical then row:SetSize(ICON,length) else row:SetSize(length,ICON) end
     local frame=_G[UNITS[unit] or ""]
     row:SetShown(#list>0 and (self.previewOn or self.peeking or self.moving or not frame or frame:IsVisible()))
     self:Watch()
@@ -388,6 +424,8 @@ local CC={
     {5,"Fear",5782,true},{5,"Psychic Scream",8122,true},{5,"Howl of Terror",5484,true},{5,"Intimidating Shout",5246,true},{5,"Seduction",6358,true},
     {5,"Scare Beast",1513,true},{5,"Death Coil",6789,true},{5,"Scatter Shot",19503,true},
     {0,"Frost Nova",122,true},{0,"Entangling Roots",339,true},{0,"Frostbite",12494},{0,"Improved Hamstring",23694},
+    -- Proc roots share the root DR. Name only (no cast flag): Counterattack is also a Hunter attack.
+    {0,"Entrapment"},{0,"Improved Wing Clip"},{0,"Counterattack"},
     {6,"Silence",15487,true},{6,"Counterspell - Silenced",18469},{6,"Kick - Silenced",18425},{6,"Spell Lock",24259,true},{6,"Shield Bash - Silenced",18498},
     {7,"Disarm",676,true},{7,"Riposte",14251},
 }
@@ -409,6 +447,18 @@ end
 local function kindOf(list,spellID,name)
     if plain(name) and type(name)=="string" and list[name] then return list[name] end
     if plain(spellID) and type(spellID)=="number" then local n=spellName(spellID); if n and list[n] then return list[n] end end
+end
+-- Shared with Cooldown reminders (Will of the Forsaken, Escape Artist).
+DR.KindOf=kindOf
+-- Sleep among the incapacitates: Hibernate.
+function DR:IsSleep(spellID,name)
+    if not self.sleepNames then
+        self.sleepNames={Hibernate=true}
+        local n=spellName(2637); if n then self.sleepNames[n]=true end
+    end
+    if plain(name) and type(name)=="string" and self.sleepNames[name] then return true end
+    if plain(spellID) and type(spellID)=="number" then local n=spellName(spellID); return n~=nil and self.sleepNames[n]==true end
+    return false
 end
 -- Which units we read: target, focus, you, and enemy nameplates.
 local function watched(unit)
@@ -465,8 +515,8 @@ function DR:ScanAuras(unit)
     if key==unit and unit~="target" and unit~="focus" then return end -- no id: only target/focus by token
     local byName=self:Lists()
     self.auraSeen=self.auraSeen or {}
-    local seen=self.auraSeen[key] or {}; self.auraSeen[key]=seen
-    local now_={}
+    local seen=self.auraSeen[key] or EMPTY
+    local now_
     for i=1,40 do
         local ok,a=pcall(C_UnitAuras.GetAuraDataByIndex,unit,i,"HARMFUL")
         if not ok or not a then break end
@@ -478,12 +528,15 @@ function DR:ScanAuras(unit)
                 local ends=a.expirationTime
                 if not (plain(ends) and type(ends)=="number" and ends>0) then ends=nil end
                 local tag=(plain(id) and id) or cat
+                now_=now_ or {}
                 now_[tag]=cat
                 if not seen[tag] then self:Applied(key,cat,ends) end
             end
         end
     end
-    for tag,cat in pairs(seen) do if not now_[tag] then self:Ended(key,cat) end end
+    for tag,cat in pairs(seen) do if not (now_ and now_[tag]) then self:Ended(key,cat) end end
+    -- Only players with a tracked debuff are kept (a crowd would otherwise
+    -- leave one empty entry per player seen).
     self.auraSeen[key]=now_
     self:PaintKey(key,unit)
 end
@@ -538,6 +591,7 @@ function DR:Refresh()
     self.selfRow.label:SetText("Yourself: "..(s.self and "On" or "Off")); FT:SetSelected(self.selfRow,s.self)
     for unit,b in pairs(self.placeRows) do b.label:SetText(UNIT_NAMES[unit]..": "..SIDE_NAMES[s.places[unit].side]) end
     self.textRow.label:SetText("Timer: "..({on="On the icon",below="Below the icon",none="Hidden"})[s.text])
+    self.growRow.label:SetText("Grow: "..GROW_NAMES[s.grow])
     self.sizeLabel:SetText(string.format("Icon size: %d%%",math.floor(s.size*100+.5)))
     self.fontLabel:SetText(string.format("Timer size: %d",s.fontSize))
     self.settingSize=true; self.sizeSlider:SetValue(s.size); self.fontSlider:SetValue(s.fontSize); self.settingSize=false
@@ -589,6 +643,9 @@ function DR:Open()
         self.textRow=FT:QuietButton(frame,"",240,32,"fonts"); self.textRow:SetPoint("TOPLEFT",24,-366)
         FT:MakeChoice(self.textRow,{{"on","On the icon"},{"below","Below the icon"},{"none","Hidden"}},function() return self:Settings().text end,function(v) self:Settings().text=v; for _,row in pairs(self.rows or {}) do row.place=nil; for _,b in ipairs(row.icons) do b.look=nil end end; self:Peek(); self:PaintAll(); self:Refresh() end)
         FT:Tooltip(self.textRow,"Timer","Where the countdown to the reset shows.")
+        self.growRow=FT:QuietButton(frame,"",240,32,"move"); self.growRow:SetPoint("TOPLEFT",276,-366)
+        FT:MakeChoice(self.growRow,{{"auto","Away from the frame","Right, or left when the row sits left of its frame."},{"right","Right"},{"left","Left"},{"up","Up"},{"down","Down"}},function() return self:Settings().grow end,function(v) self:Settings().grow=v; for _,row in pairs(self.rows or {}) do row.place=nil end; self:Peek(); self:PaintAll(); self:Refresh() end)
+        FT:Tooltip(self.growRow,"Grow","Which way the icons line up from the first one.")
         self.status=FT:Label(frame,"",12); self.status:SetPoint("TOPLEFT",24,-408); self.status:SetWidth(492)
         if self.status.SetWordWrap then self.status:SetWordWrap(true) end
         FT:Sections(frame,{{"Show on",self.targetRow},{"Place",self.placeRows.target},{"Look",self.sizeLabel}})

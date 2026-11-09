@@ -167,6 +167,7 @@ local hubs = {
             return "Sell " .. onOff(s.autoSell):lower() .. " · repair " .. onOff(s.autoRepair):lower()
         end},
         {"SellMarks", "Always-sell marks", "INV_Misc_Coin_01", function() local m = mod("SellMarks"); return m and m.On and m:On() and ("On (" .. m:Count() .. ")") or "Off" end},
+        {"GameTweaks", "Extra game options", "INV_Misc_Spyglass_03", function() return "Sharpness, grass, weather" end},
     }},
 }
 -- What each section is, for its tooltip in the sidebar.
@@ -209,6 +210,7 @@ local tips = {
     SystemGeneral = "Messages, setup, reset and bug report.",
     SystemMerchant = "Faster looting, selling and repairing.",
     SellMarks = "Mark bag items to sell at merchants.",
+    GameTweaks = "Game settings the menu doesn't show: sharpness, grass, weather, scenery.",
     MacroForge = "Ready-made macros for your class.",
     MacroRace = "Macros for your race's own abilities.",
     MacroGeneric = "Macros for any class.",

@@ -58,7 +58,7 @@ function Profiles:ShowSwitcher(owner)
 end
 -- Only preferences are copied. Macro history and installed WoW macros belong to
 -- the character and are never rewritten by loading an appearance profile.
-local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish","enemyCooldowns"}
+local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","macroPoisonConfirm","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish","enemyCooldowns"}
 -- Every module that must redraw after settings change (load, login, reset).
 local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey","Totems","DruidMana","SellMarks","QueueTimer","Trinkets","AutoRelease","PersonalResource","Interrupts","Bags","Enemies","Diminish","EnemyCooldowns"}
 local function copy(value)
@@ -149,7 +149,7 @@ function Profiles:Save(name, overwrite, quiet)
 end
 -- Content the player made (custom macros, font files, macro destination) is
 -- carried into a new profile; every setting starts from its default.
-local content={customMacros=true,customFonts=true,macroScope=true,macroUnlearnedIcons=true,macroBulkMouseover=true}
+local content={customMacros=true,customFonts=true,macroScope=true,macroUnlearnedIcons=true,macroBulkMouseover=true,macroPoisonConfirm=true}
 function Profiles:Create(name)
     if InCombatLockdown() then FT:Toast("Create profiles outside combat."); return false end
     name=type(name)=="string" and name:match("^%s*(.-)%s*$") or ""
@@ -1342,7 +1342,7 @@ function Profiles:ValidateImport(data)
     return result,skipped
 end
 function Profiles:StrictImport(data)
-    local result={}; local scalar={welcome="boolean",minimapEnabled="boolean",minimapAngle="number",minimapCollectorAngle="number",macroScope="string",macroUnlearnedIcons="boolean",macroBulkMouseover="boolean"}
+    local result={}; local scalar={welcome="boolean",minimapEnabled="boolean",minimapAngle="number",minimapCollectorAngle="number",macroScope="string",macroUnlearnedIcons="boolean",macroBulkMouseover="boolean",macroPoisonConfirm="boolean"}
     for _,key in ipairs(keys) do
         local v=data[key]
         if v~=nil then
@@ -1466,6 +1466,7 @@ function Profiles:StrictImport(data)
     -- Per-buff notice looks: a table per buff name; each value is checked again when it is used.
     for name,style in pairs(result.buffReminder and result.buffReminder.styles or {}) do
         if type(name)~="string" or #name>60 or type(style)~="table" or type(style.mode)~="string" then return nil,"Invalid buff notice look." end
+        if (style.text~=nil and (type(style.text)~="string" or #style.text>80)) or (style.font~=nil and type(style.font)~="string") then return nil,"Invalid buff notice look." end
     end
     for _,field in ipairs({"chosenSpec","manualSpec"}) do
         for class,tree in pairs(result.buffReminder and result.buffReminder[field] or {}) do

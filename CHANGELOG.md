@@ -1,3 +1,66 @@
+# ForeverTools 1.2.0 (2026-11-09)
+
+## New
+- **Extra game options** (System → Extra game options): game settings Forever has but its settings menu doesn't show, the ones usually typed with `/console`: sharpening at full render scale and its strength, grass density and distance, weather, far terrain detail, scenery fade distance, the full-screen glow and the spell queue window. They are the game's own settings (saved by the game for this computer, not in your profile); each has a Game default button, and a setting this game version lacks is not listed.
+- **New version notice** (System → General, on): ForeverTools copies in your guild and group tell each other their version with a hidden addon message (only the version number). When someone has a newer one, you get one line in chat (and once more at the next login, until you update).
+- **Show your target on the minimap** (On-screen info → Minimap): turns the game's own "Target" minimap tracking on or off.
+- **Macros:**
+  - **Rogue poisons** use the game's way of applying them: cast the poison, left-click puts it on the main hand, right-click on the off hand. New in Macro settings, off at first: **Confirm poison replacing for you** adds `/click StaticPopup1Button1`, which clicks Yes when the game asks to replace a poison already on the weapon.
+  - **Ranged attack** (Generic): one button for Throw, Shoot Bow, Shoot Gun, Shoot Crossbow and wands, using the one for the weapon you have equipped.
+  - **More lines** is clearer: "Stop casting first" and "Start attacking" say when they are on, Trinket 1 and 2 have their own buttons and every other gear slot is in one list. Stop casting and item uses go before the spell, start attack after it.
+  - **Weapon swaps:** the list for a hand also shows the weapon in your other hand, so a dual wielder can swap hands; one-handers are only offered for the off hand if you can dual wield. A warning when both hands name the same item.
+- **Interrupt bar:** a new "In instances" choice under Show (dungeons, raids, battlegrounds and arenas).
+- **Diminishing returns:** Grow: away from the frame (as before), right, left, up or down.
+- **Fonts for other addons:** Expressway (when you put it in Media/Fonts), the bundled fonts and your own font files are handed to LibSharedMedia, so addons that pick fonts from it (ForeverAuras and others) list them too.
+
+## Changed
+- **No lag spike when a fight ends:** an action, stance or totem change during a fight no longer redoes every skin afterwards (only that part), and the work that waits for the end of a fight (skins, fonts, chat, minimap buttons, mouse-wheel casting, reminders, dispel glow, loot rolls, totems, unit colors) now runs one piece per frame instead of all in the same frame. Mouse-wheel casting, chat and minimap buttons only redo after a fight if something changed in it.
+- **Buff reminders, a look of its own:** set your own text for a buff's notice (for example "Poison MH!") and pick its font from any font in Fonts.
+- **Buff reminders:** a left or right click hides a notice and keeps those buffs quiet for 10 minutes. No notices in cities and inns by default (turn it back on under Show in). Right-click no longer opens the settings.
+- **Thank for buffs:** only buffs of 5 minutes or longer are thanked, so Renew, Power Word: Shield, paladin auras and other short spells no longer are. Players are also thanked while you are in a group.
+- **Mark player:** the player is marked when you press OK (the reason is optional); Cancel leaves them unmarked.
+- **Stealth alerts:** a stealthed player stays one alert while their nameplate comes and goes, and the "drops from view" guess is switched off (it also fired when someone just walked out of sight; it can be turned on again).
+- **Move elements:** only the elements you use are listed and moved.
+- **Trinket menu:** with only one trinket, one button, also while moving (the mover box now sits exactly on the buttons, with one name tag).
+- **Opening ForeverTools** after more than 3 minutes starts at the main menu instead of the last page.
+- **Skins:** rare and elite dragons on the target frame now darken with the frame (Darken rares / Darken elites, on by default).
+
+## Fixed
+- **Class colors:** the target of target gets its class color (the game locks that bar's color, so it is now checked while it shows; `/ft colordebug` prints what the target and target-of-target bars are based on), keeps it in a fight, offline players keep their class color instead of turning grey or green, and mobs in the tooltip's "Targeted by" line are no longer colored like a class.
+- **Move loot rolls** stays on when you close the settings to drag the sample (right-click it or click the switch again to lock), and the chosen place is kept: the game's own frame manager no longer moves the rolls back.
+- **Buff reminders:** a notice with its own look is as wide as its text (text only cut longer messages short), and while a buff's look panel is open the notice shows that buff, not the next missing one.
+- **Food buff reminder:** a tent (or anything that is not food) in your bags no longer counts as XP food.
+- **Grey on cooldown** (Fonts → Cooldowns): after a loading screen (leaving a dungeon) the action bars are looked at again for a few seconds, so spells on cooldown turn grey without pointing at them.
+- **Item counts:** items bought out on the auction house count as mail straight away.
+- **Dropdowns** open in front of the macro editor and other panels.
+- **Soft reserves** is labelled as a custom function for the guild website: its lists are ForeverTools strings (FTSR1), not softres.it exports.
+
+# ForeverTools 1.1.0 (2026-11-03)
+
+## New
+- **Soft reserves** (System → Loot and merchant → Soft reserves, or `/ft sr`): make the soft reserves on the guild website, copy the ForeverTools string and paste it in. Then:
+  - **The list:** the raid, its time and how many have reserved ("18/20 have reserved"). At the top, in red, who has not reserved yet. Then one line per player in their class color with the items they reserved (icon and name). Items more than one player reserved show ×2, ×3. Players who are not in your group are grey, and people in your group without a sign-up are listed at the bottom.
+  - **The loot window:** under each item, who reserved it ("SR ×2: Name, Name"), or "No SR" for rare and epic items nobody reserved.
+  - **Raid and party chat:** when someone links a reserved item, a line under it (only you see it) says who reserved it.
+  - **Item tooltips:** "SR: Name, Name" on reserved items.
+  - **Announce:** the shout button on the loot window, or clicking an item in the list, says who reserved it: in raid warning if you lead or assist, otherwise in raid chat.
+  - A new import for the same raid replaces the old one; other raids are kept (choose one at the top). Raids older than 30 days are forgotten. The lists stay on your account and are never part of a profile export. Players are matched to your raid by first name.
+  - `/ft srdebug` for bug reports.
+
+## Fixed
+- **WoW: Forever changes of 3 November:** the Will of the Forsaken and Escape Artist reminders work again (the game now hides what kind of loss of control you have, so it is read from your debuffs), the bag skin's "hide slot art" also hides the new grey bag in empty slots, Totemic Call moves your totem circles to where you stand, the proc roots Entrapment, Improved Wing Clip and Counterattack count as roots for diminishing returns, enemy cooldowns use the new times (all traps 30 s, Stormstrike 6 s, Lightning Mastery added), and spells removed from the game are gone from the macro templates (Salvation, Frost Blast, Lava Burst; "Add all class macros" adds Revoke again). Primal Bite and Shank start auto attack, and Ferocious Bite has 6 ranks.
+
+# ForeverTools 1.0.1 (2026-11-01)
+
+## Changed
+- **Smoother in crowds:** Nearby enemies and Stealth alerts do much less work when many players are around (starting zones on launch day, cities, battlegrounds). A burst of sightings redraws the list once, and aura changes that can't be a stealth buff are skipped straight away.
+- **Item counts:** the count for the character you play is kept while you point at an item, and counted again as soon as your bags, gear, bank or mail change.
+- **Fonts:** changing target during a fight now only redoes the unit frame text after the fight, not every font, so there is no small hitch when a fight ends.
+- **Saved settings are written once** instead of twice: a smaller settings file and faster loading.
+- **Keep chat after reload:** other characters' chat from an earlier day is dropped (it was cleared at their next login anyway), so it is no longer saved and loaded for nothing.
+- **Diminishing returns** keeps nothing for players without a tracked debuff, so long sessions use less memory.
+- Less memory used by the threat meter and when a fight starts.
+
 # ForeverTools 1.0.0 (2026-10-23)
 
 ## New

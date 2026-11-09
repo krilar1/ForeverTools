@@ -32,7 +32,7 @@ local known={
     ["blood fury"]={"offensive"},["berserking"]={"offensive"},["recklessness"]={"offensive"},["death wish"]={"offensive"},
     ["sweeping strikes"]={"offensive"},["adrenaline rush"]={"offensive"},["blade flurry"]={"offensive"},["cold blood"]={"offensive"},
     ["arcane power"]={"offensive"},["combustion"]={"offensive"},["presence of mind"]={"offensive"},["icy veins"]={"offensive"},
-    ["power infusion"]={"offensive"},["inner focus"]={"offensive"},["elemental mastery"]={"offensive"},["rapid fire"]={"offensive"},
+    ["power infusion"]={"offensive"},["inner focus"]={"offensive"},["elemental mastery"]={"offensive"},["lightning mastery"]={"offensive"},["rapid fire"]={"offensive"},
     ["bestial wrath"]={"offensive"},["amplify curse"]={"offensive"},["avenging wrath"]={"offensive"},["bloodlust"]={"offensive"},
     ["heroism"]={"offensive"},["nature's swiftness"]={"offensive"},
     ["shield wall"]={"defensive",need="burst"},["last stand"]={"defensive",need="burst"},["retaliation"]={"defensive",need="burst"},
@@ -335,18 +335,40 @@ local function debuffTypes()
     end
     return found
 end
+-- The game hides what a loss of control is (its type is secret): read it
+-- from your debuffs instead, with the crowd-control list of Diminishing
+-- returns. Fears and disorients -> FEAR, Hibernate -> SLEEP, roots -> ROOT.
+local function controlFromAuras(found)
+    local DR=FT.modules.Diminish
+    if not DR or not DR.Lists or not DR.KindOf or not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then return end
+    local byName=DR:Lists()
+    for i=1,40 do
+        local aura=safe(C_UnitAuras.GetAuraDataByIndex,"player",i,"HARMFUL")
+        if not aura then break end
+        if not secret(aura) and type(aura)=="table" then
+            local kind=DR.KindOf(byName,aura.spellId,aura.name)
+            if kind==5 then found.FEAR=true
+            elseif kind==0 then found.ROOT=true
+            elseif kind==4 and DR:IsSleep(aura.spellId,aura.name) then found.SLEEP=true end
+        end
+    end
+end
 local function controlTypes()
     local found={}
     if not C_LossOfControl or not C_LossOfControl.GetActiveLossOfControlDataCount then return found end
     local count=safe(C_LossOfControl.GetActiveLossOfControlDataCount)
     if secret(count) or type(count)~="number" then return found end
+    local hidden=false
     for i=1,count do
         local data=safe(C_LossOfControl.GetActiveLossOfControlData,i)
-        local kind=type(data)=="table" and data.locType
-        if not secret(kind) and type(kind)=="string" then found[kind]=true; if kind:find("FEAR",1,true) then found.FEAR=true end end
+        local kind=not secret(data) and type(data)=="table" and data.locType or nil
+        if not secret(kind) and type(kind)=="string" then found[kind]=true; if kind:find("FEAR",1,true) then found.FEAR=true end
+        else hidden=true end
     end
+    if hidden then controlFromAuras(found) end
     return found
 end
+CD.ControlTypes=controlTypes
 function CD:Burst()
     local max=safe(UnitHealthMax,"player")
     if secret(max) or type(max)~="number" or max<=0 then return false end

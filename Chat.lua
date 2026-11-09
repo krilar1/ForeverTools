@@ -238,7 +238,9 @@ function Chat:NeedsPolling()
     return false
 end
 function Chat:Apply()
-    if not FT.dbReady or FT:LooksWait() then return end
+    if not FT.dbReady then return end
+    if FT:LooksWait() then self.pending=true; return end
+    self.pending=false
     self:Track(QuickJoinToastButton,"social",ChatFrame1,"social")
     self:Track(FriendsMicroButton,"social",ChatFrame1,"social")
     for _,name in ipairs({"ChatFrameMenuButton","ChatFrameChannelButton","ChatFrameToggleVoiceDeafenButton","ChatFrameToggleVoiceMuteButton"}) do self:Track(_G[name],"icons",ChatFrame1,"side1") end
@@ -339,7 +341,7 @@ function Chat:Open()
         local thanksHead=FT:Label(self.frame,"Thanks",15,true);thanksHead:SetPoint("TOPLEFT",24,-390);FT:SectionHeading(thanksHead,"Spell_Holy_PrayerOfHealing",200)
         self.thanks=FT:QuietButton(self.frame,"",276,32,"Spell_Holy_PowerWordShield");self.thanks:SetPoint("TOPLEFT",24,-418)
         self.thanks:SetScript("OnClick",function() local th=self:Thanks(); th.enabled=not th.enabled; self:ApplyThanks(); self:Refresh() end)
-        FT:Tooltip(self.thanks,"Thank for buffs","A /thank to players who buff you in the open world, after a short pause. Once per player every few minutes. Never in fights, dungeons or PvP.")
+        FT:Tooltip(self.thanks,"Thank for buffs","A /thank to players who buff you in the open world, after a short pause. Only buffs of 5 minutes or longer (not heals, shields or paladin auras). Once per player every few minutes. Never in fights, dungeons or PvP.")
         self.thanksGroup=FT:QuietButton(self.frame,"",276,32,"Spell_Holy_PrayerOfHealing");self.thanksGroup:SetPoint("TOPLEFT",24,-458)
         self.thanksGroup:SetScript("OnClick",function() local th=self:Thanks(); th.group=not th.group; self:Refresh() end)
         FT:Tooltip(self.thanksGroup,"Also my group","Also thank group members.")
@@ -386,20 +388,64 @@ local function emote(token,name)
     if C_ChatInfo and C_ChatInfo.PerformEmote then return pcall(C_ChatInfo.PerformEmote,token,name) end
     if DoEmote then return pcall(DoEmote,token,name) end
 end
+-- Only real buffs are thanked: 5 minutes or longer (Fortitude, Mark of the
+-- Wild, Blessings, Intellect, Thorns). Heals over time, shields and short
+-- spells (Renew, Power Word: Shield) and auras with no duration (paladin
+-- auras, totems) are not.
+local THANK_MIN_DURATION=300
+local function lasting(aura)
+    local d=aura.duration
+    return not hidden(d) and type(d)=="number" and d>=THANK_MIN_DURATION
+end
+Chat.ThankLasting=lasting
+-- In your group? The game can hide UnitInParty for others while you are in
+-- a group; then compare against the group units directly.
+local function grouped(source)
+    if source:match("^party%d") or source:match("^raid%d") then return true end
+    local ok,a=pcall(UnitInParty,source); local okR,b=pcall(UnitInRaid,source)
+    a=ok and not hidden(a) and a or nil; b=okR and not hidden(b) and b or nil
+    if a or b then return true end
+    if (ok and not hidden(a)) and (okR and not hidden(b)) then return false end
+    local raid=IsInRaid and IsInRaid()
+    for i=1,raid and 40 or 4 do
+        local okU,same=pcall(UnitIsUnit,source,(raid and "raid" or "party")..i)
+        if okU and not hidden(same) and same==true then return true end
+    end
+    return false
+end
+-- Another player (not you, not your pet). Hidden answers fall back to the
+-- GUID, which the game hides less often.
+local function isOtherPlayer(source)
+    local isPlayer=UnitIsPlayer(source)
+    local guid=UnitGUID and UnitGUID(source)
+    if hidden(guid) or type(guid)~="string" then guid=nil end
+    if hidden(isPlayer) then
+        if not guid then return false end
+        isPlayer=guid:find("^Player%-")~=nil
+    end
+    if not isPlayer then return false end
+    local me=UnitGUID and UnitGUID("player")
+    if guid and not hidden(me) and guid==me then return false end
+    local self=UnitIsUnit(source,"player")
+    if hidden(self) then return guid~=nil end
+    return self~=true
+end
 function Chat:ThankFor(info)
     local s=self:Thanks()
     if not s.enabled or InCombatLockdown() or not inWorld() then return end
     if type(info)~="table" or hidden(info) or hidden(info.addedAuras) or type(info.addedAuras)~="table" then return end
     for _,aura in ipairs(info.addedAuras) do
-        if type(aura)=="table" and not hidden(aura) and not hidden(aura.isHelpful) and aura.isHelpful then
+        if type(aura)=="table" and not hidden(aura) and not hidden(aura.isHelpful) and aura.isHelpful and lasting(aura) then
             local source=aura.sourceUnit
             local fromPlayer=aura.isFromPlayerOrPlayerPet
             if not hidden(source) and type(source)=="string" then
-                if UnitIsPlayer(source) and not UnitIsUnit(source,"player") and not UnitIsUnit(source,"pet") then
+                if isOtherPlayer(source) then
                     local friend=UnitIsFriend and UnitIsFriend("player",source)
-                    local grouped=(UnitInParty and UnitInParty(source)) or (UnitInRaid and UnitInRaid(source))
+                    -- A buff can only come from a friend; a hidden answer is not a no.
+                    if hidden(friend) then friend=true end
+                    local inGroup=grouped(source)
                     local name=UnitName(source)
-                    if not hidden(friend) and friend and not hidden(grouped) and (s.group or not grouped) and not hidden(name) and type(name)=="string" then
+                    if friend and (s.group or not inGroup) and not hidden(name) and type(name)=="string" then
                         local now=GetTime()
                         if not thanked[name] or now-thanked[name]>THANK_AGAIN then
                             thanked[name]=now
@@ -433,7 +479,12 @@ thankEvents:SetScript("OnEvent",function(_,_,unit,info) if FT.dbReady and unit==
 FT:RegisterModule("Chat",Chat)
 local events=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_LOGIN","UPDATE_CHAT_WINDOWS","PLAYER_ENTERING_WORLD","PLAYER_REGEN_ENABLED","ADDON_LOADED"}) do events:RegisterEvent(event) end
-events:SetScript("OnEvent",function() if FT.dbReady then FT:Coalesce("chat",function() Chat:Apply() end) end end)
+events:SetScript("OnEvent",function(_,event)
+    if not FT.dbReady then return end
+    -- After a fight only if something waited for it.
+    if event=="PLAYER_REGEN_ENABLED" then if Chat.pending then FT:AfterCombat("chat",function() Chat:Apply() end) end; return end
+    FT:Coalesce("chat",function() Chat:Apply() end)
+end)
 local elapsed=0
 events:SetScript("OnUpdate",function(_,dt)
     elapsed=elapsed+dt
@@ -458,14 +509,26 @@ end)
 -- are not kept. It lives outside your profile, so it never travels with an
 -- export.
 local KEEP_LINES=250
-local function today() return date and date("%Y-%m-%d") or "" end
+-- The date, read again at most once a minute (every chat line asks for it).
+local dayText,dayCheck="",-1
+local function today()
+    local t=GetTime and GetTime() or 0
+    if t>=dayCheck then dayText=date and date("%Y-%m-%d") or ""; dayCheck=t+60 end
+    return dayText
+end
 function Chat:HistoryStore()
     if type(FT.db.chatHistory)~="table" then FT.db.chatHistory={} end
     local name=UnitName and UnitName("player"); local realm=GetRealmName and GetRealmName()
     if hidden(name,realm) or type(name)~="string" then return nil end
     local key=name.."-"..tostring(realm)
+    local day=today()
+    -- Other characters' chat from an earlier day would be dropped when they
+    -- log in anyway: drop it now, so it isn't saved and loaded for nothing.
+    for other,old in pairs(FT.db.chatHistory) do
+        if other~=key and (type(old)~="table" or old.day~=day) then FT.db.chatHistory[other]=nil end
+    end
     local store=FT.db.chatHistory[key]
-    if type(store)~="table" or store.day~=today() then store={day=today(),frames={}}; FT.db.chatHistory[key]=store end
+    if type(store)~="table" or store.day~=day then store={day=day,frames={}}; FT.db.chatHistory[key]=store end
     return store
 end
 local function keptFrame(i) local frame=_G["ChatFrame"..i]; if frame and frame~=COMBATLOG and i~=2 then return frame end end

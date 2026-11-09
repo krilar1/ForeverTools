@@ -1,5 +1,5 @@
 local _, FT = ...
-local Colors = { tracked={}, hooks={}, active={}, pageWidth=540 }
+local Colors = { tracked={}, hooks={}, active={}, pageWidth=540, paintSet={}, paintAll=false }
 local groups = {{"player","Player"}, {"target","Target"}, {"focus","Focus"}}
 function Colors:Settings()
     if type(FT.db.unitColors) ~= "table" then FT.db.unitColors = {} end
@@ -30,14 +30,31 @@ function Colors:Paint(bar, force)
         -- The game can hide who a unit is (target of target in combat, for
         -- example): then leave the bar exactly as it is until it can tell.
         local secret = issecretvalue
-        local isPlayer, connected, dead = UnitIsPlayer(unit), UnitIsConnected(unit), UnitIsDeadOrGhost(unit)
-        if secret and (secret(isPlayer) or secret(connected) or secret(dead)) then return end
-        if isPlayer and connected and not dead then
+        local isPlayer, dead = UnitIsPlayer(unit), UnitIsDeadOrGhost(unit)
+        local unknown
+        if secret and secret(isPlayer) then
+            -- A player's GUID starts with "Player-"; use it when the game
+            -- hides UnitIsPlayer but not the GUID.
+            local guid = UnitGUID and UnitGUID(unit)
+            if type(guid) == "string" and not secret(guid) then isPlayer = guid:find("^Player%-") ~= nil else unknown = true end
+        end
+        if secret and secret(dead) then dead = false end
+        -- Offline players keep their class color (the game shows them grey
+        -- or green otherwise until they log back in); only the dead lose it.
+        if not unknown and isPlayer and not dead then
             local _, class = UnitClass(unit)
-            if secret and secret(class) then return end
-            if type(class) == "string" then
+            if secret and secret(class) then unknown = true
+            elseif type(class) == "string" then
                 color = (CUSTOM_CLASS_COLORS and CUSTOM_CLASS_COLORS[class]) or (RAID_CLASS_COLORS or {})[class]
             end
+        end
+        if unknown then
+            -- The game hides who it is (target of target in a fight). The
+            -- game just set its own color: put back the color this bar had for
+            -- the same unit, so it doesn't flash green. A new unit (UNIT_TARGET
+            -- clears it) is left as the game draws it until it can tell.
+            if not force or not info.lastColor then return end
+            color = info.lastColor
         end
     end
     -- Same color as last time and Blizzard hasn't changed the bar since
@@ -108,6 +125,21 @@ function Colors:Report()
     local atlas=texture and texture.GetAtlas and texture:GetAtlas()
     return "Target color: player="..show(UnitIsPlayer("target")).." connected="..show(UnitIsConnected("target")).." dead="..show(UnitIsDeadOrGhost("target"))
         .." class="..show(class).." level="..show(UnitLevel("target")).." tracked="..tostring(info~=nil).." colored="..tostring(info and info.colored).." fill="..show(atlas)
+        ..self:ReportToT()
+end
+-- The target-of-target bar: tracked, colored, its fill and color now.
+function Colors:ReportToT()
+    local frame=_G.TargetFrameToT
+    if not frame or not UnitExists("targettarget") then return "" end
+    local function show(v) if issecretvalue and issecretvalue(v) then return "hidden" end return tostring(v) end
+    local bar=healthBar(frame)
+    local info=bar and self.tracked[bar]
+    local texture=bar and bar.GetStatusBarTexture and bar:GetStatusBarTexture()
+    local atlas=texture and texture.GetAtlas and texture:GetAtlas()
+    local r,g,b=bar and bar:GetStatusBarColor()
+    local _,class=UnitClass("targettarget")
+    return "; ToT: player="..show(UnitIsPlayer("targettarget")).." class="..show(class).." tracked="..tostring(info~=nil).." unit="..tostring(info and info.unit)
+        .." colored="..tostring(info and info.colored).." fill="..show(atlas).." color="..show(r)..","..show(g)..","..show(b)
 end
 -- Undo the plain fill used by older versions (only matters within a session
 -- that started before an update; kept so nothing is left behind).
@@ -172,7 +204,7 @@ function Colors:PaintLoss(loss)
 end
 healthBar=function(frame)
     if not frame then return end
-    if frame.healthBar or frame.healthbar then return frame.healthBar or frame.healthbar end
+    if frame.healthBar or frame.healthbar or frame.HealthBar then return frame.healthBar or frame.healthbar or frame.HealthBar end
     local container = frame.PlayerFrameContainer or frame.TargetFrameContainer or frame.FocusFrameContainer
     local content = frame.PlayerFrameContent or frame.TargetFrameContent or frame.FocusFrameContent
         or (container and (container.PlayerFrameContent or container.TargetFrameContent or container.FocusFrameContent))
@@ -245,6 +277,19 @@ function Colors:Apply()
         local frame=_G[entry[1]]
         self:Track(healthBar(frame) or _G[entry[1].."HealthBar"],entry[2],entry[3],frame)
     end
+    -- The target-of-target bar never gets a color from the game (its color
+    -- is locked to the green art), so the color hook never fires for it:
+    -- while it shows, look five times a second (a few unit checks; nothing
+    -- is redrawn unless the color is wrong).
+    if not self.totWatch then
+        self.totWatch=CreateFrame("Frame"); local wait=0
+        self.totWatch:SetScript("OnUpdate",function(_,dt)
+            wait=wait+dt; if wait<.2 then return end; wait=0
+            if not (self.active.target or self.active.focus) then return end
+            if self.active.target and TargetFrameToT and TargetFrameToT:IsShown() then self:QueuePaint("targettarget") end
+            if self.active.focus and FocusFrameToT and FocusFrameToT:IsShown() then self:QueuePaint("focustarget") end
+        end)
+    end
     for i=1,5 do
         -- Leave compact raid frames untouched.
     end
@@ -290,24 +335,31 @@ function Colors:Busy()
 end
 -- Repaint once on the next frame. With a unit, only that unit's bars (health
 -- ticks many times a second in combat); without one, every bar.
+local runPaint
 function Colors:QueuePaint(unit)
-    if self.queued or not self:Busy() then return end
-    if unit and self.paintUnits~="all" then
-        self.paintUnits=self.paintUnits or {}; self.paintUnits[unit]=true
-    else self.paintUnits="all" end
+    -- A full pass already queued repaints everything, except in combat,
+    -- where that pass waits: then the bars are still repainted here.
+    if (self.queued and not FT:LooksWait()) or not self:Busy() then return end
+    if unit then self.paintSet[unit]=true else self.paintAll=true end
     if self.paintQueued then return end
     self.paintQueued=true
-    C_Timer.After(0,function()
-        self.paintQueued=false
-        local units=self.paintUnits; self.paintUnits=nil
-        -- Repainting known bars is allowed in combat (only colors and art of
-        -- the bar itself change), so a target never shows the wrong color.
-        if not FT.dbReady then return end
+    -- One function for every queue: the target-of-target frame updates
+    -- every frame, so no new closure per call.
+    C_Timer.After(0,runPaint)
+end
+runPaint=function()
+    local self=Colors
+    self.paintQueued=false
+    local all,set=self.paintAll,self.paintSet; self.paintAll=false
+    -- Repainting known bars is allowed in combat (only colors and art of
+    -- the bar itself change), so a target never shows the wrong color.
+    if FT.dbReady then
         for bar,info in pairs(self.tracked) do
-            if units=="all" or (units and units[info.unit]) then self:Paint(bar) end
+            if all or set[info.unit] then self:Paint(bar) end
         end
-        if units=="all" then for loss in pairs(self.losses or {}) do self:PaintLoss(loss) end end
-    end)
+    end
+    for unit in pairs(set) do set[unit]=nil end
+    if all and FT.dbReady then for loss in pairs(self.losses or {}) do self:PaintLoss(loss) end end
 end
 function Colors:Queue()
     if self.queued then return end
@@ -375,18 +427,26 @@ local unitEvents={UNIT_CONNECTION=true,UNIT_NAME_UPDATE=true,UNIT_HEALTH=true,UN
 events:SetScript("OnEvent",function(_,event,unit)
     if not FT.dbReady then return end
     if event=="UNIT_TARGET" then
-        if unit=="target" or unit=="focus" then Colors:Queue() end
+        -- Target of target changed: repaint it now (allowed in combat, where
+        -- a full pass waits) and once more after the game has drawn it.
+        if unit=="target" or unit=="focus" then
+            local tot=unit.."target"
+            for _,info in pairs(Colors.tracked) do if info.unit==tot then info.lastColor=nil end end
+            Colors:Queue(); Colors:QueuePaint(tot)
+            if Colors:Busy() then C_Timer.After(.2,function() Colors:QueuePaint(tot) end) end
+        end
     elseif unitEvents[event] then
         if ours[unit] then Colors:QueuePaint(unit) end
     elseif event=="PLAYER_REGEN_ENABLED" then
-        if Colors.deferred then Colors:Queue() else Colors:QueuePaint() end
+        if Colors.deferred then FT:AfterCombat("unitColors",function() Colors:Queue() end) else Colors:QueuePaint() end
     else
         Colors:Queue()
         -- The game can finish drawing a new target or focus a moment later
         -- (and reset its fill then): look once more shortly after.
         if (event=="PLAYER_TARGET_CHANGED" or event=="PLAYER_FOCUS_CHANGED") and Colors:Busy() then
             local which=event=="PLAYER_TARGET_CHANGED" and "target" or "focus"
-            C_Timer.After(.3,function() Colors:QueuePaint(which) end)
+            Colors:QueuePaint(which); Colors:QueuePaint(which.."target")
+            C_Timer.After(.3,function() Colors:QueuePaint(which); Colors:QueuePaint(which.."target") end)
         end
     end
 end)

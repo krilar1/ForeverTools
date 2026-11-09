@@ -457,4 +457,10 @@ FT:RegisterModule("CustomKeybinds",B)
 local events=CreateFrame("Frame")
 -- SPELLS_CHANGED also covers newly learned spells; the beta has no LEARNED_SPELL_IN_TAB event.
 for _,event in ipairs({"PLAYER_LOGIN","PLAYER_REGEN_ENABLED","SPELLS_CHANGED"}) do events:RegisterEvent(event) end
-events:SetScript("OnEvent",function() B:Apply() end)
+events:SetScript("OnEvent",function(_,event)
+    -- Rebuilding the wheel buttons (secure snippets, state drivers) is only
+    -- done when something changed: after a fight only if a change waited.
+    if event=="PLAYER_REGEN_ENABLED" then if B.pending then FT:AfterCombat("wheel",function() B:Apply() end) end; return end
+    if event=="SPELLS_CHANGED" then FT:Coalesce("wheelSpells",function() B:Apply() end,.5); return end
+    B:Apply()
+end)

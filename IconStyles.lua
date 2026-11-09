@@ -57,7 +57,7 @@ function Skins:Area(key)
         return s
     end
     if type(s)~="table" then
-        s={preset=root.preset,opacity=root.opacity,shadow=root.shadow,color={unpack(root.color)},borderColor={unpack(root.borderColor)},thickness=1,borderOpacity=1,rares=false,elites=false,hideSecondary=key=="micro"}
+        s={preset=root.preset,opacity=root.opacity,shadow=root.shadow,color={unpack(root.color)},borderColor={unpack(root.borderColor)},thickness=1,borderOpacity=1,rares=true,elites=true,hideSecondary=key=="micro"}
         if key=="bags" or key=="bagWindows" or key=="dialogs" or key=="gameWindows" or key=="calendar" or key=="nearby" or key=="enemyAlert" or key=="bgTimer" or key=="notices" or key=="meters" or key=="ftBars" then s.opacity=1 end
         if key=="trinkets" then s.thickness=2; s.opacity=1 end
         if key=="gryphons" then s.preset="soft";s.color={.04,.04,.05};s.borderColor={.26,.21,.17};s.opacity=.34 end
@@ -67,6 +67,9 @@ function Skins:Area(key)
         if s.preset=="dark" and s.opacity==0 then s.opacity=1 end
         s.solidBagDefaults=true
     end
+    -- 1.2.0: rare and elite dragons darken with the frame by default (the
+    -- bright dragon on a dark frame looked out of place). Once for saves.
+    if not s.darkDragons120 then s.rares=true; s.elites=true; s.darkDragons120=true end
     if key=="bags" then s.hideArt=false elseif s.hideArt==nil then s.hideArt=false end
     if key=="dialogs" and type(s.darkParchment)~="boolean" then s.darkParchment=false end
     if key=="bags" and s.barStyle~="game" and s.barStyle~="action" then s.barStyle="game" end
@@ -325,8 +328,8 @@ function Skins:ScanBar(container,depth)
 end
 function Skins:Apply()
     if not FT.dbReady then return end
-    if FT:LooksWait() then self.deferred=true; self:Refresh(); return end
-    self.deferred=false; local s=self:Settings()
+    if FT:LooksWait() then self.deferred="all"; self:Refresh(); return end
+    self.deferred=false; self.deferredParts=nil; local s=self:Settings()
     if s.actions then
         for _,prefix in ipairs(bars) do for i=1,12 do self:Track(_G[prefix..i],"actions") end end
         -- The spell binds role bar looks like your action bars.
@@ -398,10 +401,22 @@ events:SetScript("OnEvent",function(_,event,unit)
     -- Events that only touch one kind of icon redo just that kind.
     local part=(event=="ACTIONBAR_SLOT_CHANGED" and "actions") or ((event=="PLAYER_TOTEM_UPDATE" or event=="UPDATE_SHAPESHIFT_FORMS") and "stances")
     if part then
-        if FT:LooksWait() then Skins.deferred=true
+        -- In a fight only this kind is remembered (an action or stance change
+        -- used to redo every skin when the fight ended).
+        if FT:LooksWait() then
+            if Skins.deferred~="all" then Skins.deferred="parts"; Skins.deferredParts=Skins.deferredParts or {}; Skins.deferredParts[part]=true end
         else FT:Coalesce("skinPart"..part,function() Skins:ApplyPart(part) end,.1) end
         return
     end
-    if event=="PLAYER_REGEN_ENABLED" and not Skins.deferred then return end
+    if event=="PLAYER_REGEN_ENABLED" then
+        local what=Skins.deferred
+        if not what then return end
+        if what=="parts" then
+            local parts=Skins.deferredParts or {}
+            Skins.deferred=false; Skins.deferredParts=nil
+            for p in pairs(parts) do FT:AfterCombat("skinPart"..p,function() Skins:ApplyPart(p) end) end
+        else FT:AfterCombat("skins",function() Skins:Apply() end) end
+        return
+    end
     Skins:Queue()
 end)

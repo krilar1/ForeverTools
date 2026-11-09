@@ -50,7 +50,6 @@ FT.verifiedMacros={
         {"Remove Lesser Curse",1,"friendly","spell_nature_removecurse"},
         {"Arcane Blast",1,nil,"spell_arcane_blast"},
         {"Ice Lance",1,nil,"spell_frost_frostblast"},
-        {"Frost Blast",1,nil,"spell_ice_magicdamage"},
         {"Pyroblast",1,nil,"spell_fire_fireball02"},
         {"Frost Armor",1,"self","spell_frost_frostarmor02"},
         {"Conjure Water",1,"self","inv_drink_06"},
@@ -126,7 +125,6 @@ FT.verifiedMacros={
         {"Frostbrand Weapon",1,"self","spell_frost_frostbrand"},
         {"Healing Stream Totem",1,"self","inv_spear_04"},
         {"Totemic Recall",1,"self","spell_shaman_totemrecall"},
-        {"Lava Burst",1,nil,"spell_shaman_lavaburst"},
     },
     Warlock={
         {"Curse of Weakness",1,nil,"spell_shadow_curseofmannoroth"},

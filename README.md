@@ -1,6 +1,6 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 1.0.0.**
+**Quality-of-life tools for WoW: Forever — version 1.2.0.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
 one place. Everything starts **off**, so the game looks like Blizzard's until you
@@ -136,8 +136,17 @@ the home window. Use **`/rl`** to reload the UI.
   (always-sell marks). At most 12 items are sold per visit, so all of them can
   be bought back. Selling is silent; auto-repair (with guild funds if allowed)
   reports its cost in one chat line (System → Loot and merchant).
-- **Minimap:** ForeverTools button, coordinates, and an optional launcher that
-  groups other addons' minimap buttons into one menu.
+- **Minimap:** ForeverTools button, coordinates, your target on the minimap
+  (the game's own target tracking), and an optional launcher that groups other
+  addons' minimap buttons into one menu.
+- **New version notice:** ForeverTools copies in your guild and group share
+  their version number (a hidden addon message), and you get a chat line when
+  a newer one is out (System → General, on by default).
+- **Extra game options:** game settings the settings menu doesn't show:
+  sharpening at full render scale, grass density and distance, weather,
+  terrain and scenery detail, the full-screen glow and the spell queue window
+  (System → Extra game options). The game saves them; nothing changes until
+  you move one.
 - **Profiles:** Named profiles shared by the characters that use them, saved
   automatically with an Undo list, export/import as text (optionally with
   keybinds, action bars and spell binds), and a profile or a fresh start on
@@ -163,7 +172,7 @@ the home window. Use **`/rl`** to reload the UI.
     Mouse-wheel casting, Smart interact key.
   - **On-screen info:** FPS counter, Leveling stats, Flight timer, Minimap,
     Quests and loot rolls, Move elements, Move game windows.
-  - **System:** General, Loot and merchant, Always-sell marks.
+  - **System:** General, Loot and merchant, Always-sell marks, Extra game options.
   - **Macros, Buff reminders, Bags and Profiles** are groups of their own.
 - **Menus:** every page of a group shows the group's sections on the left,
   each with its current state; click one to see its options on the right. The

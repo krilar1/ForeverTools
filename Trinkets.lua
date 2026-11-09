@@ -168,15 +168,30 @@ function T:Bar()
     self:Layout()
     return f
 end
+-- Which slots get a button: both, or only the one with a trinket when you
+-- carry a single trinket (worn or in your bags).
+function T:ShownSlots()
+    -- Moving shows the same buttons as playing, so the box sits exactly
+    -- where they are (two buttons while moving shifted it sideways).
+    local list=self:List()
+    if #list==1 then return {[list[1].slot or 13]=true},1 end
+    return {[13]=true,[14]=true},2
+end
 function T:Layout()
     local f=self.bar; if not f or busy() then return end
     local s=self:Settings()
     f:SetScale(s.size)
-    for i,b in ipairs(f.buttons) do
+    local shown,count=self:ShownSlots()
+    local i=0
+    for _,b in ipairs(f.buttons) do
         b:ClearAllPoints()
-        if s.vertical then b:SetPoint("TOP",f,"TOP",0,-(i-1)*(SIZE+GAP)) else b:SetPoint("LEFT",f,"LEFT",(i-1)*(SIZE+GAP),0) end
+        if shown[b.slot] then
+            i=i+1; b:Show()
+            if s.vertical then b:SetPoint("TOP",f,"TOP",0,-(i-1)*(SIZE+GAP)) else b:SetPoint("LEFT",f,"LEFT",(i-1)*(SIZE+GAP),0) end
+        else b:Hide() end
     end
-    if s.vertical then f:SetSize(SIZE,SIZE*2+GAP) else f:SetSize(SIZE*2+GAP,SIZE) end
+    self.shownCount=count
+    if s.vertical then f:SetSize(SIZE,SIZE*count+GAP*(count-1)) else f:SetSize(SIZE*count+GAP*(count-1),SIZE) end
     self:Place()
 end
 -- Where it is: saved as its center (screen units), or a spot near the
@@ -438,8 +453,11 @@ function T:SetMoving(on)
     for _,b in ipairs(f.buttons) do b:EnableMouse(not self.moving) end
     for _,t in ipairs(f.fillTextures) do t:SetShown(self.moving) end
     for _,t in ipairs(f.borderTextures) do t:SetShown(self.moving) end
-    f.name:SetShown(self.moving); f.hint:SetShown(self.moving)
+    -- "Move elements" puts its own name tag on it: not a second one.
+    local movers=FT.modules.Movers
+    f.name:SetShown(self.moving and not (movers and movers.active)); f.hint:SetShown(self.moving)
     f:SetFrameStrata(self.moving and "HIGH" or "MEDIUM")
+    self:Layout()
     f:SetShown(self:Wanted())
     if self.moving then self:Update() end
     self:Fade()
@@ -525,6 +543,9 @@ T.events:SetScript("OnEvent",function(_,event)
         T:Update()
         -- A trinket came or went: show or hide the buttons (after the fight
         -- if in one; secure buttons can't be shown or hidden then).
-        if T.bar and (event=="BAG_UPDATE_DELAYED" or event=="PLAYER_EQUIPMENT_CHANGED") and T.bar:IsShown()~=T:Wanted() then T:Apply() end
+        if T.bar and (event=="BAG_UPDATE_DELAYED" or event=="PLAYER_EQUIPMENT_CHANGED") then
+            local _,count=T:ShownSlots()
+            if T.bar:IsShown()~=T:Wanted() or count~=T.shownCount then T:Apply() end
+        end
     end,.1) end
 end)

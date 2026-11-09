@@ -1,13 +1,16 @@
 local _,FT=...
 local Fonts=FT.modules.FontManager
 local icons,texts={},{}
+local hiddenSeen=false
 local bars={"ActionButton","MultiBarBottomLeftButton","MultiBarBottomRightButton","MultiBarRightButton","MultiBarLeftButton","MultiBar5Button","MultiBar6Button","MultiBar7Button"}
 local function cooling(cd)
     if not cd or not cd.GetCooldownTimes then return false end
     local ok,start,duration=pcall(cd.GetCooldownTimes,cd)
     if not ok then return false end
-    -- Ignore the global cooldown. Restricted beta values cannot be compared.
-    if issecretvalue and (issecretvalue(start) or issecretvalue(duration)) then return false end
+    -- Ignore the global cooldown. Hidden values cannot be compared: look
+    -- again in a moment (inside instances and right after a loading screen
+    -- the game can hide them for a while).
+    if issecretvalue and (issecretvalue(start) or issecretvalue(duration)) then hiddenSeen=true; return false end
     return type(start)=="number" and type(duration)=="number" and duration>1500 and start>0 and start+duration>GetTime()*1000
 end
 -- Cooldown frames keep the same text regions, so collect them once per frame
@@ -87,9 +90,17 @@ end
 local events=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_ENTERING_WORLD","ACTIONBAR_UPDATE_COOLDOWN","SPELL_UPDATE_COOLDOWN","ACTIONBAR_SLOT_CHANGED","ACTIONBAR_PAGE_CHANGED","UPDATE_BONUS_ACTIONBAR","UPDATE_SHAPESHIFT_FORM"}) do pcall(events.RegisterEvent,events,event) end
 local function pass() FT:Coalesce("cooldownStyle",update,.1) end
-events:SetScript("OnEvent",pass)
+local recheck=0
+events:SetScript("OnEvent",function(_,event)
+    pass()
+    -- After a loading screen (leaving a dungeon) the cooldowns arrive a
+    -- little later, often without a new event: look again for a few seconds.
+    if event=="PLAYER_ENTERING_WORLD" then recheck=5 end
+end)
 local elapsed=0
 events:SetScript("OnUpdate",function(_,dt)
-    if next(icons)==nil then elapsed=0; return end
-    elapsed=elapsed+dt; if elapsed<1 then return end; elapsed=0; update()
+    if next(icons)==nil and not hiddenSeen and recheck<=0 then elapsed=0; return end
+    elapsed=elapsed+dt; if elapsed<1 then return end; elapsed=0
+    if recheck>0 then recheck=recheck-1 end
+    hiddenSeen=false; update()
 end)

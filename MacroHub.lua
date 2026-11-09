@@ -326,6 +326,12 @@ function M:UpdateIconsButton()
     self.iconsButton.label:SetText("Icons for unlearned spells: " .. (on and "On" or "Off"))
     KT:SetSelected(self.iconsButton, on)
 end
+function M:UpdatePoisonButton()
+    if not self.poisonButton then return end
+    local on = KT.db.macroPoisonConfirm == true
+    self.poisonButton.label:SetText("Confirm poison replacing for you: " .. (on and "On" or "Off"))
+    KT:SetSelected(self.poisonButton, on)
+end
 -- How many of this list's macros are not added yet (and room left).
 function M:UpdateBulkInfo()
     self.bulkMouseover = KT.db.macroBulkMouseover == true
@@ -352,7 +358,7 @@ function M:UpdateBulkInfo()
         self.bulkMouseoverButton.label:SetText("Mouseover for all macros: " .. (self.bulkMouseover and "On" or "Off"))
         KT:SetSelected(self.bulkMouseoverButton, self.bulkMouseover)
     end
-    self:UpdateIconsButton(); self:UpdateScopeButton()
+    self:UpdateIconsButton(); self:UpdatePoisonButton(); self:UpdateScopeButton()
     return needed, free
 end
 function M:CreateCustom(name, forClass)
@@ -571,15 +577,24 @@ function M:CreateAdvanced(frame)
     panel:HookScript("OnHide", function() KT:SetSelected(self.advancedButton, false) end)
     KT:AddClose(panel, nil, 8)
     local title = KT:Label(panel, "More lines for this macro", 15, true); title:SetPoint("TOPLEFT", 12, -14)
+    local sub = KT:Label(panel, "Click to add a line, click again to take it out.", 12); sub:SetPoint("TOPLEFT", 12, -34); sub:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
+    local function heading(text, y) local l = KT:Label(panel, text, 13, true); l:SetPoint("TOPLEFT", 12, y); l:SetTextColor(1, .82, 0); return l end
+    heading("When you press it", -60)
     self.quickButtons = {}
-    for i, entry in ipairs({{"Stop cast", "/stopcasting", "Interface\\Icons\\Spell_Holy_Silence"}, {"Start attack", "/startattack", "Interface\\Icons\\Ability_MeleeDamage"}}) do
-        local line = entry[2]; local button = KT:QuietButton(panel, entry[1], 215, 28, "generic")
-        button.icon:SetTexture(entry[3]); button:SetPoint("TOPLEFT", 12 + (i - 1) * 223, -50)
+    -- Each button says what it does and whether the line is in the macro.
+    local function lineButton(name, line, icon, x, y, width, tip)
+        local button = KT:QuietButton(panel, name, width, 28, "generic")
+        button.icon:SetTexture(icon); button:SetPoint("TOPLEFT", x, y); button.name = name
         button:SetScript("OnClick", function() self:EditQuickLine(line) end)
-        KT:Tooltip(button, entry[1], "Add or remove this line in the macro.")
-        self.quickButtons[#self.quickButtons + 1] = {button = button, line = line}
+        KT:Tooltip(button, name, tip)
+        self.quickButtons[#self.quickButtons + 1] = {button = button, line = line, name = name}
+        return button
     end
-    local slots = {{1,"Head","HeadSlot","Head"},{2,"Neck","NeckSlot","Neck"},{3,"Shoulders","ShoulderSlot","Shoulder"},{4,"Shirt","ShirtSlot","Shirt"},{5,"Chest","ChestSlot","Chest"},{6,"Waist","WaistSlot","Waist"},{7,"Legs","LegsSlot","Legs"},{8,"Feet","FeetSlot","Feet"},{9,"Wrist","WristSlot","Wrists"},{10,"Hands","HandsSlot","Hands"},{11,"Ring 1","Finger0Slot","Finger"},{12,"Ring 2","Finger1Slot","Finger"},{13,"Trinket 1","Trinket0Slot","Trinket"},{14,"Trinket 2","Trinket1Slot","Trinket"},{15,"Back","BackSlot","Chest"},{16,"Main hand","MainHandSlot","MainHand"},{17,"Off hand","SecondaryHandSlot","SecondaryHand"},{18,"Ranged","RangedSlot","Ranged"},{19,"Tabard","TabardSlot","Tabard"}}
+    lineButton("Stop casting first", "/stopcasting", "Interface\\Icons\\Spell_Holy_Silence", 12, -82, 215, "Adds /stopcasting at the top: cancels what you are casting so this goes off at once.")
+    lineButton("Start attacking", "/startattack", "Interface\\Icons\\Ability_MeleeDamage", 235, -82, 215, "Adds /startattack: also starts your auto attack on the target.")
+    heading("Use a trinket or other gear (items with a Use effect)", -122)
+    local trinkets = {{13, "Trinket 1", "Trinket0Slot", "Trinket"}, {14, "Trinket 2", "Trinket1Slot", "Trinket"}}
+    local slots = {{1,"Head","HeadSlot","Head"},{2,"Neck","NeckSlot","Neck"},{3,"Shoulders","ShoulderSlot","Shoulder"},{5,"Chest","ChestSlot","Chest"},{6,"Waist","WaistSlot","Waist"},{7,"Legs","LegsSlot","Legs"},{8,"Feet","FeetSlot","Feet"},{9,"Wrist","WristSlot","Wrists"},{10,"Hands","HandsSlot","Hands"},{11,"Ring 1","Finger0Slot","Finger"},{12,"Ring 2","Finger1Slot","Finger"},{15,"Back","BackSlot","Chest"},{16,"Main hand","MainHandSlot","MainHand"},{17,"Off hand","SecondaryHandSlot","SecondaryHand"},{18,"Ranged","RangedSlot","Ranged"}}
     local function slotIcon(slot)
         local native = (C_PaperDollInfo and C_PaperDollInfo.GetInventorySlotInfo) or GetInventorySlotInfo
         local placeholder = "Interface\\PaperDoll\\UI-PaperDoll-Slot-" .. slot[4]
@@ -593,20 +608,26 @@ function M:CreateAdvanced(frame)
         end
         return placeholder
     end
-    local gearTitle = KT:Label(panel, "Use equipped gear", 13, true); gearTitle:SetPoint("TOPLEFT", 12, -92); gearTitle:SetTextColor(1, .82, 0)
     self.slotButtons = {}
-    for i, slot in ipairs(slots) do
-        local line = "/use " .. slot[1]
-        local button = KT:QuietButton(panel, slot[2], 142, 28, "generic")
-        button:SetPoint("TOPLEFT", 12 + ((i - 1) % 3) * 148, -114 - math.floor((i - 1) / 3) * 34)
-        button.label:SetFont(KT.bodyFont, 13, ""); if button.label.SetWordWrap then button.label:SetWordWrap(false) end
-        button:SetScript("OnClick", function() self:EditQuickLine(line) end)
-        KT:Tooltip(button, slot[2], "Add or remove /use " .. slot[1] .. " in the macro. Only items with a Use effect do anything.")
-        self.quickButtons[#self.quickButtons + 1] = {button = button, line = line}
+    for i, slot in ipairs(trinkets) do
+        local button = lineButton(slot[2], "/use " .. slot[1], nil, 12 + (i - 1) * 148, -144, 142, "Adds /use " .. slot[1] .. ": uses the trinket you wear there (its Use effect) together with this macro.")
         self.slotButtons[i] = {button = button, slot = slot}
     end
-    local equipTop = 114 + math.ceil(#slots / 3) * 34 + 8
-    local equipTitle = KT:Label(panel, "Equip an item", 13, true); equipTitle:SetPoint("TOPLEFT", 12, -equipTop); equipTitle:SetTextColor(1, .82, 0)
+    -- Every other slot in one list; slots already in the macro are marked.
+    self.otherGear = KT:Dropdown(panel, 142, function()
+        local body = "\n" .. (self.preview and self.preview:GetText() or "") .. "\n"
+        local list = {}
+        for _, slot in ipairs(slots) do
+            local on = body:find("\n/use " .. slot[1] .. "\n", 1, true) ~= nil
+            list[#list + 1] = {value = slot[1], label = slot[2] .. (on and "  (in macro)" or ""), icon = slotIcon(slot), tooltipTitle = slot[2], tooltip = on and "Click to take /use " .. slot[1] .. " out." or "Click to add /use " .. slot[1] .. "."}
+        end
+        return list
+    end, function(value) self:EditQuickLine("/use " .. value); self:RefreshQuickButtons() end, "generic")
+    self.otherGear:SetPoint("TOPLEFT", 308, -144); self.otherGear.menuWidth = 200
+    self.otherGear.label:SetText("Other gear...")
+    KT:Tooltip(self.otherGear, "Other gear", "Use the item in another slot (a Use effect on gloves, a belt, a weapon...). Slots already in the macro are marked.")
+    local equipTop = 184
+    local equipTitle = KT:Label(panel, "Equip an item first (a weapon swap)", 13, true); equipTitle:SetPoint("TOPLEFT", 12, -equipTop); equipTitle:SetTextColor(1, .82, 0)
     self.equipSlot = KT:Dropdown(panel, 142, function()
         local list = {}
         for _, entry in ipairs(self.equipSlots) do
@@ -654,6 +675,20 @@ function M:CreateSettings()
     self.iconsButton:SetScript("OnClick", function() KT.db.macroUnlearnedIcons = not (KT.db.macroUnlearnedIcons == true); self:UpdateIconsButton(); KT:RefreshDock(frame) end)
     KT:Tooltip(self.iconsButton, "Icons for unlearned spells", "Unlearned spells get their icon, so you can set up bars from level 1.")
     hint(self.iconsButton, "Unlearned spells show their icon on your bars.")
+    -- Rogue poisons: the game asks "Replace the poison already on this weapon?"
+    -- when a weapon has one. With this on, the macro clicks Yes for you.
+    self.poisonButton = KT:QuietButton(frame, "", W - 48, 32, "generic"); self.poisonButton:SetPoint("TOPLEFT", 24, -346)
+    self.poisonButton.icon:SetTexture("Interface\\Icons\\Ability_Poisons")
+    self.poisonButton:SetScript("OnClick", function()
+        KT.db.macroPoisonConfirm = not (KT.db.macroPoisonConfirm == true); self:UpdatePoisonButton()
+        -- Macros already added keep their text until you add them again.
+        if self.selectedMacro and KT.modules.MacroForge.IsPoison(self.selectedMacro) then
+            local record = KT:MacroRecord(self.selectedMacro); record.body = false; record.dirty = nil; self:UpdatePreview()
+        end
+        KT:RefreshDock(frame)
+    end)
+    KT:Tooltip(self.poisonButton, "Confirm replacing poisons", "Rogues: when a weapon already has a poison, the game asks if you want to replace it. On: the poison macros click Yes for you (they get the line /click StaticPopup1Button1). Off: you click Yes yourself. Poison macros you already added change when you add them again.")
+    hint(self.poisonButton, "Rogue poison macros: click Yes on \"replace poison?\" for you.")
     self.deleteButton = KT:QuietButton(frame, "Delete Character macros...", W - 48, 32, "delete"); self.deleteButton:SetPoint("TOPLEFT", 24, -276)
     self.deleteButton.options = function()
         return {

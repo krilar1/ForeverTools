@@ -119,7 +119,7 @@ local elements={
             for _,st in pairs(type(s.styles)=="table" and s.styles or {}) do if type(st)=="table" then st.x,st.y,st.screenWidth,st.screenHeight=nil,nil,nil,nil end end
             m.styleStamp=(m.styleStamp or 0)+1; m:Apply()
         end},
-    {key="loot",name="Loot rolls",module="LootRoll",open="SystemGameplay",
+    {key="loot",name="Loot rolls",module="LootRoll",open="SystemQuests",
         used=function(m) return m:Settings().custom==true end,
         start=function(m) if not m.moving then m:ToggleMove() end end, stop=function(m) if m.moving then m:FinishMove() end end,
         frame=function(m) return m.box end, nudge=function(m,dx,dy) byOffset(m,"offsetX","offsetY",dx,dy,m.UpdateDrag) end,
@@ -375,11 +375,23 @@ function Movers:Refresh()
     if not self.frame then return end
     local s=self:Settings()
     self.toggle.label:SetText("Move elements: "..(self.active and "On" or "Off")); FT:SetSelected(self.toggle,self.active)
+    -- Only elements in use are listed (and moved): turned-off ones only
+    -- confused, looking like broken buttons. They show up here once on.
+    local n=0
     for _,row in ipairs(self.rows) do
         local used=self:Used(row.e)
-        -- In use: bright; turned off: dimmed (its tooltip says which).
-        row.button.label:SetText(row.e.short or row.e.name); row.button.label:SetAlpha(used and 1 or .5)
+        row.button:SetShown(used); row.reset:SetShown(used)
+        if used then
+            local col=n%2; local y=-self.rowsTop-math.floor(n/2)*self.STEP; local x=24+col*252
+            row.button:ClearAllPoints(); row.button:SetPoint("TOPLEFT",x,y)
+            row.reset:ClearAllPoints(); row.reset:SetPoint("TOPLEFT",x+206,y)
+            row.button.label:SetText(row.e.short or row.e.name)
+            n=n+1
+        end
     end
+    self.none:SetShown(n==0)
+    self.offNote:SetText(n==0 and "" or "Elements you have turned off are not listed.")
+    self.offNote:ClearAllPoints(); self.offNote:SetPoint("TOPLEFT",24,-self.rowsTop-math.ceil(n/2)*self.STEP-2)
 end
 function Movers:Open()
     if not self.frame then
@@ -409,8 +421,12 @@ function Movers:Open()
             r.icon:ClearAllPoints(); r.icon:SetPoint("CENTER")
             r:SetScript("OnClick",function() self:Reset(e) end)
             FT:Tooltip(r,"Reset "..e.name:lower(),e.resetTip or "Put it back where it starts.")
-            self.rows[i]={e=e,button=b}
+            self.rows[i]={e=e,button=b,reset=r}
         end
+        self.rowsTop,self.STEP=rowsTop,STEP
+        self.none=FT:Label(frame,"Nothing to move yet: turn on an element (FPS counter, threat meter, buff notices...) on its own page first.",12)
+        self.none:SetPoint("TOPLEFT",24,-rowsTop-4); self.none:SetWidth(492); self.none:SetJustifyH("LEFT"); self.none:SetTextColor(.66,.59,.48)
+        self.offNote=FT:Label(frame,"",11); self.offNote:SetTextColor(.55,.5,.42)
         local all=FT:QuietButton(frame,"Reset all positions",492,32,"reset"); all:SetPoint("TOPLEFT",24,-rowsTop-rowCount*STEP-4)
         all:SetScript("OnClick",function() FT:Confirm("Put every element back where it starts?",function() for _,e in ipairs(elements) do self:Reset(e) end end) end)
         FT:Tooltip(all,"Reset all positions","Put every element back where it starts.")
