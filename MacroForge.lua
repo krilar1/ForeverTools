@@ -465,6 +465,8 @@ end
 
 function MacroForge:Status(message, isError)
     if self.statusHover and not self.bulkAdding then self.statusHover:Hide() end
+    -- Asked from a pop-up after the window closed: nothing to write in.
+    if not self.status then return end
     self.status:SetText(message)
     self.status:SetTextColor(isError and 1 or 0.46, isError and 0.42 or 1, isError and 0.42 or 0.76)
 end
@@ -513,11 +515,26 @@ function MacroForge:CreateEntry(entry, confirmed)
         self.skipReason = "exists"
         return false
     end
-    local scope = (entry.class or entry.characterOnly) and "character" or self.scope
+    local scope = entry.toGeneral and "account" or ((entry.class or entry.characterOnly) and "character" or self.scope)
     local accountCount, characterCount = GetNumMacros()
     -- The client is authoritative. Some beta builds expose stale slot constants;
     -- do not reject a valid creation merely because a guessed limit was reached.
     local ok,macroIndex = pcall(CreateMacro,name,icon,body,scope=="character")
+    if scope == "character" and not (ok and type(macroIndex)=="number" and macroIndex>0) then
+        -- Character tab full: offer the General tab instead (asked, never
+        -- done on its own: General macros show on every character).
+        local snapshot = {}
+        for key, value in pairs(entry) do snapshot[key] = value end
+        snapshot.code = body; snapshot.toGeneral = true
+        self.skipReason = "full"
+        if self.bulkAdding then
+            self.overflow = self.overflow or {}
+            self.overflow[#self.overflow + 1] = snapshot
+        else
+            self:OfferGeneral({snapshot})
+        end
+        return false
+    end
     if ok and type(macroIndex)=="number" and macroIndex>0 then
         local destination = scope == "character" and "Character" or "General"
         self:Status("Added " .. entry.name .. " to " .. destination .. " macros.")
@@ -734,12 +751,45 @@ function MacroForge:EntryMouseover(entry)
     end
     return self.bulkMouseover == true
 end
+-- Character macros are full: ask whether these go to General macros.
+function MacroForge:OfferGeneral(list)
+    if type(list) ~= "table" or #list == 0 then return end
+    local accountCount = GetNumMacros()
+    local room = math.max(0, (MAX_ACCOUNT_MACROS or 120) - (accountCount or 0))
+    self.pendingGeneral = list
+    local what = #list == 1 and (list[1].name or "this macro") or (#list .. " macros")
+    local text = "Your Character macros are full.\n\nAdd " .. what .. " to General macros instead? General macros are shared by all your characters."
+    if room < #list then text = text .. "\n\n|cffff6b6bGeneral has room for " .. room .. ".|r" end
+    StaticPopupDialogs.FOREVERTOOLS_CHAR_FULL = StaticPopupDialogs.FOREVERTOOLS_CHAR_FULL or {button1 = "Add to General", button2 = "Cancel", timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+        OnAccept = function() MacroForge:AddPendingGeneral() end,
+        OnCancel = function() MacroForge.pendingGeneral = nil end}
+    StaticPopupDialogs.FOREVERTOOLS_CHAR_FULL.text = text
+    KT:ShowPopup("FOREVERTOOLS_CHAR_FULL")
+end
+function MacroForge:AddPendingGeneral()
+    local list = self.pendingGeneral; self.pendingGeneral = nil
+    if type(list) ~= "table" then return 0 end
+    local added = 0
+    for _, entry in ipairs(list) do
+        self.skipReason = nil
+        local quiet = self.bulkAdding; self.bulkAdding = #list > 1 or nil
+        if self:CreateEntry(entry, true) then added = added + 1 end
+        self.bulkAdding = quiet
+    end
+    if #list > 1 then
+        self:Status(string.format("%d macros added to General macros.", added), added < #list)
+        if added > 0 then KT:Toast(string.format("Added %d general macros", added)) end
+    end
+    if self.Changed then self:Changed() end
+    if self.UpdateBulkInfo then self:UpdateBulkInfo() end
+    return added
+end
 function MacroForge:CreateBulk(className, chosen)
     if InCombatLockdown() then self:Status("Leave combat before adding macros.", true); return end
     local entries = chosen or self:AddableEntries(className)
     local rank, mouseover = self.selectedRank, self.mouseover
     self.selectedRank, self.mouseover = "max", self.bulkMouseover == true
-    local created = 0; self.bulkAdding = true
+    local created = 0; self.bulkAdding = true; self.overflow = nil
     local skipped = {exists = {}, full = {}, long = {}}
     for _, entry in ipairs(entries) do
         self.skipReason = nil
@@ -766,6 +816,8 @@ function MacroForge:CreateBulk(className, chosen)
     self.statusHover:SetShown(total > 0)
     if created > 0 then KT:Toast(string.format("Added %d character macros", created)) end
     self:UpdateBulkInfo()
+    local overflow = self.overflow; self.overflow = nil
+    if overflow and #overflow > 0 then self:OfferGeneral(overflow) end
 end
 
 local function sameEntry(a, b)
@@ -777,7 +829,7 @@ function MacroForge:Select(entry)
     self.selectedMacro, self.selectedRank, self.mouseover = entry, "max", self:EntryMouseover(entry)
     self.quickSpell=nil
     if self.spellChoice then
-        self.spellChoice.value=nil;self.spellChoice.label:SetText("Choose learned spell")
+        self.spellChoice.value=nil;self.spellChoice.label:SetText("Add a spell to the text...")
         self.spellChoice.icon:SetTexture("Interface\\Icons\\"..KT.icons.add)
     end
     if self.historyPanel then self.historyPanel:Hide() end
@@ -883,7 +935,7 @@ local EQUIP_FITS={
     INVTYPE_TABARD={19},
 }
 -- Weapons first: those are the swaps the game also allows in a fight.
-MacroForge.equipSlots={{16,"Main hand"},{17,"Off hand"},{18,"Ranged"},{13,"Trinket 1"},{14,"Trinket 2"},{11,"Ring 1"},{12,"Ring 2"},
+MacroForge.equipSlots={{18,"Ranged"},{13,"Trinket 1"},{14,"Trinket 2"},{11,"Ring 1"},{12,"Ring 2"},
     {1,"Head"},{2,"Neck"},{3,"Shoulders"},{15,"Back"},{5,"Chest"},{4,"Shirt"},{19,"Tabard"},{9,"Wrist"},{10,"Hands"},{6,"Waist"},{7,"Legs"},{8,"Feet"}}
 local function plain(v) return (not issecretvalue or not issecretvalue(v)) and v~=nil end
 local function linkName(link)
@@ -997,6 +1049,69 @@ function MacroForge:EquipChoices(slot)
     if current and not seen[current] then add(current,nil," (not in your bags)") end
     return list
 end
+-- Every weapon you carry (worn in either hand or the ranged slot, or in
+-- your bags) for one hand. Weapons that can't go in that hand stay in the
+-- list, greyed, with the reason (a two-hander for the off hand, a one-hander
+-- for the off hand without dual wield). Unbound items are marked: equipping
+-- one binds it (the game asks first).
+local WEAPON_LOCS={INVTYPE_WEAPON="One-hand",INVTYPE_WEAPONMAINHAND="Main hand",INVTYPE_2HWEAPON="Two-hand",INVTYPE_WEAPONOFFHAND="Off hand",
+    INVTYPE_SHIELD="Shield",INVTYPE_HOLDABLE="Held in off hand",INVTYPE_RANGED="Ranged",INVTYPE_RANGEDRIGHT="Ranged",INVTYPE_THROWN="Thrown"}
+function MacroForge:WeaponChoices(slot)
+    local list={{value="",label="None (no swap)",icon="Interface\\Icons\\INV_Misc_QuestionMark"}}
+    local seen={}
+    local instant=(C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    local function loc(item)
+        if not instant or item==nil then return end
+        local ok,_,_,_,equipLoc=pcall(instant,item)
+        if ok and plain(equipLoc) then return equipLoc end
+    end
+    local function add(name,id,icon,where,quality,unbound)
+        if type(name)~="string" or name=="" or seen[name] then return end
+        local equipLoc=loc(id or name); local kind=equipLoc and WEAPON_LOCS[equipLoc]
+        if not kind then return end
+        seen[name]=true
+        local ok=fits(id or name,slot)
+        local why
+        if not ok then
+            if equipLoc=="INVTYPE_2HWEAPON" then why="Two-handed: only the main hand."
+            elseif equipLoc=="INVTYPE_WEAPON" and slot==17 then why="You can't dual wield yet."
+            elseif slot==16 then why="Only goes in the off hand."
+            else why="Doesn't go in this hand." end
+        end
+        if quality==nil then quality=self:EquipQuality(slot,name) end
+        local tip=kind..(where and (", "..where) or "")..(unbound and ". Not bound yet: equipping it binds it to you (the game asks first)." or ".")..(why and ("\n"..why) or "")
+        list[#list+1]={value=name,label=self:ColoredItem(name,quality).."  |cff9a8f7a"..kind..(where and (", "..where) or "").."|r",icon=plain(icon) and icon or nil,
+            tooltipTitle=name,tooltip=tip,disabled=not ok}
+    end
+    if GetInventoryItemLink then
+        for _,worn in ipairs({16,17,18}) do
+            local okL,link=pcall(GetInventoryItemLink,"player",worn)
+            local id=okL and plain(link) and type(link)=="string" and tonumber(link:match("item:(%d+)"))
+            if id then
+                local icon; if GetInventoryItemTexture then local okIcon,texture=pcall(GetInventoryItemTexture,"player",worn); if okIcon then icon=texture end end
+                add(linkName(link),id,icon,"worn in your "..SLOT_NAMES[worn])
+            end
+        end
+    end
+    if C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemInfo then
+        for bag=0,(NUM_BAG_SLOTS or 4) do
+            local okCount,count=pcall(C_Container.GetContainerNumSlots,bag)
+            for index=1,(okCount and plain(count) and type(count)=="number" and count or 0) do
+                local ok,info=pcall(C_Container.GetContainerItemInfo,bag,index)
+                if ok and type(info)=="table" and plain(info.itemID) and info.itemID then
+                    local name=(plain(info.itemName) and type(info.itemName)=="string" and info.itemName) or linkName(info.hyperlink)
+                    add(name,info.itemID,info.iconFileID,"in your bags",plain(info.quality) and type(info.quality)=="number" and info.quality or nil,plain(info.isBound) and info.isBound==false)
+                end
+            end
+        end
+    end
+    local current=self:EquipLine(slot)
+    if current and not seen[current] then
+        seen[current]=true
+        list[#list+1]={value=current,label=current.."  |cff9a8f7anot in your bags|r",tooltipTitle=current,tooltip="This macro names it, but you don't carry it now."}
+    end
+    return list
+end
 -- Set, replace or remove (name "" or nil) the equip line for a slot. Equip
 -- lines sit right under the # lines, so the swap comes before the cast.
 function MacroForge:SetEquipLine(slot,name)
@@ -1028,6 +1143,12 @@ function MacroForge:SetEquipLine(slot,name)
     end
 end
 function MacroForge:RefreshEquip()
+    for slot,drop in pairs(self.handDrops or {}) do
+        local current=self:EquipLine(slot)
+        drop.value=current or ""
+        drop.label:SetText(current and self:ColoredItem(current,self:EquipQuality(slot,current)) or "No swap")
+        KT:SetSelected(drop,current~=nil)
+    end
     if not self.equipSlot or not self.equipItem then return end
     local slot=self.equipSlotValue or 16
     local label="Slot"

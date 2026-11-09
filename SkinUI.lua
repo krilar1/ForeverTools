@@ -405,7 +405,7 @@ function S:Open()
         -- Gold or dark rings: the ForeverTools button, the grouped buttons'
         -- gear, and the other addons' buttons, each on its own.
         self.ringChoices={}
-        for _,e in ipairs({{"addonRings","Addon rings","The ForeverTools button and other addons' minimap buttons, on the minimap and in the group."},{"gearRing","Group ring","The gear that opens your grouped minimap buttons."}}) do
+        for _,e in ipairs({{"addonRings","Addon rings","The ForeverTools button and other addons' minimap buttons on the minimap. Buttons in the group have their own choice under On-screen info > Minimap (Rings in the group)."},{"gearRing","Group ring","The gear that opens your grouped minimap buttons."}}) do
             local key=e[1]
             local b=FT:QuietButton(self.frame,"",205,32,"map"); b.ftTitle=e[2]
             FT:MakeChoice(b,{{"game","Game","The game's gold ring."},{"dark","Dark","The ring in your border color."}},function() return self:Area("minimap")[key]=="dark" and "dark" or "game" end,function(v) self:Area("minimap")[key]=v; self:Apply() end)

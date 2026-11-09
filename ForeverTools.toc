@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: ForeverTools
 ## Notes: A toolkit of customizable quality-of-life tools.
-## Version: 1.2.0
+## Version: 1.3.0
 ## SavedVariables: ForeverToolsDB, KrilarToolsDB
 ## IconTexture: Interface\AddOns\ForeverTools\Media\MinimapIcon.tga
 ## AddonCompartmentFunc: ForeverTools_OnAddonCompartmentClick
@@ -82,6 +82,7 @@ SoftRes.lua
 Recipes.lua
 BugReport.lua
 Movers.lua
+GameMenu.lua
 MoveWindows.lua
 Hubs.lua
 Search.lua

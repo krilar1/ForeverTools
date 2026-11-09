@@ -230,7 +230,12 @@ function S:PaintArtwork(texture,record)
     -- Bank pieces follow their own switch (Skins > Bank).
     local active=self:SkinOn(record,s) and allowed
     -- Addon minimap button rings follow their own choice.
-    if record.ringChoice and s[record.ringChoice]~="dark" then active=false end
+    if record.ringChoice then
+        -- Grouped buttons have their own choice; not set yet, they follow the minimap one.
+        local v=s[record.ringChoice]
+        if record.ringChoice=="groupRings" and v==nil then v=s.addonRings end
+        if v~="dark" then active=false end
+    end
     if record.bankBagArt=="fill" then active=false end
     -- Calendar day tiles: the parchment kept (desaturated, never black),
     -- only darkened in the background color.
@@ -1841,15 +1846,29 @@ end
 -- texture showing the game's tracking border (by file id or name).
 local RING_FILE=136430
 local function ringOf(button)
-    local r=button.ring or button.border or button.Border
+    local r=button.ring or button.border or button.Border or button.Ring
     if isTexture(r) then return r end
+    local icon=button.icon or button.Icon
+    local fallback
     for _,region in ipairs(regs(button)) do
-        if isTexture(region) then
+        if isTexture(region) and region~=icon then
             local t=region.GetTexture and region:GetTexture()
             if not (issecretvalue and issecretvalue(t)) and (t==RING_FILE or (type(t)=="string" and t:lower():find("trackingborder",1,true))) then return region end
+            -- Other ring art (newer minimap buttons): a file or atlas named
+            -- like a border or ring.
+            local atlas=region.GetAtlas and region:GetAtlas()
+            for i=1,2 do
+                local name=i==1 and t or atlas
+                if type(name)=="string" and not (issecretvalue and issecretvalue(name)) then
+                    local low=name:lower()
+                    if not fallback and (low:find("border",1,true) or low:find("ring",1,true)) and not low:find("highlight",1,true) then fallback=region end
+                end
+            end
         end
     end
+    return fallback
 end
+S.RingOf=ringOf
 function S:AddonRing(button,choice)
     if not button or forbidden(button) then return end
     local r=ringOf(button)
@@ -1860,10 +1879,11 @@ function S:AddonRing(button,choice)
 end
 function S:AddonRings()
     local ft,gear=_G.ForeverToolsMinimapButton,_G.ForeverToolsMinimapIcons
-    self:AddonRing(ft,"addonRings"); self:AddonRing(gear,"gearRing")
+    local ftRecord=FT.modules.MinimapIcons and FT.modules.MinimapIcons.records and FT.modules.MinimapIcons.records[ft]
+    self:AddonRing(ft,(ftRecord and ftRecord.active) and "groupRings" or "addonRings"); self:AddonRing(gear,"gearRing")
     if Minimap then for _,c in ipairs(kids(Minimap)) do if c~=ft and c~=gear and c.GetObjectType and c:GetObjectType()=="Button" then self:AddonRing(c,"addonRings") end end end
     local icons=FT.modules.MinimapIcons
-    if icons and icons.records then for button in pairs(icons.records) do if button~=ft and button~=gear then self:AddonRing(button,"addonRings") end end end
+    if icons and icons.records then for button,record in pairs(icons.records) do if button~=ft and button~=gear then self:AddonRing(button,record.active and "groupRings" or "addonRings") end end end
 end
 -- A header button's art (collapse, settings): a dark tone, never black.
 function S:MeterButton(button)

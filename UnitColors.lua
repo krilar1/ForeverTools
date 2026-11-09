@@ -17,6 +17,30 @@ local function groupFor(unit)
     if unit == "player" or unit == "target" or unit == "focus" then return unit end
 end
 local healthBar
+-- The group unit (you, a party or raid member) a hidden unit is, or nil.
+-- UnitIsUnit answers even when the game hides who a unit is; a hidden
+-- answer counts as "can't tell".
+function Colors.SameAs(unit)
+    if type(unit)~="string" or not UnitIsUnit then return end
+    local secret=issecretvalue
+    local function same(ref)
+        if not UnitExists(ref) then return false end
+        local ok,v=pcall(UnitIsUnit,unit,ref)
+        if not ok or (secret and secret(v)) then return false end
+        return v==true
+    end
+    if same("player") then return "player" end
+    -- Target of target and you are tanking the target: it is you.
+    if unit=="targettarget" and UnitThreatSituation then
+        local ok,st=pcall(UnitThreatSituation,"player","target")
+        if ok and not (secret and secret(st)) and type(st)=="number" and st>=3 then return "player" end
+    end
+    if IsInRaid and IsInRaid() then
+        for i=1,(GetNumGroupMembers and GetNumGroupMembers() or 0) do if same("raid"..i) then return "raid"..i end end
+    elseif IsInGroup and IsInGroup() then
+        for i=1,4 do if same("party"..i) then return "party"..i end end
+    end
+end
 local nativeAtlas = {player = "UI-HUD-UnitFrame-Player-PortraitOn-Bar-Health"}
 function Colors:Paint(bar, force)
     local info = self.tracked[bar]
@@ -46,6 +70,18 @@ function Colors:Paint(bar, force)
             if secret and secret(class) then unknown = true
             elseif type(class) == "string" then
                 color = (CUSTOM_CLASS_COLORS and CUSTOM_CLASS_COLORS[class]) or (RAID_CLASS_COLORS or {})[class]
+            end
+        end
+        if unknown then
+            -- Hidden in a fight, but it may be you or someone in your group
+            -- (a mob targeting you): their class is never hidden.
+            local same=Colors.SameAs(unit)
+            if same then
+                local _, class = UnitClass(same)
+                if type(class)=="string" and not (secret and secret(class)) then
+                    color = (CUSTOM_CLASS_COLORS and CUSTOM_CLASS_COLORS[class]) or (RAID_CLASS_COLORS or {})[class]
+                    if color then unknown = nil end
+                end
             end
         end
         if unknown then
@@ -88,7 +124,12 @@ function Colors:Paint(bar, force)
     elseif not color and info.native and texture and texture.SetAtlas then
         texture:SetAtlas(info.native); info.native = nil
     end
-    if texture and texture.SetDesaturated then texture:SetDesaturated(color ~= nil and not status) end
+    -- The target of target's "-Status" fill is not white like the others
+    -- (it stayed green under the class color): grey it first there too.
+    local tot = info.unit == "targettarget" or info.unit == "focustarget"
+    if texture and texture.SetDesaturated then texture:SetDesaturated(color ~= nil and (tot or not status)) end
+    -- And its fill's own tint is set to white, so only the bar color counts.
+    if tot and color and texture and texture.SetVertexColor then texture:SetVertexColor(1, 1, 1, 1) end
     if color then bar:SetStatusBarColor(color.r, color.g, color.b)
     elseif info.colored and info.original then bar:SetStatusBarColor(unpack(info.original)) end
     for _,rim in ipairs(info.rim or {}) do rim:Hide() end
@@ -129,17 +170,30 @@ function Colors:Report()
 end
 -- The target-of-target bar: tracked, colored, its fill and color now.
 function Colors:ReportToT()
-    local frame=_G.TargetFrameToT
-    if not frame or not UnitExists("targettarget") then return "" end
+    local frame=_G.TargetFrameToT or (TargetFrame and TargetFrame.totFrame)
+    if not frame then return "; ToT: no frame" end
+    if not UnitExists("targettarget") then return "; ToT: no target of target (shown="..tostring(frame:IsShown())..")" end
     local function show(v) if issecretvalue and issecretvalue(v) then return "hidden" end return tostring(v) end
+    local function try(fn,...) if type(fn)~="function" then return "missing" end local ok,v=pcall(fn,...); if not ok then return "error" end return show(v) end
     local bar=healthBar(frame)
     local info=bar and self.tracked[bar]
     local texture=bar and bar.GetStatusBarTexture and bar:GetStatusBarTexture()
     local atlas=texture and texture.GetAtlas and texture:GetAtlas()
-    local r,g,b=bar and bar:GetStatusBarColor()
+    local r,g,b
+    if bar then r,g,b=bar:GetStatusBarColor() end
     local _,class=UnitClass("targettarget")
-    return "; ToT: player="..show(UnitIsPlayer("targettarget")).." class="..show(class).." tracked="..tostring(info~=nil).." unit="..tostring(info and info.unit)
-        .." colored="..tostring(info and info.colored).." fill="..show(atlas).." color="..show(r)..","..show(g)..","..show(b)
+    local status=type(atlas)=="string" and not (issecretvalue and issecretvalue(atlas)) and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas:gsub("%-Status$","").."-Status")~=nil
+    return "; ToT: same as="..tostring(self.SameAs("targettarget"))
+        .." isUnit(player)="..try(UnitIsUnit,"targettarget","player")
+        .." player="..show(UnitIsPlayer("targettarget")).." guid="..(function() local v=UnitGUID("targettarget"); if issecretvalue and issecretvalue(v) then return "hidden" end return tostring(v and v:match("^(%a+)")) end)()
+        .." class="..show(class).." name="..try(UnitName,"targettarget")
+        .." frameUnit="..tostring(frame.unit).." bar="..tostring(bar~=nil).." tracked="..tostring(info~=nil).." unit="..tostring(info and info.unit)
+        .." colored="..tostring(info and info.colored).." last="..tostring(info and info.lastColor~=nil).." fill="..show(atlas).." statusArt="..tostring(status)
+        .." color="..show(r)..","..show(g)..","..show(b)
+        .." desat="..(texture and texture.IsDesaturated and show(texture:IsDesaturated()) or "?")
+        .." tint="..(function() if not (texture and texture.GetVertexColor) then return "?" end local a,b2,c=texture:GetVertexColor(); return show(a)..","..show(b2)..","..show(c) end)()
+        .." shown="..tostring(bar and bar:IsShown()).." alpha="..(bar and show(bar:GetAlpha()) or "?")
+        .." combat="..tostring(InCombatLockdown())
 end
 -- Undo the plain fill used by older versions (only matters within a session
 -- that started before an update; kept so nothing is left behind).
@@ -178,6 +232,20 @@ function Colors:Track(bar, unit, group, owner)
             if bar.SetStatusBarTexture then hooksecurefunc(bar, "SetStatusBarTexture", artChanged) end
             local fill = bar.GetStatusBarTexture and bar:GetStatusBarTexture()
             if fill and fill.SetAtlas then hooksecurefunc(fill, "SetAtlas", artChanged) end
+            -- Something tinting the fill itself (green on the target of
+            -- target) would mix with the class color: keep it white while
+            -- the bar is class colored.
+            if fill and fill.SetVertexColor then
+                hooksecurefunc(fill, "SetVertexColor", function(t, r, g, b)
+                    if self.painting or not info.colored or not (info.unit == "targettarget" or info.unit == "focustarget") then return end
+                    if issecretvalue and (issecretvalue(r) or issecretvalue(g) or issecretvalue(b)) then return end
+                    if r == 1 and g == 1 and b == 1 then return end
+                    self.painting = true; t:SetVertexColor(1, 1, 1, 1)
+                    local c = info.lastColor
+                    if c then bar:SetStatusBarColor(c.r, c.g, c.b) end
+                    self.painting = false
+                end)
+            end
         end
     end
     info.unit, info.group, info.owner = unit, group, owner

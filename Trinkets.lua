@@ -30,6 +30,9 @@ function T:Settings()
     if type(s.hideEmpty)~="boolean" then s.hideEmpty=true end
     s.size=math.max(.7,math.min(1.5,tonumber(s.size) or 1))
     if type(s.x)~="number" or type(s.y)~="number" then s.x,s.y=nil,nil end
+    -- Placed before 1.3.0 (a saved spot): counts as locked, no first-time button.
+    if s.locked==nil and s.x then s.locked=true end
+    if type(s.locked)~="boolean" then s.locked=nil end
     return s
 end
 -- Cooldown of a worn slot or of an item ID: start, duration (or nil).
@@ -163,10 +166,37 @@ function T:Bar()
         b:HookScript("OnLeave",function() if GameTooltip then GameTooltip:Hide() end; self:MenuLeft() end)
         f.buttons[i]=b
     end
+    -- First time on: the bar waits where it is, movable, with a button to
+    -- lock it there (no trip to Move elements needed).
+    -- A drag handle above the buttons (they stay clickable, also in a fight)
+    -- and the Lock in place button below them.
+    local handle=CreateFrame("Frame",nil,UIParent); f.dragHandle=handle
+    handle:SetSize(150,20); handle:SetPoint("BOTTOM",f,"TOP",0,6); handle:SetFrameStrata("HIGH")
+    handle:EnableMouse(true); handle:RegisterForDrag("LeftButton"); FT:Panel(handle)
+    handle.text=FT:Label(handle,"Trinket menu: drag here",11); handle.text:SetPoint("CENTER")
+    handle:SetScript("OnDragStart",function() if not busy() then f:StartMoving() end end)
+    handle:SetScript("OnDragStop",function() f:StopMovingOrSizing(); self:SavePlace() end)
+    handle:Hide()
+    local lock=FT:QuietButton(UIParent,"Lock in place",150,28,"confirm"); f.lockHere=lock
+    lock:SetFrameStrata("HIGH"); lock:SetPoint("TOP",f,"BOTTOM",0,-8); lock:Hide()
+    FT:SaveButton(lock)
+    lock:SetScript("OnClick",function() self:LockHere() end)
+    FT:Tooltip(lock,"Lock in place","Drag the trinket buttons where you want them, then click to lock. Move them later with Move elements or the Trinket menu page.")
     f:Hide()
     self.bar=f
     self:Layout()
     return f
+end
+-- Is this the first time the bar shows (never placed or locked)?
+function T:FirstPlace()
+    local s=self:Settings()
+    return s.enabled and s.locked~=true
+end
+function T:LockHere()
+    if busy() then return end
+    local s=self:Settings(); s.locked=true
+    if self.bar and self.bar.lockHere then self.bar.lockHere:Hide(); self.bar.dragHandle:Hide() end
+    FT:Toast("Trinket menu locked. Move it later with Move elements.",3)
 end
 -- Which slots get a button: both, or only the one with a trinket when you
 -- carry a single trinket (worn or in your bags).
@@ -400,6 +430,9 @@ function T:Apply()
     self:Layout()
     f:SetShown(self:Wanted())
     if not f:IsShown() and self.menu then self.menu:Hide() end
+    -- First time: movable with its Lock in place button.
+    local first=f:IsShown() and self:Settings().enabled and self:Settings().locked~=true and not self.moving
+    if f.lockHere then f.lockHere:SetShown(first and true or false); f.dragHandle:SetShown(first and true or false) end
     self:SetEvents(s.enabled)
     local skins=FT.modules.IconStyles
     if skins and skins.Track then for _,b in ipairs(f.buttons) do pcall(skins.Track,skins,b,"trinkets") end end
@@ -459,6 +492,7 @@ function T:SetMoving(on)
     f:SetFrameStrata(self.moving and "HIGH" or "MEDIUM")
     self:Layout()
     f:SetShown(self:Wanted())
+    if f.lockHere then local first=f:IsShown() and self:FirstPlace() and not self.moving; f.lockHere:SetShown(first); f.dragHandle:SetShown(first) end
     if self.moving then self:Update() end
     self:Fade()
     self:Refresh()

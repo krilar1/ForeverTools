@@ -129,7 +129,7 @@ local hubs = {
             return (db.macroScope == "account" and "General" or "Character") .. " · mouseover " .. (db.macroBulkMouseover and "on" or "off")
         end},
     }},
-    {key = "BuffsHub", width = 520, height = 720, title = "Buff reminders", pages = {
+    {key = "BuffsHub", width = 520, height = 800, title = "Buff reminders", pages = {
         {"BuffReminder", "Your buffs", "Spell_Holy_WordFortitude", function() return buffStatus("self") end},
         {"BuffGroup", "Group buffs", "Spell_Holy_PrayerOfFortitude", function() return buffStatus("group") end},
         {"BuffRanks", "Low ranks", "INV_Misc_Book_07", function() return buffStatus("rank") end},

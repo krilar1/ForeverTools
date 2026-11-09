@@ -93,6 +93,7 @@ function R:Scan()
     table.sort(items); table.sort(names)
     c.profs[name]={skill=skill,items=items,names=names,at=time and time() or 0}
     self.lastScan=name
+    self:AfterScan(name)
 end
 -- The line for the website, and the summary above it.
 function R:Export()
@@ -113,15 +114,141 @@ function R:Export()
     local name=clean(text(call(UnitName,"player")) or c.name or "?"):gsub("%-.*","")
     return "FTRC1|"..name.."|"..table.concat(parts,";"),table.concat(summary," · ")
 end
-function R:Open()
-    local line,summary=self:Export()
-    if not line then
-        FT:CopyBox("Recipes for the guild website","","Open your profession window once so ForeverTools can read your recipes.")
-        return
+-- Your crafting professions: {name, spell to open it, icon, skill}.
+-- Gathering (no recipe list), Cooking and First Aid are left out. Mining's
+-- recipe list opens with Smelting.
+local GATHER={Herbalism=true,Skinning=true,Fishing=true,Archaeology=true}
+local OPEN_WITH={Mining="Smelting"}
+function R:Professions()
+    local list,seen={},{}
+    local function add(name,icon,skill)
+        name=text(name); if not name or seen[name] or SKIP[name] or GATHER[name] then return end
+        seen[name]=true
+        list[#list+1]={name=name,spell=OPEN_WITH[name] or name,icon=icon or 134400,skill=number(skill) or 0}
     end
-    -- An edit box reads | as the start of a code (|T, |K... would turn the
-    -- name into a picture); written as || it shows, and copies, as one |.
-    FT:CopyBox("Recipes for the guild website",(line:gsub("|","||")),summary.."\nPress Ctrl+C to copy, then paste it on the guild website (Professions > Mine recipes > Importer fra ForeverTools).",true)
+    if type(GetProfessions)=="function" and type(GetProfessionInfo)=="function" then
+        local ok,a,b,c,d,e=pcall(GetProfessions)
+        if ok then for _,index in ipairs({a,b,c,d,e}) do
+            if plain(index) and type(index)=="number" then
+                local okI,name,icon,skill=pcall(GetProfessionInfo,index)
+                if okI then add(name,icon,skill) end
+            end
+        end end
+    end
+    if #list==0 and type(GetNumSkillLines)=="function" and type(GetSkillLineInfo)=="function" then
+        -- Older skill list: the lines under the "Professions" header.
+        local ok,n=pcall(GetNumSkillLines); local inside=false
+        for i=1,(ok and number(n) or 0) do
+            local okL,name,header,_,skill=pcall(GetSkillLineInfo,i)
+            if okL then
+                if header then inside=(name=="Professions" or name==(TRADE_SKILLS or "Professions"))
+                elseif inside then add(name,nil,skill) end
+            end
+        end
+    end
+    -- Professions read before still show (a list the game hides for a moment).
+    local c=self:Mine()
+    if c then for prof,p in pairs(c.profs) do if type(p)=="table" then add(prof,nil,p.skill) end end end
+    table.sort(list,function(x,y) return x.name<y.name end)
+    return list
+end
+local function ago(at)
+    at=tonumber(at); if not at or at<=0 or not time then return "" end
+    local d=time()-at
+    if d<120 then return "just now" elseif d<7200 then return math.floor(d/60).." min ago" elseif d<172800 then return math.floor(d/3600).." h ago" end
+    return math.floor(d/86400).." days ago"
+end
+function R:Refresh()
+    local frame=self.frame; if not frame or not frame:IsShown() then return end
+    local c=self:Mine()
+    local profs=self:Professions()
+    for i,row in ipairs(self.rows) do
+        local prof=profs[i]
+        row:SetShown(prof~=nil)
+        if prof then
+            local p=c and c.profs[prof.name]
+            local n=p and (#(p.items or {})+#(p.names or {})) or 0
+            row.prof=prof
+            row.label:SetText(prof.name..(prof.skill>0 and (" "..prof.skill) or ""))
+            row.state:SetText(p and (n.." recipes, read "..ago(p.at)) or "|cffff6b6bnot read yet|r")
+            row.icon:SetTexture(prof.icon)
+            if not InCombatLockdown() then
+                row.read:SetAttribute("type","spell"); row.read:SetAttribute("spell",prof.spell)
+            end
+            row.read.label:SetText(p and "Read again" or "Read")
+        end
+    end
+    self.none:SetShown(#profs==0)
+    local line,summary=self:Export()
+    self.original=line and line:gsub("|","||") or ""
+    self.box:SetText(self.original)
+    self.copyHint:SetText(line and "Click in the box, press Ctrl+A then Ctrl+C, and paste it on the guild website (Professions > Mine recipes > Importer fra ForeverTools)." or "Read at least one profession first.")
+    self.box:SetEnabled(line~=nil)
+end
+function R:Open()
+    if FT:CombatOpenRequest() then return end
+    if not self.frame then
+        local W,H=560,470
+        local frame=FT:Window("ForeverToolsRecipes","Recipes for the guild website",W,H); self.frame=frame
+        frame.noSavePrompt=true
+        if frame.homeButton then frame.homeButton:Hide() end
+        local hint=FT:Label(frame,"Click Read on each profession: its window opens, the recipes are read and it closes again.",12)
+        hint:SetPoint("TOPLEFT",24,-60); hint:SetWidth(W-48); hint:SetTextColor(.85,.80,.70)
+        self.rows={}
+        for i=1,4 do
+            local y=-92-(i-1)*42
+            local row=CreateFrame("Frame",nil,frame); row:SetSize(W-48,36); row:SetPoint("TOPLEFT",24,y)
+            row.icon=row:CreateTexture(nil,"ARTWORK"); row.icon:SetSize(28,28); row.icon:SetPoint("LEFT",4,0)
+            row.label=FT:Label(row,"",14,true); row.label:SetPoint("TOPLEFT",42,-2)
+            row.state=FT:Label(row,"",12); row.state:SetPoint("TOPLEFT",42,-20); row.state:SetTextColor(.66,.59,.48)
+            -- A secure button: opening a profession is casting its spell,
+            -- which only a click may do.
+            local read=CreateFrame("Button",nil,row,"SecureActionButtonTemplate")
+            read:SetSize(130,30); read:SetPoint("RIGHT",0,0); read:RegisterForClicks("AnyUp","AnyDown")
+            FT:Panel(read)
+            read.label=FT:Label(read,"Read",13); read.label:SetPoint("CENTER")
+            read:HookScript("PreClick",function()
+                R.reading=row.prof and row.prof.name; local at=GetTime(); R.openedAt=at
+                -- Nothing read after a while: say so instead of a silent window.
+                C_Timer.After(8,function()
+                    if R.reading and R.openedAt==at then
+                        R.reading=nil
+                        FT:Toast("Couldn't read the recipes. Type /ft recipesdebug and send the text.",5)
+                    end
+                end)
+            end)
+            FT:Tooltip(read,"Read recipes","Opens this profession's window, reads your recipes and closes it again.")
+            row.read=read
+            self.rows[i]=row
+        end
+        self.none=FT:Label(frame,"No crafting professions found on this character.",13); self.none:SetPoint("TOPLEFT",24,-100); self.none:Hide()
+        self.copyHint=FT:Label(frame,"",12); self.copyHint:SetPoint("TOPLEFT",24,-264); self.copyHint:SetWidth(W-48); self.copyHint:SetTextColor(.85,.80,.70)
+        local scroll=CreateFrame("ScrollFrame",nil,frame,"UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT",24,-300); scroll:SetPoint("BOTTOMRIGHT",-42,22)
+        local box=CreateFrame("EditBox",nil,scroll)
+        box:SetMultiLine(true); box:SetAutoFocus(false); box:SetFont(FT.bodyFont,13,""); box:SetWidth(W-72); box:SetTextInsets(4,4,4,4)
+        if box.SetMaxLetters then box:SetMaxLetters(0) end
+        box:SetScript("OnEscapePressed",function() frame:Hide() end)
+        box:SetScript("OnTextChanged",function(owner,user) if user then owner:SetText(R.original or ""); owner:HighlightText() end end)
+        box:SetScript("OnEditFocusGained",function(owner) owner:HighlightText() end)
+        FT:Panel(scroll)
+        scroll:SetScrollChild(box); self.box=box
+    end
+    self.frame:Show(); self:Refresh()
+end
+-- A profession window we opened from Read closes again once it is read.
+function R:AfterScan(name)
+    if self.frame and self.frame:IsShown() then self:Refresh() end
+    if self.reading and name and self.reading==name and GetTime()-(self.openedAt or 0)<20 then
+        self.reading=nil
+        local T=C_TradeSkillUI
+        C_Timer.After(.3,function()
+            if T and T.CloseTradeSkill then pcall(T.CloseTradeSkill) end
+            local pf=_G.ProfessionsFrame or _G.TradeSkillFrame
+            if pf and pf.IsShown and pf:IsShown() and not InCombatLockdown() then pcall(HideUIPanel,pf) end
+            FT:Toast(name.." recipes read",2)
+        end)
+    end
 end
 local events=CreateFrame("Frame")
 for _,event in ipairs({"TRADE_SKILL_SHOW","TRADE_SKILL_LIST_UPDATE","TRADE_SKILL_DATA_SOURCE_CHANGED"}) do pcall(events.RegisterEvent,events,event) end

@@ -84,7 +84,7 @@ function S:Refresh()
             return list
         end
         local w=99
-        self.saveTemplate=FT:QuietButton(frame,"Save new",w,32); self.saveTemplate:SetPoint("TOPLEFT",176,-244)
+        self.saveTemplate=FT:QuietButton(frame,"Save new",w,32); self.saveTemplate:SetPoint("TOPLEFT",176,-244); FT:SaveButton(self.saveTemplate)
         self.saveTemplate:SetScript("OnClick",function() self:SaveCurrentAsTemplate() end)
         FT:Tooltip(self.saveTemplate,"Save as new template","Save your current skins as a template.")
         self.updateTemplate=FT:QuietButton(frame,"Update",w,32); self.updateTemplate:SetPoint("LEFT",self.saveTemplate,"RIGHT",8,0)

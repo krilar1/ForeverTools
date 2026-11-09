@@ -1,3 +1,38 @@
+# ForeverTools 1.3.0 (2026-11-09)
+
+## New
+- **Camp items reminder** (Buff reminders → Your buffs → Camping, off at first, only while leveling): a notice to use your **tent** (the Camp Tent, or another "... Tent" in your bags: rested experience worth 5% of a level) when you have less rested experience than that, no Boosted Rest on you and the tent is ready, and to use your **Cozy Sleeping Bag** when Well-Rested is gone or about to run out (Bag refresh: 5 or 10 minutes before, or when it's gone). Only when the item is in your bags and off cooldown, never in an inn or city, and not while you sit at a campfire (Camp Benefits).
+- **Shorter tour** (`/ft setup`): one card per menu (Appearance, Buff reminders, Combat, PvP, On-screen info, System, Bags) with that menu's features as switches. Click one to turn it on and see it on your screen; click again to turn it off. Right-click opens its settings. Quick tour about 1 minute, Full tour about 3. A tour paused in an older version starts again at the first menu.
+- **Extra game options** in four tabs (Graphics, Distance, Camera, Combat) and more settings: soft shadows, spell effects on the ground, blood and gore, far horizon, cloud detail, small things hidden in the distance, character detail distance, camera ignores small objects (and how big), steady camera, screenshot quality and format (JPG, PNG, TGA), damage numbers size, nameplate distance, nameplate stacking gap and nameplates behind walls. Only settings the game's own menu doesn't have; a setting this game version lacks is not listed.
+- **Move elements in the game menu:** the game's own menu (Esc) has a **Move elements** button with the ForeverTools logo, above Macros (System → General: Move elements in the game menu, on at first).
+- **Trinket menu, first time:** the buttons show with a "drag here" handle above them and **Lock in place** below, so you can put them where you want without Move elements. The buttons stay clickable meanwhile, also in a fight. A trinket menu you had placed before is left as it is.
+- **Minimap: Rings on the minimap** and **Rings in the group** (On-screen info → Minimap): Gold or Dark for each, so buttons you keep on the minimap and buttons in the group can look different. Rings on the minimap is the same choice as Skins → Minimap → Addon rings.
+- **Minimap button grouping: Keep on the minimap** (On-screen info → Minimap): pick buttons that stay on the minimap, outside the group (for example one you use a lot). Click one again to put it back in the group.
+- **Macros, weapon swap per hand:** More lines... has a Main hand and an Off hand row. Each lists every weapon you carry, worn in either hand or in your bags; weapons that can't go in that hand are greyed with the reason (two-handers for the off hand, one-handers without dual wield), and an unbound weapon says equipping it binds it. Other gear (ranged, trinkets, rings...) has its own row.
+- **Macros: Character tab full?** ForeverTools asks whether to add the macro to General macros instead (shared by all your characters). Adding all class macros asks once for every macro that didn't fit.
+
+## Changed
+- **Clicked-away reminders stay away:** a notice you click away stays quiet for 10 minutes (Buff reminders → Look and position → Clicked away: 5 or 10 minutes, 30 minutes, 1 hour, or until it changes). A notice whose text counts down or lists names (Well-Rested ends in 4 min, group buffs) no longer came straight back when its text changed.
+- **Move elements shows only what you use:** the group buff notice only with group reminders on, the threat % only with the threat meter on.
+- **Move elements: name tabs.** Each element's name sits on a small tab you can also drag it by, like the trinket menu's handle.
+- **Move elements is pixel exact:** the box on an element while you move it is exactly as big as the element (no outline sticking out past it), a see-through gold fill with a thin line along its own edges, so lining things up by eye lines up their real edges.
+- **Save buttons** look the same everywhere: green with a check mark. The macro editor's button says **Save to Character macros** (or **Save changes to your macro** when you already have it); the keybind snapshot Save and Skins' Save new use the same look.
+- **Your buffs page** has more room between its sections and rows, and every section heading has an icon.
+- **Section headings** across ForeverTools are easier to tell apart from the settings under them: gold, a size bigger, with the section's icon and a faint gold band. Extra game options' tabs have icons.
+- **Search** shows the page icon on every result, and finds camp items (tent, sleeping bag), the food reminder, the game menu button and the minimap rings. Buff reminders' Preview also shows a camp notice.
+- **Macro editor, adding a spell:** pick a spell in "Add a spell to the text..." and its /cast line goes in right away (no separate Add button).
+- **Macro editor:** the buttons are grouped under "This macro" (rank, mouseover) and "Add to the text" (pick a learned spell + Add line, More lines...), with Add to macros at the bottom. Rogue poison macros show **Auto-confirm poison** right there, where mouseover would be (the same switch as in Macro settings).
+- **Extra game options sliders** move smoothly: the game's setting is changed when you let go (or stop scrolling), not on every step of a drag.
+- **Every ForeverTools question** (pop-ups such as "Add class macros?") has an X in the corner, like the windows; it answers Cancel.
+
+## Fixed
+- **Target of target class color:** a mob targeting you (or someone in your group) in a fight now shows that player's class color; the game hides who it is, so it is matched against you and your group. It is also matched when you are tanking your target, and the bar's own fill is kept white under the class color (it was tinted green there, which hid the color). `/ft colordebug` shows what the game tells about the target of target (in a fight it prints a line; type it again after the fight to copy it).
+- **Dropdown lists** near the bottom of the screen open upwards instead of sliding over their own dropdown and the buttons around it.
+- **Minimap buttons kept outside the group** keep the Skins ring look (dark rings); more kinds of button rings are found. `/ft ringdebug` lists every minimap button's art, for bug reports.
+- **Show your target on the minimap:** the switch checks that the game took the change and says so.
+- **Cut-off texts:** Auto-confirm poison, Buff reminders' "In combat" and the threat meter's "Resize" choice fit their buttons.
+- **Show your target on the minimap:** the game's Target tracking is also found by its name. New `/ft trackdebug` lists the game's minimap tracking types, for bug reports.
+
 # ForeverTools 1.2.0 (2026-11-09)
 
 ## New

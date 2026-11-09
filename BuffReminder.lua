@@ -84,6 +84,12 @@ function Reminder:Settings()
     if s.foodWhen~="always" then s.foodWhen="leveling" end
     -- Stat food (Well Fed without the experience bonus): its own switch.
     if type(s.foodStat)~="boolean" then s.foodStat=false end
+    -- Camp items (tent, Cozy Sleeping Bag): off by default, only while leveling.
+    if type(s.camp)~="boolean" then s.camp=false end
+    -- Minutes before Well-Rested runs out to remind about the sleeping bag (0 = only when gone).
+    if s.campRefresh~=0 and s.campRefresh~=10 then s.campRefresh=5 end
+    -- Minutes a clicked-away notice stays quiet (0: only until it changes).
+    if s.clickQuiet~=0 and s.clickQuiet~=5 and s.clickQuiet~=30 and s.clickQuiet~=60 then s.clickQuiet=10 end
     -- Only remind about a self buff once you have the rage, mana or energy
     -- to cast it (Battle Shout with no rage stays quiet until you have 10).
     if type(s.powerReady)~="boolean" then s.powerReady=true end
@@ -189,6 +195,105 @@ function Reminder:FoodBuffs()
     -- Well Fed is there but could not be looked at closer: it counts for both.
     if not found then return true,true end
     return xp,stat
+end
+-- Camping (WoW: Forever): a tent gives Boosted Rest (rested XP worth 5% of
+-- a level, only if you have less; then an hour before it works again) and
+-- the Cozy Sleeping Bag gives Well-Rested (+1% XP a minute on it, up to 3).
+-- A reminder shows only when such an item is in your bags and ready, its
+-- buff is not on you, you are not resting (inn, city: the bag can't be used
+-- there and you rest anyway) and you sit by no campfire (Camp Benefits).
+local SLEEPING_BAG=211527
+local TENTS={[279978]=true} -- the leatherworking Camp Tent; other "... Tent" items by name
+local WELL_RESTED,BOOSTED_REST,CAMP_BENEFITS=429959,1229451,1229741
+function Reminder:CampItems()
+    if self.campItems then return self.campItems end
+    local found={}
+    if C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemID then
+        local spellOf=(C_Item and C_Item.GetItemSpell) or GetItemSpell
+        local nameOf=(C_Item and C_Item.GetItemNameByID) or function(id) return (GetItemInfo(id)) end
+        for bag=0,(NUM_BAG_SLOTS or 4) do
+            local okN,count=pcall(C_Container.GetContainerNumSlots,bag)
+            for slot=1,(okN and safe(count) and type(count)=="number" and count or 0) do
+                local okI,id=pcall(C_Container.GetContainerItemID,bag,slot)
+                if okI and safe(id) and type(id)=="number" then
+                    if id==SLEEPING_BAG then
+                        if not found.bag then found.bag={bag=bag,slot=slot,id=id} end
+                    elseif not found.tent and TENTS[id] then
+                        local okName,name=pcall(nameOf,id)
+                        found.tent={bag=bag,slot=slot,id=id,name=okName and safe(name) and type(name)=="string" and name or "tent"}
+                    elseif not found.tent then
+                        local okName,name=pcall(nameOf,id)
+                        name=okName and safe(name) and type(name)=="string" and name or ""
+                        -- A tent you place from your bags (it has a Use spell).
+                        if name:find("Tent$") or name:find("Tent ") then
+                            local okS,spell=pcall(spellOf,id)
+                            if okS and safe(spell) and spell then found.tent={bag=bag,slot=slot,id=id,name=name} end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    for _,item in pairs(found) do
+        local icon=C_Item and C_Item.GetItemIconByID and select(2,pcall(C_Item.GetItemIconByID,item.id))
+        item.icon=safe(icon) and icon or "Interface\\Icons\\INV_Misc_Bag_08"
+    end
+    self.campItems=found
+    return found
+end
+-- Seconds until a bag item can be used again (0 = ready, nil = can't tell).
+function Reminder:ItemWait(item)
+    if not (C_Container and C_Container.GetContainerItemCooldown) then return 0 end
+    local ok,start,duration=pcall(C_Container.GetContainerItemCooldown,item.bag,item.slot)
+    if not ok or not safe(start) or not safe(duration) or type(start)~="number" or type(duration)~="number" then return nil end
+    if duration<=1.5 or start<=0 then return 0 end
+    return math.max(0,start+duration-GetTime())
+end
+-- An aura on you by spell id: true/false and seconds left (nil if hidden).
+local function myAura(id)
+    if not (C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID) then return nil end
+    local ok,aura=pcall(C_UnitAuras.GetPlayerAuraBySpellID,id)
+    if not ok then return nil end
+    if aura==nil then return false end
+    if not safe(aura) then return nil end
+    local left
+    if safe(aura.expirationTime) and type(aura.expirationTime)=="number" and aura.expirationTime>0 then left=aura.expirationTime-GetTime() end
+    return true,left
+end
+Reminder.MyAura=myAura
+-- The camp notices wanted now, and when to look again.
+function Reminder:CampNotices()
+    local s=self:Settings()
+    if not s.camp or not self:Leveling() then return {} end
+    if IsResting and IsResting() then return {} end
+    local items=self:CampItems()
+    if not items.tent and not items.bag then return {} end
+    if myAura(CAMP_BENEFITS)==true then return {} end
+    local out,later={},nil
+    local function recheck(t) if t and t>0 and (not later or t<later) then later=t end end
+    if items.tent then
+        local boosted=myAura(BOOSTED_REST)
+        local rested=GetXPExhaustion and GetXPExhaustion() or 0
+        local max=UnitXPMax and UnitXPMax("player") or 0
+        local enough=safe(rested) and safe(max) and type(rested)=="number" and type(max)=="number" and max>0 and rested>=max*.05
+        local wait=self:ItemWait(items.tent)
+        if boosted==false and not enough and wait==0 then
+            out[#out+1]={name=items.tent.name,message="Use your "..items.tent.name.." (+5% rested XP)",spell={icon=items.tent.icon}}
+        end
+        recheck(wait)
+    end
+    if items.bag then
+        local has,left=myAura(WELL_RESTED)
+        local wait=self:ItemWait(items.bag)
+        local soon=(s.campRefresh or 5)*60
+        if wait==0 then
+            if has==false then out[#out+1]={name="Cozy Sleeping Bag",message="Use your sleeping bag (+3% XP)",spell={icon=items.bag.icon}}
+            elseif has==true and left and soon>0 and left<=soon then out[#out+1]={name="Cozy Sleeping Bag",message="Sleeping bag: Well-Rested ends in "..math.max(1,math.ceil(left/60)).." min",spell={icon=items.bag.icon}}
+            elseif has==true and left and soon>0 then recheck(left-soon+1) end
+        end
+        recheck(wait)
+    end
+    return out,later
 end
 -- Is the food reminder wanted right now? (Whether the buff is there is checked by the caller.)
 function Reminder:FoodWanted()
@@ -661,14 +766,17 @@ function Reminder:NoticeVisible(key,entries)
     local now=GetTime and GetTime() or 0
     local names,fresh={},not notice
     for _,entry in ipairs(entries) do
-        local name=entry.message or entry.name
+        -- A steady key per buff: a message with a count or a time in it
+        -- ("ends in 4 min", "+2 members") changes, the buff does not; a
+        -- changing key made a clicked-away notice come straight back.
+        local name=entry.family or entry.name or entry.message
         names[name]=true
         if notice and not notice.names[name] then fresh=true end
     end
     if fresh then notice={names=names,started=now};self.notices[key]=notice
     else notice.names=names end
     if #entries==0 then self.notices[key]=nil; return false end
-    -- Clicked away: those buffs stay quiet for 10 minutes.
+    -- Clicked away: those buffs stay quiet for a while (Look > Timing, 10 minutes at first).
     local snoozed=self.snoozed
     if snoozed then
         local quiet=true
@@ -698,7 +806,8 @@ function Reminder:ClickNotice(key,button)
         notice.dismissed=true
         self.snoozed=self.snoozed or {}
         local now=GetTime and GetTime() or 0
-        for name in pairs(notice.names or {}) do self.snoozed[name]=now+self.SNOOZE end
+        local minutes=self:Settings().clickQuiet
+        for name in pairs(notice.names or {}) do self.snoozed[name]=now+(minutes or 10)*60 end
     end
     self:Refresh(self.learnedCache)
 end
@@ -787,7 +896,7 @@ end
 -- Does this buff (or "weapon:main"/"weapon:off") also remind in a fight?
 -- You can't eat in a fight, so food never does.
 function Reminder:CombatFor(key)
-    if key=="food" then return false end
+    if key=="food" or key=="camp" then return false end
     local s=self:Settings()
     return s.combatAll==true or s.combat[key]==true
 end
@@ -1031,6 +1140,24 @@ function Reminder:Refresh(cachedSpells)
                 self.missing[#self.missing+1]=food; styleKeys[food]="food"
             end
         end
+        if (selfHere or self.previewSelf) and not fighting and s.camp then
+            local camp,later
+            if selfHere then camp,later=self:CampNotices() else camp={} end
+            for _,n in ipairs(camp) do self.missing[#self.missing+1]=n; styleKeys[n]="camp" end
+            -- Preview: a sample camp notice too, so you can see it.
+            if #camp==0 and self.previewSelf then
+                local sample={name="Cozy Sleeping Bag",message="Use your sleeping bag (+3% XP) — preview",spell={icon="Interface\\Icons\\INV_Misc_Bag_08"}}
+                self.missing[#self.missing+1]=sample; styleKeys[sample]="camp"
+            end
+            -- Look again when the item is ready or the bag's buff is about to run out.
+            if later and later<4000 then
+                local stamp=GetTime()+later
+                if not self.campTimer or self.campTimer>stamp+1 or self.campTimer<GetTime() then
+                    self.campTimer=stamp
+                    C_Timer.After(later,function() if self.campTimer==stamp then self.campTimer=nil; if self.Refresh then self:Refresh() end end end)
+                end
+            end
+        end
         local weaponKind=self:WeaponKind()
         if weaponKind and selfHere then
             local word=weaponKind=="poison" and "Poison" or "Weapon buff"
@@ -1065,7 +1192,10 @@ function Reminder:Refresh(cachedSpells)
         local sampleName,sampleIcon
         if not fighting and self.styleKey and not self:Style(self.styleKey) then sampleName,sampleIcon=self:StyleInfo(self.styleKey) end
         -- Samples and previews are for the settings page, never for a fight.
-        local showing=not fighting and (self.moving or self.previewSelf or sampleName~=nil)
+        -- Move elements shows only the notices you use (self, group).
+        local movingSelf=self.moving and s.enabled==true
+        local movingGroup=self.moving and s.groupEnabled==true
+        local showing=not fighting and (movingSelf or self.previewSelf or sampleName~=nil)
         self.badge:SetShown(self:NoticeVisible("self",self.missing) or showing)
         -- While its look is open, the shared notice shows the buff being
         -- edited (missing or not), never the next missing one.
@@ -1081,15 +1211,15 @@ function Reminder:Refresh(cachedSpells)
             local entry=self.missing[self.cycle]
             self.badge.icon:SetTexture(entry.spell.icon or 134400)
             self.badge.text:SetText((entry.message or entry.name.." missing")..(#self.missing>1 and "  +"..(#self.missing-1) or ""))
-        elseif self.moving or self.previewSelf then self.badge.icon:SetTexture("Interface\\Icons\\Spell_Holy_WordFortitude");self.badge.text:SetText(next(s.styles) and "Shared notice (buffs without their own look) — preview" or "Self buff missing — preview")
+        elseif movingSelf or self.previewSelf then self.badge.icon:SetTexture("Interface\\Icons\\Spell_Holy_WordFortitude");self.badge.text:SetText(next(s.styles) and "Shared notice (buffs without their own look) — preview" or "Self buff missing — preview")
         end
-        self.groupBadge:SetShown(self:NoticeVisible("group",self.groupMissing) or (not fighting and (self.previewGroup or self.moving)))
+        self.groupBadge:SetShown(self:NoticeVisible("group",self.groupMissing) or (not fighting and (self.previewGroup or movingGroup)))
         if #self.groupMissing>0 then
             self.groupCycle=math.max(1,math.min(self.groupCycle or 1,#self.groupMissing))
             local entry=self.groupMissing[self.groupCycle]
             self.groupBadge.icon:SetTexture(entry.spell.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
             self.groupBadge.text:SetText(entry.name)
-        elseif self.previewGroup or self.moving then
+        elseif self.previewGroup or movingGroup then
             self.groupBadge.icon:SetTexture("Interface\\Icons\\Spell_Holy_PrayerOfFortitude")
             self.groupBadge.text:SetText("Group buff missing — preview")
         end
@@ -1216,6 +1346,7 @@ function Reminder:StyleInfo(key)
         return "Weapon buff ("..hand..")",name and learned[name] and learned[name].icon or "Interface\\Icons\\Spell_Nature_RockBiter"
     end
     if key=="food" then local _,icon=self:FoodInfo(); return "Food buff",icon end
+    if key=="camp" then return "Camp items","Interface\\Icons\\INV_Misc_Bag_08" end
     if learned[key] then return key,learned[key].icon end
 end
 function Reminder:StyleChanged()
@@ -1585,7 +1716,7 @@ function Reminder:RefreshStyle()
     panel.combat.label:SetText(all and "Remind in combat: On (all buffs)" or ("Also remind in combat: "..(also and "On" or "Off"))); FT:SetSelected(panel.combat,also)
     panel.combat:SetAlpha(all and .5 or 1)
     -- You can't eat in a fight.
-    panel.combat:SetShown(self.styleKey~="food")
+    panel.combat:SetShown(self.styleKey~="food" and self.styleKey~="camp")
     -- Everything below belongs to a look of its own.
     for _,control in ipairs(panel.styled) do
         control:SetAlpha(st and 1 or .4)
@@ -1656,6 +1787,7 @@ function Reminder:RefreshMenu(learned)
     self.sizeValue:SetText("Size: "..math.floor(s.size*100+.5).."%")
     self.settingSize=true;self.sizeSlider:SetValue(s.size);self.settingSize=false
     self.hideChoice.value=s.hideAfter;self.hideChoice.label:SetText(self:HideAfterText())
+    self.quietChoice.label:SetText("Clicked away: "..(s.clickQuiet==0 and "Until it changes" or s.clickQuiet==60 and "1 hour" or (s.clickQuiet.." minutes")))
     self.colorSwatch:SetVertexColor(unpack(s.textColor))
     self.groupColorSwatch:SetVertexColor(unpack(s.groupTextColor))
     -- The buffs shown are always those of the tree in use.
@@ -1702,13 +1834,17 @@ function Reminder:RefreshMenu(learned)
     end
     local _,foodIcon=self:FoodInfo()
     self.powerToggle.label:SetText("Wait for "..self:PowerWord()..": "..(s.powerReady and "On" or "Off")); FT:SetSelected(self.powerToggle,s.powerReady)
-    self.combatAllToggle.label:SetText("Also in combat: "..(s.combatAll and "All buffs" or "Chosen buffs")); FT:SetSelected(self.combatAllToggle,s.combatAll)
+    self.combatAllToggle.label:SetText("In combat: "..(s.combatAll and "All buffs" or "Chosen buffs")); FT:SetSelected(self.combatAllToggle,s.combatAll)
     self.foodToggle.label:SetText("XP food: "..(s.food and "On" or "Off")); FT:SetSelected(self.foodToggle,s.food)
     self.foodStatToggle.label:SetText("Stat food: "..(s.foodStat and "On" or "Off")); FT:SetSelected(self.foodStatToggle,s.foodStat)
     self.foodStatToggle.icon:SetTexture(foodIcon)
     self.foodToggle.icon:SetTexture(foodIcon)
     FT:SetSelected(self.foodToggle.gear,self:Style("food")~=nil)
     self.foodWhen.label:SetText(s.foodWhen=="always" and "Remind: Always" or "Remind: While leveling")
+    self.campToggle.label:SetText("Camp items: "..(s.camp and "On" or "Off")); FT:SetSelected(self.campToggle,s.camp)
+    FT:SetSelected(self.campToggle.gear,self:Style("camp")~=nil)
+    self.campRefresh.label:SetText("Bag refresh: "..(s.campRefresh==0 and "When it's gone" or (s.campRefresh.." min before")))
+    self.campRefresh:SetAlpha(s.camp and 1 or .5)
     self.foodWhen:SetAlpha(s.food and 1 or .5)
     if s.food then watched=watched+1 end
     self.watchedCount=watched
@@ -1721,6 +1857,8 @@ function Reminder:RefreshMenu(learned)
     self.frame.titleText:SetText(info.title)
     -- One page per section (the group's sidebar on the left), full width.
     local X,COL=24,240
+    -- Spacing: a heading takes HEAD, a row of switches ROW, and a section ends with GAP.
+    local HEAD,ROW,GAP=28,42,10
     -- Only moved when its spot changes (a slider re-anchored while you drag it can drop the drag).
     local function place(control,x,top)
         placed[control]=true
@@ -1744,7 +1882,7 @@ function Reminder:RefreshMenu(learned)
             local count=index-first
             if count>0 then
                 headUsed=headUsed+1
-                local h=self.kindHeads[headUsed]; h.ftHeading.icon=kindIcons[kind]; h:SetText(kindLabels[kind]); place(h,X,y); y=y+18
+                local h=self.kindHeads[headUsed]; h.ftHeading.icon=kindIcons[kind]; h:SetText(kindLabels[kind]); place(h,X,y); y=y+HEAD
                 -- Two per row; a name too long to sit beside its switch
                 -- (Aspect of the Dragonhawk) gets a whole row.
                 -- One long name makes the whole group full rows, so rows in a
@@ -1759,31 +1897,34 @@ function Reminder:RefreshMenu(learned)
                 for n=0,count-1 do
                     local b=self.rows[first+n]; b:SetWidth(232)
                     if wide then
-                        if col==1 then rowY=rowY+38; col=0 end
-                        b:SetWidth(472); place(b,X,rowY); rowY=rowY+38
+                        if col==1 then rowY=rowY+ROW; col=0 end
+                        b:SetWidth(472); place(b,X,rowY); rowY=rowY+ROW
                     else
                         place(b,X+col*COL,rowY)
-                        if col==1 then col=0; rowY=rowY+38 else col=1 end
+                        if col==1 then col=0; rowY=rowY+ROW else col=1 end
                     end
                 end
-                if col==1 then rowY=rowY+38 end
-                y=rowY+6
+                if col==1 then rowY=rowY+ROW end
+                y=rowY+GAP
             end
         end
         if #available==0 and not weapon then place(self.empty,X,y+4); y=y+30 end
         if weapon then
             headUsed=headUsed+1
-            local h=self.kindHeads[headUsed]; h.ftHeading.icon="INV_Sword_04"; h:SetText(weaponKind=="poison" and "Weapon poisons" or "Weapon buffs"); place(h,X,y); y=y+18
-            place(self.mainDropdown,X,y);place(self.offDropdown,X,y+38)
-            place(self.mainDropdown.gear,X+444,y);place(self.offDropdown.gear,X+444,y+38);y=y+80
+            local h=self.kindHeads[headUsed]; h.ftHeading.icon="INV_Sword_04"; h:SetText(weaponKind=="poison" and "Weapon poisons" or "Weapon buffs"); place(h,X,y); y=y+HEAD
+            place(self.mainDropdown,X,y);place(self.offDropdown,X,y+ROW)
+            place(self.mainDropdown.gear,X+444,y);place(self.offDropdown.gear,X+444,y+ROW);y=y+2*ROW+GAP
         end
         headUsed=headUsed+1
-        local fh=self.kindHeads[headUsed]; fh.ftHeading.icon=nil; fh:SetText("Food"); place(fh,X,y); y=y+18
-        place(self.foodToggle,X,y); place(self.foodWhen,X+COL,y); y=y+40
-        place(self.foodStatToggle,X,y); y=y+44
+        local fh=self.kindHeads[headUsed]; fh.ftHeading.icon="INV_Misc_Food_15"; fh:SetText("Food"); place(fh,X,y); y=y+HEAD
+        place(self.foodToggle,X,y); place(self.foodWhen,X+COL,y); y=y+ROW
+        place(self.foodStatToggle,X,y); y=y+ROW+GAP
         headUsed=headUsed+1
-        local h=self.kindHeads[headUsed]; h.ftHeading.icon=nil; h:SetText("Show in"); place(h,X,y); y=y+18
-        self:PlaceWhere("selfWhere",X,y);y=y+40
+        local ch=self.kindHeads[headUsed]; ch.ftHeading.icon="INV_Misc_Bag_08"; ch:SetText("Camping"); place(ch,X,y); y=y+HEAD
+        place(self.campToggle,X,y); place(self.campRefresh,X+COL,y); y=y+ROW+GAP
+        headUsed=headUsed+1
+        local h=self.kindHeads[headUsed]; h.ftHeading.icon="INV_Misc_Map_01"; h:SetText("Show in"); place(h,X,y); y=y+HEAD
+        self:PlaceWhere("selfWhere",X,y);y=y+ROW
         place(self.powerToggle,X,y);place(self.combatAllToggle,X+COL,y);y=y+34
         self.combatAllToggle:SetWidth(232)
     elseif pane=="group" then
@@ -1804,7 +1945,8 @@ function Reminder:RefreshMenu(learned)
         place(self.sizeValue,X,y+3);place(self.sizeSlider,X+124,y);y=y+36
         place(self.selfColorButton,X,y);y=y+46
         head(2,"Timing")
-        place(self.hideChoice,X,y);y=y+46
+        place(self.hideChoice,X,y);y=y+40
+        place(self.quietChoice,X,y);y=y+46
         head(3,"Position")
         place(self.resetPosition,X,y);y=y+40
     end
@@ -1891,7 +2033,7 @@ function Reminder:Build()
         self.rows={}
         self.kindHeads={}
         for i=1,8 do
-            local h=FT:Label(detail,"",12,true); h:SetTextColor(.66,.59,.48); FT:SectionHeading(h,nil,320,14); h:Hide(); self.kindHeads[i]=h
+            local h=FT:Label(detail,"",14,true); FT:SectionHeading(h,nil,320,18); h:Hide(); self.kindHeads[i]=h
         end
         for i=1,12 do
             local b=pane(FT:QuietButton(detail,"",232,32,"welcome"))
@@ -1932,6 +2074,17 @@ function Reminder:Build()
         self.foodWhen.label:SetFont(FT.font or "Fonts\\FRIZQT__.TTF",12,""); if self.foodWhen.label.SetWordWrap then self.foodWhen.label:SetWordWrap(false) end
         FT:MakeChoice(self.foodWhen,{{"leveling","While leveling","Stops by itself at max level."},{"always","Always","Keeps reminding at max level too."}},function() return self:Settings().foodWhen end,function(v) self:Settings().foodWhen=v; self:Apply() end)
         FT:Tooltip(self.foodWhen,"When to remind","While leveling: stops at max level. Always: keeps reminding.")
+        -- Camp items: tent and Cozy Sleeping Bag.
+        local camp=pane(FT:QuietButton(detail,"",232,32,"welcome")); self.campToggle=camp
+        camp.icon:SetTexture("Interface\\Icons\\INV_Misc_Bag_08")
+        camp:SetScript("OnClick",function() local s=self:Settings(); s.camp=not s.camp; self.campItems=nil; self:Apply() end)
+        FT:Tooltip(camp,"Tent & sleeping bag","While leveling: a notice to use your tent (rested XP worth 5% of a level, when you have less) or your Cozy Sleeping Bag (Well-Rested, up to +3% XP). Only when the item is in your bags and ready, you don't have its buff, you are not in an inn or city, and not at a campfire (Camp Benefits).")
+        camp.gear=FT:QuietButton(camp,"",24,24); camp.gear:SetPoint("RIGHT",-4,0); FT:GearIcon(camp.gear)
+        camp.gear:SetScript("OnClick",function() self:OpenStyle("camp","Camp items") end)
+        FT:Tooltip(camp.gear,"Notice look","Its own look. Lit when set.")
+        self.campRefresh=pane(FT:QuietButton(detail,"",232,32,"reset"))
+        FT:MakeChoice(self.campRefresh,{{5,"5 min before","Remind to lie down on the bag again 5 minutes before Well-Rested runs out."},{10,"10 min before","Remind 10 minutes before Well-Rested runs out."},{0,"When it's gone","Only when Well-Rested is gone."}},function() return self:Settings().campRefresh end,function(v) self:Settings().campRefresh=v; self:Apply() end)
+        FT:Tooltip(self.campRefresh,"Sleeping bag refresh","When to remind you to use the sleeping bag again, so the stacks never run out.")
         for _,slot in ipairs({"main","off"}) do
             local dropdown=pane(FT:Dropdown(detail,W-32,function()
                 local list={{value="",label="Off"}};local learned=self:Learned()
@@ -1984,6 +2137,10 @@ function Reminder:Build()
         end,function(value) self:Settings().hideAfter=value;self.notices=nil;self:Apply() end,"fps"))
         self.hideChoice:SetHeight(32); self.hideChoice.menuWidth=W
         FT:Tooltip(self.hideChoice,"Hide notice after","How long a notice stays. Never: until the buff is back or you click it.")
+        self.quietChoice=pane(FT:QuietButton(detail,"",W,32,"fps"))
+        FT:MakeChoice(self.quietChoice,{{5,"5 minutes"},{10,"10 minutes"},{30,"30 minutes"},{60,"1 hour"},{0,"Until it changes","Quiet until another buff goes missing."}},
+            function() return self:Settings().clickQuiet end,function(v) self:Settings().clickQuiet=v; self:Apply() end)
+        FT:Tooltip(self.quietChoice,"Clicked away","A left or right click on a notice hides it. That buff then stays quiet this long.")
         for _,entry in ipairs({{"textColor","Self text color"},{"groupTextColor","Group text color"}}) do
             local field,label=entry[1],entry[2]
             local color=pane(FT:QuietButton(detail,label,W,32,"fonts"))
@@ -2059,8 +2216,8 @@ talentEvents:SetScript("OnEvent",function() Reminder.specCache=nil end)
 -- reminders are on, and a moment after the last change).
 local bagEvents=CreateFrame("Frame"); bagEvents:RegisterEvent("BAG_UPDATE_DELAYED")
 bagEvents:SetScript("OnEvent",function()
-    Reminder.foodKinds=nil
-    if FT.dbReady then local s=Reminder:Settings(); if s.enabled and (s.food or s.foodStat) then FT:Coalesce("ftFoodBags",function() if Reminder.Refresh then Reminder:Refresh() end end,.5) end end
+    Reminder.foodKinds=nil; Reminder.campItems=nil
+    if FT.dbReady then local s=Reminder:Settings(); if s.enabled and (s.food or s.foodStat or s.camp) then FT:Coalesce("ftFoodBags",function() if Reminder.Refresh then Reminder:Refresh() end end,.5) end end
 end)
 -- Many events in the same moment lead to one check.
 function Reminder:QueueApply(delay)

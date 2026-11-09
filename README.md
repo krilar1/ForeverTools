@@ -1,6 +1,6 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 1.2.0.**
+**Quality-of-life tools for WoW: Forever — version 1.3.0.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
 one place. Everything starts **off**, so the game looks like Blizzard's until you

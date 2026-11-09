@@ -127,8 +127,95 @@ function Icons:Create()
     end)
     FT:Tooltip(button,"Grouped minimap buttons","Click to open. Drag to move it around the minimap.")
 end
+-- Buttons the player keeps on the minimap, outside the group (by frame
+-- name; account data, not in profiles).
+function Icons:Kept()
+    if type(FT.db.minimapKeep)~="table" then FT.db.minimapKeep={} end
+    return FT.db.minimapKeep
+end
+function Icons.Nice(name)
+    name=tostring(name or "?"):gsub("^LibDBIcon10_",""):gsub("MinimapButton$",""):gsub("Minimap$",""):gsub("_"," ")
+    if name=="ForeverTools" or name=="" then return name~="" and name or "?" end
+    return (name:gsub("(%l)(%u)","%1 %2"))
+end
+-- Every button the group has seen, for the keep list.
+function Icons:KeepChoices()
+    local kept=self:Kept(); local list,seen={},{}
+    for button,record in pairs(self.records) do
+        local name=button.GetName and button:GetName()
+        if name and not seen[name] then seen[name]=true
+            local icon=(button.icon or button.Icon) and (button.icon or button.Icon).GetTexture and (button.icon or button.Icon):GetTexture() or nil
+            list[#list+1]={value=name,label=self.Nice(name)..(kept[name] and "  |cff7fd98a(on the minimap)|r" or ""),icon=icon,
+                tooltipTitle=self.Nice(name),tooltip=kept[name] and "Click to put it back in the group." or "Click to keep it on the minimap, outside the group."}
+        end
+    end
+    for name in pairs(kept) do if not seen[name] then list[#list+1]={value=name,label=self.Nice(name).."  |cff7fd98a(on the minimap)|r",tooltipTitle=self.Nice(name),tooltip="Click to put it back in the group."} end end
+    table.sort(list,function(x,y) return x.label<y.label end)
+    if #list==0 then list[1]={value="",label="No buttons found yet",disabled=true} end
+    return list
+end
+function Icons:ToggleKeep(name)
+    if type(name)~="string" or name=="" then return end
+    if InCombatLockdown() then FT:Toast("Change minimap icons after combat.");return end
+    local kept=self:Kept()
+    if kept[name] then kept[name]=nil else kept[name]=true end
+    for button,record in pairs(self.records) do
+        if button.GetName and button:GetName()==name and record.active and kept[name] then self:RestoreOne(button,record) end
+    end
+    if self.active then self:Scan();self:Layout() end
+    -- A button back on the minimap keeps the Skins ring look.
+    local skins=FT.modules.IconStyles; if skins and skins.AddonRings then pcall(skins.AddonRings,skins) end
+end
+-- /ft ringdebug: the art of every minimap button, for bug reports.
+function Icons:RingDebug()
+    local S=FT.modules.IconStyles
+    local function show(v) if issecretvalue and issecretvalue(v) then return "hidden" end return tostring(v) end
+    local seen={}
+    local list={}
+    if Minimap then for _,c in ipairs({Minimap:GetChildren()}) do list[#list+1]=c end end
+    for b in pairs(self.records) do list[#list+1]=b end
+    for _,b in ipairs(list) do
+        if not seen[b] and b.GetObjectType and b:GetObjectType()=="Button" then
+            seen[b]=true
+            local ring=S and S.RingOf and S.RingOf(b)
+            print((b:GetName() or "?").." ring="..(ring and "found" or "none").." grouped="..tostring(self.records[b] and self.records[b].active or false))
+            for _,r in ipairs({b:GetRegions()}) do
+                if r.GetObjectType and r:GetObjectType()=="Texture" then
+                    local w,h=r:GetSize()
+                    print("   "..show(r:GetTexture()).." atlas="..show(r.GetAtlas and r:GetAtlas()).." "..math.floor(tonumber(w) or 0).."x"..math.floor(tonumber(h) or 0))
+                end
+            end
+        end
+    end
+end
+function Icons:RestoreOne(button,record)
+    if protected(button) then return end
+    record.active=false
+    if record.alpha~=nil then button:SetAlpha(record.alpha);record.alpha=nil end
+    if record.iconStyle then
+        local style=record.iconStyle;style.texture:SetVertexColor(unpack(style.color));style.texture:SetAlpha(style.alpha)
+        if style.texture.SetDesaturated then style.texture:SetDesaturated(style.desaturated or false) end
+        record.iconStyle=nil
+    end
+    if button.SetFixedFrameStrata then button:SetFixedFrameStrata(false) end
+    if button.SetFixedFrameLevel then button:SetFixedFrameLevel(false) end
+    button:SetParent(record.parent);button:SetScale(record.scale)
+    button:SetFrameStrata(record.strata);button:SetFrameLevel(record.level)
+    if record.fixedStrata then button:SetFixedFrameStrata(true) end
+    if record.fixedLevel then button:SetFixedFrameLevel(true) end
+    button:ClearAllPoints()
+    for _,point in ipairs(record.points) do button:SetPoint(unpack(point)) end
+    button:SetScript("OnDragStart",record.dragStart);button:SetScript("OnDragStop",record.dragStop)
+    local skins=FT.modules.IconStyles; if skins and skins.AddonRing then pcall(skins.AddonRing,skins,button,"addonRings") end
+end
 function Icons:Eligible(button,known)
     if not button or button==self.launcher or (self.records[button] and self.records[button].active) or protected(button) then return false end
+    local keepName=button.GetName and button:GetName()
+    if keepName and self:Kept()[keepName] then
+        -- Still listed (so it can be put back), never collected.
+        if not self.records[button] then self.records[button]={active=false,points={},seenOnly=true} end
+        return false
+    end
     if not button.GetScript or not button.SetParent or not button.GetNumPoints then return false end
     local name=button.GetName and button:GetName() or ""
     if excluded[name] or (not known and (name:match("^MiniMap") or name:match("^Minimap"))) then return false end
@@ -164,6 +251,8 @@ function Icons:Collect(button,known)
     button:SetScript("OnDragStart",nil);button:SetScript("OnDragStop",nil)
     self.positioning=false
     self:BrightIcon(button,record)
+    -- In the group: the group's ring choice.
+    local skins=FT.modules.IconStyles; if skins and skins.AddonRing then pcall(skins.AddonRing,skins,button,"groupRings") end
     if hooksecurefunc and not record.hooked then
         record.hooked=true
         local function position()

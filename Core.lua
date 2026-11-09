@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "1.2.0"
+FT.version = "1.3.0"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -151,7 +151,23 @@ function FT:ShowPopup(key,...)
     local dialog=StaticPopup_Show(key,...)
     if dialog and dialog.SetFrameStrata then
         dialog:SetFrameStrata("FULLSCREEN_DIALOG")
-        if not dialog.ftStrataHooked then dialog.ftStrataHooked=true; dialog:HookScript("OnHide",function(d) d:SetFrameStrata("DIALOG") end) end
+        if not dialog.ftStrataHooked then dialog.ftStrataHooked=true; dialog:HookScript("OnHide",function(d) d:SetFrameStrata("DIALOG"); if d.ftClose then d.ftClose:Hide() end end) end
+    end
+    -- Our questions get the same X as our windows; it answers Cancel.
+    if dialog and dialog.CreateTexture then
+        if not dialog.ftClose then
+            local ok,close=pcall(CreateFrame,"Button",nil,dialog,"UIPanelCloseButton")
+            if ok and close then
+                close:SetSize(24,24); close:SetPoint("TOPRIGHT",-2,-2)
+                close:SetScript("OnClick",function()
+                    local d=close:GetParent()
+                    local cancel=d.button2 or (d.GetButton and d:GetButton(2)) or (d.ButtonContainer and d.ButtonContainer.Buttons and d.ButtonContainer.Buttons[2])
+                    if cancel and cancel.IsShown and cancel:IsShown() and cancel.Click then cancel:Click() else d:Hide() end
+                end)
+                dialog.ftClose=close
+            end
+        end
+        if dialog.ftClose then dialog.ftClose:SetFrameLevel((dialog:GetFrameLevel() or 1)+10); dialog.ftClose:Show() end
     end
     return dialog
 end
@@ -300,13 +316,29 @@ function FT:Panel(frame, flatRight)
     self:Paint(frame, {0.075,0.058,0.04, 1}, {.61,.51,.31, 1})
 end
 -- A single rounded fill without the purple addon border, for dark overlays.
--- The outline shown around an element while you move it: the same rounded
--- panel, drawn "pad" pixels outside the frame so the text inside has room.
+-- The box shown on an element while you move it (1.3.0): exactly the
+-- element's own size, never bigger, so lining things up by eye is lining up
+-- the real edges. A see-through gold fill marks it as movable and a 1-pixel
+-- line runs along the inside of its edges (square, no rounded overhang).
+-- The old "pad" argument (room outside the frame) is no longer used.
 function FT:MoverBox(frame, pad)
-    pad = pad or 0
-    frame.borderTextures = layer(frame, -pad, -8)
-    frame.fillTextures = layer(frame, -pad + 1, -7)
-    self:Paint(frame, {0.075, 0.058, 0.04, 1}, {0.61, 0.51, 0.31, 1})
+    local function tex(sub)
+        local t = frame:CreateTexture(nil, "OVERLAY", nil, sub)
+        t:SetColorTexture(1, 1, 1, 1)
+        if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(true); t:SetTexelSnappingBias(0) end
+        return t
+    end
+    local fill = tex(6); fill:SetAllPoints(frame)
+    local edges = {}
+    for i = 1, 4 do edges[i] = tex(7) end
+    local px = (PixelUtil and PixelUtil.GetNearestPixelSize and PixelUtil.GetNearestPixelSize(1, frame:GetEffectiveScale(), 1)) or 1
+    edges[1]:SetPoint("TOPLEFT"); edges[1]:SetPoint("TOPRIGHT"); edges[1]:SetHeight(px)
+    edges[2]:SetPoint("BOTTOMLEFT"); edges[2]:SetPoint("BOTTOMRIGHT"); edges[2]:SetHeight(px)
+    edges[3]:SetPoint("TOPLEFT"); edges[3]:SetPoint("BOTTOMLEFT"); edges[3]:SetWidth(px)
+    edges[4]:SetPoint("TOPRIGHT"); edges[4]:SetPoint("BOTTOMRIGHT"); edges[4]:SetWidth(px)
+    frame.borderTextures = edges
+    frame.fillTextures = {fill}
+    self:Paint(frame, {1, 0.82, 0, 0.16}, {1, 0.82, 0, 0.95})
 end
 -- Captions next to a moving element ("Drag to move", its name): placed on
 -- the preferred side, or the other side when that would leave the screen,
@@ -336,8 +368,11 @@ local function placeAll()
             if c.side == "above" then table.insert(g.list, 1, c); g.preferAbove = true else g.list[#g.list + 1] = c end
         end
     end
+    -- Every element's captions sit on one tab (like the trinket menu's drag
+    -- handle): a small panel you can also drag the element by.
+    for frame, tab in pairs(FT.captionTabs) do if not groups[frame] then tab:Hide() end end
     if not any then return false end
-    local W, H, gap = UIParent:GetWidth(), UIParent:GetHeight(), 4
+    local W, H, gap = UIParent:GetWidth(), UIParent:GetHeight(), 6
     local boxes, placed = {}, {}
     for _, g in ipairs(order) do g.rect = rectOf(g.frame, g.pad); if g.rect then boxes[#boxes + 1] = g end end
     for _, g in ipairs(boxes) do
@@ -365,6 +400,11 @@ local function placeAll()
         end
         chosen = chosen or spots[tries[1]]
         placed[#placed + 1] = chosen
+        local tab = FT:CaptionTab(g.frame)
+        tab:ClearAllPoints()
+        tab:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", chosen.l - 6, chosen.t + 3)
+        tab:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMLEFT", chosen.r + 6, chosen.b - 3)
+        tab:Show()
         local y = chosen.t
         for _, c in ipairs(g.list) do
             c.text:ClearAllPoints()
@@ -373,6 +413,25 @@ local function placeAll()
         end
     end
     return true
+end
+-- The tab behind an element's captions: dragging it drags the element (its
+-- own drag scripts run), so it works like the trinket menu's handle.
+FT.captionTabs = {}
+function FT:CaptionTab(frame)
+    local tab = self.captionTabs[frame]
+    if tab then
+        tab:SetFrameStrata(frame:GetFrameStrata()); tab:SetFrameLevel(math.max(0, (frame:GetFrameLevel() or 1) - 1))
+        return tab
+    end
+    tab = CreateFrame("Frame", nil, UIParent)
+    self:Panel(tab)
+    tab:EnableMouse(true); tab:RegisterForDrag("LeftButton")
+    tab:SetScript("OnDragStart", function() local h = frame:GetScript("OnDragStart"); if h then h(frame, "LeftButton") end end)
+    tab:SetScript("OnDragStop", function() local h = frame:GetScript("OnDragStop"); if h then h(frame) end end)
+    tab:SetFrameStrata(frame:GetFrameStrata()); tab:SetFrameLevel(math.max(0, (frame:GetFrameLevel() or 1) - 1))
+    tab:Hide()
+    self.captionTabs[frame] = tab
+    return tab
 end
 captionTicker:Hide()
 captionTicker:SetScript("OnUpdate", function(ticker, elapsed)
@@ -468,6 +527,7 @@ end
 -- Icons get softly rounded corners (the addon's own rounded shape as a
 -- mask), the same everywhere. Safe to call more than once.
 local ROUNDED = "Interface\\AddOns\\" .. addonName .. "\\Media\\Rounded.tga"
+FT.headingIcons = true
 function FT:RoundIcon(texture)
     if not texture or texture.roundMask or not texture.AddMaskTexture then return texture end
     local parent = texture:GetParent()
@@ -480,21 +540,34 @@ function FT:RoundIcon(texture)
 end
 function FT:SectionHeading(label, icon, lineWidth, iconSize)
     if not label or label.ftHeading then return label end
-    -- Icons live on the left side only (menu rework): headings are plain.
-    icon = nil
+    -- Section headings stand out from the rows under them (1.3.0): gold
+    -- text a size up, the section's icon in front, a faint gold band behind
+    -- and a fading line after the words.
     local parent = label:GetParent()
-    local _, size = label:GetFont()
-    iconSize = iconSize or math.floor((size or 14) + 3)
+    local font, size, flags = label:GetFont()
+    size = size or 14
+    if font then pcall(label.SetFont, label, font, size + 1, flags or "") end
+    label:SetTextColor(1, .82, 0)
+    iconSize = iconSize or math.floor(size + 4)
     label.ftHeading = {icon = icon, size = iconSize}
+    local band = parent:CreateTexture(nil, "BACKGROUND", nil, 2)
+    gradient(band, "HORIZONTAL", 0.79, 0.63, 0.29, 0.16, 0.79, 0.63, 0.29, 0)
+    band:SetHeight(iconSize + 8)
+    label.ftHeading.band = band
     local line = parent:CreateTexture(nil, "ARTWORK")
-    gradient(line, "HORIZONTAL", 0.61, 0.51, 0.31, 0.8, 0.61, 0.51, 0.31, 0)
+    gradient(line, "HORIZONTAL", 0.79, 0.63, 0.29, 0.9, 0.79, 0.63, 0.29, 0)
     line:SetHeight(1); line:SetWidth(lineWidth or 180)
     label.ftHeading.line = line
     local function update()
         local text = label.ftHeading.raw or ""
+        local width = label:GetStringWidth() or 0
         line:ClearAllPoints()
-        line:SetPoint("LEFT", label, "LEFT", (label:GetStringWidth() or 0) + 8, 0)
+        line:SetPoint("LEFT", label, "LEFT", width + 8, 0)
         line:SetShown(label:IsShown() and text ~= "")
+        band:ClearAllPoints()
+        band:SetPoint("LEFT", label, "LEFT", -8, 0)
+        band:SetWidth(width + 16 + (lineWidth or 180))
+        band:SetShown(label:IsShown() and text ~= "")
     end
     local setText = label.SetText
     label.SetText = function(owner, text)
@@ -510,14 +583,15 @@ function FT:SectionHeading(label, icon, lineWidth, iconSize)
                 heading.texture:SetSize(iconSize, iconSize); heading.texture:SetPoint("LEFT", owner, "LEFT", 0, 0)
                 heading.texture:SetTexCoord(0.07, 0.93, 0.07, 0.93)
             end
-            heading.texture:SetTexture("Interface\\Icons\\" .. heading.icon)
+            local name = (FT.icons and FT.icons[heading.icon]) or heading.icon
+            heading.texture:SetTexture(type(name) == "string" and not name:find("\\", 1, true) and not name:find("/", 1, true) and ("Interface\\Icons\\" .. name) or name)
         end
         if heading.texture then heading.texture:SetShown(owner:IsShown() and text ~= nil and text ~= "" and heading.icon ~= nil) end
         setText(owner, shown); update()
     end
     function label:SetHeadingIcon(newIcon) self.ftHeading.icon = newIcon; self:SetText(self.ftHeading.raw) end
     local function icon() local t = label.ftHeading.texture; if t then t:SetShown(label:IsShown() and (label.ftHeading.raw or "") ~= "" and label.ftHeading.icon ~= nil) end end
-    hooksecurefunc(label, "Show", function() update(); icon() end); hooksecurefunc(label, "Hide", function() line:Hide(); icon() end)
+    hooksecurefunc(label, "Show", function() update(); icon() end); hooksecurefunc(label, "Hide", function() line:Hide(); band:Hide(); icon() end)
     if label.SetShown then hooksecurefunc(label, "SetShown", function() update(); icon() end) end
     label:SetText(label:GetText())
     return label
@@ -590,6 +664,12 @@ function FT:UpdateButton(button)
         local on = button.hover and (not button.IsEnabled or button:IsEnabled())
         for _, t in ipairs(hoverGlow(button)) do t:SetShown(on and true or false) end
     end
+    -- Save buttons (keep what you made): green everywhere in ForeverTools.
+    if button.save then
+        if button.hover then self:Paint(button, {0.13, 0.33, 0.15, 1}, {0.55, 0.95, 0.55, 1})
+        else self:Paint(button, {0.09, 0.24, 0.11, 1}, {0.40, 0.78, 0.42, 1}) end
+        return
+    end
     if button.outline then
         -- A different kind of button: an action rather than a page.
         -- The main action of a window (Start tour, Keep it): filled gold.
@@ -610,6 +690,20 @@ function FT:UpdateButton(button)
     else
         self:Paint(button, {0.12,0.095,0.065, 1}, {0.29,0.24,0.15, 1})
     end
+end
+-- A button that saves (a macro, a snapshot, a template): the green save
+-- look with a check mark, the same in every window.
+function FT:SaveButton(button)
+    if not button then return end
+    button.save = true; button.primary = nil
+    if button.icon then
+        button.keepIcon = true
+        button.icon:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready"); button.icon:SetTexCoord(0, 1, 0, 1)
+        button.icon:SetAlpha(1); button.icon:SetSize(18, 18)
+    end
+    if button.label then button.label:SetTextColor(.86, 1, .86) end
+    self:UpdateButton(button)
+    return button
 end
 function FT:SetSelected(button, selected)
     button.selected = not not selected
@@ -1236,7 +1330,14 @@ SlashCmdList.FOREVERTOOLS = function(message)
     elseif command == "recipes" then if FT.Recipes then FT.Recipes:Open() end
     elseif command == "colordebug" then
         local c = FT.modules.UnitColors
-        print("|cffffd100ForeverTools:|r " .. (c and (c:Report() or "Target class colors are off.") or "?"))
+        local line = c and (c:Report() or "Target class colors are off.") or "?"
+        print("|cffffd100ForeverTools:|r " .. line)
+        -- In a fight no window can open: the line is kept, and /ft colordebug
+        -- after the fight shows it in a box to copy.
+        if InCombatLockdown() then FT.lastColorReport = line; print("|cffffd100ForeverTools:|r Type /ft colordebug again after the fight to copy it.")
+        else FT:DebugBox("Class color debug", function() if FT.lastColorReport then print("In the fight: " .. FT.lastColorReport); print("") end; print("Now: " .. line) end) end
+    elseif command == "ringdebug" then if FT.modules.MinimapIcons then FT:DebugBox("Minimap button rings", function() FT.modules.MinimapIcons:RingDebug() end) end
+    elseif command == "trackdebug" then if FT.modules.System then FT:DebugBox("Minimap tracking debug", function() FT.modules.System:TrackingDebug() end) end
     elseif command == "recipesdebug" then if FT.Recipes then FT:DebugBox("Recipes debug", function() FT.Recipes:Debug() end) end
     elseif command == "sr" or command == "softres" then FT:OpenModule("SoftRes")
     elseif command == "srdebug" then if FT.SoftRes then FT:DebugBox("Soft reserves debug", function() FT.SoftRes:Debug() end) end
@@ -1364,7 +1465,13 @@ function FT:Sections(frame, sections, width)
                 end
             end
             local head = self:Label(frame, title, 14, true); head:SetPoint("TOPLEFT", frame, "TOPLEFT", x0, y0 - 4)
-            head:SetTextColor(.95, .90, .81); self:SectionHeading(head, nil, width or 300)
+            -- The section's icon: its own, or the icon of its first setting.
+            local icon = entry[3]
+            if not icon and control.icon and control.icon.GetTexture then
+                local tex = control.icon:GetTexture()
+                if (type(tex) == "string" and tex ~= "") or type(tex) == "number" then icon = tex end
+            end
+            self:SectionHeading(head, icon, width or 300)
             frame.ftSectionHeads[#frame.ftSectionHeads + 1] = head
             all[#all + 1] = head
         end
@@ -1410,6 +1517,21 @@ function FT:ShowChoices(owner)
     menu:SetFrameStrata("FULLSCREEN_DIALOG"); menu:SetToplevel(true)
     menu:SetFrameLevel(math.min(9000, math.max(owner:GetFrameLevel() + 30, 1000)))
     menu:ClearAllPoints(); menu:SetPoint("TOPLEFT", owner, "BOTTOMLEFT", 0, -3)
+    -- Not enough room below (a window near the bottom of the screen): open
+    -- upwards, so the list never slides over its own dropdown and the
+    -- buttons around it.
+    do
+        local bottom = owner.GetBottom and owner:GetBottom()
+        local scale = (owner.GetEffectiveScale and owner:GetEffectiveScale() or 1) / (menu.GetEffectiveScale and menu:GetEffectiveScale() or 1)
+        local top = owner.GetTop and owner:GetTop()
+        local screen = UIParent and UIParent.GetHeight and UIParent:GetHeight()
+        if type(bottom) == "number" and type(top) == "number" and type(screen) == "number" then
+            local below, above = bottom * scale, screen - top * scale
+            if below < menu:GetHeight() + 6 and above > below then
+                menu:ClearAllPoints(); menu:SetPoint("BOTTOMLEFT", owner, "TOPLEFT", 0, 3)
+            end
+        end
+    end
     -- Some lists open beside their window instead (the font list), so what
     -- they change stays in view while you pick.
     local beside = owner.menuBeside
@@ -1422,7 +1544,7 @@ function FT:ShowChoices(owner)
     for _, row in ipairs(menu.rows) do row:Hide() end
     local seen, kinds = {}, 0
     for _, item in ipairs(options) do if item.icon and not seen[item.icon] then seen[item.icon] = true; kinds = kinds + 1 end end
-    menu.iconsDiffer = kinds > 1
+    menu.iconsDiffer = kinds > 1 or (owner.alwaysIcons and kinds > 0)
     for index, item in ipairs(options) do
         local row = menu.rows[index]
         if not row then

@@ -1,13 +1,13 @@
 local _,FT=...
--- First-time setup as a guided tour.
+-- First-time setup as a short guided tour.
 --   Start: pick a look (shown live on your screen while you click) and a
---   Quick tour (the most useful features) or a Full tour (every menu).
---   Each stop opens the real settings page, turns the feature on so you see
---   it, and makes both the switch and the thing it changes pulse. Keep it, or
---   No thanks (it goes back to how it was).
+--   Quick tour (the most useful features) or a Full tour (every feature).
+--   One card per menu (Appearance, Combat, PvP...) lists its features as
+--   switches: click one to turn it on and see it on your screen (it pulses);
+--   click again to turn it off. Next goes to the next menu.
 --   Pause any time (or close the card, or enter combat): the tour remembers
---   the stop. /ft setup continues it, and the next login asks once.
--- Nothing changes unless you keep it; the result is saved to this
+--   the menu. /ft setup continues it, and the next login asks once.
+-- Nothing changes unless you switch it on; the result is saved to this
 -- character's profile at the end.
 local Tour={}
 local function mod(name) return FT.modules[name] end
@@ -116,6 +116,8 @@ local function stops()
             find="Auto-sell grey items",quick=true,get=sys("autoSell").get,set=sys("autoSell").set},
         {key="autoRepair",chapter="System",page="SystemMerchant",title="Auto-repair",text="Your gear is repaired at merchants.",
             find="Auto-repair",quick=true,get=sys("autoRepair").get,set=sys("autoRepair").set},
+        {key="versionCheck",chapter="System",page="SystemGeneral",title="New version notice",text="One chat line when someone in your guild or group has a newer ForeverTools.",
+            find="New version notice",get=sys("versionCheck").get,set=sys("versionCheck").set},
         {key="hiddenUI",chapter="System",page="SystemGeneral",title="Key to show the interface",text="A line says which key brings the interface back.",
             find="Show key when interface is hidden",get=sys("hiddenUIHint").get,set=sys("hiddenUIHint").set},
         {key="gold",chapter="Bags",page="BagsGeneral",title="Gold of all your characters",text="Hover your bag's gold to see every character's gold.",
@@ -192,37 +194,55 @@ function Tour:FindControl(frame,prefix,depth)
     end
 end
 -- The guide card --------------------------------------------------------------------
-local CARD_W=300
+-- One card per menu: the menu's features as switches.
+local CARD_W,ROWS=340,10
+function Tour:Chapters(mode)
+    local out,byName={},{}
+    for _,stop in ipairs(self:List(mode)) do
+        local c=byName[stop.chapter]
+        if not c then c={name=stop.chapter,stops={}}; byName[stop.chapter]=c; out[#out+1]=c end
+        c.stops[#c.stops+1]=stop
+    end
+    return out
+end
 function Tour:Card()
     if self.card then return self.card end
     local card=FT:Window("ForeverToolsTour","Tour",CARD_W,330); self.card=card
     card.noSavePrompt=true; card.ignorePlacement=true; card:SetFrameStrata("FULLSCREEN_DIALOG")
     if card.homeButton then card.homeButton:Hide() end
     card.titleText:SetText("")
-    card.chapter=FT:Label(card,"",13,true); card.chapter:SetPoint("TOPLEFT",20,-16); card.chapter:SetTextColor(1,.82,0)
-    card.overall=FT:Label(card,"",11); card.overall:SetPoint("TOPRIGHT",-52,-18); card.overall:SetTextColor(.66,.59,.48)
-    card.dots={}
-    card.bar=card:CreateTexture(nil,"ARTWORK"); card.bar:SetColorTexture(.79,.63,.29,1); card.bar:SetHeight(4); card.bar:SetPoint("TOPLEFT",20,-52)
+    card.overall=FT:Label(card,"",11); card.overall:SetPoint("TOPLEFT",20,-18); card.overall:SetTextColor(.66,.59,.48)
+    card.bar=card:CreateTexture(nil,"ARTWORK"); card.bar:SetColorTexture(.79,.63,.29,1); card.bar:SetHeight(4); card.bar:SetPoint("TOPLEFT",20,-40)
     card.barBack=card:CreateTexture(nil,"BORDER"); card.barBack:SetColorTexture(.16,.13,.08,1); card.barBack:SetHeight(4)
-    card.barBack:SetPoint("TOPLEFT",20,-52); card.barBack:SetPoint("TOPRIGHT",-20,-52)
-    card.title=FT:Label(card,"",17,true); card.title:SetPoint("TOPLEFT",20,-70); card.title:SetWidth(CARD_W-40); card.title:SetTextColor(1,.91,.66)
-    card.text=FT:Label(card,"",13); card.text:SetPoint("TOPLEFT",card.title,"BOTTOMLEFT",0,-8); card.text:SetWidth(CARD_W-40)
+    card.barBack:SetPoint("TOPLEFT",20,-40); card.barBack:SetPoint("TOPRIGHT",-20,-40)
+    card.title=FT:Label(card,"",17,true); card.title:SetPoint("TOPLEFT",20,-56); card.title:SetWidth(CARD_W-40); card.title:SetTextColor(1,.91,.66)
+    card.text=FT:Label(card,"Click to turn on: it shows on your screen. Point at one to see what it does.",12); card.text:SetPoint("TOPLEFT",20,-80); card.text:SetWidth(CARD_W-40)
     if card.text.SetWordWrap then card.text:SetWordWrap(true) end
     card.text:SetTextColor(.85,.80,.70)
-    card.keep=FT:AccentButton(card,"Keep it",CARD_W-40,32,"confirm")
-    card.keep.action=true; card.keep.primary=true; card.keep.label:SetText("Keep it")
-    card.keep:SetScript("OnClick",function() self:Answer(true) end)
-    FT:Tooltip(card.keep,"Keep it","Keep it on, next stop.")
-    card.no=FT:QuietButton(card,"No thanks",CARD_W-40,32)
-    card.no:SetScript("OnClick",function() self:Answer(false) end)
-    FT:Tooltip(card.no,"No thanks","Put it back, next stop.")
-    card.no.action=true; card.no.label:SetText("No thanks")
-    card.pause=FT:QuietButton(card,"Pause",126,26)
+    card.rows={}
+    for i=1,ROWS do
+        local b=FT:QuietButton(card,"",CARD_W-40,30)
+        b:RegisterForClicks("LeftButtonUp","RightButtonUp")
+        b:SetScript("OnClick",function(owner,button)
+            if not owner.stop then return end
+            if button=="RightButton" then self:OpenPage(owner.stop) else self:Toggle(owner.stop) end
+        end)
+        FT:Tooltip(b,function() return b.stop and b.stop.title or "" end,function()
+            local st=b.stop; if not st then return "" end
+            return st.text.."\n\nRight-click: open its settings ("..st.chapter..")."
+        end)
+        card.rows[i]=b
+    end
+    card.next=FT:AccentButton(card,"Next",CARD_W-40,32,"confirm")
+    card.next.action=true; card.next.primary=true
+    card.next:SetScript("OnClick",function() self:Next(1) end)
+    FT:Tooltip(card.next,"Next","Go to the next menu. What you switched on stays on.")
+    card.back=FT:QuietButton(card,"Back",(CARD_W-48)/2,26); card.back.action=true
+    card.back:SetScript("OnClick",function() self:Next(-1) end)
+    FT:Tooltip(card.back,"Back","The menu before.")
+    card.pause=FT:QuietButton(card,"Pause",(CARD_W-48)/2,26); card.pause.action=true
     card.pause:SetScript("OnClick",function() self:Pause() end)
-    FT:Tooltip(card.pause,"Pause","Continue later with /ft setup. What you kept stays on.")
-    card.skip=FT:QuietButton(card,"Skip chapter",126,26)
-    card.skip:SetScript("OnClick",function() self:SkipChapter() end)
-    FT:Tooltip(card.skip,"Skip chapter","Next menu, nothing changed here.")
+    FT:Tooltip(card.pause,"Pause","Continue later with /ft setup. What you switched on stays on.")
     -- Closing the card is the same as Pause.
     card:HookScript("OnHide",function()
         if not self.running then return end
@@ -233,54 +253,59 @@ function Tour:Card()
     card:Hide()
     return card
 end
-function Tour:Chapter(list,index)
-    local name=list[index] and list[index].chapter
-    local first,last
-    for i,stop in ipairs(list) do if stop.chapter==name then first=first or i; last=i end end
-    return name,first,last
-end
-function Tour:Layout(stop,list,index)
+local function isOn(stop) local ok,on=pcall(stop.get); return ok and on==true end
+function Tour:Layout(chapter,index,count)
     local card=self:Card()
-    local name,first,last=self:Chapter(list,index)
-    -- One counter: where you are in the whole tour. The dots show this chapter.
-    card.chapter:SetText(name)
-    card.overall:SetText(index.." of "..#list)
-    for _,dot in ipairs(card.dots) do dot:Hide() end
-    for i=first,last do
-        local d=card.dots[i-first+1]
-        if not d then d=card:CreateTexture(nil,"ARTWORK"); d:SetSize(8,8); d:SetTexture("Interface\\AddOns\\"..FT.name.."\\Media\\Rounded.tga"); card.dots[i-first+1]=d end
-        d:ClearAllPoints(); d:SetPoint("TOPLEFT",20+(i-first)*13,-36)
-        if i<index then d:SetVertexColor(.79,.63,.29) elseif i==index then d:SetVertexColor(1,.82,0) else d:SetVertexColor(.29,.24,.15) end
-        d:Show()
+    card.overall:SetText("Menu "..index.." of "..count)
+    card.bar:SetWidth(math.max(2,(CARD_W-40)*index/math.max(1,count)))
+    card.title:SetText(chapter.name)
+    local y=80+(card.text:GetStringHeight() or 28)+10
+    for i,row in ipairs(card.rows) do
+        local stop=chapter.stops[i]
+        row.stop=stop; row:SetShown(stop~=nil)
+        if stop then
+            row:ClearAllPoints(); row:SetPoint("TOPLEFT",20,-y); y=y+34
+            row.label:SetText(stop.title..": "..(isOn(stop) and "On" or "Off"))
+            FT:SetSelected(row,isOn(stop))
+        end
     end
-    card.bar:SetWidth(math.max(2,(CARD_W-40)*(index-1)/math.max(1,#list)))
-    card.title:SetText(stop.title)
-    card.text:SetText(stop.text..(self.wasOn and "\n\nYou already have this on." or ""))
-    local textBottom=70+22+8+(card.text:GetStringHeight() or 40)
-    card.keep:ClearAllPoints(); card.keep:SetPoint("TOPLEFT",20,-(textBottom+16))
-    card.no:ClearAllPoints(); card.no:SetPoint("TOPLEFT",card.keep,"BOTTOMLEFT",0,-8)
-    card.no.label:SetText(self.wasOn and "Turn it off" or "No thanks")
-    card.pause:ClearAllPoints(); card.pause:SetPoint("TOPLEFT",card.no,"BOTTOMLEFT",0,-14)
-    card.skip:ClearAllPoints(); card.skip:SetPoint("TOPRIGHT",card.no,"BOTTOMRIGHT",0,-14)
-    card:SetHeight(textBottom+16+32+8+32+14+26+20)
+    y=y+8
+    card.next.label:SetText(index<count and ("Next: "..(self.chapters[index+1].name)) or "Finish")
+    card.next:ClearAllPoints(); card.next:SetPoint("TOPLEFT",20,-y)
+    card.back:ClearAllPoints(); card.back:SetPoint("TOPLEFT",card.next,"BOTTOMLEFT",0,-10)
+    card.pause:ClearAllPoints(); card.pause:SetPoint("TOPRIGHT",card.next,"BOTTOMRIGHT",0,-10)
+    card.back:SetEnabled(index>1); card.back:SetAlpha(index>1 and 1 or .45)
+    card:SetHeight(y+32+10+26+22)
+end
+function Tour:RefreshRows()
+    local card=self.card; if not card then return end
+    for _,row in ipairs(card.rows) do
+        if row.stop and row:IsShown() then
+            local on=isOn(row.stop)
+            row.label:SetText(row.stop.title..": "..(on and "On" or "Off")); FT:SetSelected(row,on)
+        end
+    end
 end
 -- Running the tour ----------------------------------------------------------------------
 function Tour:Begin(mode)
     local t=self:State()
-    t.mode=mode or t.mode; t.index=1; t.kept={}; t.done=nil; t.paused=nil; t.reminded=nil
+    t.mode=mode or t.mode; t.index=1; t.kept={}; t.done=nil; t.paused=nil; t.reminded=nil; t.cards=true
     FT.db.setupDone=true
     self:Show()
 end
 function Tour:Resume()
     local t=self:State()
     if t.done then return false end
+    -- A tour paused before 1.3.0 counted single features: start at the
+    -- first menu of the new, shorter tour.
+    if not t.cards then t.cards=true; t.index=1 end
     t.paused=nil
     self:Show()
     return true
 end
--- A ForeverTools element shown at a stop (rare alert, stealth alert, nearby
--- enemies, …) is moved next to the tour card for that stop, so the menu
--- never hides it; it goes back to its own place when the stop ends.
+-- A ForeverTools element shown on the tour (rare alert, stealth alert,
+-- nearby enemies, …) is moved next to the tour card while it shows, so the
+-- card never hides it; it goes back to its own place afterwards.
 -- The game's own frames (player frame, minimap) stay where they are.
 local function own(target)
     local name=target and target.GetName and target:GetName()
@@ -296,12 +321,8 @@ function Tour:Bring(target)
     target:ClearAllPoints()
     local bottom=self.card:GetBottom() or 0
     local height=target:GetHeight() or 0
-    local page=self.stop and mod(self.stop.page); local frame=page and page.frame
-    if bottom-height-30>20 or not (frame and frame:IsShown()) then
-        target:SetPoint("TOP",self.card,"BOTTOM",0,-30)
-    else
-        target:SetPoint("TOPRIGHT",frame,"TOPLEFT",-24,-40)
-    end
+    if bottom-height-30>20 then target:SetPoint("TOP",self.card,"BOTTOM",0,-30)
+    else target:SetPoint("TOPRIGHT",self.card,"TOPLEFT",-24,-40) end
 end
 function Tour:PutBack()
     local moved=self.moved; self.moved=nil
@@ -312,74 +333,72 @@ function Tour:PutBack()
 end
 function Tour:Show()
     if InCombatLockdown() then self.afterCombat=true; return end
-    self:PutBack()
+    self:PutBack(); self:ClearPulses()
     local t=self:State()
-    self.list=self:List(t.mode)
-    if t.index>#self.list then self:Finish(); return end
-    local stop=self.list[t.index]
-    self.running=true; self.stop=stop
-    -- Open the real page, and turn the feature on so it can be seen.
-    FT:OpenModule(stop.page)
-    if stop.prepare then pcall(stop.prepare) end
-    local page=mod(stop.page); local frame=page and page.frame
-    local okGet,on=pcall(stop.get)
-    self.wasOn=okGet and on==true
-    if not self.wasOn then pcall(stop.set,true) end
-    if stop.preview then pcall(stop.preview) end
-    if page and page.Refresh then pcall(page.Refresh,page) end
-    self:Layout(stop,self.list,t.index)
+    self.chapters=self:Chapters(t.mode)
+    if t.index<1 then t.index=1 end
+    if t.index>#self.chapters then self:Finish(); return end
+    self.running=true
+    self:Layout(self.chapters[t.index],t.index,#self.chapters)
     local card=self:Card()
-    card:ClearAllPoints()
-    if frame and frame:IsShown() then card:SetPoint("TOPLEFT",frame,"TOPRIGHT",12,0) else card:SetPoint("CENTER") end
+    if not card:IsShown() then card:ClearAllPoints(); card:SetPoint("RIGHT",UIParent,"RIGHT",-60,40) end
     card:Show()
-    -- Pulse the switch on the page and the thing it changes on screen.
-    self:ClearPulses()
-    self:Pulse(1,self:FindControl(frame,stop.find),4)
-    C_Timer.After(.2,function()
-        if self.stop~=stop then return end
-        local ok,target=pcall(stop.target or function() end)
-        if ok and target then
-            if target.IsVisible and target:IsVisible() then self:Bring(target) end
-            self:Pulse(2,target,6)
-        end
-    end)
 end
-function Tour:Answer(keep)
-    local t=self:State(); local stop=self.stop
-    if not stop then return end
-    if keep then t.kept[stop.key]=true else t.kept[stop.key]=nil; pcall(stop.set,false) end
-    t.index=t.index+1
-    self:Show()
-end
--- Leaving a stop without an answer puts it back the way it was.
-function Tour:Undo()
-    local stop=self.stop
-    if stop and not self.wasOn then pcall(stop.set,false) end
-end
-function Tour:SkipChapter()
+-- Click a feature: on (and shown on screen, pulsing) or off again.
+function Tour:Toggle(stop)
+    if InCombatLockdown() then return end
     local t=self:State()
-    self:Undo()
-    local _,_,last=self:Chapter(self.list,t.index)
-    t.index=(last or t.index)+1
+    local on=not isOn(stop)
+    pcall(stop.set,on)
+    t.kept[stop.key]=on or nil
+    self:ClearPulses(); self:PutBack()
+    if on then
+        if stop.preview then pcall(stop.preview) end
+        C_Timer.After(.2,function()
+            if not self.running then return end
+            local ok,target=pcall(stop.target or function() end)
+            if ok and target then
+                if target.IsVisible and target:IsVisible() then self:Bring(target) end
+                self:Pulse(2,target,6)
+            end
+        end)
+    end
+    local page=mod(stop.page); if page and page.frame and page.frame:IsShown() and page.Refresh then pcall(page.Refresh,page) end
+    self:RefreshRows()
+end
+-- Right-click: the feature's own settings page, its switch pulsing.
+function Tour:OpenPage(stop)
+    FT:OpenModule(stop.page)
+    local page=mod(stop.page); local frame=page and page.frame
+    if frame and frame:IsShown() and self.card then
+        self.card:ClearAllPoints(); self.card:SetPoint("TOPLEFT",frame,"TOPRIGHT",12,0)
+        self:Pulse(1,self:FindControl(frame,stop.find),4)
+    end
+end
+function Tour:Next(step)
+    local t=self:State()
+    t.index=math.max(1,t.index+(step or 1))
     self:Show()
 end
+-- Kept for older callers: nothing is ever on without a click now.
+function Tour:Undo() end
+function Tour:Answer(keep) self:Next(1) end
+function Tour:SkipChapter() self:Next(1) end
 function Tour:Pause(fromClose,quiet)
     if not self.running then return end
     local t=self:State()
-    self:Undo(); self:PutBack()
+    self:PutBack()
     self.running=false; t.paused=true
     self:ClearPulses()
-    local stop=self.stop; self.stop=nil
-    local page=stop and mod(stop.page)
-    if page and page.frame then page.frame:Hide() end
     if not fromClose and self.card then self.card:Hide() end
     if self:InTrial() and not quiet then self:EndTrial(); return end
-    if not quiet then FT:Toast("Tour paused at "..(stop and stop.chapter or "?").." (stop "..t.index.." of "..#(self.list or {})..").\nWhat you kept stays on. Continue with /ft setup.",6) end
+    local chapter=self.chapters and self.chapters[t.index]
+    if not quiet then FT:Toast("Tour paused at "..(chapter and chapter.name or "?").." (menu "..t.index.." of "..#(self.chapters or {})..").\nWhat you switched on stays on. Continue with /ft setup.",6) end
 end
 function Tour:Finish()
     local t=self:State()
     self:PutBack()
-    self.running=false; self.stop=nil; t.done=true; t.paused=nil
+    self.running=false; t.done=true; t.paused=nil
     self:ClearPulses()
     if self.card then self.card:Hide() end
     local trial=self:InTrial()
@@ -407,8 +426,8 @@ function Tour:Summary(trial)
     local shown={}
     for i=1,math.min(8,#names) do shown[i]="· "..names[i] end
     if #names>8 then shown[#shown+1]="· …and "..(#names-8).." more" end
-    local kept=trial and "You would have kept " or "You kept "
-    frame.lines:SetText(#names==0 and (trial and "You kept nothing." or "You kept everything as it was.") or (kept..#names.." feature"..(#names==1 and "" or "s")..":\n"..table.concat(shown,"\n")))
+    local kept=trial and "You would have switched on " or "You switched on "
+    frame.lines:SetText(#names==0 and (trial and "You switched nothing on." or "You kept everything as it was.") or (kept..#names.." feature"..(#names==1 and "" or "s")..":\n"..table.concat(shown,"\n")))
     if frame.titleText then frame.titleText:SetText(trial and "Practice run done" or "You're set up") end
     local profiles=mod("Profiles")
     local profile=profiles and profiles.active
@@ -488,7 +507,7 @@ function Tour:ShowStart(again,demo)
         f.lookNote:SetPoint("TOPLEFT",24,-214); f.lookNote:SetTextColor(.66,.59,.48)
         local h2=FT:Label(f,"How long?",15,true); h2:SetPoint("TOPLEFT",24,-244); FT:SectionHeading(h2,"INV_Misc_PocketWatch_01",420)
         f.modes={}
-        for i,m in ipairs({{"quick","Quick tour","The most useful features · about 3 min"},{"full","Full tour","Every menu, step by step · about 5–10 min"}}) do
+        for i,m in ipairs({{"quick","Quick tour","The most useful features · about 1 min"},{"full","Full tour","Every feature, menu by menu · about 3 min"}}) do
             local b=FT:QuietButton(f,"",270,52); b:SetPoint("TOPLEFT",24+(i-1)*282,-270)
             b.label:ClearAllPoints(); b.label:SetPoint("TOPLEFT",14,-9); b.label:SetText(m[2])
             b.sub=FT:Label(b,m[3],11); b.sub:SetPoint("TOPLEFT",14,-29); b.sub:SetWidth(246); b.sub:SetTextColor(.66,.59,.48)
@@ -549,7 +568,7 @@ function Tour:ShowStart(again,demo)
     end
     f.intro:SetText(self.demo and "Practice run: when it ends, every setting goes back to how it is now."
         or again and "Pick a new look if you like, then take the tour again."
-        or "Everything starts off. The tour shows each feature on your screen; keep what you like.")
+        or "Everything starts off. The tour lists the features menu by menu: click one to turn it on and see it.")
     self.look=nil; self.mode=self.mode or "quick"; self.savedLook=nil
     self:RefreshStart()
     f.keepAfterCombat=not again

@@ -60,7 +60,7 @@ local elements={
         reset=function(m) local s=m:Settings(); s.x,s.y,s.width,s.height=nil,nil,nil,nil; m:Apply() end,
         resetTip="Back next to the damage meter."},
     {key="threatText",name="Threat % above target",module="Threat",open="Threat",
-        used=function(m) return m:Settings().text==true end,
+        used=function(m) local s=m:Settings(); return s.enabled==true and s.text==true end,
         -- It sits on the target portrait, so it can only move with a target.
         start=function(m) if hasTarget() then m:SetMovingText(true) end end,
         stop=function(m) if m.movingText then m:SetMovingText(false) end end,

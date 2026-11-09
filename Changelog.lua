@@ -4,6 +4,12 @@ local _,FT=...
 FT.quietReleases={["1.0.0"]=true,["1.0.1"]=true}
 FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
+    {version="1.3.0",notes={
+        {icon="INV_Misc_Book_09",title="Shorter tour",text="One card per menu. Click to switch on."},
+        {icon="Ability_Rogue_Sprint",title="Easier moving",text="Esc menu button, boxes as big as the item."},
+        {icon="INV_Misc_Bag_08",title="Camp reminders",text="Tent and sleeping bag, while leveling."},
+        {icon="Trade_BlackSmithing",title="More options & fixes",text="Game options, macros, minimap, ToT color."},
+    }},
     {version="1.2.0",notes={
         {icon="Spell_Nature_TimeStop",title="No lag after fights",text="Leaving combat no longer stutters."},
         {icon="Spell_Holy_WordFortitude",title="Less in your way",text="Reminders: any click hides them for 10 min."},

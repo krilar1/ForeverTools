@@ -87,6 +87,7 @@ function System:Settings()
     if type(s.quietNoControl)~="boolean" then s.quietNoControl=true end
     -- New version notice: on at first (Lars, 2026-11-09).
     if type(s.versionCheck)~="boolean" then s.versionCheck=true end
+    if type(s.gameMenuButton)~="boolean" then s.gameMenuButton=true end
     return s
 end
 function System:Apply()
@@ -150,6 +151,7 @@ local pages={
         {"quietLogin","Hide other addons' login messages","Spell_Holy_Silence","Hide other addons' \"loaded\" lines at login. Player and game chat is never hidden."},
         {"hiddenUIHint","Show key when interface is hidden","INV_Misc_Eye_01","Show which key brings the interface back after hiding it (Alt+Z)."},
         {"whatsNew","What's new after updates","INV_Misc_Note_05","Show what changed after an update."},
+        {"gameMenuButton","Move elements in the game menu","Ability_Rogue_Sprint","A Move elements button (with the ForeverTools logo) in the game's own menu (Esc), under Macros."},
         {"versionCheck","Tell me when a new version is out","INV_Misc_Note_06","ForeverTools copies in your guild and group tell each other their version (a hidden addon message with only the version number). When someone has a newer one, you get a line in chat."},
         {"setup","First-time tour","INV_Misc_Book_09","Take the tour again, or continue where you paused."},
         {"reset","Reset all settings","reset","Everything back to off and reload. Profiles, macros and flight times are kept."},
@@ -162,6 +164,9 @@ local pages={
         {"minimapTarget","Show your target on the minimap","Ability_Hunter_SniperShot","Turns on the game's own \"Target\" minimap tracking: what you target shows on the minimap. The game saves it."},
         {"minimapIcons","Group minimap buttons","INV_Misc_Bag_08","Put other addons' minimap buttons into one menu."},
         {"minimapIconsVertical","Grouped buttons","INV_Misc_Bag_08","Layout of the grouped buttons."},
+        {"minimapRings","Rings on the minimap","map","Addon buttons that sit on the minimap (also the ones you keep there): gold like the game, or dark in your Skins border color. Needs Skins > Minimap on. The same choice as Skins > Minimap > Addon rings."},
+        {"groupRings","Rings in the group","INV_Misc_Bag_08","Addon buttons inside the grouped buttons menu: gold or dark. Needs Skins > Minimap on."},
+        {"minimapKeep","Keep on the minimap","INV_Misc_Map_01","Pick buttons that stay on the minimap, outside the group (for example one you use a lot)."},
     }},
     {key="SystemGameplay",title="Group role",hint="Your group role, set from your talents.",items={
         {"autoRole","Set role when joining a group","Ability_Warrior_DefensiveStance","Set your role from your talents when you join a group."},
@@ -195,7 +200,7 @@ local pages={
     }},
 }
 System.pages=pages
-local toggles={versionCheck=true,minimapTarget=true,hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,shortKeys=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietLogin=true,quietNoControl=true}
+local toggles={gameMenuButton=true,versionCheck=true,minimapTarget=true,hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,shortKeys=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietLogin=true,quietNoControl=true}
 -- Switches that are the game's own settings: read and written directly,
 -- never stored by ForeverTools. "Unavailable" when the game has no such setting.
 local gameOptions={scriptErrors="scriptErrors",deathGlow="ffxDeath"}
@@ -216,11 +221,30 @@ function System:TargetTracking()
     local ok,n=pcall(M.GetNumTrackingTypes); if not ok or type(n)~="number" then return nil end
     for i=1,n do
         local okF,f=pcall(M.GetTrackingFilter,i)
-        if okF and type(f)=="table" and f.filterID==TARGET_FILTER then
-            local okI,info=pcall(M.GetTrackingInfo,i)
-            return i,okI and type(info)=="table" and info.active==true
+        local okI,info=pcall(M.GetTrackingInfo,i)
+        info=okI and type(info)=="table" and info or nil
+        if (okF and type(f)=="table" and f.filterID==TARGET_FILTER) or (info and info.name==(MINIMAP_TRACKING_TARGET or "Target")) then
+            return i,info and info.active==true
         end
     end
+end
+-- /ft trackdebug: every minimap tracking type the game lists.
+function System:TrackingDebug()
+    local M=C_Minimap
+    print("ForeverTools "..tostring(FT.version).." minimap tracking")
+    if not M or not M.GetNumTrackingTypes then print("C_Minimap.GetNumTrackingTypes: missing"); return end
+    local ok,n=pcall(M.GetNumTrackingTypes); print("types: "..tostring(n))
+    local cv=(C_CVar and C_CVar.GetCVar) or GetCVar
+    if cv then print("minimapTrackingShowAll="..tostring(cv("minimapTrackingShowAll"))) end
+    if C_GameRules and C_GameRules.IsGameRuleActive and Enum.GameRule and Enum.GameRule.IngameTrackingDisabled then
+        local okR,r=pcall(C_GameRules.IsGameRuleActive,Enum.GameRule.IngameTrackingDisabled); print("tracking disabled rule: "..tostring(okR and r))
+    end
+    for i=1,(ok and type(n)=="number" and n or 0) do
+        local okF,f=pcall(M.GetTrackingFilter,i); local okI,info=pcall(M.GetTrackingInfo,i)
+        f=okF and type(f)=="table" and f or {}; info=okI and type(info)=="table" and info or {}
+        print(("%d %s filter=%s spell=%s active=%s"):format(i,tostring(info.name),tostring(f.filterID),tostring(f.spellID),tostring(info.active)))
+    end
+    print("target tracking index: "..tostring((self:TargetTracking())))
 end
 function System:Values()
     local s=self:Settings()
@@ -230,7 +254,7 @@ function System:Values()
     return {welcome=FT.db.welcome==true,whatsNew=s.hideWhatsNew~=true,minimap=FT.db.minimapEnabled~=false,coordinates=coords,
         minimapTarget=select(2,self:TargetTracking())==true,minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=gameOption("scriptErrors")=="1",deathGlow=gameOption("ffxDeath")~="0",
         hiddenUIHint=s.hiddenUIHint==true,autoRole=s.autoRole==true,shortKeys=s.shortKeys==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true,
-        hideErrors=s.hideErrors==true,errorsInCombat=s.errorsInCombat==true,quietLogin=s.quietLogin==true,quietNoControl=s.quietNoControl~=false,versionCheck=s.versionCheck~=false}
+        hideErrors=s.hideErrors==true,errorsInCombat=s.errorsInCombat==true,quietLogin=s.quietLogin==true,quietNoControl=s.quietNoControl~=false,versionCheck=s.versionCheck~=false,gameMenuButton=s.gameMenuButton~=false}
 end
 function System:Refresh()
     if not self.buttons then return end
@@ -241,6 +265,17 @@ function System:Refresh()
             button.label:SetText(button.title..": "..(missing and "Unavailable" or (values[key] and "On" or "Off")))
             FT:SetSelected(button,values[key])
             if gameOptions[key] or key=="minimapTarget" then button:SetEnabled(not missing); button:SetAlpha(missing and .45 or 1) end
+        end
+        if key=="minimapRings" or key=="groupRings" then
+            local a=FT.modules.IconStyles:Area("minimap")
+            local v=key=="minimapRings" and a.addonRings or (a.groupRings==nil and a.addonRings or a.groupRings)
+            button.label:SetText((key=="minimapRings" and "Rings on the minimap: " or "Rings in the group: ")..(v=="dark" and "Dark" or "Gold"))
+            if key=="groupRings" then button:SetEnabled(values.minimapIcons); button:SetAlpha(values.minimapIcons and 1 or .45) end
+        end
+        if key=="minimapKeep" then
+            local n=0; for _ in pairs(FT.modules.MinimapIcons:Kept()) do n=n+1 end
+            button.label:SetText("Keep on the minimap: "..(n==0 and "None" or (n==1 and "1 button" or (n.." buttons"))))
+            button:SetEnabled(values.minimapIcons); button:SetAlpha(values.minimapIcons and 1 or .45)
         end
         if key=="minimapIconsVertical" then
             local vertical=self:Settings().minimapIconsVertical==true
@@ -328,6 +363,14 @@ end
 function System:Click(key)
     if key=="minimapIcons" then FT.modules.MinimapIcons:Toggle();return end
     if key=="minimapIconsVertical" then FT.modules.MinimapIcons:ToggleVertical();return end
+    if key=="minimapKeep" then
+        local button=self.buttons.minimapKeep; local I=FT.modules.MinimapIcons
+        if I.active then I:Scan() end
+        button.options=function() return I:KeepChoices() end
+        button.value=nil; button.menuWidth=math.max(button:GetWidth(),260)
+        button.onSelect=function(value) I:ToggleKeep(value); self:Refresh() end
+        FT:ShowChoices(button); return
+    end
     if key=="flightTimer" then FT:OpenModule("FlightTimer");return end
     if key=="fps" then FT:OpenModule("QualityOfLife");return end
     if key=="rareAlert" then FT:OpenModule("RareAlert");return end
@@ -374,7 +417,15 @@ function System:Click(key)
     if key=="minimapTarget" then
         local index,on=self:TargetTracking()
         if index and C_Minimap.SetTracking then pcall(C_Minimap.SetTracking,index,not on) end
-        self:Refresh(); return
+        self:Refresh()
+        -- The game updates its tracking a moment later: look again, and say
+        -- so when it did not take the change.
+        C_Timer.After(.5,function()
+            local _,now=self:TargetTracking(); self:Refresh()
+            if index and now==on then FT:Toast("The game did not change its Target tracking. Try the game's own tracking menu on the minimap.",5)
+            elseif now then FT:Toast("Target tracking on: your target shows on the minimap when it is close.",4) end
+        end)
+        return
     end
     if gameOptions[key] then
         local name=gameOptions[key]
@@ -429,6 +480,22 @@ local function buildPage(page)
                         local words=key=="keyX" and (delta<0 and "left" or "right") or (delta<0 and "down" or "up")
                         FT:Tooltip(step,entry[2],"One point "..words..".")
                     end
+                elseif key=="minimapRings" or key=="groupRings" then
+                    local skins=FT.modules.IconStyles
+                    local field=key=="minimapRings" and "addonRings" or "groupRings"
+                    local function now() local a=skins:Area("minimap"); local v=a[field]; if field=="groupRings" and v==nil then v=a.addonRings end; return v=="dark" and "dark" or "game" end
+                    FT:MakeChoice(b,{{"game","Gold","The game's gold ring."},{"dark","Dark","Your Skins border color."}},
+                        now,
+                        function(value)
+                            local a=skins:Area("minimap")
+                            -- The group follows the minimap until it has a choice of its own.
+                            if field=="addonRings" and a.groupRings==nil then a.groupRings=a.addonRings or "game" end
+                            a[field]=value; pcall(skins.Apply,skins); pcall(skins.AddonRings,skins)
+                            if value=="dark" and skins:Settings().minimap~=true then FT:Toast("Turn on Skins > Minimap for dark rings.",4) end
+                            System:Refresh()
+                        end)
+                elseif key=="minimapKeep" then
+                    b.options=function() return FT.modules.MinimapIcons:KeepChoices() end
                 elseif key=="minimapIconsVertical" then
                     FT:MakeChoice(b,{{false,"Horizontal","Side by side, a new row after 6."},{true,"Vertical","One below the other."}},
                         function() return System:Settings().minimapIconsVertical==true end,

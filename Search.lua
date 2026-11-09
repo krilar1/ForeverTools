@@ -45,6 +45,10 @@ local index={
     {"Reset all settings","reset defaults restore clear","SystemGeneral","reset"},
     {"ForeverTools minimap button","minimap icon button","SystemMinimap","map"},
     {"Minimap coordinates","coordinates coords position","SystemMinimap","map"},
+    {"Camp items reminder (tent, sleeping bag)","tent sleeping bag cozy camp camping campfire rested well-rested boosted rest bonus xp experience leveling","BuffReminder","buffs"},
+    {"Move elements in the game menu","game menu escape esc button move elements","SystemGeneral","general"},
+    {"Rings of addon minimap buttons","minimap ring rings gold dark addon button border","SystemMinimap","map"},
+    {"Keep minimap buttons outside the group","minimap keep exclude outside group button journal single","SystemMinimap","map"},
     {"Group minimap buttons","minimap icons collect gather addon buttons menu horizontal vertical row column","SystemMinimap","map"},
     {"Set role when joining a group","role tank healer damage group auto","SystemGameplay","Ability_Warrior_DefensiveStance"},
     {"Interrupt bar","interrupt kick pummel shield bash earth shock counterspell hammer of justice silence spell lock bash cooldown party raid group tracker","Interrupts","Ability_Kick"},
@@ -149,7 +153,7 @@ end
 function Search:Attach(home)
     if self.box then return end
     local box=CreateFrame("EditBox",nil,home)
-    self.box=box
+    self.box=box; box.alwaysIcons=true -- every result shows its page icon, also when they share one
     box:SetSize(220,26); box:SetPoint("TOPLEFT",24,-54)
     box:SetFont(FT.bodyFont,13,""); box:SetAutoFocus(false); box:SetTextInsets(26,8,0,0)
     FT:Panel(box); FT:Paint(box,{0.05,0.04,0.03,1},{0.29,0.24,0.15,1})

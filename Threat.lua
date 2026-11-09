@@ -708,7 +708,7 @@ function Threat:Refresh()
     self.toggle.label:SetText("Threat meter: "..(s.enabled and "On" or "Off")); FT:SetSelected(self.toggle,s.enabled)
     self.showChoice.value=s.show; self.showChoice.label:SetText("Show: "..showText(s.show))
     self.lock.label:SetText("Lock meter: "..(s.locked and "On" or "Off")); FT:SetSelected(self.lock,s.locked)
-    self.gripChoice.value=s.grip; self.gripChoice.label:SetText(s.grip=="always" and "Resize corner: always" or "Resize corner: on mouseover")
+    self.gripChoice.value=s.grip; self.gripChoice.label:SetText(s.grip=="always" and "Resize: always" or "Resize: on mouseover")
     self.gripChoice:SetAlpha(s.locked and .5 or 1)
     self.placeNote:SetText((s.x and "Moved by you." or (self:DamageMeter() and "Placed next to the damage meter." or "Placed on the right side."))
         ..(s.locked and " Locked." or ""))
@@ -764,8 +764,8 @@ function Threat:Open()
         FT:Tooltip(self.lock,"Lock meter","Can't be moved or resized while locked.")
         self.gripChoice=FT:Dropdown(frame,240,function()
             local icon="Interface\\Icons\\"..ICON
-            return {{value="always",label="Resize corner: always",icon=icon,tooltip="Always show the resize corner when unlocked."},
-                {value="hover",label="Resize corner: on mouseover",icon=icon,tooltip="Show the resize corner on mouseover."}}
+            return {{value="always",label="Resize: always",icon=icon,tooltip="Always show the resize corner when unlocked."},
+                {value="hover",label="Resize: on mouseover",icon=icon,tooltip="Show the resize corner on mouseover."}}
         end,function(value) self:Settings().grip=value; self:Apply() end,"move")
         self.gripChoice:SetPoint("TOPLEFT",276,-148)
         FT:Tooltip(self.gripChoice,"Resize corner","When the resize corner shows.")
