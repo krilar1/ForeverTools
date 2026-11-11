@@ -9,7 +9,7 @@ local M = KT.modules.MacroForge
 local D = M.data
 local classKey, raceKey = D.classKey, D.raceKey
 local W, H = 600, 660
-local LIST_W, ROW_H, EDIT_H = 520, 54, 344
+local LIST_W, ROW_H, EDIT_H = 520, 54, 362
 local GREEN, MUTED = {.45, .86, .55}, {.72, .66, .55}
 
 -- Views --------------------------------------------------------------------------
@@ -277,6 +277,20 @@ function M:UpdatePreview()
     self.prevRank:SetShown(hasRanks); self.nextRank:SetShown(hasRanks)
     self.prevRank:SetEnabled(hasRanks); self.nextRank:SetEnabled(hasRanks)
     local poison = self.IsPoison and self.IsPoison(entry)
+    -- Rank families (poisons, mana gems): a list instead of the rank arrows.
+    local fam = self.Family and self:Family(entry.name)
+    if self.familyButton then
+        self.familyButton:SetShown(fam ~= nil)
+        if fam then
+            self.prevRank:Hide(); self.nextRank:Hide(); self.rankLabel:SetText("")
+            local pick = self:FamilyPick(fam)
+            local now = self:FamilyChoice(fam)
+            local short = now:sub(#fam.head + 2)
+            if fam.kind == "spell" then short = now:match("(%S+)$") or now end
+            if short == "" then short = "I" end
+            self.familyButton.label:SetText((pick and "Kept: " or "Newest: ") .. short)
+        else self.rankLabel:SetShown(true) end
+    end
     self.mouseoverButton:SetShown(not poison); self.poisonRowButton:SetShown(poison and true or false)
     if poison then self:UpdatePoisonButton() end
     local showMouseover = self:CanMouseover(entry)
@@ -333,11 +347,11 @@ end
 function M:UpdatePoisonButton()
     local on = KT.db.macroPoisonConfirm == true
     if self.poisonRowButton then
-        self.poisonRowButton.label:SetText("Auto-confirm poison: " .. (on and "On" or "Off"))
+        self.poisonRowButton.label:SetText("Auto-replace poison: " .. (on and "On" or "Off"))
         KT:SetSelected(self.poisonRowButton, on)
     end
     if not self.poisonButton then return end
-    self.poisonButton.label:SetText("Confirm poison replacing for you: " .. (on and "On" or "Off"))
+    self.poisonButton.label:SetText("Replace poisons without asking: " .. (on and "On" or "Off"))
     KT:SetSelected(self.poisonButton, on)
 end
 -- How many of this list's macros are not added yet (and room left).
@@ -436,24 +450,49 @@ function M:CreateEditor(frame)
     end)
     self.previewCaret = KT:TextCaret(self.preview, 6)
     -- Grouped in two small sections so each control says what it is for:
-    -- "This macro" (rank, mouseover or the poison choice) and "Add to the
-    -- text" (a learned spell, more lines); the actions sit at the bottom.
+    -- "Options" (rank, mouseover or the poison choice) and "Add more"
+    -- (a learned spell, extra lines); the actions sit at the bottom.
     local function heading(text, y, icon)
-        local l = KT:Label(detail, text, 12, true); l:SetPoint("TOPLEFT", 14, y)
-        KT:SectionHeading(l, icon, FULL - 140, 14); return l
+        local l = KT:Label(detail, text, 12, true); l:SetPoint("TOPLEFT", 12, y)
+        KT:SectionHeading(l, icon, "full", 14); return l
     end
-    heading("This macro", -128, "INV_Misc_Gear_01")
-    heading("Add to the text", -188, "INV_Misc_Note_04")
+    -- Each band is 24 tall around its words: rows start 24 below the words.
+    heading("Options", -132, "INV_Misc_Gear_01")
+    heading("Add more", -198, "INV_Misc_Note_04")
     -- Row: rank, mouseover.
-    self.prevRank = KT:QuietButton(detail, "<", 30, 30); self.prevRank:SetPoint("TOPLEFT", 12, -146)
+    self.prevRank = KT:QuietButton(detail, "<", 30, 30); self.prevRank:SetPoint("TOPLEFT", 12, -156)
     self.prevRank:SetScript("OnClick", function() self:StepRank(-1) end)
     KT:Tooltip(self.prevRank, "Spell rank", "Pick a lower rank, for example to save mana.")
-    self.rankLabel = KT:Label(detail, "", 14); self.rankLabel:SetPoint("LEFT", self.prevRank, "RIGHT", 4, 0); self.rankLabel:SetWidth(120); self.rankLabel:SetJustifyH("CENTER")
+    self.rankLabel = KT:Label(detail, "", 14); self.rankLabel:SetPoint("LEFT", self.prevRank, "RIGHT", 4, 0); self.rankLabel:SetWidth(96); self.rankLabel:SetJustifyH("CENTER")
     self.nextRank = KT:QuietButton(detail, ">", 30, 30); self.nextRank:SetPoint("LEFT", self.rankLabel, "RIGHT", 4, 0)
     self.nextRank:SetScript("OnClick", function() self:StepRank(1) end)
     KT:Tooltip(self.nextRank, "Spell rank", "Your highest rank is used by default.")
+    -- Poisons and mana gems: newest by itself, or keep an earlier one.
+    self.familyButton = KT:QuietButton(detail, "", 164, 30, "generic"); self.familyButton:SetPoint("TOPLEFT", 12, -156); self.familyButton:Hide()
+    if self.familyButton.label.SetWordWrap then self.familyButton.label:SetWordWrap(false) end
+    KT:MakeChoice(self.familyButton, function()
+        local fam = self.selectedMacro and self:Family(self.selectedMacro.name)
+        if not fam then return {} end
+        local list = {{"auto", "Newest (updates by itself)", "Uses the best one you have and switches when you get a better one."}}
+        local seen = {}
+        local avail = self:FamilyAvailable(fam)
+        for i = #avail, 1, -1 do local m = avail[i]; seen[m.name] = true; list[#list + 1] = {m.name, m.name, "Keep this one, even when you get a better one."} end
+        local pick = self:FamilyPick(fam)
+        if pick and not seen[pick] then list[#list + 1] = {pick, pick .. " (not in your bags)", "Your pick."} end
+        return list
+    end, function()
+        local fam = self.selectedMacro and self:Family(self.selectedMacro.name)
+        return fam and self:FamilyPick(fam) or "auto"
+    end, function(value)
+        local fam = self.selectedMacro and self:Family(self.selectedMacro.name); if not fam then return end
+        self:SetFamilyPick(fam, value ~= "auto" and value or nil)
+        local record = KT:MacroRecord(self.selectedMacro); record.body = false; record.dirty = nil
+        self:UpdatePreview()
+        if self.UpdateFamilyMacros then self:UpdateFamilyMacros() end
+    end)
+    KT:Tooltip(self.familyButton, "Version", "Newest: the macro uses the best one you have and updates by itself. Or pick an earlier one to keep.")
     local HALF = math.floor((FULL - 8) / 2)
-    self.mouseoverButton = KT:QuietButton(detail, "", FULL - 196, 30, "mouseover"); self.mouseoverButton:SetPoint("TOPLEFT", 208, -146)
+    self.mouseoverButton = KT:QuietButton(detail, "", FULL - 172, 30, "mouseover"); self.mouseoverButton:SetPoint("TOPLEFT", 184, -156)
     if self.mouseoverButton.SetMotionScriptsWhileDisabled then self.mouseoverButton:SetMotionScriptsWhileDisabled(true) end
     self.mouseoverButton:SetScript("OnClick", function()
         self.mouseover = not self.mouseover
@@ -466,38 +505,38 @@ function M:CreateEditor(frame)
     end)
     KT:Tooltip(self.mouseoverButton, "Mouseover", "Cast on the unit under your mouse and keep your target. Changing it here makes an exception (*).")
     -- Rogue poisons can't use mouseover: their spot holds the poison choice.
-    self.poisonRowButton = KT:QuietButton(detail, "", FULL - 196, 30, "generic"); self.poisonRowButton:SetPoint("TOPLEFT", 208, -146); self.poisonRowButton:Hide()
+    self.poisonRowButton = KT:QuietButton(detail, "", FULL - 172, 30, "generic"); self.poisonRowButton:SetPoint("TOPLEFT", 184, -156); self.poisonRowButton:Hide()
     self.poisonRowButton.icon:SetTexture("Interface\\Icons\\Ability_Poisons")
     self.poisonRowButton:SetScript("OnClick", function()
         KT.db.macroPoisonConfirm = not (KT.db.macroPoisonConfirm == true)
         local record = KT:MacroRecord(self.selectedMacro); record.body = false; record.dirty = nil
         self:UpdatePoisonButton(); self:UpdatePreview()
     end)
-    KT:Tooltip(self.poisonRowButton, "Auto-confirm poison", "When a weapon already has a poison, the game asks if you want to replace it. On: this macro clicks Yes for you (adds /click StaticPopup1Button1). Off: you click Yes yourself. The same switch is in Macro settings and counts for all poison macros. Press Add (or Update) to put the change in your macros.")
+    KT:Tooltip(self.poisonRowButton, "Auto-replace poison", "If the weapon already has a poison, the game asks whether to replace it. Turn this on and the macro answers Yes for you. It counts for all your poison macros (also in Macro settings). Save to put it in your macro.")
     -- Row: more lines, original text.
-    self.advancedButton = KT:QuietButton(detail, "More lines...", HALF, 30, "generic"); self.advancedButton:SetPoint("TOPLEFT", 12, -242)
+    self.advancedButton = KT:QuietButton(detail, "Extra lines…", HALF, 30, "generic"); self.advancedButton:SetPoint("TOPLEFT", 12, -260)
     KT:GearIcon(self.advancedButton)
     -- The cog takes the icon's place; the words stay.
     local cogSpot = self.advancedButton.icon
     self.advancedButton.gear:ClearAllPoints(); self.advancedButton.gear:SetPoint("CENTER", cogSpot, "CENTER")
     if cogSpot then cogSpot:SetTexture(nil); cogSpot:SetAlpha(0) end
     self.advancedButton.label:Show()
-    KT:Tooltip(self.advancedButton, "More lines", "Opens a panel beside the window: stop casting first, start attacking, use a trinket or other gear, equip a weapon.")
-    self.defaultButton = KT:QuietButton(detail, "Restore original text", HALF, 30, "reset"); self.defaultButton:SetPoint("TOPLEFT", 20 + HALF, -242); self.defaultButton:Hide()
-    self.defaultButton:SetScript("OnClick", function() KT:Confirm("Restore the original text? Your edit is replaced.", function() self:RestoreDefault() end) end)
-    KT:Tooltip(self.defaultButton, "Restore original text", "Back to the original text. Asks first.")
+    KT:Tooltip(self.advancedButton, "Extra lines", "Stop casting first, start attacking, use a trinket, equip a weapon and more. Opens beside the window.")
+    self.defaultButton = KT:QuietButton(detail, "Undo my edits", HALF, 30, "reset"); self.defaultButton:SetPoint("TOPLEFT", 20 + HALF, -260); self.defaultButton:Hide()
+    self.defaultButton:SetScript("OnClick", function() KT:Confirm("Undo your edits and go back to the macro as it came?", function() self:RestoreDefault() end) end)
+    KT:Tooltip(self.defaultButton, "Undo my edits", "Go back to the macro as it came. Asks first.")
     -- Row: add a learned spell to the text.
     -- Picking a spell puts its /cast line in the text right away.
     self.spellChoice = KT:Dropdown(detail, FULL, function() return self:LearnedSpellChoices() end, function(value)
         self.quickSpell = value
         self:AddQuickSpell()
         self.quickSpell = nil
-        self.spellChoice.value = nil; self.spellChoice.label:SetText("Add a spell to the text...")
+        self.spellChoice.value = nil; self.spellChoice.label:SetText("Add another spell…")
     end, "add")
-    self.spellChoice:SetPoint("TOPLEFT", 12, -206); self.spellChoice.label:SetText("Add a spell to the text...")
-    KT:Tooltip(self.spellChoice, "Add a spell", "Pick one of your spells: a /cast line for it goes to the end of the text.")
+    self.spellChoice:SetPoint("TOPLEFT", 12, -222); self.spellChoice.label:SetText("Add another spell…")
+    KT:Tooltip(self.spellChoice, "Add another spell", "Pick one of your spells to add it at the end of the macro.")
     -- Row: add the macro.
-    local add = KT:AccentButton(detail, "Save to Character macros", FULL, 34, "macros"); add:SetPoint("TOPLEFT", 12, -284); self.addButton = add
+    local add = KT:AccentButton(detail, "Save to Character macros", FULL, 34, "macros"); add:SetPoint("TOPLEFT", 12, -300); self.addButton = add
     KT:SaveButton(add)
     add:SetScript("OnClick", function()
         if self.selectedMacro then
@@ -506,7 +545,7 @@ function M:CreateEditor(frame)
         end
     end)
     KT:Tooltip(add, "Save", "Saves this text into your WoW macros (a new macro, or your changes to the one you have). Then drag it from Esc > Macros to your bars.")
-    local hint = KT:Label(detail, "Type in the box to change it. Edits are kept.", 12); hint:SetPoint("TOPLEFT", 12, -324); hint:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
+    local hint = KT:Label(detail, "You can type in the box above. Your changes are kept.", 12); hint:SetPoint("TOPLEFT", 12, -342); hint:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
     -- "More lines": the floating panel next to the window.
     self:CreateAdvanced(frame)
 end
@@ -600,7 +639,7 @@ function M:CreateAdvanced(frame)
     panel:HookScript("OnShow", function() KT:SetSelected(self.advancedButton, true) end)
     panel:HookScript("OnHide", function() KT:SetSelected(self.advancedButton, false) end)
     KT:AddClose(panel, nil, 8)
-    local title = KT:Label(panel, "More lines for this macro", 15, true); title:SetPoint("TOPLEFT", 12, -14)
+    local title = KT:Label(panel, "Extra lines", 15, true); title:SetPoint("TOPLEFT", 12, -14)
     local sub = KT:Label(panel, "Click to add a line, click again to take it out.", 12); sub:SetPoint("TOPLEFT", 12, -34); sub:SetTextColor(MUTED[1], MUTED[2], MUTED[3])
     local function heading(text, y, icon) local l = KT:Label(panel, text, 12, true); l:SetPoint("TOPLEFT", 12, y); KT:SectionHeading(l, icon, 140, 14); return l end
     heading("When you press it", -60, "Spell_Holy_Silence")

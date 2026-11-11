@@ -294,7 +294,10 @@ function Fonts:ApplyArea(id)
     local cache = self.originals[id] or {}; self.originals[id] = cache
     self.errors[id] = nil
     if not s.enabled then
-        for object, original in pairs(cache) do pcall(object.SetFont, object, unpack(original)); self:ThinShadow(object,"original") end
+        for object, original in pairs(cache) do
+            if original[4] and object.SetFontObject then pcall(object.SetFontObject, object, original[4]) else pcall(object.SetFont, object, original[1], original[2], original[3]) end
+            self:ThinShadow(object,"original")
+        end
         self.originals[id] = {}
         if area.engine and self.engineOwned then _G[area.engine] = self.engineOriginal; self.engineOwned = false end
         self.counts[id] = 0
@@ -313,7 +316,10 @@ function Fonts:ApplyArea(id)
     for object in pairs(objects) do
         local ok, file, size, flags = pcall(object.GetFont, object)
         if ok and file and size then
-            if not cache[object] then cache[object] = {file, size, flags or ""} end
+            -- A text's own font object too: it keeps Cyrillic, Korean and Chinese letters.
+            local fontObject
+            if object.GetObjectType and object:GetObjectType() == "FontString" and object.GetFontObject then fontObject = object:GetFontObject() end
+            if not cache[object] then cache[object] = {file, size, flags or "", fontObject} end
         end
     end
     local lowerPath = path:lower()
@@ -327,10 +333,18 @@ function Fonts:ApplyArea(id)
                 self:ThinShadow(object,s.outline)
                 count = count + 1
             else
-                local applied = pcall(object.SetFont, object, path, size, flags)
-                self:ThinShadow(object,s.outline)
-                local actual = applied and object:GetFont()
-                if applied and actual and actual:lower() == lowerPath then count = count + 1 else self.errors[id] = "The client rejected this font for one or more text areas." end
+                local family = original[4] and FT:SizedFont(original[4], size, flags, path)
+                if family then
+                    local r, g, b, a = object:GetTextColor()
+                    object:SetFontObject(family); if r then object:SetTextColor(r, g, b, a) end
+                    self:ThinShadow(object,s.outline)
+                    count = count + 1
+                else
+                    local applied = pcall(object.SetFont, object, path, size, flags)
+                    self:ThinShadow(object,s.outline)
+                    local actual = applied and object:GetFont()
+                    if applied and actual and actual:lower() == lowerPath then count = count + 1 else self.errors[id] = "The client rejected this font for one or more text areas." end
+                end
             end
         end
     end

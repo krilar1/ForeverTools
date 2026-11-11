@@ -77,6 +77,8 @@ local index={
     {"Buff notice look","buff reminder style look icon only icon text bar size color outline transparency pulse own position weakaura","BuffReminder","buffs"},
     {"Food buff reminder","food well fed eat buff missing xp experience kills leveling reminder","BuffReminder","buffs"},
     {"Always-sell marks","mark item always sell autosell auto sell merchant vendor hotkey key coin junk list","SellMarks","INV_Misc_Coin_01"},
+    {"Action bars on mouseover","mouseover fade hide action bar bars show hover hidden","ActionFade","Spell_Holy_Heal"},
+    {"Item locks","lock item protect padlock keep safe delete mail trade sell merchant vendor hotkey key list","ItemLock","INV_Misc_Key_03"},
     {"Show your target on the minimap","minimap target tracking track arrow dot where is my target","SystemMinimap","Ability_Hunter_SniperShot"},
     {"Extra game options","sharpness sharpen sharp grass foliage ground clutter density distance weather rain snow terrain detail lod scenery glow bloom spell queue window cvar console graphics","GameTweaks","INV_Misc_Spyglass_03"},
     {"Equip an item in a macro","equipslot equip weapon swap switch macro gear item slot","MacroForge","macros"},
@@ -113,7 +115,25 @@ local index={
     {"Profile for new characters","new character profile alt","\001profiles","profiles"},
     {"Default settings","default reset blizzard fresh start clean profile","\001profiles","reset"},
 }
+-- Every setting on the System pages too, by its own name: opens its page
+-- and points at it. Added once, the first time you search.
+function Search:AddPageSettings()
+    if self.pagesAdded then return end
+    self.pagesAdded=true
+    local sys=FT.modules.System
+    for _,page in ipairs(sys and sys.pages or {}) do
+        for _,item in ipairs(page.items or {}) do
+            local label=type(item[2])=="string" and item[2]
+            if label then
+                local known=false
+                for _,e in ipairs(index) do if e[1]:lower()==label:lower() then known=true end end
+                if not known then index[#index+1]={label,(type(item[4])=="string" and item[4]:lower() or "").." "..(page.title or ""):lower(),page.key,item[3] or "generic",find=label,sub=page.title} end
+            end
+        end
+    end
+end
 function Search:Results(query)
+    self:AddPageSettings()
     query=(query or ""):lower():gsub("^%s+",""):gsub("%s+$","")
     if query=="" then return {} end
     local starts,contains={},{}
@@ -126,7 +146,7 @@ function Search:Results(query)
         local pageIcon=hub and hub.pages[at] and hub.pages[at][3]
         if type(pageIcon)=="function" then pageIcon=pageIcon() end
         local icon=FT:IconPath(pageIcon or entry[4])
-        local item={value=i,label=entry[1],icon=icon}
+        local item={value=i,label=entry[1],icon=icon,tooltip=entry.sub and ("In "..entry.sub) or nil}
         if label:sub(1,#query)==query then starts[#starts+1]=item
         elseif label:find(query,1,true) or entry[2]:find(query,1,true) then contains[#contains+1]=item end
       end
@@ -138,6 +158,13 @@ function Search:Open(i)
     local entry=index[i]; if not entry then return end
     self.box:SetText(""); self.box:ClearFocus()
     if entry[3]=="\001profiles" then profiles() else FT:OpenModule(entry[3]) end
+    -- Point at the setting itself: scroll to it and flash a gold frame.
+    local find=entry.find or entry[1]
+    C_Timer.After(.15,function()
+        local m=FT.modules[entry[3]]
+        local root=(m and m.frame) or (entry[3]=="\001profiles" and FT.modules.Profiles and FT.modules.Profiles.frame)
+        if root and root:IsShown() then FT:FocusSetting(root,find) end
+    end)
 end
 function Search:Show()
     local menu=FT.choiceMenu

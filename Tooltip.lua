@@ -159,13 +159,14 @@ function Tip:ApplyTooltip(tip)
                 local original=self.originals[region]
                 if not original then
                     local file,size,flags=region:GetFont()
-                    if file and size then original={file,size,flags or ""}; self.originals[region]=original end
+                    local object=region.GetFontObject and region:GetFontObject()
+                    if file and size then original={file,size,flags or "",object}; self.originals[region]=original end
                 end
                 if original then
                     local size=index==(tip.ftNameLine or 1) and s.name or
                         index==(tip.ftDetailsLine or 2) and s.details or
                         index==tip.ftTargetLine and s.targetSize or s.details
-                    region:SetFont(original[1],size>0 and size or original[2],original[3])
+                    FT:SetTextFont(region,original[4],original[1],size>0 and size or original[2],original[3])
                 end
             end
         end
@@ -177,13 +178,14 @@ function Tip:ApplyTooltip(tip)
         local region=_G[prefix.."TextLeft"..tip.ftNameLine]
         if region and region.GetStringWidth and region.GetFont and region.SetFont then
             local file,size,flags=region:GetFont()
+            local original=self.originals[region]
             if file and size then
                 local maxWidth=math.min(420,(UIParent and UIParent.GetWidth and UIParent:GetWidth() or 1000)*.45)
                 -- Text widths can be secret in combat: then leave the size alone.
                 local width=region:GetStringWidth()
                 while size>8 and not (issecretvalue and issecretvalue(width)) and type(width)=="number" and width>maxWidth do
                     size=size-1
-                    region:SetFont(file,size,flags or "")
+                    if original then FT:SetTextFont(region,original[4],original[1],size,original[3]) else region:SetFont(file,size,flags or "") end
                     width=region:GetStringWidth()
                 end
             end
@@ -199,7 +201,9 @@ function Tip:RestoreTooltipFont(tip)
         for _,side in ipairs({"Left","Right"}) do
             local region=_G[prefix.."Text"..side..index]
             local original=region and self.originals[region]
-            if original then region:SetFont(original[1],original[2],original[3]) end
+            if original then
+                if original[4] and region.SetFontObject then region:SetFontObject(original[4]) else region:SetFont(original[1],original[2],original[3]) end
+            end
         end
     end
 end

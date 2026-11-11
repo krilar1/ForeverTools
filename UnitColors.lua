@@ -42,6 +42,7 @@ function Colors.SameAs(unit)
     end
 end
 local nativeAtlas = {player = "UI-HUD-UnitFrame-Player-PortraitOn-Bar-Health"}
+local TOT_WHITE = "UI-HUD-UnitFrame-Party-PortraitOn-Bar-Health-Status"
 function Colors:Paint(bar, force)
     local info = self.tracked[bar]
     if not info or self.painting then return end
@@ -124,10 +125,23 @@ function Colors:Paint(bar, force)
     elseif not color and info.native and texture and texture.SetAtlas then
         texture:SetAtlas(info.native); info.native = nil
     end
-    -- The target of target's "-Status" fill is not white like the others
-    -- (it stayed green under the class color): grey it first there too.
+    -- The target of target's own "-Status" fill is not white like the others:
+    -- greyed it came out pale. The party frame's white fill (same small bar
+    -- shape) gives the real class color; greying stays the fallback.
     local tot = info.unit == "targettarget" or info.unit == "focustarget"
-    if texture and texture.SetDesaturated then texture:SetDesaturated(color ~= nil and (tot or not status)) end
+    local white = false
+    if tot and color and texture and texture.SetAtlas and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(TOT_WHITE) then
+        local now = texture.GetAtlas and texture:GetAtlas()
+        if issecretvalue and issecretvalue(now) then now = nil end
+        if now ~= TOT_WHITE then
+            if type(now) == "string" and now ~= "" and not info.totNative and not info.native then info.totNative = now end
+            texture:SetAtlas(TOT_WHITE)
+        end
+        white = true
+    elseif tot and not color and info.totNative and texture and texture.SetAtlas then
+        texture:SetAtlas(info.totNative); info.totNative = nil
+    end
+    if texture and texture.SetDesaturated then texture:SetDesaturated(color ~= nil and not white and (tot or not status)) end
     -- And its fill's own tint is set to white, so only the bar color counts.
     if tot and color and texture and texture.SetVertexColor then texture:SetVertexColor(1, 1, 1, 1) end
     if color then bar:SetStatusBarColor(color.r, color.g, color.b)

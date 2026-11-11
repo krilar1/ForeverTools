@@ -121,6 +121,8 @@ end
 function Vendor:Sellable(info)
     if type(info)~="table" or info.hasNoValue or info.isLocked then return false end
     local s=self:Settings()
+    local lock=FT.modules.ItemLock
+    if lock and lock:On() and readable(info.itemID) and lock:Has(info.itemID) then return false end
     local marks=FT.modules.SellMarks
     if s.sellMarked==true and marks and readable(info.itemID) and marks:Has(info.itemID) then return "marked" end
     if not s.autoSell or not readable(info.quality) then return false end

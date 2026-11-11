@@ -28,7 +28,7 @@ function Bags:Settings()
     if type(FT.db.bags)~="table" then FT.db.bags={} end
     local s=FT.db.bags
     for _,key in ipairs({"gold","view","counts","locked","buttons"}) do if type(s[key])~="boolean" then s[key]=false end end
-    for key,default in pairs({countSplit=true,countSelf=true,countGuild=true,countShift=false,countSpacer=true,countFullNames=false}) do
+    for key,default in pairs({countSplit=true,countSelf=true,countGuild=true,countShift=false,countSpacer=true,countFullNames=true}) do
         if type(s[key])~="boolean" then s[key]=default end
     end
     if s.countStyle~="each" and s.countStyle~="total" and s.countStyle~="both" then s.countStyle="each" end

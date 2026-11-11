@@ -767,10 +767,20 @@ function E:StripEntries()
     end)
     return list
 end
+-- Targeting by name, tried a few ways: name with the realm written the way
+-- the game wants it (no spaces), just the name, and the first word of a
+-- name with a space in it. Nobody found: your old target comes back.
 local function targetText(e)
     local name=e.name or ""
-    if e.realm then name=name.."-"..e.realm end
-    return "/targetexact "..name
+    local lines={"/cleartarget"}
+    local realm=type(e.realm)=="string" and e.realm:gsub("[%s%-']","") or ""
+    local myRealm=GetNormalizedRealmName and GetNormalizedRealmName() or ""
+    if realm~="" and realm~=myRealm then lines[#lines+1]="/targetexact "..name.."-"..realm end
+    lines[#lines+1]=(#lines>1 and "/targetexact [noexists] " or "/targetexact ")..name
+    local first=name:match("^(%S+)%s")
+    if first then lines[#lines+1]="/targetexact [noexists] "..first end
+    lines[#lines+1]="/targetlasttarget [noexists]"
+    return table.concat(lines,"\n")
 end
 -- The header: full (title and count) or, collapsed or empty, a small tab.
 function E:LayoutHeader(f,count,compact)
@@ -788,7 +798,19 @@ function E:LayoutHeader(f,count,compact)
     f.title:SetPoint("LEFT",f.swords,"RIGHT",5,0)
     f.title:SetText(VIEW_TITLE[self.view or "near"].." ("..count..")")
     f.move:SetPoint(fromBottom and "BOTTOMRIGHT" or "TOPRIGHT",-6,fromBottom and 4 or -4)
+    -- Moving: the button turns into a check mark (click = lock), and the
+    -- sample list is dimmed under a gold frame, like every other mover.
+    f.move.tex:SetTexture(self.movingStrip and "Interface\\Buttons\\UI-CheckBox-Check" or "Interface\\Cursor\\UI-Cursor-Move")
     f.move.tex:SetVertexColor(self.movingStrip and 1 or .75,self.movingStrip and .82 or .75,self.movingStrip and 0 or .75)
+    if self.movingStrip and not f.moveLook then
+        local look=CreateFrame("Frame",nil,f); look:SetAllPoints(f); look:SetFrameLevel(f:GetFrameLevel()+15); look:EnableMouse(false)
+        look.dim=look:CreateTexture(nil,"ARTWORK"); look.dim:SetAllPoints(); look.dim:SetColorTexture(0,0,0,.35)
+        FT:MoverBox(look)
+        f.moveLook=look
+    end
+    if f.moveLook then f.moveLook:SetShown(self.movingStrip==true) end
+    -- The button stays above the dimming.
+    if f.moveLook then f.move:SetFrameLevel(f.moveLook:GetFrameLevel()+1) end
     return y
 end
 function E:UpdateStrip()

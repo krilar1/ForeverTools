@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "1.3.0"
+FT.version = "1.4.0"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -172,8 +172,9 @@ function FT:ShowPopup(key,...)
     return dialog
 end
 function FT:OpenModule(name)
-    if self:CombatOpenRequest() then return end
     local module = self.modules[name]
+    -- Most pages wait for the end of a fight; a few (soft reserves) work in one.
+    if not (module and module.combatOK) and self:CombatOpenRequest() then return end
     if not module then return end
     self:CloseChoices()
     local homeShown = self.home and self.home:IsShown()
@@ -528,6 +529,54 @@ end
 -- mask), the same everywhere. Safe to call more than once.
 local ROUNDED = "Interface\\AddOns\\" .. addonName .. "\\Media\\Rounded.tga"
 FT.headingIcons = true
+-- Text in another size (or font) that still draws every alphabet. The game's
+-- fonts are families: one file for Latin, others for Cyrillic, Korean and
+-- Chinese. SetFont with one file drops the others, so a Russian name became
+-- boxes. This builds a family at the new size from the original font's own
+-- members (your font file only for Latin). Cached; nil when the game can't.
+local ALPHABETS={"roman","korean","simplifiedchinese","traditionalchinese","russian"}
+function FT:SizedFont(base,size,flags,file)
+    if not base or type(size)~="number" or not CreateFontFamily or type(base.GetFontObjectForAlphabet)~="function" then return nil end
+    size=math.floor(size*2+.5)/2
+    self.sizedFonts=self.sizedFonts or {}
+    local key=tostring(base).."|"..size.."|"..tostring(flags).."|"..tostring(file)
+    local cached=self.sizedFonts[key]
+    if cached~=nil then return cached or nil end
+    local members={}
+    for _,alphabet in ipairs(ALPHABETS) do
+        local ok,object=pcall(base.GetFontObjectForAlphabet,base,alphabet)
+        local f,_,fl
+        if ok and object and object.GetFont then f,_,fl=object:GetFont() end
+        if alphabet=="roman" and file then f=file end
+        if type(f)=="string" and f~="" then members[#members+1]={alphabet=alphabet,file=f,height=size,flags=flags or fl or ""} end
+    end
+    local family
+    if #members>0 then
+        self.sizedCount=(self.sizedCount or 0)+1
+        local ok,made=pcall(CreateFontFamily,"ForeverToolsFont"..self.sizedCount,members)
+        if ok and made then
+            family=made
+            if base.GetShadowOffset and family.SetShadowOffset then local x,y=base:GetShadowOffset(); if x and y then family:SetShadowOffset(x,y) end end
+            if base.GetShadowColor and family.SetShadowColor then local r,g,b,a=base:GetShadowColor(); if r then family:SetShadowColor(r,g,b,a) end end
+            if base.GetTextColor and family.SetTextColor then local r,g,b,a=base:GetTextColor(); if r then family:SetTextColor(r,g,b,a) end end
+            if base.GetJustifyH and family.SetJustifyH then local j=base:GetJustifyH(); if j then family:SetJustifyH(j) end end
+        end
+    end
+    self.sizedFonts[key]=family or false
+    return family
+end
+-- Set a text's size/font, keeping its color and every alphabet when possible.
+-- base: the text's own font object from before (GetFontObject).
+function FT:SetTextFont(region,base,file,size,flags)
+    local family=base and self:SizedFont(base,size,flags,file)
+    if family and region.SetFontObject then
+        local r,g,b,a=region:GetTextColor()
+        region:SetFontObject(family)
+        if r then region:SetTextColor(r,g,b,a) end
+        return true
+    end
+    return pcall(region.SetFont,region,file,size,flags or "")
+end
 function FT:RoundIcon(texture)
     if not texture or texture.roundMask or not texture.AddMaskTexture then return texture end
     local parent = texture:GetParent()
@@ -537,6 +586,77 @@ function FT:RoundIcon(texture)
     mask:SetAllPoints(texture)
     texture:AddMaskTexture(mask); texture.roundMask = mask
     return texture
+end
+-- Search found it: the setting whose text starts with (or holds) `text` in
+-- this window is scrolled into view and gets a pulsing gold frame for a few
+-- seconds, so it stands out on a busy page.
+local function plainText(t) return type(t) == "string" and t:gsub("|T.-|t", ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("^%s+", ""):lower() or "" end
+function FT:FindSetting(root, text)
+    local want = plainText(text); if want == "" then return end
+    local best, bestScore
+    local function visit(frame, depth)
+        if not frame or depth > 12 or not frame.GetRegions then return end
+        if frame.IsShown and not frame:IsShown() then return end
+        local regions = {frame:GetRegions()}
+        -- Our own buttons keep their text in .label (also when the game
+        -- lists regions in another order).
+        if frame.label and frame.label.GetText then regions[#regions + 1] = frame.label end
+        for _, region in ipairs(regions) do
+            if region.GetText and region.IsShown and region:IsShown() and region.GetObjectType and region:GetObjectType() == "FontString" then
+                local have = plainText(region:GetText())
+                local score = have:sub(1, #want) == want and 2 or (have:find(want, 1, true) and 1) or 0
+                -- A control's own label beats a heading or a hint mentioning it.
+                if score > 0 and frame ~= root and frame.IsMouseEnabled and frame:IsMouseEnabled() then score = score + 1 end
+                if score > 0 and (not bestScore or score > bestScore) then best, bestScore = (frame ~= root and frame) or region, score end
+            end
+        end
+        for _, child in ipairs({frame:GetChildren()}) do visit(child, depth + 1) end
+    end
+    visit(root, 0)
+    return best
+end
+function FT:FlashFocus(target)
+    if not target then return end
+    local ring = self.focusRing
+    if not ring then
+        ring = CreateFrame("Frame", nil, UIParent); ring:SetFrameStrata("TOOLTIP"); ring:EnableMouse(false)
+        local function edge() local t = ring:CreateTexture(nil, "OVERLAY"); t:SetColorTexture(1, .82, .2, 1); return t end
+        local e = {edge(), edge(), edge(), edge()}
+        e[1]:SetPoint("TOPLEFT"); e[1]:SetPoint("TOPRIGHT"); e[1]:SetHeight(2)
+        e[2]:SetPoint("BOTTOMLEFT"); e[2]:SetPoint("BOTTOMRIGHT"); e[2]:SetHeight(2)
+        e[3]:SetPoint("TOPLEFT"); e[3]:SetPoint("BOTTOMLEFT"); e[3]:SetWidth(2)
+        e[4]:SetPoint("TOPRIGHT"); e[4]:SetPoint("BOTTOMRIGHT"); e[4]:SetWidth(2)
+        ring.glow = ring:CreateTexture(nil, "ARTWORK"); ring.glow:SetAllPoints(); ring.glow:SetColorTexture(1, .82, .2, .12)
+        local pulse = ring:CreateAnimationGroup(); pulse:SetLooping("BOUNCE")
+        local a = pulse:CreateAnimation("Alpha"); a:SetFromAlpha(1); a:SetToAlpha(.25); a:SetDuration(.45)
+        ring.pulse = pulse
+        self.focusRing = ring
+    end
+    -- Scroll a page that scrolls so the setting is in view.
+    local p = target.GetParent and target:GetParent()
+    for _ = 1, 8 do
+        if not p then break end
+        if p.GetObjectType and p:GetObjectType() == "ScrollFrame" and p.SetVerticalScroll and p.GetScrollChild then
+            local child = p:GetScrollChild()
+            local top, ctop = target:GetTop(), child and child:GetTop()
+            if top and ctop then
+                local offset = math.max(0, (ctop - top) - 20)
+                local max = p.GetVerticalScrollRange and p:GetVerticalScrollRange() or offset
+                p:SetVerticalScroll(math.min(offset, max))
+            end
+            break
+        end
+        p = p.GetParent and p:GetParent()
+    end
+    ring:ClearAllPoints(); ring:SetPoint("TOPLEFT", target, "TOPLEFT", -4, 4); ring:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", 4, -4)
+    ring:Show(); ring.pulse:Play()
+    local token = {}; ring.token = token
+    C_Timer.After(3.5, function() if ring.token == token then ring.pulse:Stop(); ring:Hide() end end)
+end
+function FT:FocusSetting(root, text)
+    local found = self:FindSetting(root, text)
+    if found then self:FlashFocus(found) end
+    return found
 end
 function FT:SectionHeading(label, icon, lineWidth, iconSize)
     if not label or label.ftHeading then return label end
@@ -550,24 +670,68 @@ function FT:SectionHeading(label, icon, lineWidth, iconSize)
     label:SetTextColor(1, .82, 0)
     iconSize = iconSize or math.floor(size + 4)
     label.ftHeading = {icon = icon, size = iconSize}
-    local band = parent:CreateTexture(nil, "BACKGROUND", nil, 2)
-    gradient(band, "HORIZONTAL", 0.79, 0.63, 0.29, 0.16, 0.79, 0.63, 0.29, 0)
-    band:SetHeight(iconSize + 8)
-    label.ftHeading.band = band
-    local line = parent:CreateTexture(nil, "ARTWORK")
-    gradient(line, "HORIZONTAL", 0.79, 0.63, 0.29, 0.9, 0.79, 0.63, 0.29, 0)
-    line:SetHeight(1); line:SetWidth(lineWidth or 180)
+    -- The bar starts where the rows under it start; the words sit 12 in from
+    -- its edge. (The label is moved 12 right, now and whenever it is placed.)
+    local PAD = 12
+    local place = label.SetPoint
+    label.SetPoint = function(owner, point, a, b, c, d)
+        if type(point) == "string" and point:find("LEFT") then
+            if type(a) == "number" then a = a + PAD
+            elseif type(c) == "number" then c = c + PAD
+            elseif a == nil then a = PAD; b = 0 end
+        end
+        return place(owner, point, a, b, c, d)
+    end
+    -- Reading the place back gives it as it was set (without the 12), so
+    -- code that moves the label down keeps it where it was across.
+    local read = label.GetPoint
+    local n = label.GetNumPoints and label:GetNumPoints() or 0
+    if n > 0 then
+        local pts = {}
+        for i = 1, n do pts[i] = {label:GetPoint(i)} end
+        label:ClearAllPoints()
+        for _, pt in ipairs(pts) do label:SetPoint(pt[1], pt[2], pt[3], pt[4], pt[5]) end
+    end
+    label.GetPoint = function(owner, i)
+        local point, rel, relPoint, x, y = read(owner, i)
+        if type(point) == "string" and point:find("LEFT") and type(x) == "number" then x = x - PAD end
+        return point, rel, relPoint, x, y
+    end
+    -- 1.4.0: a smooth, rounded bar in warm gold under the heading (a soft
+    -- rim, a brighter fill on the left fading right, a gold accent at the
+    -- start), across the row's width, so sections read apart at a glance.
+    local function rounded(sub)
+        local t = parent:CreateTexture(nil, "BACKGROUND", nil, sub)
+        t:SetTexture(ROUNDED)
+        if t.SetTextureSliceMargins then t:SetTextureSliceMargins(8, 8, 8, 8); if t.SetTextureSliceMode then t:SetTextureSliceMode(0) end end
+        return t
+    end
+    local rim = rounded(1); rim:SetVertexColor(0.79, 0.63, 0.29, 0.38)
+    local band = rounded(2); band:SetPoint("TOPLEFT", rim, "TOPLEFT", 1, -1); band:SetPoint("BOTTOMRIGHT", rim, "BOTTOMRIGHT", -1, 1)
+    if CreateColor and band.SetGradient then band:SetGradient("HORIZONTAL", CreateColor(0.30, 0.22, 0.10, 0.95), CreateColor(0.11, 0.085, 0.055, 0.95))
+    else band:SetVertexColor(0.2, 0.15, 0.08, 0.95) end
+    local accent = parent:CreateTexture(nil, "BACKGROUND", nil, 3)
+    accent:SetTexture(ROUNDED); accent:SetVertexColor(1, 0.78, 0.25, 0.95)
+    accent:SetWidth(3); accent:SetPoint("TOPLEFT", rim, "TOPLEFT", 3, -5); accent:SetPoint("BOTTOMLEFT", rim, "BOTTOMLEFT", 3, 5)
+    label.ftHeading.band = rim; label.ftHeading.fill = band; label.ftHeading.accent = accent
+    local line = {Hide = function() end, Show = function() end, SetShown = function() end}
     label.ftHeading.line = line
     local function update()
         local text = label.ftHeading.raw or ""
         local width = label:GetStringWidth() or 0
-        line:ClearAllPoints()
-        line:SetPoint("LEFT", label, "LEFT", width + 8, 0)
-        line:SetShown(label:IsShown() and text ~= "")
-        band:ClearAllPoints()
-        band:SetPoint("LEFT", label, "LEFT", -8, 0)
-        band:SetWidth(width + 16 + (lineWidth or 180))
-        band:SetShown(label:IsShown() and text ~= "")
+        local shown = label:IsShown() and text ~= ""
+        rim:ClearAllPoints()
+        -- Snug: 4 above the words and 2 below, so whatever sits under the
+        -- heading (a row, a note) is never covered by the bar.
+        local lineH = label:GetStringHeight() or 0
+        if type(lineH) ~= "number" or lineH <= 0 then lineH = size + 2 end
+        lineH = math.max(lineH, iconSize)
+        rim:SetPoint("LEFT", label, "LEFT", -PAD, 1)
+        rim:SetHeight(lineH + 6)
+        -- "full": across the window to its right margin.
+        if lineWidth == "full" then rim:SetPoint("RIGHT", parent, "RIGHT", -14, 0)
+        else rim:SetWidth(math.max(width + 28, width + 20 + (lineWidth or 180))) end
+        rim:SetShown(shown); band:SetShown(shown); accent:SetShown(shown)
     end
     local setText = label.SetText
     label.SetText = function(owner, text)
@@ -591,7 +755,7 @@ function FT:SectionHeading(label, icon, lineWidth, iconSize)
     end
     function label:SetHeadingIcon(newIcon) self.ftHeading.icon = newIcon; self:SetText(self.ftHeading.raw) end
     local function icon() local t = label.ftHeading.texture; if t then t:SetShown(label:IsShown() and (label.ftHeading.raw or "") ~= "" and label.ftHeading.icon ~= nil) end end
-    hooksecurefunc(label, "Show", function() update(); icon() end); hooksecurefunc(label, "Hide", function() line:Hide(); band:Hide(); icon() end)
+    hooksecurefunc(label, "Show", function() update(); icon() end); hooksecurefunc(label, "Hide", function() rim:Hide(); band:Hide(); accent:Hide(); icon() end)
     if label.SetShown then hooksecurefunc(label, "SetShown", function() update(); icon() end) end
     label:SetText(label:GetText())
     return label
@@ -1104,7 +1268,7 @@ function FT:Window(name, title, width, height)
     local frame = CreateFrame("Frame", name, UIParent)
     self.controlWindows=self.controlWindows or {}
     self.controlWindows[frame]=true
-    frame:HookScript("OnShow",function(owner) if InCombatLockdown() then owner:Hide() end end)
+    frame:HookScript("OnShow",function(owner) if InCombatLockdown() and not owner.ftCombatOK then owner:Hide() end end)
     frame:SetSize(width, height)
     frame:SetPoint("CENTER")
     -- Above every element on screen (previews, move tags), below menus,
@@ -1248,17 +1412,22 @@ function FT:CloseCombatControls()
     -- hidingForCombat lets a window tell "closed by the fight" from "closed by you".
     self.hidingForCombat=true
     for frame in pairs(self.controlWindows or {}) do
-        if frame.keepAfterCombat and frame:IsShown() then self.reopenAfterCombat=self.reopenAfterCombat or {}; self.reopenAfterCombat[frame]=true end
-        frame:Hide()
+        if frame.ftCombatOK then
+            -- Works in a fight (soft reserves): stays open.
+        elseif frame.keepAfterCombat and frame:IsShown() then self.reopenAfterCombat=self.reopenAfterCombat or {}; self.reopenAfterCombat[frame]=true end
+        if not frame.ftCombatOK then frame:Hide() end
     end
     self.hidingForCombat=nil
     if self.home then self.home:Hide() end
     for _,module in pairs(self.modules) do
-        for _,key in ipairs(COMBAT_WINDOW_KEYS) do
+        if not module.combatOK then for _,key in ipairs(COMBAT_WINDOW_KEYS) do
             local frame=module[key];if frame and frame.Hide then frame:Hide() end
-        end
+        end end
     end
-    for _,key in ipairs({"choiceMenu","minimapMenu","toast"}) do if self[key] then self[key]:Hide() end end
+    for _,key in ipairs({"choiceMenu","minimapMenu","toast"}) do
+        local f=self[key]
+        if f and not (key=="choiceMenu" and f.owner and f.owner.ftCombatOK) then f:Hide() end
+    end
     if StaticPopup_Hide then
         for key in pairs(StaticPopupDialogs or {}) do
             if type(key)=="string" and key:match("^FOREVERTOOLS_") then StaticPopup_Hide(key) end
@@ -1340,6 +1509,8 @@ SlashCmdList.FOREVERTOOLS = function(message)
     elseif command == "trackdebug" then if FT.modules.System then FT:DebugBox("Minimap tracking debug", function() FT.modules.System:TrackingDebug() end) end
     elseif command == "recipesdebug" then if FT.Recipes then FT:DebugBox("Recipes debug", function() FT.Recipes:Debug() end) end
     elseif command == "sr" or command == "softres" then FT:OpenModule("SoftRes")
+    elseif command:match("^srtest") or command:match("^srdemo") then if FT.SoftResDemo then FT.SoftResDemo:Ask(command:match("^%a+%s+(%a+)")) end
+    elseif command == "lock" or command == "locks" then FT:OpenModule("ItemLock")
     elseif command == "srdebug" then if FT.SoftRes then FT:DebugBox("Soft reserves debug", function() FT.SoftRes:Debug() end) end
     elseif command == "dr" then if FT.modules.Diminish then FT:DebugBox("Diminishing returns", function() FT.modules.Diminish:Diagnose() end) end
     elseif command == "countdebug" then if FT.Bags and FT.Bags.Debug then FT:DebugBox("Item counts debug", function() FT.Bags:Debug() end) end
@@ -1353,6 +1524,7 @@ SlashCmdList.FOREVERTOOLS = function(message)
     elseif command == "threatdebug" then if FT.modules.Threat and FT.modules.Threat.Debug then FT:DebugBox("Threat debug", function() FT.modules.Threat:Debug() end) end
     elseif command == "skindebug" then if FT.modules.IconStyles and FT.modules.IconStyles.SkinDebug then FT:DebugBox("Skin debug", function() FT.modules.IconStyles:SkinDebug() end) end
     elseif command == "buffdebug" then if FT.modules.BuffReminder and FT.modules.BuffReminder.BuffDebug then FT.modules.BuffReminder:BuffDebug() end
+    elseif command == "poisondebug" then if FT.modules.BuffReminder and FT.modules.BuffReminder.PoisonDebug then FT:DebugBox("Poison debug", function() FT.modules.BuffReminder:PoisonDebug() end) end
     elseif command == "powerdebug" then if FT.modules.BuffReminder and FT.modules.BuffReminder.PowerDebug then FT.modules.BuffReminder:PowerDebug() end
     elseif command == "bagdebug" then if FT.modules.IconStyles and FT.modules.IconStyles.BagDebug then FT:DebugBox("Bag debug", function() FT.modules.IconStyles:BagDebug() end) end
     elseif command == "start" then if FT.modules.Onboarding then FT.modules.Onboarding:ShowDemo() end
@@ -1452,13 +1624,13 @@ function FT:Sections(frame, sections, width)
                 if y and y <= y0 + 8 then
                     local point, rel, relPoint = r:GetPoint(1)
                     local n = r:GetNumPoints()
-                    if n == 1 then r:ClearAllPoints(); r:SetPoint(point, rel or frame, relPoint, x, y - 28)
+                    if n == 1 then r:ClearAllPoints(); r:SetPoint(point, rel or frame, relPoint, x, y - 30)
                     else
                         local pts = {}
                         for i = 1, n do pts[i] = {r:GetPoint(i)} end
                         r:ClearAllPoints()
                         for i, p in ipairs(pts) do
-                            if p[2] == frame or p[2] == nil then r:SetPoint(p[1], frame, p[3], p[4], (p[1]:find("TOP") and p[5] - 28) or p[5])
+                            if p[2] == frame or p[2] == nil then r:SetPoint(p[1], frame, p[3], p[4], (p[1]:find("TOP") and p[5] - 30) or p[5])
                             else r:SetPoint(p[1], p[2], p[3], p[4], p[5]) end
                         end
                     end
@@ -1471,11 +1643,50 @@ function FT:Sections(frame, sections, width)
                 local tex = control.icon:GetTexture()
                 if (type(tex) == "string" and tex ~= "") or type(tex) == "number" then icon = tex end
             end
-            self:SectionHeading(head, icon, width or 300)
+            self:SectionHeading(head, icon, width or "full")
             frame.ftSectionHeads[#frame.ftSectionHeads + 1] = head
             all[#all + 1] = head
         end
     end
+end
+-- Text that must fit a width: a size or two smaller first, then cut with "…"
+-- (word wrap off), so it never runs past its box.
+function FT:FitText(fs, width, minSize)
+    if not fs or not width or width <= 0 then return end
+    fs:SetWidth(width)
+    if fs.SetWordWrap then fs:SetWordWrap(false) end
+    local font, size, flags = fs:GetFont()
+    fs.ftFitSize = fs.ftFitSize or size
+    if not font or not fs.ftFitSize then return end
+    local want = fs.ftFitSize
+    pcall(fs.SetFont, fs, font, want, flags or "")
+    local floor = minSize or math.max(9, want - 3)
+    local w = fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth() or fs:GetStringWidth()
+    while type(w) == "number" and w > width and want > floor do
+        want = want - 1
+        pcall(fs.SetFont, fs, font, want, flags or "")
+        w = fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth() or fs:GetStringWidth()
+    end
+end
+-- How tall a window's content is: the lowest edge of what is placed from its
+-- top-left (settings rows, headings, notes), plus a margin.
+function FT:ContentHeight(frame, margin)
+    local low = 0
+    local function check(r)
+        if not r or not r.GetNumPoints or r:GetNumPoints() == 0 then return end
+        if r.IsShown and not r:IsShown() then return end
+        local point, rel, _, _, y = r:GetPoint(1)
+        if point ~= "TOPLEFT" or (rel ~= frame and rel ~= nil) or type(y) ~= "number" then return end
+        local h = r.GetHeight and r:GetHeight() or 0
+        if type(h) ~= "number" then h = 0 end
+        if r.GetObjectType and r:GetObjectType() == "FontString" and r.GetStringHeight then
+            local sh = r:GetStringHeight(); if type(sh) == "number" and sh > h then h = sh end
+        end
+        if -y + h > low then low = -y + h end
+    end
+    for _, c in ipairs({frame:GetChildren()}) do check(c) end
+    for _, r in ipairs({frame:GetRegions()}) do check(r) end
+    return low + (margin or 18)
 end
 -- An open list closes when you click anything else in ForeverTools or
 -- switch pages, so it never covers the next page.
@@ -1486,7 +1697,7 @@ function FT:CloseChoices(clicked)
     menu:Hide()
 end
 function FT:ShowChoices(owner)
-    if self:CombatOpenRequest() then return end
+    if not (owner and owner.ftCombatOK) and self:CombatOpenRequest() then return end
     if not self.choiceMenu then
         local menu = CreateFrame("Frame", "ForeverToolsChoiceMenu", UIParent)
         self.choiceMenu = menu
@@ -2066,8 +2277,9 @@ function FT:AskText(title,start,onText,maxLetters)
 end
 -- Yes/no questions: the damage meter's look with the game's own buttons.
 -- Escape or Cancel closes it; nothing happens unless you confirm.
-function FT:Confirm(message,action)
-    if InCombatLockdown() then return end
+-- combatOK: may ask in a fight (soft reserve rolls).
+function FT:Confirm(message,action,combatOK)
+    if InCombatLockdown() and not combatOK then return end
     if not self.confirm then
         local f = CreateFrame("Frame", "ForeverToolsConfirm", UIParent)
         f:SetSize(400, 150); f:SetPoint("CENTER", 0, 120); f:SetFrameStrata("FULLSCREEN_DIALOG"); f:SetToplevel(true)

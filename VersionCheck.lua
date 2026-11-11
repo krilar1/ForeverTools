@@ -3,7 +3,7 @@ local _,FT=...
 -- online, so ForeverTools copies tell each other their version with a
 -- hidden addon message: to your guild a little after login, and to your
 -- party, raid or battleground group when you join one. When someone has a
--- newer version, you get one chat line and a short notice per session (and
+-- newer version, you get one chat line per session (no pop-up; and
 -- once more at the next login, until you update). Only the version number
 -- is sent; nothing else about you or your settings.
 local V={}
@@ -55,7 +55,6 @@ function V:Tell(version)
     self.told=version
     local text="ForeverTools "..version.." is out (you have "..FT.version.."). Update it on CurseForge."
     print("|cffffd100ForeverTools:|r "..text)
-    if FT.Toast then FT:Toast(text,6) end
 end
 function V:Heard(message,channel)
     if not plain(message) or type(message)~="string" then return end

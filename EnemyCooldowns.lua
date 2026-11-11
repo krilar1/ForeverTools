@@ -54,7 +54,7 @@ local SPELLS={
     ["Frenzied Regeneration"]=180,["Tranquility"]=300,["Nature's Grasp"]=60,["Rebirth"]=1800,["Enrage"]=60,["Challenging Roar"]=600,
     -- Shaman
     ["Earth Shock"]=6,["Grounding Totem"]=15,["Mana Tide Totem"]=300,["Elemental Mastery"]=180,["Lightning Mastery"]=180,["Reincarnation"]=3600,
-    ["Stormstrike"]=6,["Earthbind Totem"]=15,["Fire Nova Totem"]=15,
+    ["Stormstrike"]=8,["Earthbind Totem"]=15,["Fire Nova Totem"]=15,
 }
 C.SPELLS=SPELLS
 -- One cooldown for several spells (any shock puts Earth Shock on cooldown).

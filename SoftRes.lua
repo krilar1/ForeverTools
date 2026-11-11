@@ -21,7 +21,16 @@ local function text(v) if plain(v) and type(v)=="string" and v~="" then return v
 local function lower(s) return type(s)=="string" and s:lower() or "" end
 local function now() return GetTime and GetTime() or 0 end
 local function settings() return FT.modules.System:Settings() end
-function SR:Enabled() return settings().softRes==true end
+-- On when switched on, or when the loot master shared a list with you (raiders
+-- see it without importing; "Roll windows from the loot master" off stops that).
+function SR:Enabled()
+    local s=settings()
+    if s.softRes==true then return true end
+    if s.softResRolls==false then return false end
+    local st=FT.db and FT.db.softRes
+    local ev=type(st)=="table" and type(st.events)=="table" and st.active and st.events[st.active]
+    return type(ev)=="table" and ev.shared==true
+end
 -- Stored lists ------------------------------------------------------------------
 function SR:Store()
     if type(FT.db.softRes)~="table" then FT.db.softRes={} end
@@ -118,8 +127,10 @@ function SR:Import(raw)
     ev.imported=time and time() or 0
     st.events[ev.id]=ev; st.active=ev.id
     self:Prune()
-    if not self:Enabled() then settings().softRes=true end
+    if settings().softRes~=true then settings().softRes=true end
     self:Rebuild(); self:Apply()
+    -- In a group as loot master, leader or assistant: everyone with the addon gets it.
+    if FT.SoftResRoll then FT.SoftResRoll:Share(true) end
     local over=0
     for _,p in ipairs(ev.players) do if #p.items>ev.limit then over=over+1 end end
     return ev,replaced,over
@@ -274,6 +285,20 @@ local function announceButton(parent)
     b:SetScript("OnLeave",function() GameTooltip:Hide() end)
     return b
 end
+-- The dice: start a roll for the raid (roll window for everyone with the addon).
+local function rollButton(parent)
+    local b=CreateFrame("Button",nil,parent)
+    b:SetSize(18,18); b:SetFrameLevel((parent:GetFrameLevel() or 1)+5)
+    b.tex=b:CreateTexture(nil,"ARTWORK"); b.tex:SetAllPoints(); b.tex:SetTexture("Interface\\Buttons\\UI-GroupLoot-Dice-Up")
+    b:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Dice-Highlight","ADD")
+    b:SetScript("OnClick",function(owner) if FT.SoftResRoll then FT.SoftResRoll:Start(owner.link,owner.itemID,owner.slot) end end)
+    b:SetScript("OnEnter",function(owner)
+        GameTooltip:SetOwner(owner,"ANCHOR_RIGHT"); GameTooltip:SetText("Start a roll",1,.82,0)
+        GameTooltip:AddLine("Raid warning with who reserved it, and a roll window for everyone with ForeverTools. Rolls are listed for you; then give the item to the winner.",.96,.93,.86,true); GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave",function() GameTooltip:Hide() end)
+    return b
+end
 function SR:PaintRow(row,slot)
     local line=row.ftSRLine
     local link=slot and GetLootSlotLink and GetLootSlotLink(slot)
@@ -282,13 +307,14 @@ function SR:PaintRow(row,slot)
     if id and GetLootSlotInfo then local ok,_,_,_,_,q=pcall(GetLootSlotInfo,slot); if ok and plain(q) then quality=q end end
     local say=id and self:Describe(id,quality)
     if not say then
-        if line then line:Hide(); row.ftSRButton:Hide() end
+        if line then line:Hide(); row.ftSRButton:Hide(); row.ftSRRoll:Hide() end
         return false
     end
     if not line then
         line=row:CreateFontString(nil,"OVERLAY"); row.ftSRLine=line
         line:SetFont(FT.bodyFont,10,"OUTLINE"); line:SetJustifyH("LEFT"); if line.SetWordWrap then line:SetWordWrap(false) end
         row.ftSRButton=announceButton(row)
+        row.ftSRRoll=rollButton(row)
     end
     local name=row.Text or (row.GetName and row:GetName() and _G[row:GetName().."Text"])
     line:ClearAllPoints()
@@ -298,6 +324,9 @@ function SR:PaintRow(row,slot)
     local b=row.ftSRButton
     b.link,b.itemID=link,id
     b:ClearAllPoints(); b:SetPoint("RIGHT",row,"RIGHT",-4,0); b:Show()
+    local d=row.ftSRRoll
+    d.link,d.itemID,d.slot=link,id,slot
+    d:ClearAllPoints(); d:SetPoint("RIGHT",b,"LEFT",-4,0); d:Show()
     return true
 end
 function SR:PaintLoot()
@@ -315,7 +344,7 @@ function SR:PaintPanel()
             local id=plain(link) and itemID(link)
             local quality; if id and GetLootSlotInfo then local ok,_,_,_,_,q=pcall(GetLootSlotInfo,slot); if ok and plain(q) then quality=q end end
             local say=id and self:Describe(id,quality)
-            if say then items[#items+1]={link=link,id=id,say=say} end
+            if say then items[#items+1]={link=link,id=id,say=say,slot=slot} end
         end
     end
     local p=self.lootPanel
@@ -333,8 +362,9 @@ function SR:PaintPanel()
             r.Text=r.item
             r.say=r:CreateFontString(nil,"OVERLAY"); r.say:SetFont(FT.bodyFont,10,"OUTLINE"); r.say:SetPoint("TOPLEFT",r.item,"BOTTOMLEFT",0,-2); r.say:SetWidth(230); r.say:SetJustifyH("LEFT")
             r.button=announceButton(r); r.button:SetPoint("RIGHT",0,0)
+            r.roll=rollButton(r); r.roll:SetPoint("RIGHT",r.button,"LEFT",-4,0)
         end
-        r.item:SetText(it.link); r.say:SetText(it.say); r.button.link,r.button.itemID=it.link,it.id; r:Show()
+        r.item:SetText(it.link); r.say:SetText(it.say); r.button.link,r.button.itemID=it.link,it.id; r.roll.link,r.roll.itemID,r.roll.slot=it.link,it.id,it.slot; r:Show()
     end
     for i=#items+1,#p.rows do p.rows[i]:Hide() end
     p:SetSize(276,16+#items*36); p:Show()
@@ -474,22 +504,29 @@ local function itemCell(parent)
     return c
 end
 function SR:Open()
-    if FT:CombatOpenRequest() then return end
     if not self.frame then
-        local frame=FT:Window("ForeverToolsSoftRes","Soft reserves",W,600); self.frame=frame
-        FT:PageInfo(frame,"Soft reserves","Who reserved which items in your raid. A custom function for our guild website: make the list there, copy the ForeverTools string and paste it here. Lists from softres.it and other soft reserve sites do not work here.\n\nThe names then show on the loot window, under item links in raid chat and on item tooltips. Click an item here, or the shout button on the loot window, to announce who reserved it.")
+        local frame=FT:Window("ForeverToolsSoftRes","Soft reserves",W,636); self.frame=frame
+        -- Works in a fight: a boss can die mid-pull and loot comes during trash.
+        frame.ftCombatOK=true
+        FT:PageInfo(frame,"Soft reserves","Who reserved which items in your raid. A custom function for our guild website: make the list there, copy the ForeverTools string and paste it here. Lists from softres.it and other soft reserve sites do not work here.\n\nThe names then show on the loot window, under item links in raid chat and on item tooltips. Click an item here, or the shout button on the loot window, to announce who reserved it.\n\nLoot master: import the list and it is shared with everyone in the raid who has ForeverTools. Click the dice on the loot window to start a roll: everyone gets a roll window, the rolls are listed for you, then give the item to the winner.")
         frame.toggle=FT:AccentButton(frame,"",268,32,"INV_Misc_Note_06"); frame.toggle:SetPoint("TOPLEFT",24,-62)
         frame.toggle:SetScript("OnClick",function() local s=settings(); s.softRes=not s.softRes; SR:Apply() end)
         FT:Tooltip(frame.toggle,"Soft reserves (custom)","Custom function for the guild website's lists (not softres.it). Shows who reserved items on loot, in raid chat and on tooltips. Importing a list turns it on.")
-        frame.raidChoice=FT:QuietButton(frame,"",268,32,"INV_Misc_Note_06"); frame.raidChoice:SetPoint("TOPLEFT",308,-62)
+        frame.raidChoice=FT:QuietButton(frame,"",268,32,"INV_Misc_Note_06"); frame.raidChoice:SetPoint("TOPLEFT",308,-62); frame.raidChoice.ftCombatOK=true
         FT:Tooltip(frame.raidChoice,"Raid","Which imported raid is shown. The newest import is chosen by itself.")
         FT:MakeChoice(frame.raidChoice,function()
             local list={}
             for _,ev in ipairs(SR:EventList()) do list[#list+1]={ev.id,ev.title.." – "..when(ev),RAIDS[ev.raid]} end
             return list
         end,function() local ev=SR:Active(); return ev and ev.id end,function(id) SR:Choose(id) end)
+        frame.rolls=FT:QuietButton(frame,"",404,30,"INV_Misc_Dice_01"); frame.rolls:SetPoint("TOPLEFT",24,-100)
+        frame.demo=FT:QuietButton(frame,"Try it (demo)",140,30,"INV_Misc_Dice_02"); frame.demo:SetPoint("TOPLEFT",436,-100)
+        frame.demo:SetScript("OnClick",function() if FT.SoftResDemo then FT.SoftResDemo:Ask() end end)
+        FT:Tooltip(frame.demo,"Try it (demo)","Practise a raid's loot rolls on your own, as the loot master or as a raider. Fake raiders roll; nothing is sent to anyone and no /roll is made.")
+        frame.rolls:SetScript("OnClick",function() local s=settings(); s.softResRolls=s.softResRolls==false; SR:Apply() end)
+        FT:Tooltip(frame.rolls,"Roll windows from the loot master","When the loot master, leader or an assistant starts a roll with ForeverTools, a window shows the item, who reserved it and buttons to roll. Their list is shared with you too, so you see reserves without importing. On at first.")
         -- List view.
-        local list=CreateFrame("Frame",nil,frame); list:SetPoint("TOPLEFT",0,-102); list:SetPoint("BOTTOMRIGHT",0,0); frame.list=list
+        local list=CreateFrame("Frame",nil,frame); list:SetPoint("TOPLEFT",0,-138); list:SetPoint("BOTTOMRIGHT",0,0); frame.list=list
         list.head=FT:Label(list,"",15,true); list.head:SetPoint("TOPLEFT",24,-4); list.head:SetWidth(W-48)
         list.count=FT:Label(list,"",13); list.count:SetPoint("TOPLEFT",24,-26); list.count:SetWidth(W-48); list.count:SetTextColor(.85,.80,.70)
         list.missing=FT:Label(list,"",13); list.missing:SetPoint("TOPLEFT",24,-46); list.missing:SetWidth(W-48); list.missing:SetTextColor(1,.32,.28)
@@ -504,10 +541,10 @@ function SR:Open()
         list.import:SetScript("OnClick",function() SR.view="import"; SR:Refresh() end)
         FT:Tooltip(list.import,"Import new list","Paste a new string. The same raid is replaced, other raids are kept.")
         list.delete=FT:QuietButton(list,"Delete this raid",180,30,"delete"); list.delete:SetPoint("LEFT",list.import,"RIGHT",8,0)
-        list.delete:SetScript("OnClick",function() local ev=SR:Active(); if ev then FT:Confirm('Delete the soft reserves for "'..ev.title..'"?',function() SR:Delete(ev.id) end) end end)
+        list.delete:SetScript("OnClick",function() local ev=SR:Active(); if ev then FT:Confirm('Delete the soft reserves for "'..ev.title..'"?',function() SR:Delete(ev.id) end,true) end end)
         FT:Tooltip(list.delete,"Delete this raid","Remove this raid's list from your account.")
         -- Import view.
-        local imp=CreateFrame("Frame",nil,frame); imp:SetPoint("TOPLEFT",0,-102); imp:SetPoint("BOTTOMRIGHT",0,0); frame.imp=imp
+        local imp=CreateFrame("Frame",nil,frame); imp:SetPoint("TOPLEFT",0,-138); imp:SetPoint("BOTTOMRIGHT",0,0); frame.imp=imp
         imp.intro=FT:Label(imp,"Paste the ForeverTools string from the guild website (it starts with FTSR1||), then click Import. Not for softres.it lists.",13)
         imp.intro:SetPoint("TOPLEFT",24,-4); imp.intro:SetWidth(W-48); imp.intro:SetTextColor(.85,.80,.70)
         local s2=CreateFrame("ScrollFrame",nil,imp,"UIPanelScrollFrameTemplate"); s2:SetPoint("TOPLEFT",24,-44); s2:SetSize(W-76,260); FT:Panel(s2)
@@ -580,12 +617,14 @@ function SR:Refresh()
     local ev=self:Active()
     frame.raidChoice:SetShown(ev~=nil)
     if ev then frame.raidChoice.label:SetText("Raid: "..ev.title) end
+    local rolls=settings().softResRolls~=false
+    frame.rolls.label:SetText("Roll windows from the loot master: "..(rolls and "On" or "Off")); FT:SetSelected(frame.rolls,rolls)
     local importing=self.view=="import" or not ev
     frame.imp:SetShown(importing); frame.list:SetShown(not importing)
     frame.imp.cancel:SetShown(ev~=nil)
     if importing then return end
     local list=frame.list
-    list.head:SetText(ev.title.."  |cffa8967a"..when(ev).." · "..ev.limit.." per player|r")
+    list.head:SetText(ev.title.."  |cffa8967a"..when(ev).." · "..ev.limit.." per player"..(ev.shared and (" · from "..tostring(ev.from)) or "").."|r")
     local reserved,missing=self:Counts(ev)
     list.count:SetText(reserved.."/"..#ev.players.." have reserved")
     if #missing>0 then
@@ -600,7 +639,18 @@ function SR:Refresh()
     for i=math.min(#players,MAXROWS)+1,#list.rows do list.rows[i]:Hide() end
     list.child:SetHeight(math.max(ROW,math.min(#players,MAXROWS)*ROW))
     local absent=self:NotSignedUp(ev)
-    list.extra:SetText(#absent>0 and ("In your group without a sign-up: "..table.concat(absent,", ")) or "")
+    local lines={}
+    if #absent>0 then lines[#lines+1]="In your group without a sign-up: "..table.concat(absent,", ") end
+    -- Who got what in this raid (rolls given out with ForeverTools).
+    if type(ev.awards)=="table" and #ev.awards>0 then
+        local given={}
+        for i=math.max(1,#ev.awards-5),#ev.awards do
+            local a=ev.awards[i]; local _,link=itemInfo(a.item)
+            given[#given+1]=(link:find("|H",1,true) and link or ("item "..a.item)).." → "..a.to..(a.roll and (" ("..a.roll..(a.sr and " SR" or "")..")") or "")
+        end
+        lines[#lines+1]="Given out ("..#ev.awards.."): "..table.concat(given,", ")
+    end
+    list.extra:SetText(table.concat(lines,"\n"))
 end
 -- /ft srdebug: what the loot window looks like to us, for bug reports.
 function SR:Debug()
@@ -614,5 +664,6 @@ function SR:Debug()
     else print("Open a loot window and run /ft srdebug again to see its rows.") end
     print("Group: "..(self:InGroup() and "yes" or "no")..", tooltip hook: "..tostring(TooltipDataProcessor~=nil))
 end
+SR.combatOK=true
 FT:RegisterModule("SoftRes",SR)
 FT.SoftRes=SR

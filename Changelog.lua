@@ -4,6 +4,11 @@ local _,FT=...
 FT.quietReleases={["1.0.0"]=true,["1.0.1"]=true}
 FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
+    {version="1.4.0",notes={
+        {icon="Spell_Holy_Heal",title="Action bars on mouseover",text="Bars stay hidden until your mouse is over them."},
+        {icon="INV_Letter_15",title="Mail suggests only your alts",text="No more guildies first when you type a name."},
+        {icon="Ability_Poisons",title="Reminder fixes",text="No pop-up after every fight, no blank notice."},
+    }},
     {version="1.3.0",notes={
         {icon="INV_Misc_Book_09",title="Shorter tour",text="One card per menu. Click to switch on."},
         {icon="Ability_Rogue_Sprint",title="Easier moving",text="Esc menu button, boxes as big as the item."},

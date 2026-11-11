@@ -224,6 +224,9 @@ function Counts:RenderPreview()
         for i,row in ipairs(rows) do
             local l,r=box.left[i],box.right[i]
             l:SetText(row[1]); r:SetText(row[2]); l:Show(); r:Show()
+            -- Long names get the room the count doesn't need, then a size smaller.
+            local rw=math.min(140,(r.GetUnboundedStringWidth and r:GetUnboundedStringWidth() or r:GetStringWidth() or 60)+2)
+            FT:FitText(r,rw,10); FT:FitText(l,224-rw-6,10)
         end
         for i=#rows+1,#box.left do box.left[i]:Hide(); box.right[i]:Hide() end
         box:SetHeight(#rows*17+14)
@@ -290,8 +293,8 @@ function Counts:Open()
             local b=CreateFrame("Frame",nil,p); b:SetWidth(244); FT:RoundedFill(b,0,0,0,.88)
             b.left,b.right={},{}
             for i=1,10 do
-                local l=b:CreateFontString(nil,"OVERLAY"); l:SetFont(FT.bodyFont,12,""); l:SetPoint("TOPLEFT",10,-7-(i-1)*17); l:SetJustifyH("LEFT"); l:SetWidth(92)
-                local r=b:CreateFontString(nil,"OVERLAY"); r:SetFont(FT.bodyFont,12,""); r:SetPoint("TOPRIGHT",-10,-7-(i-1)*17); r:SetJustifyH("RIGHT"); r:SetWidth(132)
+                local l=b:CreateFontString(nil,"OVERLAY"); l:SetFont(FT.bodyFont,12,""); l:SetPoint("TOPLEFT",10,-7-(i-1)*17); l:SetJustifyH("LEFT"); l:SetWidth(112)
+                local r=b:CreateFontString(nil,"OVERLAY"); r:SetFont(FT.bodyFont,12,""); r:SetPoint("TOPRIGHT",-10,-7-(i-1)*17); r:SetJustifyH("RIGHT"); r:SetWidth(112)
                 if l.SetWordWrap then l:SetWordWrap(false); r:SetWordWrap(false) end
                 b.left[i],b.right[i]=l,r
             end

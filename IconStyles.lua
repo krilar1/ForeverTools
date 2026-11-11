@@ -391,7 +391,9 @@ function Skins:Queue()
 end
 FT:RegisterModule("IconStyles",Skins)
 local events=CreateFrame("Frame")
-for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","ADDON_LOADED","PLAYER_REGEN_ENABLED","ACTIONBAR_SLOT_CHANGED","UPDATE_SHAPESHIFT_FORMS","UNIT_AURA","PLAYER_TOTEM_UPDATE"}) do events:RegisterEvent(event) end
+for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","ADDON_LOADED","PLAYER_REGEN_ENABLED","ACTIONBAR_SLOT_CHANGED","UPDATE_SHAPESHIFT_FORMS","PLAYER_TOTEM_UPDATE"}) do events:RegisterEvent(event) end
+-- Only your own buffs are skinned: listen to your auras, not every unit's.
+if events.RegisterUnitEvent then events:RegisterUnitEvent("UNIT_AURA","player") else events:RegisterEvent("UNIT_AURA") end
 events:SetScript("OnEvent",function(_,event,unit)
     if not FT.dbReady then return end
     if event=="UNIT_AURA" then

@@ -450,7 +450,7 @@ function Binds:Open()
             if FT.modules.System then FT.modules.System:Refresh() end
         end)
         FT:Tooltip(self.toggle,"Spell binds","All spell binds and role keys on or off.")
-        local head=FT:Label(frame,"Role keys",15,true); head:SetPoint("TOPLEFT",24,-112); FT:SectionHeading(head,"Ability_Kick",330)
+        local head=FT:Label(frame,"Role keys",15,true); head:SetPoint("TOPLEFT",24,-110); FT:SectionHeading(head,"Ability_Kick","full")
         self.roleRows={}
         for i,role in ipairs(ROLES) do
             -- Two columns: left 24, right 264 (each 232 wide).
@@ -500,8 +500,8 @@ function Binds:Open()
         self.askToggle=FT:QuietButton(frame,"",230,32,"character"); self.askToggle:SetPoint("TOPLEFT",266,-372)
         self.askToggle:SetScript("OnClick",function() local r=self:Root(); r.ask=not r.ask; self:Refresh() end)
         FT:Tooltip(self.askToggle,"Ask on new characters","On a new character, ask once to use your usual role keys.")
-        local grid=FT:Label(frame,"Your binds",15,true); grid:SetPoint("TOPLEFT",24,-420); FT:SectionHeading(grid,"INV_Misc_Key_03",330)
-        local hint=FT:Label(frame,"Drag a spell, item or macro onto a slot, then click it to set a key.",12); hint:SetPoint("TOPLEFT",24,-444); hint:SetTextColor(.66,.59,.48)
+        local grid=FT:Label(frame,"Your binds",15,true); grid:SetPoint("TOPLEFT",24,-418); FT:SectionHeading(grid,"INV_Misc_Key_03","full")
+        local hint=FT:Label(frame,"Drag a spell, item or macro onto a slot, then click it to set a key.",12); hint:SetPoint("TOPLEFT",24,-448); hint:SetTextColor(.66,.59,.48)
         self.cells={}
         for i=1,SLOTS do
             local cell=CreateFrame("Button",nil,frame); cell:SetSize(40,40)

@@ -58,7 +58,7 @@ function Profiles:ShowSwitcher(owner)
 end
 -- Only preferences are copied. Macro history and installed WoW macros belong to
 -- the character and are never rewritten by loading an appearance profile.
-local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","macroPoisonConfirm","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish","enemyCooldowns"}
+local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","macroPoisonConfirm","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish","enemyCooldowns","actionFade"}
 -- Every module that must redraw after settings change (load, login, reset).
 local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey","Totems","DruidMana","SellMarks","QueueTimer","Trinkets","AutoRelease","PersonalResource","Interrupts","Bags","Enemies","Diminish","EnemyCooldowns"}
 local function copy(value)
@@ -954,7 +954,7 @@ end)
 
 -- Settings only: saved profiles, custom macros/fonts, learned flight routes,
 -- rank knowledge and macro history are kept. A reload re-applies native UI.
-local resettable={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","chat","system","customKeybinds","lootRoll","tooltip","buffReminder","flightTimer","leveling","vendor","dispelGlow","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish","enemyCooldowns"}
+local resettable={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","chat","system","customKeybinds","lootRoll","tooltip","buffReminder","flightTimer","leveling","vendor","dispelGlow","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish","enemyCooldowns","actionFade"}
 function Profiles:DefaultsForCharacter()
     for _,key in ipairs(resettable) do FT.db[key]=nil end
     self.active,self.selected=nil,nil
@@ -1325,7 +1325,7 @@ end
 -- by an earlier (or later) version must still bring everything it can. Each
 -- setting area that fails the checks is left out (it keeps its defaults) and
 -- named in skipped; the rest is imported.
-local areaNames={fps="FPS counter",fonts="Fonts",unitColors="Unit frames",iconStyles="Skins",chat="Chat",system="System settings",customKeybinds="Mouse-wheel casting",customFonts="Your font files",lootRoll="Loot rolls",tooltip="Tooltip",buffReminder="Buff reminders",customMacros="Your macros",flightTimer="Flight timer",leveling="Leveling stats",dispelGlow="Dispel glow",actionMacros="Macro places",rareAlert="Rare alerts",threat="Threat meter",fireAlert="Fire alert",smartKey="Smart key",totems="Totems",movers="Element positions",queueTimer="Battleground timer",trinkets="Trinket menu",autoRelease="Auto release",personal="Game resource bars",interrupts="Interrupt bar",thanks="Thanks",moveWindows="Game window places",bags="Bags",enemies="Enemy alerts",diminish="Diminishing returns",enemyCooldowns="Enemy cooldowns"}
+local areaNames={fps="FPS counter",fonts="Fonts",unitColors="Unit frames",iconStyles="Skins",chat="Chat",system="System settings",customKeybinds="Mouse-wheel casting",customFonts="Your font files",lootRoll="Loot rolls",tooltip="Tooltip",buffReminder="Buff reminders",customMacros="Your macros",flightTimer="Flight timer",leveling="Leveling stats",dispelGlow="Dispel glow",actionMacros="Macro places",rareAlert="Rare alerts",threat="Threat meter",fireAlert="Fire alert",smartKey="Smart key",totems="Totems",movers="Element positions",queueTimer="Battleground timer",trinkets="Trinket menu",autoRelease="Auto release",personal="Game resource bars",interrupts="Interrupt bar",thanks="Thanks",moveWindows="Game window places",bags="Bags",enemies="Enemy alerts",diminish="Diminishing returns",enemyCooldowns="Enemy cooldowns",actionFade="Action bars on mouseover"}
 function Profiles:ValidateImport(data)
     if type(data)~="table" then return nil,"Invalid or unsupported profile." end
     local result=self:StrictImport(data)

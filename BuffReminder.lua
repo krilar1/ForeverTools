@@ -764,6 +764,14 @@ function Reminder:NoticeVisible(key,entries)
     self.notices=self.notices or {}
     local notice=self.notices[key]
     local now=GetTime and GetTime() or 0
+    -- A short gap (a fight, a loading screen, the game not telling for a
+    -- moment) is not "missing again": the notice keeps its timer and a
+    -- click. Before, every fight made the same notice pop up again.
+    if notice and notice.emptySince and now-notice.emptySince>Reminder.GAP then notice=nil; self.notices[key]=nil end
+    if #entries==0 then
+        if notice and not notice.emptySince then notice.emptySince=now end
+        return false
+    end
     local names,fresh={},not notice
     for _,entry in ipairs(entries) do
         -- A steady key per buff: a message with a count or a time in it
@@ -774,8 +782,7 @@ function Reminder:NoticeVisible(key,entries)
         if notice and not notice.names[name] then fresh=true end
     end
     if fresh then notice={names=names,started=now};self.notices[key]=notice
-    else notice.names=names end
-    if #entries==0 then self.notices[key]=nil; return false end
+    else notice.names=names; notice.emptySince=nil end
     -- Clicked away: those buffs stay quiet for a while (Look > Timing, 10 minutes at first).
     local snoozed=self.snoozed
     if snoozed then
@@ -797,6 +804,7 @@ function Reminder:HideHint()
     return (v==0 and "Stays until the buff is back." or ("Hides after "..(v>=60 and (v/60).." minute"..(v>60 and "s" or "") or v.." seconds")..".")).." Click to hide it for 10 minutes."
 end
 Reminder.SNOOZE=600
+Reminder.GAP=120
 function Reminder:ClickNotice(key,button)
     if self.moving then return end
     -- Left or right click: hide it, and keep those buffs quiet for 10 minutes.
@@ -1022,6 +1030,46 @@ function Reminder:EnoughPower(spell)
     return true
 end
 -- /ft powerdebug: what the reminder sees for each of your self buffs.
+-- /ft poisondebug: what each of the game's weapon sources says, and what
+-- the notice for each hand is doing (timer, clicked away, quiet).
+function Reminder:PoisonDebug()
+    local function show(v)
+        if issecretvalue and issecretvalue(v) then return "hidden" end
+        if type(v)=="table" then
+            local parts={}; for k,x in pairs(v) do parts[#parts+1]=tostring(k).."="..((issecretvalue and issecretvalue(x)) and "hidden" or tostring(x)) end
+            table.sort(parts); return "{"..table.concat(parts,", ").."}"
+        end
+        return tostring(v)
+    end
+    local s=self:Settings(); local now=GetTime and GetTime() or 0
+    print("class="..tostring(self:Class()).." kind="..tostring(self:WeaponKind()).." known="..tostring(self:PoisonsKnown(self.learnedCache or {})).." combat="..tostring(InCombatLockdown and InCombatLockdown()))
+    print("settings: mainPoison="..tostring(s.mainPoison).." offPoison="..tostring(s.offPoison).." hideAfter="..tostring(s.hideAfter).." clickQuiet="..tostring(s.clickQuiet))
+    for _,slot in ipairs({"main","off"}) do
+        local state=FT.BuffRanks:WeaponState(slot)
+        print(slot..": eligible="..tostring(FT.BuffRanks:WeaponEligible(slot)).." state="..show(state).." missing="..tostring(self:WeaponMissing(slot)))
+        if Enum and Enum.WeaponSlot and C_Item and C_Item.GetWeaponEnchantInfo then
+            local ok,list=pcall(C_Item.GetWeaponEnchantInfo,slot=="main" and Enum.WeaponSlot.MainHand or Enum.WeaponSlot.OffHand)
+            local out={}
+            if ok and type(list)=="table" and not (issecretvalue and issecretvalue(list)) then for i,e in pairs(list) do out[#out+1]=tostring(i)..":"..show(e) end end
+            print("  C_Item: ok="..tostring(ok).." "..(ok and (#out>0 and table.concat(out," ") or show(list)) or tostring(list)))
+        end
+        if C_PaperDollInfo and C_PaperDollInfo.GetTemporaryEnchantmentInfo then
+            local ok,info=pcall(C_PaperDollInfo.GetTemporaryEnchantmentInfo,slot=="main" and 16 or 17)
+            print("  PaperDoll: ok="..tostring(ok).." "..show(info))
+        end
+        local key="style:weapon:"..slot
+        for _,k in ipairs({"self",key}) do
+            local n=self.notices and self.notices[k]
+            if n then print("  notice "..k..": age="..math.floor(now-(n.started or now)).."s dismissed="..tostring(n.dismissed).." emptyFor="..(n.emptySince and math.floor(now-n.emptySince).."s" or "-")) end
+        end
+        local own=s.styles and s.styles["weapon:"..slot]
+        if own then print("  own look: mode="..tostring(own.mode).." text="..show(own.text).." font="..tostring(own.font)) end
+        local c=self.custom and self.custom["weapon:"..slot]
+        if c then print("  shown="..tostring(c:IsShown()).." text="..show(c.text:GetText()).." width="..show(c.text:GetWidth()).." font="..show(c.text:GetFont())) end
+    end
+    if GetWeaponEnchantInfo then print("old API: "..show({pcall(GetWeaponEnchantInfo)})) end
+    for name,t in pairs(self.snoozed or {}) do if t>now then print("quiet: "..name.." for "..math.floor(t-now).."s") end end
+end
 function Reminder:PowerDebug()
     local learned=self:Learned()
     local out=function(text) print("|cffd8b25aForeverTools|r "..text) end
@@ -1076,10 +1124,12 @@ function Reminder:Refresh(cachedSpells)
         if self.frame then self:RefreshMenu(cachedSpells or self.learnedCache) end
         return
     end
-    -- Back from combat, a flight or death: show missing buffs again with a
-    -- fresh timer. The countdown kept running while notices were paused, so
-    -- without this a buff that dropped earlier stayed hidden after combat.
-    if self.wasSuppressed then self.wasSuppressed=nil; self.notices=nil end
+    -- Back from combat, a flight or death: notices pick up where they were.
+    -- One that had hidden itself or was clicked away stays hidden; a buff
+    -- that went missing meanwhile is new, so it shows with a fresh timer.
+    -- (Before, every notice came back after every fight.)
+    self.wasSuppressed=nil
+    if not fighting and self.preFight then self.notices=self.preFight; self.preFight=nil end
     local learned=cachedSpells or self:Learned()
     self.learnedCache=learned
     local currentSpec=self:CurrentSpec()
@@ -1254,6 +1304,7 @@ function Reminder:Refresh(...)
     if self.badge then self:MoverBoxes() end
 end
 function Reminder:Apply()
+    if self.AuraScope then self:AuraScope() end
     if FT.modules.RankMarker and self.markerApplied~=self:Settings().rankMarker then
         self.markerApplied=self:Settings().rankMarker; FT.modules.RankMarker:Apply()
     end
@@ -1448,6 +1499,17 @@ function Reminder:FitCustom(notice,st)
     text:SetWidth(900)
     local w=(text.GetUnboundedStringWidth and text:GetUnboundedStringWidth()) or text:GetStringWidth()
     if type(w)~="number" or (issecretvalue and issecretvalue(w)) then w=220 end
+    -- Right after logging in the font can still be loading and measures as
+    -- nothing; the text then got no room at all (a notice with no words).
+    -- Guess a width and measure again a moment later.
+    local message=notice.shownText
+    if w<4 and type(message)=="string" and message~="" then
+        w=#message*8
+        if not notice.refitting and C_Timer then
+            notice.refitting=true
+            C_Timer.After(1,function() notice.refitting=nil; if notice:IsShown() then self:FitCustom(notice,st) end end)
+        end
+    end
     w=math.min(600,math.ceil(w)+2)
     text:SetWidth(w)
     if st.mode=="text" then notice:SetWidth(math.max(80,w+16))
@@ -1858,7 +1920,7 @@ function Reminder:RefreshMenu(learned)
     -- One page per section (the group's sidebar on the left), full width.
     local X,COL=24,240
     -- Spacing: a heading takes HEAD, a row of switches ROW, and a section ends with GAP.
-    local HEAD,ROW,GAP=28,42,10
+    local HEAD,ROW,GAP=30,42,10
     -- Only moved when its spot changes (a slider re-anchored while you drag it can drop the drag).
     local function place(control,x,top)
         placed[control]=true
@@ -1929,17 +1991,17 @@ function Reminder:RefreshMenu(learned)
         self.combatAllToggle:SetWidth(232)
     elseif pane=="group" then
         place(self.groupToggle,X,y); place(self.groupPreview,X+COL,y); y=y+46
-        local h=self.kindHeads[1]; h.ftHeading.icon=nil; h:SetText("Show in"); place(h,X,y); y=y+18
+        local h=self.kindHeads[1]; h.ftHeading.icon=nil; h:SetText("Show in"); place(h,X,y); y=y+24
         self:PlaceWhere("groupWhere",X,y);y=y+40
         place(self.groupColorButton,X,y);y=y+40
     elseif pane=="rank" then
-        local function head(n,text) local h=self.kindHeads[n]; h.ftHeading.icon=nil; h:SetText(text); place(h,X,y); y=y+18 end
+        local function head(n,text) local h=self.kindHeads[n]; h.ftHeading.icon=nil; h:SetText(text); place(h,X,y); y=y+24 end
         head(1,"Alerts")
         place(self.rankToggle,X,y);place(self.rankOneToggle,X+COL,y);y=y+46
         head(2,"Action bar marker")
         place(self.markerToggle,X,y);place(self.exceptions,X+COL,y);y=y+32
     elseif pane=="look" then
-        local function head(n,text) local h=self.kindHeads[n]; h.ftHeading.icon=nil; h:SetText(text); place(h,X,y); y=y+18 end
+        local function head(n,text) local h=self.kindHeads[n]; h.ftHeading.icon=nil; h:SetText(text); place(h,X,y); y=y+24 end
         place(self.moveButton,X+COL,y);y=y+46
         head(1,"Look")
         place(self.sizeValue,X,y+3);place(self.sizeSlider,X+124,y);y=y+36
@@ -2227,6 +2289,16 @@ function Reminder:QueueApply(delay)
 end
 local events=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","PLAYER_DEAD","PLAYER_ALIVE","PLAYER_UNGHOST","PLAYER_CONTROL_LOST","PLAYER_CONTROL_GAINED","UNIT_ENTERED_VEHICLE","UNIT_EXITED_VEHICLE","ZONE_CHANGED_NEW_AREA","GROUP_ROSTER_UPDATE","UNIT_AURA","SPELLS_CHANGED","PLAYER_TALENT_UPDATE","UPDATE_SHAPESHIFT_FORM","UPDATE_SHAPESHIFT_FORMS","PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","WEAPON_ENCHANT_CHANGED","WEAPON_SLOT_CHANGED","UNIT_SPELLCAST_START","UNIT_SPELLCAST_SUCCEEDED","PLAYER_LEVEL_UP","TRAINER_SHOW","TRAINER_UPDATE","PLAYER_UPDATE_RESTING"}) do pcall(events.RegisterEvent,events,event) end
+-- Group buffs off: only your own auras matter, so the game stops sending
+-- every nameplate's aura changes here.
+Reminder.events=events
+function Reminder:AuraScope()
+    local group=FT.dbReady and self:Settings().groupEnabled==true
+    if group==self.auraGroup then return end
+    self.auraGroup=group
+    events:UnregisterEvent("UNIT_AURA")
+    if group or not events.RegisterUnitEvent then events:RegisterEvent("UNIT_AURA") else events:RegisterUnitEvent("UNIT_AURA","player") end
+end
 events:SetScript("OnEvent",function(_,event,unit,castGUID,spellID)
     if not FT.dbReady then return end
     if event=="TRAINER_SHOW" or event=="TRAINER_UPDATE" then FT.BuffRanks:CaptureTrainer() end
@@ -2245,7 +2317,7 @@ events:SetScript("OnEvent",function(_,event,unit,castGUID,spellID)
     if event=="UNIT_AURA" and unit=="player" then
         local gone=Reminder:NoteRemoved(castGUID)
         if Reminder.debugUntil then Reminder:DebugAura(castGUID) end
-        if gone and Reminder.badge and InCombatLockdown() then Reminder.notices=nil end
+        if gone and Reminder.badge and InCombatLockdown() then Reminder.preFight=Reminder.preFight or Reminder.notices or {}; Reminder.notices=nil end
     end
     if event=="PLAYER_REGEN_DISABLED" then
         if Reminder.badge and Reminder:CombatAny() then
@@ -2253,6 +2325,8 @@ events:SetScript("OnEvent",function(_,event,unit,castGUID,spellID)
             -- The game only counts the fight as started after this event, so
             -- say so for this one look.
             Reminder.fighting=true
+            -- The notices from before the fight come back after it.
+            Reminder.preFight=Reminder.preFight or Reminder.notices or {}
             Reminder.notices=nil; Reminder:Refresh(Reminder.learnedCache)
             Reminder.fighting=nil
         else
@@ -2280,7 +2354,8 @@ end)
 local refreshElapsed=0
 events:SetScript("OnUpdate",function(_,dt)
     refreshElapsed=refreshElapsed+dt
-    if refreshElapsed<1 then return end
+    -- A safety look every 2 s (buff changes themselves refresh at once).
+    if refreshElapsed<2 then return end
     refreshElapsed=0
     if FT.dbReady and Reminder.badge and Reminder:Settings().enabled and (not InCombatLockdown() or Reminder:CombatAny()) then
         Reminder:Refresh(Reminder.learnedCache)

@@ -1,7 +1,9 @@
 local _,FT=...
 -- First-time setup as a short guided tour.
---   Start: pick a look (shown live on your screen while you click) and a
---   Quick tour (the most useful features) or a Full tour (every feature).
+--   Start: "Would you like to use a preset?" (a look, and for the Dark
+--   presets a set of features switched on; shown live while you click), then
+--   a Quick tour (the most useful features), a Full tour (every feature), or
+--   Skip the tour. Either way the player is told /ft and the minimap button.
 --   One card per menu (Appearance, Combat, PvP...) lists its features as
 --   switches: click one to turn it on and see it on your screen (it pulses);
 --   click again to turn it off. Next goes to the next menu.
@@ -114,6 +116,8 @@ local function stops()
             find="Soft reserves",get=sys("softRes").get,set=sys("softRes").set},
         {key="autoSell",chapter="System",page="SystemMerchant",title="Sell grey items",text="Grey items are sold at merchants.",
             find="Auto-sell grey items",quick=true,get=sys("autoSell").get,set=sys("autoSell").set},
+        {key="mailAlts",chapter="System",page="SystemMerchant",title="Mail your alts",text="Typing a name in the mailbox suggests only your own characters, not guildies first.",
+            find="Mailbox: only suggest my alts",get=sys("mailAlts").get,set=sys("mailAlts").set},
         {key="autoRepair",chapter="System",page="SystemMerchant",title="Auto-repair",text="Your gear is repaired at merchants.",
             find="Auto-repair",quick=true,get=sys("autoRepair").get,set=sys("autoRepair").set},
         {key="versionCheck",chapter="System",page="SystemGeneral",title="New version notice",text="One chat line when someone in your guild or group has a newer ForeverTools.",
@@ -418,7 +422,7 @@ function Tour:Summary(trial)
         FT:Tooltip(export,"Export my setup","Copy your setup as a string.")
         local done=FT:AccentButton(frame,"Done",190,32,"confirm"); done:SetPoint("BOTTOMRIGHT",-24,20)
         done:SetScript("OnClick",function() frame:Hide() end)
-        FT:Tooltip(done,"Done","Close. Open /ft any time to change things.")
+        FT:Tooltip(done,"Done",self:WhereToChange())
     end
     local frame=self.summary; local t=self:State()
     local names={}
@@ -427,49 +431,136 @@ function Tour:Summary(trial)
     for i=1,math.min(8,#names) do shown[i]="· "..names[i] end
     if #names>8 then shown[#shown+1]="· …and "..(#names-8).." more" end
     local kept=trial and "You would have switched on " or "You switched on "
-    frame.lines:SetText(#names==0 and (trial and "You switched nothing on." or "You kept everything as it was.") or (kept..#names.." feature"..(#names==1 and "" or "s")..":\n"..table.concat(shown,"\n")))
+    local preset=type(t.preset)=="string" and ('Preset: "'..t.preset..'".\n') or ""
+    frame.lines:SetText(preset..(#names==0 and (trial and "You switched nothing on." or preset~="" and "You switched nothing else on." or "You kept everything as it was.") or (kept..#names.." feature"..(#names==1 and "" or "s")..":\n"..table.concat(shown,"\n"))))
     if frame.titleText then frame.titleText:SetText(trial and "Practice run done" or "You're set up") end
     local profiles=mod("Profiles")
     local profile=profiles and profiles.active
     frame.note:ClearAllPoints(); frame.note:SetPoint("TOPLEFT",frame.lines,"BOTTOMLEFT",0,-12)
-    frame.note:SetText(trial and "Practice run: every setting is now back the way it was." or "Change anything later in /ft."..(profile and (' Saved in profile "'..profile..'".') or ""))
+    frame.note:SetText(trial and "Practice run: every setting is now back the way it was." or self:WhereToChange()..(profile and (' Saved in profile "'..profile..'".') or ""))
     frame:SetHeight(66+(frame.lines:GetStringHeight() or 40)+12+30+80)
     FT:PlaceBeside(frame); frame:Show()
 end
--- Start screen: a look and the length of the tour ------------------------------------
-local looks={
-    {key="dark",label="Darkmode",swatch={.08,.08,.08},border={0,0,0}},
-    {key="class",label="Class Colors",swatch={.12,.12,.16},border="class"},
-    {key="soft",label="Soft Shadow",swatch={.2,.2,.2},border={.33,.33,.33}},
-    {key="none",label="Default look",swatch={.33,.27,.27},border={.72,.59,.24}},
+-- Start screen: a preset and the length of the tour ----------------------------------
+-- A preset is a look plus, for the two "Dark" ones with extras, a set of
+-- handy features switched on. It shows on your screen as you click; closing
+-- the window without starting puts everything back. The tour afterwards
+-- shows the preset's features already switched on.
+local DARK_TWEAKS={
+    -- The dark look, finished the way it is used every day: thicker buff
+    -- borders with a soft shadow, no gryphons, empty bag slots dark, the bag
+    -- bar like the action bars, dark minimap rings.
+    {"areas.buffs.preset","custom"},{"areas.buffs.thickness",3},{"areas.buffs.shadowSize",6},{"areas.buffs.shadowStrength",.5},
+    {"areas.gryphons.hideArt",true},{"areas.bagWindows.slotOpacity",0},{"areas.bags.barStyle","action"},
+    {"areas.trinkets.thickness",1},{"areas.trinkets.shadowSize",5},{"areas.nearby.shadowSize",5},{"areas.enemyAlert.shadowSize",5},{"areas.bgTimer.shadowSize",5},
+    {"areas.minimap.addonRings","dark"},{"areas.minimap.gearRing","dark"},
 }
+local EVERYDAY={
+    {"unitColors.player",true},{"unitColors.target",true},{"unitColors.focus",true},
+    {"dispelGlow.enabled",true},{"dispelGlow.pulse",true},
+    {"tooltip.target",true},{"tooltip.guild",true},
+    {"bags.counts",true},{"bags.gold",true},
+    {"chat.history",true},{"chat.tabs","hover"},{"chat.social","hover"},{"chat.icons","hover"},{"chat.input","hover"},
+    {"buffReminder.enabled",true},{"buffReminder.groupEnabled",true},{"buffReminder.food",true},{"buffReminder.lowRank",true},{"buffReminder.rankMarker",true},
+    {"rareAlert.enabled",true},{"rareAlert.sound",true},
+    {"totems.range",true},{"totems.leftBehind",true},
+    {"fps.enabled",true},{"flightTimer.enabled",true},{"queueTimer.enabled",true},{"moveWindows.enabled",true},{"lootRoll.custom",true},
+    {"system.hideErrors",true},{"system.fastLoot",true},{"system.autoRepair",true},{"system.autoSell",true},{"system.quietLogin",true},{"system.minimapIcons",true},{"system.chatLinks",true},{"system.mailAlts",true},
+}
+local PVP={
+    {"enemies.nearby",true},{"enemies.stealth",true},{"enemies.marks",true},
+    {"diminish.enabled",true},{"diminish.self",true},
+    {"enemyCooldowns.enabled",true},{"enemyCooldowns.targetIcons",true},
+    {"trinkets.enabled",true},
+}
+local EVERYDAY_TEXT="Dark look, class-colored health bars, buff reminders, item counts and gold in bags, rare alerts, flight timer, FPS, quieter chat, fast loot, auto repair, sell junk, alts first in the mailbox, grouped minimap buttons and more."
+local looks={
+    {key="ready",label="Dark, all set",skin="dark",tweaks=true,sets={EVERYDAY},swatch={.08,.08,.08},border={0,0,0},
+        tip=EVERYDAY_TEXT.." Recommended."},
+    {key="pvp",label="Dark, PvP",skin="dark",tweaks=true,sets={EVERYDAY,PVP},swatch={.08,.08,.08},border={.55,.12,.1},
+        tip="Everything in Dark, all set, plus nearby enemies, stealth alerts, diminishing returns, enemy cooldowns and the trinket menu."},
+    {key="dark",label="Dark look only",skin="dark",tweaks=true,swatch={.08,.08,.08},border={.33,.33,.33},
+        tip="Dark skins everywhere. Nothing else is turned on."},
+    {key="class",label="Class colors",skin="class",colors=true,swatch={.12,.12,.16},border="class",
+        tip="Class-colored skins and health bars. Nothing else is turned on."},
+    {key="none",label="No preset",swatch={.33,.27,.27},border={.72,.59,.24},
+        tip="The game's own look. You switch things on in the tour."},
+}
+Tour.presets=looks
 local function deepCopy(v) if type(v)~="table" then return v end local o={}; for k,x in pairs(v) do o[k]=deepCopy(x) end; return o end
+local function put(root,path,value)
+    local t=root; local parts={}
+    for part in path:gmatch("[^%.]+") do parts[#parts+1]=part end
+    for i=1,#parts-1 do if type(t[parts[i]])~="table" then t[parts[i]]={} end; t=t[parts[i]] end
+    t[parts[#parts]]=value
+end
 function Tour:PreviewLook(key)
-    -- Remember the look from before the first click, to put it back on cancel.
-    if not self.savedLook then self.savedLook={iconStyles=deepCopy(FT.db.iconStyles),unitColors=deepCopy(FT.db.unitColors)} end
+    if InCombatLockdown() then return end
+    local profiles=mod("Profiles"); if not profiles then return end
+    -- Everything as it was before the first click, to put back on cancel
+    -- (and to start from again when another preset is clicked).
+    if not self.savedLook then self.savedLook=profiles:Snapshot() end
     self.look=key
-    FT.db.iconStyles=deepCopy(self.savedLook.iconStyles); FT.db.unitColors=deepCopy(self.savedLook.unitColors)
-    local skins=mod("IconStyles")
-    if key=="none" then
-        local s=skins:Settings(); for k,v in pairs(s) do if type(v)=="boolean" then s[k]=false end end
-        skins:Apply()
-    else
-        local template
-        for _,t in ipairs(mod("Profiles").templates or {}) do if t.key==key then template=t end end
-        skins:ApplyPresetToAll(template and template.preset or key)
-        if template and template.colors then local c=mod("UnitColors"):Settings(); for _,u in ipairs({"player","target","focus"}) do c[u]=true end end
+    local preset; for _,p in ipairs(looks) do if p.key==key then preset=p end end
+    local snap=deepCopy(self.savedLook)
+    if preset and preset.skin then
+        FT.db.iconStyles=deepCopy(snap.iconStyles)
+        mod("IconStyles"):ApplyPresetToAll(preset.skin)
+        snap.iconStyles=deepCopy(FT.db.iconStyles)
+        if preset.tweaks then for _,t in ipairs(DARK_TWEAKS) do put(snap.iconStyles,t[1],t[2]) end end
+    elseif type(snap.iconStyles)=="table" then
+        for k,v in pairs(snap.iconStyles) do if type(v)=="boolean" then snap.iconStyles[k]=false end end
     end
-    apply("UnitColors")
+    if preset and preset.colors then for _,u in ipairs({"player","target","focus"}) do put(snap,"unitColors."..u,true) end end
+    for _,set in ipairs(preset and preset.sets or {}) do for _,t in ipairs(set) do put(snap,t[1],t[2]) end end
+    profiles:RestoreSnapshot(snap)
     self:RefreshStart()
 end
 function Tour:RestoreLook()
     if not self.savedLook then return end
-    FT.db.iconStyles=self.savedLook.iconStyles; FT.db.unitColors=self.savedLook.unitColors
+    local snap=self.savedLook
     self.savedLook=nil; self.look=nil
-    apply("IconStyles"); apply("UnitColors")
+    local profiles=mod("Profiles"); if profiles then profiles:RestoreSnapshot(snap) end
+end
+function Tour:PresetName()
+    for _,p in ipairs(looks) do if p.key==self.look and p.key~="none" then return p.label end end
+end
+-- Set up and done, with or without the tour: where to change things later.
+function Tour:WhereToChange()
+    return "Change anything later: type /ft or click the ForeverTools button on the minimap."
+end
+-- Keep the preset, skip the tour: done, and told where to change things.
+function Tour:UsePresetOnly()
+    local f=self.start
+    local name=self:PresetName()
+    self.savedLook=nil -- the preset is kept
+    self:State().preset=name
+    self.leaving=true; if f then f:Hide() end; self.leaving=nil
+    local onboarding=mod("Onboarding"); if onboarding then onboarding:Finish() end
+    self:Done(name)
+end
+-- A small "you're set" window after a preset without the tour.
+function Tour:Done(name)
+    if not self.doneFrame then
+        local frame=FT:Window("ForeverToolsPresetDone","You're set up",420,190); self.doneFrame=frame
+        frame.noSavePrompt=true; if frame.homeButton then frame.homeButton:Hide() end
+        frame.lines=FT:Label(frame,"",13); frame.lines:SetPoint("TOPLEFT",24,-66); frame.lines:SetWidth(372)
+        if frame.lines.SetWordWrap then frame.lines:SetWordWrap(true) end
+        local tour=FT:QuietButton(frame,"Take the tour",170,32,"INV_Misc_Book_09"); tour:SetPoint("BOTTOMLEFT",24,20)
+        tour:SetScript("OnClick",function() frame:Hide(); self:Begin(self.mode or "quick") end)
+        FT:Tooltip(tour,"Take the tour","See every feature menu by menu, with the preset's ones already on.")
+        local ok=FT:AccentButton(frame,"Done",170,32,"confirm"); ok:SetPoint("BOTTOMRIGHT",-24,20)
+        ok:SetScript("OnClick",function() frame:Hide() end)
+        FT:Tooltip(ok,"Done",self:WhereToChange())
+    end
+    local frame=self.doneFrame
+    frame.lines:SetText((name and ('Using the "'..name..'" preset.\n\n') or "")..self:WhereToChange())
+    frame:SetHeight(66+(frame.lines:GetStringHeight() or 40)+80)
+    FT:PlaceBeside(frame); frame:Show()
 end
 function Tour:RefreshStart()
     local f=self.start; if not f then return end
+    if f.later then f.later.label:SetText(self.look and self.look~="none" and not self.demo and "Skip the tour" or "Not now") end
     for key,b in pairs(f.looks) do FT:SetSelected(b,self.look==key) end
     for key,b in pairs(f.modes) do FT:SetSelected(b,self.mode==key) end
     local t=FT.db.tour
@@ -486,11 +577,12 @@ function Tour:ShowStart(again,demo)
         f.noSavePrompt=true; f:SetFrameStrata("FULLSCREEN_DIALOG"); if f.homeButton then f.homeButton:Hide() end
         f.intro=FT:Label(f,"",13); f.intro:SetPoint("TOPLEFT",24,-62); f.intro:SetWidth(552); f.intro:SetTextColor(.85,.80,.70)
         if f.intro.SetWordWrap then f.intro:SetWordWrap(true) end
-        local h1=FT:Label(f,"Pick a look",15,true); h1:SetPoint("TOPLEFT",24,-108); FT:SectionHeading(h1,"skins",420)
+        local h1=FT:Label(f,"Would you like to use a preset?",15,true); h1:SetPoint("TOPLEFT",24,-108); FT:SectionHeading(h1,"skins",420)
         f.looks={}
         for i,look in ipairs(looks) do
-            local b=FT:QuietButton(f,"",129,74); b:SetPoint("TOPLEFT",24+(i-1)*138,-134)
-            b.label:ClearAllPoints(); b.label:SetPoint("BOTTOM",0,8); b.label:SetText(look.label)
+            local b=FT:QuietButton(f,"",104,74); b:SetPoint("TOPLEFT",24+(i-1)*112,-134)
+            b.label:ClearAllPoints(); b.label:SetPoint("BOTTOM",0,8); b.label:SetWidth(98); b.label:SetJustifyH("CENTER"); b.label:SetText(look.label)
+            if b.label.SetWordWrap then b.label:SetWordWrap(false) end
             for n=1,3 do
                 local sq=b:CreateTexture(nil,"ARTWORK"); sq:SetSize(22,22); sq:SetPoint("TOP",(n-2)*28,-10)
                 sq:SetColorTexture(look.swatch[1],look.swatch[2],look.swatch[3],1)
@@ -500,10 +592,10 @@ function Tour:ShowStart(again,demo)
                 edge:SetColorTexture(c[1],c[2],c[3],1)
             end
             b:SetScript("OnClick",function() self:PreviewLook(look.key) end)
-            FT:Tooltip(b,look.label,look.key=="none" and "The default look: no skins or colors." or "Shown as you click. Kept when you start.")
+            FT:Tooltip(b,look.label,look.tip.."\nShown on your screen as you click. Change anything later in /ft.")
             f.looks[look.key]=b
         end
-        f.lookNote=FT:Label(f,"Your screen changes as you click a look.",12)
+        f.lookNote=FT:Label(f,"Your screen changes as you click. Hover a preset to see what it turns on.",12)
         f.lookNote:SetPoint("TOPLEFT",24,-214); f.lookNote:SetTextColor(.66,.59,.48)
         local h2=FT:Label(f,"How long?",15,true); h2:SetPoint("TOPLEFT",24,-244); FT:SectionHeading(h2,"INV_Misc_PocketWatch_01",420)
         f.modes={}
@@ -531,9 +623,13 @@ function Tour:ShowStart(again,demo)
             end)
         end)
         FT:Tooltip(import,"Import profile","Paste a ForeverTools export string. Loaded right away.")
-        local later=FT:QuietButton(f,"Not now",176,34); later:SetPoint("BOTTOM",0,22)
-        later:SetScript("OnClick",function() f:Hide() end)
-        FT:Tooltip(later,"Not now","Keep everything as it is. /ft setup starts the tour later.")
+        -- With a preset picked, this keeps it and skips the tour.
+        local later=FT:QuietButton(f,"Not now",176,34); later:SetPoint("BOTTOM",0,22); f.later=later
+        later:SetScript("OnClick",function()
+            if self.look and self.look~="none" and not self.demo and not InCombatLockdown() then self:UsePresetOnly() else f:Hide() end
+        end)
+        FT:Tooltip(later,function() return self.look and self.look~="none" and not self.demo and "Skip the tour" or "Not now" end,
+            function() return self.look and self.look~="none" and not self.demo and "Keep this preset and skip the tour. /ft setup starts the tour later." or "Keep everything as it is. /ft setup starts the tour later." end)
         local start=FT:AccentButton(f,"Start tour",176,34,"confirm"); start:SetPoint("BOTTOMRIGHT",-24,22)
         -- The one to click: filled gold.
         start.primary=true; FT:UpdateButton(start)
@@ -543,7 +639,8 @@ function Tour:ShowStart(again,demo)
                 -- Practice run: everything is put back when it ends.
                 FT.db.tourTrial=self.trialSnap; self.trialSnap=nil; self.demo=nil
             end
-            self.savedLook=nil -- the look is kept
+            self.savedLook=nil -- the preset is kept
+            self:State().preset=self:PresetName()
             self.leaving=true; f:Hide(); self.leaving=nil
             self:Begin(self.mode)
         end)
@@ -567,8 +664,8 @@ function Tour:ShowStart(again,demo)
         self.trialSnap={settings=profiles and profiles:Snapshot() or {},tour=deepCopy(FT.db.tour),setupDone=FT.db.setupDone,setupAsked=FT.db.setupAsked}
     end
     f.intro:SetText(self.demo and "Practice run: when it ends, every setting goes back to how it is now."
-        or again and "Pick a new look if you like, then take the tour again."
-        or "Everything starts off. The tour lists the features menu by menu: click one to turn it on and see it.")
+        or again and "Pick a preset if you like, then take the tour again."
+        or "Start from a preset, or from nothing. The tour then lists the features menu by menu: click one to turn it on or off.")
     self.look=nil; self.mode=self.mode or "quick"; self.savedLook=nil
     self:RefreshStart()
     f.keepAfterCombat=not again

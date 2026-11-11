@@ -88,7 +88,7 @@ local hubs = {
         {"AutoRelease", "Auto release", "Spell_Holy_GuardianSpirit", function() return onOff(settings("AutoRelease").enabled) end},
     }},
     {key = "Keybinds", width = 520, height = 608, title = "Keybinds", pages = {
-        {"SystemKeybinds", "Keybind tools", "INV_Misc_Key_03", function() return "Short keys " .. onOff(settings("System").shortKeys):lower() end},
+        {"SystemKeybinds", "Keys and action bars", "INV_Misc_Key_03", function() local f = mod("ActionFade"); local n = f and f.Count and f:Count() or 0; return "Short keys " .. onOff(settings("System").shortKeys):lower() .. (n > 0 and (" · mouseover " .. n) or "") end},
         {"SpellBinds", "Spell binds", "INV_Misc_Key_13", function() return onOff(settings("SpellBinds").enabled) end},
         {"CustomKeybinds", "Mouse-wheel casting", "mouseover", function() return onOff(settings("CustomKeybinds").enabled) end},
         {"SmartKey", "Smart interact key", "INV_Misc_Key_10", function() return onOff(settings("SmartKey").enabled) end},
@@ -167,6 +167,7 @@ local hubs = {
             return "Sell " .. onOff(s.autoSell):lower() .. " · repair " .. onOff(s.autoRepair):lower()
         end},
         {"SellMarks", "Always-sell marks", "INV_Misc_Coin_01", function() local m = mod("SellMarks"); return m and m.On and m:On() and ("On (" .. m:Count() .. ")") or "Off" end},
+        {"ItemLock", "Item locks", "INV_Misc_Key_03", function() local m = mod("ItemLock"); return m and m.On and m:On() and ("On (" .. m:Count() .. ")") or "Off" end},
         {"GameTweaks", "Extra game options", "INV_Misc_Spyglass_03", function() return "Sharpness, grass, weather" end},
     }},
 }
@@ -210,6 +211,7 @@ local tips = {
     SystemGeneral = "Messages, setup, reset and bug report.",
     SystemMerchant = "Faster looting, selling and repairing.",
     SellMarks = "Mark bag items to sell at merchants.",
+    ItemLock = "Lock bag items so they can't be sold, mailed, traded or deleted.",
     GameTweaks = "Game settings the menu doesn't show: sharpness, grass, weather, scenery.",
     MacroForge = "Ready-made macros for your class.",
     MacroRace = "Macros for your race's own abilities.",
@@ -308,7 +310,7 @@ local function buildSidebar(frame, hub)
         b.title = FT:Label(b, title, 14); b.title:SetPoint("TOPLEFT", 46, -7)
         b.meta = FT:Label(b, "", 11); b.meta:SetPoint("TOPLEFT", 46, -26); b.meta:SetWidth(SIDE - 24 - 52); b.meta:SetJustifyH("LEFT"); b.meta:SetTextColor(.72, .66, .55)
         if b.meta.SetWordWrap then b.meta:SetWordWrap(false) end
-        if b.title.SetWordWrap then b.title:SetWordWrap(false) end
+        FT:FitText(b.title, SIDE - 24 - 52)
         -- Pages can share one window (Macros): what counts is which page is showing.
         b:SetScript("OnClick", function() if FT.modules[name] and (FT.modules[name].frame ~= frame or side.index ~= i or not frame:IsShown()) then FT:OpenModule(name) end end)
         FT:Tooltip(b, title, function()
@@ -326,7 +328,7 @@ function FT:RefreshDock(frame)
     for i, page in ipairs(hub.pages) do
         local b = side.buttons[i]
         local ok, text = pcall(page[4])
-        b.meta:SetText(ok and type(text) == "string" and text or "")
+        b.meta:SetText(ok and type(text) == "string" and text or ""); FT:FitText(b.meta, SIDE - 24 - 52, 10)
         FT:SetSelected(b, i == index)
         if i == index then b.title:SetTextColor(1, .86, .55) else b.title:SetTextColor(0.95, 0.90, 0.81) end
     end
@@ -367,6 +369,10 @@ function FT:Dock(name, stays)
     -- switch between them.
     -- (A page with few settings may be narrower: module.pageWidth. The
     -- window's left edge and the sidebar stay where they are.)
+    -- A page with more than fits makes the whole group taller (kept for
+    -- the session, so later pages don't jump back).
+    local need = FT.ContentHeight and FT:ContentHeight(frame) or 0
+    if need > hub.height then hub.height = math.ceil(need) end
     if not frame.minimized then frame:SetSize(module.pageWidth or hub.width, hub.height) end
     -- Already open (another page of the same window): it stays put.
     if not stays then

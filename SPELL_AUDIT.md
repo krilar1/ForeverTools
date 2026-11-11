@@ -1,3 +1,7 @@
+# Macro spell audit — 2026-11-11
+
+Levels 21-60 added from the live Forever ability lists (warcraft.wiki.gg "<Class> abilities (Forever)" pages; Rogue poisons cross-checked with warcrafttavern.com/forever/guides/poisons). Names only; icons are the game's own icon names (the learned spell's icon is used once known; poisons always use their item icons). Passives (Poised, Detect Traps, Reincarnation, Omen of Clarity, Feline Grace) and Sense Undead are not added. New tracking spells (hunter tracks, Sense Demons) are left out of "Add all class macros".
+
 # Macro spell audit — 2026-09-24
 
 The current Forever beta ability reference (build 1.60.1.69913, levels 1–20):

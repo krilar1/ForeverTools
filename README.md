@@ -1,6 +1,6 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 1.3.0.**
+**Quality-of-life tools for WoW: Forever — version 1.4.0.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
 one place. Everything starts **off**, so the game looks like Blizzard's until you
@@ -37,6 +37,8 @@ the home window. Use **`/rl`** to reload the UI.
 - **Chat:** Show, hide or mouseover-reveal chat controls, change the chat font,
   optional clickable links that open a copy box, and a copy button on each
   chat window (with timestamps if you like).
+- **Presets:** on the welcome screen (or `/ft setup`), start from Dark, all
+  set / Dark, PvP / Dark look only / Class colors, then take the tour or skip it.
 - **Macros:** Browse class, racial and general templates, each with its state
   (added or not); open one in the list to select ranks, add mouseover support
   and more lines; and build custom macros with spell and equipment actions.
@@ -46,6 +48,7 @@ the home window. Use **`/rl`** to reload the UI.
   A macro can also equip items (a weapon swap, for example): pick a slot and an
   item you wear or carry. The **Macro guide** explains about 50 kinds of macro
   with an example each, ready to add to your own macros.
+  The ForeverTools logo in the game's macro window opens the macro editor.
 - **Buff reminders:** Self and group buff notices with talent-based choices,
   weapon enchants, low-rank alerts and an optional low-rank marker on action
   bars, with per-spell exceptions. Choose where notices appear and how long
@@ -101,6 +104,18 @@ the home window. Use **`/rl`** to reload the UI.
   from the bag's portrait (right-click), other characters' bags in place of
   yours, item counts per character in tooltips (bags, bank, guild bank), and
   Bag order: put the backpack's first slot in the corner you want (Bags).
+- **Mailbox:** only suggest your own alts when you type a name (System → Loot,
+  merchant and mail), with an Only my alts / Everyone icon in the To: box.
+- **Action bars on mouseover:** chosen bars stay hidden until the mouse is
+  over them (System → Keybind tools and action bars).
+- **Item locks:** hover a bag item and press your lock key (or Alt +
+  right-click) to lock it: it can't be mailed, traded or deleted, and is bought
+  back at once if sold (System → Item locks, /ft lock; off at first).
+- **Soft reserves** (raids): import the guild website's list once (/ft sr); it
+  is shared with everyone in the raid who has ForeverTools. Reserves show on the
+  loot window, tooltips and in chat. The loot master starts a roll with the dice
+  on the loot window: raiders get a roll window, rolls are listed live, and the
+  loot master gives the item to the winner (fix misrolls, ties, two of an item).
 - **PvP awareness** (off by default): stealth alert, marked players with a
   reason and a red alert when they show up, and a nearby enemies list that
   targets on click and works in combat (PvP).

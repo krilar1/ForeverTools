@@ -351,7 +351,7 @@ Glow.events:SetScript("OnEvent",function(_,event,unit)
     if not FT.dbReady then return end
     if event=="UNIT_AURA" then
         -- Auras can change many times a second in a group: look once per unit per tenth of a second.
-        if type(unit)=="string" and not secret(unit) and not Glow.dueUnits[unit] then Glow.dueUnits[unit]=true; FT:Coalesce("glowUnits",Glow.FlushUnits,.1) end
+        if type(unit)=="string" and not secret(unit) and not Glow.dueUnits[unit] and unit:sub(1,9)~="nameplate" then Glow.dueUnits[unit]=true; FT:Coalesce("glowUnits",Glow.FlushUnits,.1) end
     elseif event=="PLAYER_TARGET_CHANGED" then Glow:UpdateUnit("target")
     elseif event=="PLAYER_FOCUS_CHANGED" then Glow:UpdateUnit("focus")
     elseif event=="PLAYER_LOGIN" then Glow:Apply()

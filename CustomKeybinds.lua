@@ -355,7 +355,7 @@ function B:Open()
         end)
         for i,d in ipairs(directions) do
             local key=d[1]
-            local label=FT:Label(self.frame,d[2],16,true); label:SetPoint("TOPLEFT",24,-106-(i-1)*70); FT:SectionHeading(label,"INV_Misc_Key_03",300)
+            local label=FT:Label(self.frame,d[2],16,true); label:SetPoint("TOPLEFT",24,-102-(i-1)*70); FT:SectionHeading(label,"INV_Misc_Key_03","full")
             local picker=FT:Dropdown(self.frame,472,function() return self:SpellOptions() end,function(id) self:SelectSpell(key,id) end,"mouseover")
             picker:SetPoint("TOPLEFT",24,-132-(i-1)*70); picker:SetHeight(32)
             self.pickers[key]=picker

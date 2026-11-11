@@ -157,10 +157,25 @@ function T:Bar()
         -- bare slot number in Forever.)
         b:SetAttribute("type","macro"); b:SetAttribute("macrotext","/use "..slot)
         b.slot=slot
-        b.queued=b:CreateTexture(nil,"OVERLAY"); b.queued:SetSize(14,14); b.queued:SetPoint("TOPRIGHT",2,2)
+        -- Waiting swap: the incoming trinket small in the corner, a clock and
+        -- a slow gold pulse (plain textures: fine in combat).
+        b.queued=b:CreateTexture(nil,"OVERLAY",nil,3); b.queued:SetSize(14,14); b.queued:SetPoint("TOPRIGHT",2,2)
         b.queued:SetTexture("Interface\\Icons\\INV_Misc_PocketWatch_01"); b.queued:Hide()
+        b.next=b:CreateTexture(nil,"OVERLAY",nil,3); b.next:SetSize(SIZE*.45,SIZE*.45); b.next:SetPoint("BOTTOMLEFT",-3,-3); b.next:Hide()
+        b.nextRim=b:CreateTexture(nil,"OVERLAY",nil,2); b.nextRim:SetPoint("TOPLEFT",b.next,"TOPLEFT",-1,1); b.nextRim:SetPoint("BOTTOMRIGHT",b.next,"BOTTOMRIGHT",1,-1)
+        b.nextRim:SetColorTexture(1,.82,.2,1); b.nextRim:Hide()
+        b.glow=b:CreateTexture(nil,"OVERLAY",nil,1); b.glow:SetPoint("TOPLEFT",-3,3); b.glow:SetPoint("BOTTOMRIGHT",3,-3)
+        b.glow:SetTexture("Interface\\Buttons\\CheckButtonHilight"); b.glow:SetBlendMode("ADD"); b.glow:SetVertexColor(1,.82,.2); b.glow:Hide()
+        local pulse=b.glow:CreateAnimationGroup(); pulse:SetLooping("BOUNCE")
+        local fade=pulse:CreateAnimation("Alpha"); fade:SetFromAlpha(.25); fade:SetToAlpha(1); fade:SetDuration(.7)
+        b.pulse=pulse
         b:HookScript("OnEnter",function(owner)
-            if GameTooltip then GameTooltip:SetOwner(owner,"ANCHOR_TOP"); if GameTooltip.SetInventoryItem then GameTooltip:SetInventoryItem("player",slot) end; GameTooltip:Show() end
+            if GameTooltip then
+                GameTooltip:SetOwner(owner,"ANCHOR_TOP"); if GameTooltip.SetInventoryItem then GameTooltip:SetInventoryItem("player",slot) end
+                local q=self.queue[slot]
+                if q then GameTooltip:AddLine(" "); GameTooltip:AddLine("Swaps after the fight: "..(plain(q.link) and q.link or "the trinket you picked"),1,.82,.2) end
+                GameTooltip:Show()
+            end
             self:OpenMenu(owner)
         end)
         b:HookScript("OnLeave",function() if GameTooltip then GameTooltip:Hide() end; self:MenuLeft() end)
@@ -254,7 +269,12 @@ function T:Update()
         local start,duration=slotCooldown(b.slot)
         paintCooldown(b,start,duration,s.numbers)
         if start then running=true end
-        b.queued:SetShown(self.queue[b.slot]~=nil)
+        local q=self.queue[b.slot]
+        b.queued:SetShown(q~=nil); b.next:SetShown(q~=nil); b.nextRim:SetShown(q~=nil); b.glow:SetShown(q~=nil)
+        if q then
+            b.next:SetTexture(plain(q.icon) and q.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+            if not b.pulse:IsPlaying() then b.pulse:Play() end
+        elseif b.pulse:IsPlaying() then b.pulse:Stop() end
     end
     if self.menu and self.menu:IsShown() then running=self:FillMenu() or running end
     self:Tick(running)
@@ -300,6 +320,10 @@ local function menuItem(self,m,i)
     b=makeIcon(m,nil,false)
     b:RegisterForClicks("LeftButtonUp","RightButtonUp")
     b.worn=b:CreateFontString(nil,"OVERLAY","GameFontNormalSmall"); b.worn:SetPoint("BOTTOMRIGHT",-1,1)
+    b.waitRim=b:CreateTexture(nil,"OVERLAY",nil,2); b.waitRim:SetPoint("TOPLEFT",-2,2); b.waitRim:SetPoint("BOTTOMRIGHT",2,-2)
+    b.waitRim:SetTexture("Interface\\Buttons\\CheckButtonHilight"); b.waitRim:SetBlendMode("ADD"); b.waitRim:SetVertexColor(1,.82,.2); b.waitRim:Hide()
+    b.waitClock=b:CreateTexture(nil,"OVERLAY",nil,3); b.waitClock:SetSize(14,14); b.waitClock:SetPoint("TOPRIGHT",2,2)
+    b.waitClock:SetTexture("Interface\\Icons\\INV_Misc_PocketWatch_01"); b.waitClock:Hide()
     b:SetScript("OnEnter",function(owner)
         self.menuOver=true
         if not GameTooltip then return end
@@ -321,6 +345,8 @@ local function menuItem(self,m,i)
     m.items[i]=b
     return b
 end
+-- Room around the menu's icons: just enough for their rims.
+local PAD=5
 -- Fill the menu; returns true when a listed trinket is cooling down.
 function T:FillMenu()
     local m=self:Menu(); local s=self:Settings()
@@ -336,15 +362,17 @@ function T:FillMenu()
         if start then running=true end
         b.worn:SetText(e.slot==13 and "1" or e.slot==14 and "2" or "")
         local row,col=math.floor((i-1)/per),(i-1)%per
-        b:ClearAllPoints(); b:SetPoint("TOPLEFT",m,"TOPLEFT",8+col*(SIZE+GAP),-8-row*(SIZE+GAP))
+        b:ClearAllPoints(); b:SetPoint("TOPLEFT",m,"TOPLEFT",PAD+col*(SIZE+GAP),-PAD-row*(SIZE+GAP))
         b:Show()
-        local skins=FT.modules.IconStyles
-        if skins and skins.Track and not b.skinned then b.skinned=true; pcall(skins.Track,skins,b,"trinkets") end
+        -- Waiting to go on after the fight: gold frame and a clock.
+        local waiting=false
+        for _,q in pairs(self.queue) do if q==e or (q.id==e.id and q.bag==e.bag and q.index==e.index) then waiting=true end end
+        b.waitRim:SetShown(waiting); b.waitClock:SetShown(waiting)
     end
     for i=#list+1,#m.items do m.items[i]:Hide(); m.items[i].entry=nil end
     self:PaintSkin()
     local n=math.max(1,#list); local cols=math.min(per,n); local rows=math.ceil(n/per)
-    m:SetSize(16+cols*SIZE+(cols-1)*GAP,16+rows*SIZE+(rows-1)*GAP)
+    m:SetSize(PAD*2+cols*SIZE+(cols-1)*GAP,PAD*2+rows*SIZE+(rows-1)*GAP)
     m.empty:SetShown(#list==0)
     if #list==0 then m:SetSize(200,40) end
     return running

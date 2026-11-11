@@ -234,30 +234,10 @@ function QoL:Open()
     self:Apply()
     self.frame:Show()
 end
+-- Replaced in 1.4.0 by the logo button (GameMenu.lua): this old "FT"
+-- button sat under the dark window skin and doubled up with it.
 function QoL:AttachMacroButton()
-    if not MacroFrame or InCombatLockdown() then return end
-    if self.macroButton then
-        self.macroButton:SetFrameLevel(MacroFrame:GetFrameLevel() + 10)
-        self.macroButton:Show()
-        return
-    end
-    local button = FT:QuietButton(MacroFrame, "FT", 48, 20)
-    button:SetPoint("TOPRIGHT", MacroFrame, "TOPRIGHT", -30, -2)
-    button:SetFrameLevel(MacroFrame:GetFrameLevel() + 10)
-    button.icon = button:CreateTexture(nil, "ARTWORK")
-    button.icon:SetSize(14, 14); button.icon:SetPoint("LEFT", 4, 0)
-    button.icon:SetTexture("Interface\\Icons\\Trade_Engineering")
-    button.label:ClearAllPoints(); button.label:SetPoint("LEFT", button.icon, "RIGHT", 4, 0)
-    button:SetScript("OnClick", function() FT:OpenModule("MacroForge") end)
-    button:HookScript("OnEnter", function(owner)
-        GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-        GameTooltip:SetText("ForeverTools")
-        GameTooltip:AddLine("Open Macros", 1, 1, 1); GameTooltip:Show()
-    end)
-    button:HookScript("OnLeave", function() GameTooltip:Hide() end)
-    self.macroButton = button
-    MacroFrame:HookScript("OnShow", function() QoL:AttachMacroButton() end)
-    button:Show()
+    if self.macroButton then self.macroButton:Hide() end
 end
 FT:RegisterModule("QualityOfLife", QoL)
 local events = CreateFrame("Frame")

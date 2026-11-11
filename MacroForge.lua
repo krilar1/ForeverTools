@@ -88,7 +88,127 @@ MacroForge.RangedBody = rangedBody
 -- hand, right-click: off hand) and confirm replacing the old one.
 local function isPoison(entry) return entry and entry.class == "Rogue" and type(entry.name) == "string" and entry.name:find(" Poison$") ~= nil end
 MacroForge.IsPoison = isPoison
-local POISON_NOTE = "Left-click: main hand. Right-click: off hand. (A key bind always counts as a left-click.) Replacing a poison already on the weapon asks first, unless Macro settings > Confirm poison replacing for you is on."
+-- Rank families: abilities whose better versions have names of their own.
+--   * Poisons (items made with the Poisons skill): "Instant Poison",
+--     "Instant Poison II" ... "VI". The macro uses the best one in your bags.
+--   * Mage mana gems (spells): Conjure Mana Agate, Jade, Citrine, Ruby. The
+--     macro casts the best one you know.
+-- Macros you added follow by themselves when you get a better one (out of
+-- combat), unless you picked an earlier one in the macro editor. A macro
+-- whose text you changed yourself is never touched.
+local ROMAN = {"", " II", " III", " IV", " V", " VI"}
+local FAMILIES = {}
+local familyOf = {}
+local function addFamily(head, kind, members)
+    local fam = {head = head, kind = kind, members = members}
+    FAMILIES[#FAMILIES + 1] = fam
+    for i, name in ipairs(members) do familyOf[name:lower()] = fam end
+end
+for _, base in ipairs({"Instant Poison", "Deadly Poison", "Crippling Poison", "Mind-numbing Poison", "Wound Poison"}) do
+    local members = {}
+    for i, suffix in ipairs(ROMAN) do members[i] = base .. suffix end
+    addFamily(base, "item", members)
+end
+addFamily("Conjure Mana Agate", "spell", {"Conjure Mana Agate", "Conjure Mana Jade", "Conjure Mana Citrine", "Conjure Mana Ruby"})
+function MacroForge:Family(name) return type(name) == "string" and familyOf[name:lower()] or nil end
+-- Members you have now, worst first, by the names the game uses.
+function MacroForge:FamilyAvailable(fam)
+    local have, out = {}, {}
+    if fam.kind == "item" then
+        if C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemInfo then
+            for bag = 0, (NUM_BAG_SLOTS or 4) do
+                local ok, n = pcall(C_Container.GetContainerNumSlots, bag)
+                for slot = 1, (ok and type(n) == "number" and n or 0) do
+                    local okInfo, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
+                    local link = okInfo and type(info) == "table" and info.hyperlink
+                    local name = type(link) == "string" and not (issecretvalue and issecretvalue(link)) and link:match("%[(.-)%]")
+                    if name then have[name:lower()] = name end
+                end
+            end
+        end
+    else
+        local book = KT.modules.CustomKeybinds
+        local ok, spells = pcall(book and book.LearnedSpells or function() end, book)
+        for _, spell in ipairs(ok and type(spells) == "table" and spells or {}) do
+            if type(spell.name) == "string" then have[spell.name:lower()] = spell.name end
+        end
+    end
+    for i, name in ipairs(fam.members) do
+        local real = have[name:lower()]
+        if real then out[#out + 1] = {name = real, rank = i} end
+    end
+    return out
+end
+function MacroForge:FamilyBest(fam)
+    local list = self:FamilyAvailable(fam)
+    local top = list[#list]
+    return top and top.name, top and top.rank
+end
+-- What the macro uses: your pick in the editor, or the best you have.
+function MacroForge:FamilyPick(fam)
+    local picks = type(KT.db.macroFamilyPick) == "table" and KT.db.macroFamilyPick or nil
+    return picks and picks[fam.head] or nil
+end
+function MacroForge:SetFamilyPick(fam, name)
+    if type(KT.db.macroFamilyPick) ~= "table" then KT.db.macroFamilyPick = {} end
+    KT.db.macroFamilyPick[fam.head] = name
+end
+function MacroForge:FamilyChoice(fam)
+    return self:FamilyPick(fam) or self:FamilyBest(fam) or fam.head
+end
+-- Kept for the poison checks.
+function MacroForge:BestPoison(base)
+    local fam = self:Family(base); if not fam then return end
+    return self:FamilyBest(fam)
+end
+local function poisonBody(name) return "#showtooltip " .. name .. "\n/cast " .. name .. "\n/use [btn:2] 17; 16" .. (KT.db.macroPoisonConfirm == true and "\n/click StaticPopup1Button1" or "") end
+-- Rewrite added macros to the version they should use now (out of combat).
+-- Only macros that still have the text ForeverTools made are changed.
+function MacroForge:UpdateFamilyMacros()
+    if not (GetNumMacros and GetMacroInfo and EditMacro) or InCombatLockdown() then return 0 end
+    local want = {}
+    for _, fam in ipairs(FAMILIES) do
+        local target = self:FamilyPick(fam) or self:FamilyBest(fam)
+        if target then want[fam] = target end
+    end
+    if not next(want) then return 0 end
+    local changed = 0
+    local account, character = GetNumMacros()
+    local first = (MAX_ACCOUNT_MACROS or 120) + 1
+    local function check(index)
+        local _, _, body = GetMacroInfo(index)
+        if type(body) ~= "string" then return end
+        local text = body:gsub("\r\n", "\n"):gsub("\n+$", "")
+        local used = text:match("^#showtooltip ([^\n]+)\n")
+        local fam = used and self:Family(used)
+        local target = fam and want[fam]
+        if not target or target == used then return end
+        local new
+        if fam.kind == "item" then
+            local confirm = text:find("/click StaticPopup1Button1", 1, true) and "\n/click StaticPopup1Button1" or ""
+            if text == "#showtooltip " .. used .. "\n/cast " .. used .. "\n/use [btn:2] 17; 16" .. confirm then
+                new = "#showtooltip " .. target .. "\n/cast " .. target .. "\n/use [btn:2] 17; 16" .. confirm
+            end
+        elseif text == "#showtooltip " .. used .. "\n/cast " .. used then
+            new = "#showtooltip " .. target .. "\n/cast " .. target
+        end
+        if new and pcall(EditMacro, index, nil, nil, new) then changed = changed + 1 end
+    end
+    for i = 1, account or 0 do check(i) end
+    for i = first, first + (character or 0) - 1 do check(i) end
+    return changed
+end
+MacroForge.UpdatePoisonMacros = MacroForge.UpdateFamilyMacros
+do
+    local watch = CreateFrame("Frame")
+    for _, e in ipairs({"BAG_UPDATE_DELAYED", "PLAYER_REGEN_ENABLED", "PLAYER_LOGIN", "SPELLS_CHANGED", "LEARNED_SPELL_IN_TAB"}) do pcall(watch.RegisterEvent, watch, e) end
+    watch:SetScript("OnEvent", function()
+        if not KT.dbReady then return end
+        local _, class = UnitClass("player"); if class ~= "ROGUE" and class ~= "MAGE" then watch:UnregisterAllEvents(); return end
+        if KT.Coalesce then KT:Coalesce("familyMacros", function() MacroForge:UpdateFamilyMacros() end, 1) else MacroForge:UpdateFamilyMacros() end
+    end)
+end
+local POISON_NOTE = "Left-click puts it on your main hand, right-click on your off hand (a key bind counts as a left-click). It uses the newest version in your bags and updates by itself when you get a better one (or pick an earlier one). If the weapon already has a poison, the game asks first, unless Auto-replace poison is on."
 
 local genericMacros = {
     {"1-shot combo", 1, "generic", "spell_nature_bloodlust", "#showtooltip"},
@@ -128,9 +248,11 @@ local function addEntries(destination, entries, className, raceName, category)
         local code = data[5]
         -- A text that follows the game (the Bandage macro) is built when listed.
         if type(code) == "function" then code = code() end
-        local entry = { name = data[1], ranks = data[2], kind = data[3], icon = data[4], code = code, old = data[6], note = data[7], class = className, race = raceName, category = category, named = data.named }
+        local entry = { name = data[1], ranks = data[2], kind = data[3], icon = data[4], code = code, old = data[6], note = data[7], class = className, race = raceName, category = category, named = data.named, fixedIcon = data.fixedIcon }
         if not entry.note and isPoison(entry) then entry.note = POISON_NOTE end
-        destination[#destination + 1] = entry
+        -- One macro per rank family: the later versions are picked inside it.
+        local fam = familyOf[tostring(entry.name):lower()]
+        if not fam or fam.head == entry.name then destination[#destination + 1] = entry end
     end
 end
 
@@ -177,11 +299,14 @@ end
 function MacroForge:BuildMacro(entry)
     if entry.code then return entry.code end
     local spell = entry.name
-    if self.selectedRank ~= "max" and entry.ranks and entry.ranks > 1 then spell = spell .. "(Rank " .. self.selectedRank .. ")" end
+    -- A rank family (poisons, mana gems): the version picked, or the best you have.
+    local fam = self:Family(entry.name)
+    if fam then spell = self:FamilyChoice(fam)
+    elseif self.selectedRank ~= "max" and entry.ranks and entry.ranks > 1 then spell = spell .. "(Rank " .. self.selectedRank .. ")" end
     if isPoison(entry) then
         -- "Replace the poison on this weapon?" is clicked for you only with
-        -- Macro settings > Confirm poison replacing for you (off at first).
-        return "#showtooltip " .. spell .. "\n/cast " .. spell .. "\n/use [btn:2] 17; 16" .. (KT.db.macroPoisonConfirm == true and "\n/click StaticPopup1Button1" or "")
+        -- Macro settings > Replace poisons without asking (off at first).
+        return poisonBody(spell)
     end
     local lines = {"#showtooltip " .. spell}
     if entry.kind == "startattack" then lines[#lines + 1] = "/startattack" end
@@ -210,7 +335,8 @@ local classIcons = {
 -- teleports). They still appear in the list and can be added one by one.
 local bulkExcluded = {
     Druid = {"Nature's Grasp", "Teleport: Moonglade", "Aquatic Form"},
-    Hunter = {"Track Beasts", "Track Undead"},
+    Hunter = {"Track Beasts", "Track Undead", "Track Hidden", "Track Elementals", "Track Demons", "Track Giants", "Track Dragonkin"},
+    Warlock = {"Sense Demons"},
     Mage = {},
     Paladin = {},
     Priest = {"Confounding Flash", "Hex of Weakness", "Fade", "Touch of Weakness", "Elune's Grace", "Shadowguard"},
@@ -235,7 +361,10 @@ function MacroForge:AddLearnedEntries(entries,className,includeGeneral)
         -- those are not class spells and are only listed for clean-up.
         if type(spell.name)=="string" and (includeGeneral or spell.line~=1) and not isTravelSpell(spell.name) then
             local rank=tonumber((spell.rank or ""):match("(%d+)")) or 1
-            if not known[spell.name] then
+            local fam = familyOf[spell.name:lower()]
+            if fam and fam.head ~= spell.name then
+                -- A later version of a family macro (Instant Poison II): picked inside it.
+            elseif not known[spell.name] then
                 -- Unknown targeting stays a plain cast; never guess help/harm.
                 local entry={name=spell.name,ranks=rank,class=className,category="class",liveIcon=spell.icon,kind=learnedMelee[spell.name] and "startattack" or "self",fromSpellbook=true}
                 if isPoison(entry) then entry.note=POISON_NOTE end
@@ -326,10 +455,15 @@ local function iconFile(name)
 end
 function MacroForge:IconForEntry(entry)
     if entry.category == "classPicker" or entry.category == "generic" then return "Interface\\Icons\\" .. (entry.icon or "INV_MISC_QUESTIONMARK") end
+    if entry.fixedIcon and iconFile(entry.icon) then return iconFile(entry.icon) end
     local texture
     if C_Spell and C_Spell.GetSpellTexture then texture = C_Spell.GetSpellTexture(entry.name)
     elseif GetSpellTexture then texture = GetSpellTexture(entry.name) end
-    return texture or entry.liveIcon or (self.futureIcons and self.futureIcons[entry.name]) or iconFile(entry.icon) or 134400
+    if issecretvalue and issecretvalue(texture) then texture = nil end
+    -- The generic book is what the game reports for some class skills: a
+    -- named icon from the list is better.
+    if texture and texture == iconFile("INV_Misc_Book_09") and iconFile(entry.icon) and entry.icon:lower() ~= "inv_misc_book_09" then texture = nil end
+    return texture or entry.liveIcon or (self.futureIcons and self.futureIcons[entry.name]) or iconFile(entry.icon) or iconFile("INV_Misc_Book_09") or 134400
 end
 function MacroForge:ClassIcon(className)
     return "Interface\\Icons\\" .. (classIcons[className] or "INV_Misc_QuestionMark")
@@ -579,7 +713,7 @@ function MacroForge:MacroIcon(entry)
     -- A placeholder (the note icon of your own macros) is never used as the
     -- macro's icon: the question mark lets the game show the spell's icon.
     if custom then return 134400 end
-    return iconFile(entry.icon) or 134400
+    return iconFile(entry.icon) or iconFile("INV_Misc_Book_09") or 134400
 end
 -- Level each spell is learned at, from your own spellbook (it also lists
 -- spells you have not learned yet). Spells you already know count as level 0.
@@ -829,7 +963,7 @@ function MacroForge:Select(entry)
     self.selectedMacro, self.selectedRank, self.mouseover = entry, "max", self:EntryMouseover(entry)
     self.quickSpell=nil
     if self.spellChoice then
-        self.spellChoice.value=nil;self.spellChoice.label:SetText("Add a spell to the text...")
+        self.spellChoice.value=nil;self.spellChoice.label:SetText("Add another spell…")
         self.spellChoice.icon:SetTexture("Interface\\Icons\\"..KT.icons.add)
     end
     if self.historyPanel then self.historyPanel:Hide() end

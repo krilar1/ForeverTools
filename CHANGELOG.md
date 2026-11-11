@@ -1,3 +1,52 @@
+# ForeverTools 1.4.0 (2026-11-11)
+
+## New
+- **Presets on the welcome screen** (first start, or `/ft setup`): "Would you like to use a preset?" Pick one and your screen changes as you click; hover a preset to see what it turns on.
+  - **Dark, all set** (recommended): dark skins everywhere (thicker buff borders, no gryphons, dark minimap rings), class-colored health bars, buff reminders, dispel glow, item counts and gold in bags, rare alerts, totem range, flight timer, queue timer, FPS, roll window, chat history and quieter chat buttons, fast loot, auto repair, sell junk, hide error text, grouped minimap buttons and more.
+  - **Dark, PvP**: the same, plus nearby enemies, stealth alerts, enemy marks, diminishing returns, enemy cooldowns and the trinket menu.
+  - **Dark look only**, **Class colors**, or **No preset**.
+  - Then start the tour (the preset's features show as already on) or **Skip the tour**. Either way ForeverTools tells you where to change things later: type /ft or click the ForeverTools button on the minimap.
+  - Closing the window without choosing puts everything back. The practice run (`/ft start`) puts it back too when it ends.
+  - Soft Shadow is still in Appearance → Skins and the profile templates.
+- **Soft reserve rolls for the whole raid** (custom function for the guild website's lists):
+  - **The list is shared:** when the loot master, raid leader or an assistant imports a list (/ft sr), everyone in the raid with ForeverTools gets it, and so does anyone who joins later. Raiders see reserves on tooltips, the loot window and in chat without importing or switching anything on, plus one chat line with what they reserved, so they can check it.
+  - **Start a roll:** a new dice button next to the shout on the loot window. It sends a raid warning ("[Item] SR x2: A, B - roll now (20 sec)", or "No SR - /roll 100 main spec, /roll 99 off spec").
+  - **Roll window for raiders** (on at first; /ft sr → "Roll windows from the loot master"): the item, who reserved it, a 20-second timer and live rolls, best first. Players who reserved the item get **Roll (SR)**; others see that only reservers roll. Items without reserves get **Main spec** (100), **Off spec** (99) and **Pass**. Main spec beats off spec. Rolls from players without the addon count too. Windows only open for rolls started by the group's loot master, leader or an assistant.
+  - **Loot master:** **End rolls now**, then **Give to <name>**: the item goes to the winner by master loot, and the raid is told "[Item] goes to Name (91 SR)". A tie gives **Roll again (tie)**. Rolls from players who didn't reserve the item are greyed out. **Cancel** stops the roll.
+  - **Live:** every window updates as rolls come in; the one in front is marked, and players who reserved the item but haven't rolled yet are listed in red for the loot master.
+  - **Loot master fixes:** click a roll to give the item to that player, take the roll out (misroll), let them roll again, or count a roll the rules wouldn't count (late, wrong range, not reserved). A second roll by the same player is shown, but the first one counts. **+10 sec** adds time. **Give to…** picks anyone in the raid (the winner already has it, disenchant, bank). Raiders' windows follow these changes.
+  - **Ties:** only the tied players roll again (10 sec).
+  - **Two of the same item:** the warning says "(2 drop)", and after the first winner the window offers **Give next to <name>**.
+  - **Given out:** /ft sr lists who got what in this raid.
+  - **Works in a fight:** the roll window, Give to…, the roll menus and /ft sr stay open and usable in combat (trash pulls, a boss dying mid-fight).
+  - **Demo mode:** /ft sr → **Try it (demo)** (or `/ft srdemo`) practises the rolls on your own, as **loot master** (demo loot with four items: misrolls, a second roll, a late roll, a tie, two copies) or as **raider** (a fake loot master starts a roll you reserved, one others reserved and an open roll). Fake raiders roll and pass; nothing is sent to the raid, no /roll is made and nothing is handed out. Closing the demo or its roll window ends it.
+- **Class macros up to level 60:** about 130 abilities added (spell audit against the live Forever ability lists), among them Deadly, Mind-numbing and Wound Poison, Distract and Shank for rogues, all shaman totems, mage portals and teleports, and the paladin, priest, warlock, hunter, druid and warrior spells after level 20. New tracking spells are left out of "Add all class macros".
+- **Poison macro icons** show the real poison icons.
+- **ForeverTools logo in the game's macro window** (next to its close button): opens the ForeverTools macro editor.
+- **Search points at the setting:** the page opens, scrolls to the setting and a gold frame pulses around it for a few seconds. Every setting on the System pages can now be found by its own name.
+- **Clearer section headings:** a smooth, rounded gold bar with a gold accent, across the window on section pages.
+- `/ft poisondebug`: what the game reports for each weapon, and what the poison notice is doing. Opens a box to copy.
+- **Mailbox: only suggest my alts** (System → Loot, merchant and mail, off at first; on in the Dark presets): typing a name in the mailbox's To: box suggests only your own characters on this realm and faction (the game's list of your characters, plus the ones ForeverTools has seen you log in with), so a guildie never comes first. A small people icon at the end of the To: box (lit: only my alts, grey: everyone) suggests guildies and friends again when you need them; it remembers your choice.
+- **Item locks** (System → Item locks, next to Always-sell marks, or `/ft lock`; off at first): hover an item in your bags and press your **lock key** (chosen like the mark key), or **Alt + right-click** it; again to unlock. A locked item is taken off a letter or out of the trade window, the delete question closes and the item goes back, and if it is sold to a merchant it is bought back at once. Auto-sell and always-sell marks never sell it (locking removes its sell mark). A padlock shows on the item and "Locked" in its tooltip; the page lists locked items to unlock. Locks are kept for the whole account.
+- **Action bars on mouseover** (System → Keybind tools and action bars, off at first): choose bars that stay hidden until your mouse is over them. They show at once and hide right after the mouse leaves, and show while you drag a spell or item onto them, in Edit Mode, in quick keybind mode and, if you like, the whole fight. Hidden bars still work with their keys. A bar that is off in the game's own options is marked; one click turns it on.
+- **Macro editor tidied:** the section bars (now **Options** and **Add more**) no longer overlap the buttons under them, the poison switch has more room, and the wording is plainer (**Auto-replace poison**, **Add another spell…**, **Extra lines…**, **Undo my edits**).
+- **Nothing spills out of its box:** section bars sit snug around their words and line up with the rows under them, so they no longer cover a dropdown, a row or a note (mouse-wheel casting, spell binds, buff pages, macro editor). Pages with more settings than fit make their window taller instead of running past the bottom. Long names in the sidebar get a size smaller instead of running past the button, and the item count preview fits its names.
+- **Item counts show full names** (first and last) by default. Your alts get theirs after one login; switch it off in Bags → Item counts → Full character names.
+- **Macros keep up with versions that have their own names:** poisons (Instant Poison II, III…, from your bags) and mage mana gems (Conjure Mana Agate, Jade, Citrine, Ruby, from your spellbook). The macro uses the newest one you have, and the ones you added update by themselves (out of combat). In the macro editor, **Newest** can be switched to an earlier version to keep it. One macro per poison or gem, instead of one per version. A macro whose text you changed is left alone.
+
+## Fixes
+- **Less work in the background:** buff skins and buff reminders (with group buffs off) only listen to your own auras, dispel glow skips nameplates, and the buff reminder's safety check runs every 2 seconds instead of every second (buff changes still show at once).
+- **Enemy cooldowns: Stormstrike is 8 seconds again** (Blizzard hotfix Nov 10).
+- **Cyrillic, Korean and Chinese names no longer show as boxes** in tooltips with a custom name size, or with your own font (Fonts page). Your font is used for Latin letters; other alphabets keep the game's font.
+- **Nearby enemies: clicking a name targets them more reliably** (the realm is written the way the game wants it, and names with a space are tried by first name too). Nobody found: your old target stays.
+- **New version notice:** only a line in chat now, no pop-up on screen.
+- **Reminders no longer come back after every fight** (most noticeable with the rogue poison reminder): a notice that had hidden itself or that you clicked away stays that way after a fight, a loading screen or a short moment the game doesn't report the buff. A buff lost during the fight, or missing again later, still gets a fresh notice. Buffs set to "Also remind in combat" still remind at the pull.
+- **Target of target class color** is as bright as on the other frames (it came out pale).
+- **Trinket menu:** its icons have the same thin outline as your trinket buttons. A swap waiting for the fight to end shows on the button (the incoming trinket in the corner, a clock and a gold pulse), in the menu (gold frame) and in the tooltip.
+- **Nearby enemies, moving the list:** the move button turns into a check mark and the list is dimmed under a gold frame while you move it.
+- **Blank reminder after logging in:** a notice with its own look (Bar, Icon and text, Text only) could show without any words when the font was still loading. It now gets room for its text and measures again a moment later.
+
+
 # ForeverTools 1.3.0 (2026-11-09)
 
 ## New

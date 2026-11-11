@@ -102,6 +102,8 @@ function System:Apply()
     self:ApplyErrors()
     if FT.modules.KeyText then FT.modules.KeyText:Apply() end
     if FT.modules.SoftRes then FT.modules.SoftRes:Apply() end
+    if FT.modules.MailAlts then FT.modules.MailAlts:Apply() end
+    if FT.modules.ItemLock then FT.modules.ItemLock:Apply() end
     self:Refresh()
 end
 -- Error messages (On-screen info > Error messages). With the switch on, the
@@ -179,28 +181,30 @@ local pages={
         {"lootMove","Move loot rolls","move","Drag a sample loot roll. Stays movable with this window closed; click again or right-click the sample to lock."},
         {"lootDefault","Revert to default position","reset","Let the game place loot rolls again."},
     }},
-    {key="SystemMerchant",sections={{"Looting","fastLoot"},{"Raid loot","softRes"},{"Selling","autoSell"},{"Repairing","autoRepair"}},title="Loot and merchant",hint="Faster looting, raid soft reserves, selling and repairing.",items={
+    {key="SystemMerchant",sections={{"Looting","fastLoot"},{"Raid loot","softRes"},{"Selling","autoSell"},{"Repairing","autoRepair"},{"Mailbox","mailAlts"}},title="Loot, merchant and mail",hint="Faster looting, raid soft reserves, selling, repairing and mail.",items={
         {"fastLoot","Faster looting","INV_Misc_Bag_10","Take everything at once (with auto loot on)."},
         {"softRes","Soft reserves (custom)","INV_Misc_Note_06","A custom function for our guild website's lists, not for softres.it or other soft reserve sites. Who reserved which raid items: paste the list from the guild website, then see it on loot, in raid chat and on tooltips. Also /ft sr."},
         {"autoSell","Auto-sell grey items","INV_Misc_Coin_05","Sell grey items at merchants, 12 per visit so all can be bought back."},
         {"sellWhite","Also sell white gear","INV_Misc_Coin_03","Also sell white weapons and armor you don't need. Can be bought back."},
         {"autoRepair","Auto-repair","Trade_BlackSmithing","Repair your gear at merchants."},
         {"guildRepair","Use guild funds for repairs first","INV_Shirt_GuildTabard_01","Use guild repair money when allowed."},
+        {"mailAlts","Mailbox: only suggest my alts","INV_Letter_15","When you type a name to send mail to, only your own characters on this realm are suggested, not guildies first. A switch next to the To: box suggests everyone again when you need to."},
     }},
     {key="SystemErrors",title="Error messages",hint="Red text when an action fails.",items={
         {"hideErrors","Hide error messages","Ability_Rogue_Disguise","Hide the red error text (Out of range, Not enough rage...). Bag full and similar still show."},
         {"errorsInCombat","Only hide them in a fight","Ability_DualWield","Hide them only in combat."},
     }},
-    {key="SystemKeybinds",title="Keybind tools",hint="Bind by hovering, short key text, and put earlier keybinds back.",items={
+    {key="SystemKeybinds",sections={{"Keybinds","quickKeybind"},{"Action bars","actionFade"}},title="Keybind tools and action bars",hint="Bind by hovering, short key text, earlier keybinds back, and action bars on mouseover.",items={
         {"quickKeybind","Quick keybind mode (/kb)","keybind","Hover an action button and press a key to bind it. Esc unbinds. Also /kb."},
         {"shortKeys","Short key text","keybind","The key on your action buttons, short: S1 for Shift-1, C6 for Ctrl-6, M5 for mouse button 5, SM5 for Shift + mouse button 5, WU for mouse wheel up."},
         {"keyX","Key text left / right","keybind","Slide the key text on your action buttons left or right, a point at a time."},
         {"keyY","Key text up / down","keybind","Slide the key text on your action buttons up or down, a point at a time."},
         {"backups","Backups and restore","profiles","Put back earlier keybinds, action bars and spell binds, or save a copy now. Hover one to see what it restores."},
+        {"actionFade","Action bars on mouseover","mouseover","Hide chosen action bars until your mouse is over them. They show while you drag a spell onto them too. Turn off bars here, or turn them on if they are off in the game's options."},
     }},
 }
 System.pages=pages
-local toggles={gameMenuButton=true,versionCheck=true,minimapTarget=true,hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,shortKeys=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietLogin=true,quietNoControl=true}
+local toggles={gameMenuButton=true,versionCheck=true,minimapTarget=true,hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,shortKeys=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,mailAlts=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietLogin=true,quietNoControl=true}
 -- Switches that are the game's own settings: read and written directly,
 -- never stored by ForeverTools. "Unavailable" when the game has no such setting.
 local gameOptions={scriptErrors="scriptErrors",deathGlow="ffxDeath"}
@@ -253,7 +257,7 @@ function System:Values()
     if coords==nil then coords=not getter or getter("minimapShowPlayerCoords")=="1" end
     return {welcome=FT.db.welcome==true,whatsNew=s.hideWhatsNew~=true,minimap=FT.db.minimapEnabled~=false,coordinates=coords,
         minimapTarget=select(2,self:TargetTracking())==true,minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=gameOption("scriptErrors")=="1",deathGlow=gameOption("ffxDeath")~="0",
-        hiddenUIHint=s.hiddenUIHint==true,autoRole=s.autoRole==true,shortKeys=s.shortKeys==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true,
+        hiddenUIHint=s.hiddenUIHint==true,autoRole=s.autoRole==true,shortKeys=s.shortKeys==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true,mailAlts=s.mailAlts==true,
         hideErrors=s.hideErrors==true,errorsInCombat=s.errorsInCombat==true,quietLogin=s.quietLogin==true,quietNoControl=s.quietNoControl~=false,versionCheck=s.versionCheck~=false,gameMenuButton=s.gameMenuButton~=false}
 end
 function System:Refresh()
@@ -317,6 +321,10 @@ function System:Refresh()
             local threat=FT.modules.Threat; local t=threat and threat:Settings()
             button.label:SetText("Threat meter: "..(t and (t.enabled or t.text) and "On" or "Off").." — settings")
         end
+        if key=="actionFade" then
+            local fade=FT.modules.ActionFade; local n=fade and fade:Count() or 0
+            button.label:SetText("Action bars on mouseover: "..(n>0 and (n.." bar"..(n>1 and "s" or "")) or "Off").." — settings")
+        end
         if key=="sellMarks" then
             local marks=FT.modules.SellMarks
             button.label:SetText("Always-sell marks: "..(marks and marks:On() and ("On ("..marks:Count()..")") or "Off").." — settings")
@@ -379,6 +387,7 @@ function System:Click(key)
     if key=="spellBinds" then FT:OpenModule("SpellBinds");return end
     if key=="smartKey" then FT:OpenModule("SmartKey");return end
     if key=="sellMarks" then FT:OpenModule("SellMarks");return end
+    if key=="actionFade" then FT:OpenModule("ActionFade");return end
     if key=="softRes" then FT:OpenModule("SoftRes");return end
     if key=="wheelCasting" then FT:OpenModule("CustomKeybinds");return end
     if key=="leveling" then FT:OpenModule("Leveling");return end
@@ -508,6 +517,9 @@ local function buildPage(page)
                 for _,sec in ipairs(page.sections) do if System.buttons[sec[2]] then list[#list+1]={sec[1],System.buttons[sec[2]]} end end
                 FT:Sections(self.frame,list)
             end
+            -- Headings push the rows down: the window grows to hold them all.
+            local need=FT:ContentHeight(self.frame)
+            if need>self.frame:GetHeight() then self.frame:SetHeight(math.ceil(need)) end
             if page.key=="SystemMinimap" then FT.minimapToggle=System.buttons.minimap end
             if page.key=="SystemGeneral" then FT.welcomeToggle=System.buttons.welcome end
         end
