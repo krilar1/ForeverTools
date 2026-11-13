@@ -423,6 +423,8 @@ local CC={
     {4,"Hibernate",2637,true},{4,"Wyvern Sting",19386,true},
     {5,"Fear",5782,true},{5,"Psychic Scream",8122,true},{5,"Howl of Terror",5484,true},{5,"Intimidating Shout",5246,true},{5,"Seduction",6358,true},
     {5,"Scare Beast",1513,true},{5,"Death Coil",6789,true},{5,"Scatter Shot",19503,true},
+    -- Blind; Confounding Flash (Gnome priests, Forever): confuses for 3 sec.
+    {5,"Blind",2094,true},{5,"Confounding Flash",nil,true},{5,"Confounding Flash Confused"},
     {0,"Frost Nova",122,true},{0,"Entangling Roots",339,true},{0,"Frostbite",12494},{0,"Improved Hamstring",23694},
     -- Proc roots share the root DR. Name only (no cast flag): Counterattack is also a Hunter attack.
     {0,"Entrapment"},{0,"Improved Wing Clip"},{0,"Counterattack"},

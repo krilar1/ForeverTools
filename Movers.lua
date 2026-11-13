@@ -287,6 +287,8 @@ function Movers:Start()
     self:LabelAll(); C_Timer.After(.2,function() if self.active then self:LabelAll(); self:Hook() end end)
     self:Hook()
     self:Bar():Show(); self.pulse:Play()
+    -- Game windows that are open can be dragged by their title bar too.
+    if FT.modules.MoveWindows and FT.modules.MoveWindows.WithMovers then pcall(FT.modules.MoveWindows.WithMovers,FT.modules.MoveWindows,true) end
     -- Something turned on or off while moving (its own page is open): keep
     -- the list of movable elements in step. Only runs while moving.
     if self.watch then self.watch:Cancel() end
@@ -328,6 +330,7 @@ function Movers:Stop()
     end
     self.running=nil
     if self.bar then self.bar:Hide(); self.pulse:Stop() end
+    if FT.modules.MoveWindows and FT.modules.MoveWindows.WithMovers then pcall(FT.modules.MoveWindows.WithMovers,FT.modules.MoveWindows,false) end
     FT:RefreshMoveButtons(false)
     -- New positions go into the profile right away.
     if FT.modules.Profiles then FT.modules.Profiles:AutoSave() end
@@ -352,7 +355,8 @@ function Movers:Bar()
     local bar=CreateFrame("Frame","ForeverToolsMoverBar",UIParent)
     bar:SetSize(460,48); bar:SetPoint("TOP",UIParent,"TOP",0,-24); bar:SetFrameStrata("DIALOG"); bar:SetClampedToScreen(true)
     FT:Panel(bar)
-    local text=FT:Label(bar,"Move elements",14,true); text:SetPoint("LEFT",18,0)
+    local text=FT:Label(bar,"Move elements",14,true); text:SetPoint("LEFT",18,8)
+    local hint=FT:Label(bar,"Game windows too: drag by the title bar",11); hint:SetPoint("LEFT",18,-9); hint:SetTextColor(.66,.59,.48)
     local done=FT:AccentButton(bar,"Done",88,30,"confirm"); done:SetPoint("RIGHT",-10,0)
     done:SetScript("OnClick",function() self:Stop() end)
     FT:Tooltip(done,"Done","Lock everything. Combat locks too.")

@@ -36,6 +36,7 @@ function Tip:Settings()
     end
     if s.guild==nil then s.guild=false end
     if s.guildFactionColor==nil then s.guildFactionColor=false end
+    if s.guildRank==nil then s.guildRank=false end
     if s.healthBar==nil then s.healthBar=true end
     if s.targetedBy==nil then s.targetedBy=true end
     if not s.position then s.position="Default" end
@@ -191,8 +192,47 @@ function Tip:ApplyTooltip(tip)
             end
         end
     end
+    if tip.ftRank then self:PlaceRank(tip,prefix) elseif tip.ftRankText then tip.ftRankText:Hide() end
     local bar=tip.StatusBar or GameTooltipStatusBar
     if bar and bar.SetAlpha then bar:SetAlpha(s.healthBar and 1 or 0) end
+end
+-- Guild rank, a little smaller than its line: spaces as wide as the rank
+-- (and one before it) go in the line, and the rank is drawn over them.
+-- Nil when widths can't be read (then the rank goes in at full size).
+local RANK_SMALLER=2
+function Tip:Measure(file,size,flags,text)
+    if not self.measurer then self.measurer=UIParent:CreateFontString(nil,"BACKGROUND"); self.measurer:Hide() end
+    local m=self.measurer
+    if not pcall(m.SetFont,m,file,size,flags or "") then return nil end
+    m:SetText(text)
+    local w=m:GetStringWidth()
+    if (issecretvalue and issecretvalue(w)) or type(w)~="number" then return nil end
+    return w
+end
+function Tip:RankRoom(rank,sample,size)
+    if type(rank)~="string" or rank=="" or not sample or not sample.GetFont then return nil end
+    local file,_,flags=sample:GetFont()
+    if not file then return nil end
+    local rankWidth=self:Measure(file,math.max(8,size-RANK_SMALLER),flags,rank)
+    local space=self:Measure(file,size,flags,"a a"); local bars=self:Measure(file,size,flags,"aa")
+    if not (rankWidth and space and bars) or space-bars<=0 then return nil end
+    return string.rep(" ",math.ceil(rankWidth/(space-bars))+2)
+end
+function Tip:PlaceRank(tip,prefix)
+    local info=tip.ftRank
+    local region=info and info.index and _G[prefix.."TextLeft"..info.index]
+    if not region or not region.GetFont then if tip.ftRankText then tip.ftRankText:Hide() end return end
+    local file,size,flags=region:GetFont()
+    local before=file and self:Measure(file,size,flags,info.before)
+    local space=file and self:Measure(file,size,flags,"a a"); local bars=file and self:Measure(file,size,flags,"aa")
+    if not (before and space and bars) then if tip.ftRankText then tip.ftRankText:Hide() end return end
+    if not tip.ftRankText then tip.ftRankText=tip:CreateFontString(nil,"OVERLAY") end
+    local label=tip.ftRankText
+    label:SetFont(file,math.max(8,size-RANK_SMALLER),flags or "")
+    label:SetTextColor(.71,.67,.59)
+    label:SetText(info.rank)
+    label:ClearAllPoints(); label:SetPoint("BOTTOMLEFT",region,"BOTTOMLEFT",before+(space-bars),1)
+    label:Show()
 end
 function Tip:RestoreTooltipFont(tip)
     local prefix=tip and tip.GetName and tip:GetName()
@@ -317,15 +357,17 @@ function Tip:SampleParts()
     local race=UnitRace and UnitRace("player") or "Human"
     local label,class=UnitClass("player")
     local faction,factionName=UnitFactionGroup and UnitFactionGroup("player")
-    local guild=GetGuildInfo and GetGuildInfo("player")
+    local guild,rank
+    if GetGuildInfo then guild,rank=GetGuildInfo("player") end
     local function readable(v) return (not issecretvalue or not issecretvalue(v)) and v~=nil end
+    if not readable(rank) or rank=="" then rank="Member" end
     if not readable(name) then name="Player" end
     if not readable(guild) or guild==nil or guild=="" then guild="Guild Name" end
     local c=(CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS or {})[class]
     local s=self:Settings()
     return {
         name="|cffffffff"..name.."|r",
-        guild=(s.guildFactionColor and (faction=="Horde" and "|cffff5a5a" or "|cff4a9eff") or "|cffffffff").."<"..guild..">|r",
+        guild=(s.guildFactionColor and (faction=="Horde" and "|cffff5a5a" or "|cff4a9eff") or "|cffffffff").."<"..guild..">|r"..(s.guildRank and (" |cffb4aa96"..rank.."|r") or ""),
         level="|cffffffffLevel "..tostring(readable(level) and level or 1).."|r",
         race="|cffffffff"..tostring(readable(race) and race or "Human").."|r",
         class=(c and hex(c.r,c.g,c.b) or "|cffffffff")..tostring(readable(label) and label or "Class").."|r",
@@ -378,6 +420,8 @@ function Tip:Refresh()
     self.guildColor.label:SetText("Guild in faction color: "..(s.guildFactionColor and "On" or "Off")); FT:SetSelected(self.guildColor,s.guildFactionColor)
     self.targetedBy.label:SetText("Targeted by: "..(s.targetedBy and "On" or "Off")); FT:SetSelected(self.targetedBy,s.targetedBy)
     self.guildColor:SetAlpha(s.guild and 1 or .5)
+    self.guildRankButton.label:SetText("Guild rank: "..(s.guildRank and "On" or "Off")); FT:SetSelected(self.guildRankButton,s.guildRank)
+    self.guildRankButton:SetAlpha(s.guild and 1 or .5)
     for _,part in ipairs({"name","details","targetSize"}) do
         self.sizes[part].label:SetText((s[part]==0 and "Default" or s[part].." px"))
     end
@@ -438,23 +482,26 @@ function Tip:Open()
         local R=366
         section(R,-106,"Extras","Guild color, health bar, IDs and who targets.")
         self.guildColor=FT:QuietButton(frame,"",230,34,"INV_Shirt_GuildTabard_01"); self.guildColor:SetPoint("TOPLEFT",R,-136)
-        self.guildColor:SetScript("OnClick",function() local s=self:Settings();s.guildFactionColor=not s.guildFactionColor;self:Refresh() end)
+        self.guildColor:SetScript("OnClick",function() local s=self:Settings();s.guildFactionColor=not s.guildFactionColor;if s.guildFactionColor then s.guild=true end;self:Refresh() end)
         FT:Tooltip(self.guildColor,"Faction-colored guild name","Guild name in red (Horde) or blue (Alliance).")
-        self.health=FT:QuietButton(frame,"",230,34,"Spell_Holy_Heal"); self.health:SetPoint("TOPLEFT",R,-174)
+        self.guildRankButton=FT:QuietButton(frame,"",230,34,"INV_Misc_Note_02"); self.guildRankButton:SetPoint("TOPLEFT",R,-174)
+        self.guildRankButton:SetScript("OnClick",function() local s=self:Settings();s.guildRank=not s.guildRank;if s.guildRank then s.guild=true end;self:Refresh() end)
+        FT:Tooltip(self.guildRankButton,"Guild rank","Their guild rank right behind the guild name: <Guild> Officer.")
+        self.health=FT:QuietButton(frame,"",230,34,"Spell_Holy_Heal"); self.health:SetPoint("TOPLEFT",R,-212)
         self.health:SetScript("OnClick",function() local s=self:Settings();s.healthBar=not s.healthBar;self:Refresh();if GameTooltip then self:ApplyTooltip(GameTooltip) end end)
         FT:Tooltip(self.health,"Tooltip health bar","Small health bar under unit tooltips.")
         -- Stored under System for profile compatibility; it belongs with tooltips.
-        self.ids=FT:QuietButton(frame,"",230,34,"spellID"); self.ids:SetPoint("TOPLEFT",R,-212)
+        self.ids=FT:QuietButton(frame,"",230,34,"spellID"); self.ids:SetPoint("TOPLEFT",R,-250)
         self.ids:SetScript("OnClick",function() local s=FT.modules.System:Settings();s.spellID=not s.spellID;self:Refresh() end)
         FT:Tooltip(self.ids,"Show tooltip IDs","Spell, item, quest and achievement IDs.")
-        self.targetedBy=FT:QuietButton(frame,"",230,34,"Ability_Hunter_SniperShot"); self.targetedBy:SetPoint("TOPLEFT",R,-250)
+        self.targetedBy=FT:QuietButton(frame,"",230,34,"Ability_Hunter_SniperShot"); self.targetedBy:SetPoint("TOPLEFT",R,-288)
         self.targetedBy:SetScript("OnClick",function() local s=self:Settings();s.targetedBy=not s.targetedBy;self:Refresh() end)
         FT:Tooltip(self.targetedBy,"Targeted by","A line on unit tooltips with who has that unit targeted: you, your party or raid, and enemies with a nameplate on screen. In a fight the game sometimes hides who targets what; those are left out.")
-        local line=frame:CreateTexture(nil,"ARTWORK"); line:SetColorTexture(.61,.51,.31,.6); line:SetSize(230,1); line:SetPoint("TOPLEFT",R,-296)
-        section(R,-308,"Text size","0 keeps the game's size.")
+        local line=frame:CreateTexture(nil,"ARTWORK"); line:SetColorTexture(.61,.51,.31,.6); line:SetSize(230,1); line:SetPoint("TOPLEFT",R,-334)
+        section(R,-346,"Text size","0 keeps the game's size.")
         self.sizes={}
         for i,entry in ipairs({{"name","Name line"},{"details","Other lines"},{"targetSize","Target line"}}) do
-            local part=entry[1]; local y=-340-(i-1)*38
+            local part=entry[1]; local y=-378-(i-1)*38
             local label=FT:Label(frame,entry[2],14);label:SetPoint("TOPLEFT",R,y-6)
             local minus=FT:QuietButton(frame,"-",30,30,"reset");minus:SetPoint("TOPLEFT",R+100,y)
             local value=FT:QuietButton(frame,"",64,30);value:SetPoint("LEFT",minus,"RIGHT",4,0)
@@ -476,12 +523,12 @@ function Tip:Open()
             end)
             FT:Tooltip(value,entry[2].." size","+ and - change the size. Click the number for the game's size.")
         end
-        local line2=frame:CreateTexture(nil,"ARTWORK"); line2:SetColorTexture(.61,.51,.31,.6); line2:SetSize(230,1); line2:SetPoint("TOPLEFT",R,-456)
-        section(R,-468,"Position","Where tooltips appear on screen. Turn on Preview (top right) to drag it.")
+        local line2=frame:CreateTexture(nil,"ARTWORK"); line2:SetColorTexture(.61,.51,.31,.6); line2:SetSize(230,1); line2:SetPoint("TOPLEFT",R,-494)
+        section(R,-506,"Position","Where tooltips appear on screen. Turn on Preview (top right) to drag it.")
         local where=FT:Label(frame,"Turn on Preview (top right), then drag the sample tooltip where you want tooltips.",12)
-        where:SetPoint("TOPLEFT",R,-496); where:SetWidth(230); where:SetTextColor(.66,.59,.48)
+        where:SetPoint("TOPLEFT",R,-534); where:SetWidth(230); where:SetTextColor(.66,.59,.48)
         self.moveButton=FT:TopPreview(frame,nil,{get=function() return self.moving==true end,set=function(on) self:SetMoving(on) end,tip="A sample tooltip."})
-        frame:SetHeight(math.max(previewTop+30+150,556)+30)
+        frame:SetHeight(math.max(previewTop+30+150,594)+30)
     end
     self:Refresh();self.frame:Show()
 end

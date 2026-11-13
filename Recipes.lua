@@ -5,11 +5,15 @@ local _,FT=...
 -- line to copy, also with the window closed:
 --   FTRC1|Name|Profession:skill:id,id,...;Profession:skill:n=Recipe name,...
 -- id = the item the recipe makes; recipes that make no item (enchants) are
--- n= and their name. Cooking and First Aid are left out. Forever's
+-- n= and their name. Cooking, First Aid, Poisons (rogue) and gathering
+-- (Herbalism, Skinning, Fishing) are left out. Forever's
 -- profession window is C_TradeSkillUI (Enchanting included).
 local R={}
-local SKIP={["Cooking"]=true,["First Aid"]=true}
-local SKIP_IDS={[185]=true,[129]=true} -- Cooking, First Aid skill lines
+-- Not for the website: Cooking, First Aid, rogue Poisons and gathering.
+local SKIP={["Cooking"]=true,["First Aid"]=true,["Poisons"]=true,
+    ["Herbalism"]=true,["Skinning"]=true,["Fishing"]=true,["Archaeology"]=true}
+-- Skill lines: Cooking, First Aid, Poisons, Herbalism, Skinning, Fishing.
+local SKIP_IDS={[185]=true,[129]=true,[40]=true,[182]=true,[393]=true,[356]=true}
 local function plain(v) return v~=nil and not (issecretvalue and issecretvalue(v)) end
 local function text(v) if plain(v) and type(v)=="string" and v~="" then return v end end
 local function number(v) if plain(v) and type(v)=="number" then return v end end
@@ -29,6 +33,7 @@ function R:Mine()
     local guid=self:Me(); if not guid then return nil end
     local c=self:Store()[guid]
     if type(c)~="table" or type(c.profs)~="table" then return nil end
+    for prof in pairs(c.profs) do if SKIP[prof] then c.profs[prof]=nil end end
     return c
 end
 -- The profession open right now: its English name, skill and id.
@@ -115,14 +120,12 @@ function R:Export()
     return "FTRC1|"..name.."|"..table.concat(parts,";"),table.concat(summary," · ")
 end
 -- Your crafting professions: {name, spell to open it, icon, skill}.
--- Gathering (no recipe list), Cooking and First Aid are left out. Mining's
--- recipe list opens with Smelting.
-local GATHER={Herbalism=true,Skinning=true,Fishing=true,Archaeology=true}
+-- Everything in SKIP is left out. Mining's recipe list opens with Smelting.
 local OPEN_WITH={Mining="Smelting"}
 function R:Professions()
     local list,seen={},{}
     local function add(name,icon,skill)
-        name=text(name); if not name or seen[name] or SKIP[name] or GATHER[name] then return end
+        name=text(name); if not name or seen[name] or SKIP[name] then return end
         seen[name]=true
         list[#list+1]={name=name,spell=OPEN_WITH[name] or name,icon=icon or 134400,skill=number(skill) or 0}
     end

@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: ForeverTools
 ## Notes: A toolkit of customizable quality-of-life tools.
-## Version: 1.4.0
+## Version: 1.5.0
 ## SavedVariables: ForeverToolsDB, KrilarToolsDB
 ## IconTexture: Interface\AddOns\ForeverTools\Media\MinimapIcon.tga
 ## AddonCompartmentFunc: ForeverTools_OnAddonCompartmentClick
@@ -19,6 +19,7 @@ MacroActions.lua
 MacroRoom.lua
 MacroEditor.lua
 MacroHub.lua
+MacroWatch.lua
 MacroGuide.lua
 Bandage.lua
 FoodWater.lua
@@ -50,6 +51,7 @@ SpellBinds.lua
 Backups.lua
 BuffRanks.lua
 BuffReminder.lua
+Reagents.lua
 CooldownReminder.lua
 ExtraSkins.lua
 
@@ -68,6 +70,7 @@ MailAlts.lua
 ItemLock.lua
 BagCounts.lua
 BagOrder.lua
+BagRows.lua
 FastLoot.lua
 QuestTracker.lua
 RareAlert.lua

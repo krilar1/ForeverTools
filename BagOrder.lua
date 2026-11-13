@@ -63,23 +63,44 @@ local function byLine(x,y)
     return slotOf(x)<slotOf(y)
 end
 function Order:Layout(frame,force)
+    -- Quivers and soul bags on their own rows (BagRows.lua) lay out the whole window.
+    if FT.BagRows and FT.BagRows:Active(frame) then return FT.BagRows:Layout(frame) end
+    -- The reagent bag tucked into the all-in-one bag: placed from there.
+    if FT.BagRows and FT.BagRows:Absorbs(frame) then return end
     local corner=settings().order
     if corner=="game" and not force then return end
     if corner=="game" then corner=GAME_DEFAULT end
     if InputUtil and InputUtil.IsGamepadUIEnabled and InputUtil.IsGamepadUIEnabled() then return end
     if not (frame and frame.EnumerateValidItems and frame.GetColumns and frame.GetInitialItemAnchor and frame.GetAnchorLayout and AnchorUtil and AnchorUtil.GridLayout) then return end
+    local list={}
+    for _,b in frame:EnumerateValidItems() do list[#list+1]=b end
+    self:Arrange(frame,list,frame:GetInitialItemAnchor(),corner)
+end
+-- Lay these buttons out in a grid from the anchor, starting in corner
+-- (nil: the game's own order, last bag's last slot first).
+local function gameOrder(x,y)
+    local bx,by=bagOf(x),bagOf(y)
+    if bx~=by then return bx>by end
+    return slotOf(x)>slotOf(y)
+end
+function Order:Arrange(frame,list,anchor,corner)
     local items,extra={},{}
-    for _,b in frame:EnumerateValidItems() do
+    for _,b in ipairs(list) do
         if b.IsExtended and b:IsExtended() then extra[#extra+1]=b else items[#items+1]=b end
     end
-    table.sort(items,byLine); table.sort(extra,byLine)
     local n=#items
-    if n==0 then return end
-    local columns=frame:GetColumns()
+    if n+#extra==0 then return end
     local cells={}
-    for i=1,n do cells[Order.Cell(i-1,n,columns,corner)+1]=items[i] end
+    if corner then
+        table.sort(items,byLine); table.sort(extra,byLine)
+        local columns=frame:GetColumns()
+        for i=1,n do cells[Order.Cell(i-1,n,columns,corner)+1]=items[i] end
+    else
+        table.sort(items,gameOrder); table.sort(extra,gameOrder)
+        for i=1,n do cells[i]=items[i] end
+    end
     for i=1,#extra do cells[n+i]=extra[i] end
-    pcall(AnchorUtil.GridLayout,cells,frame:GetInitialItemAnchor(),frame:GetAnchorLayout())
+    pcall(AnchorUtil.GridLayout,cells,anchor,frame:GetAnchorLayout())
 end
 local hooked={}
 function Order:GameFrames()

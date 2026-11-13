@@ -1152,7 +1152,7 @@ function E:Refresh()
             local b=page.buttons[entry[1]]
             b.label:SetText(entry[2]..": "..(s[entry[1]] and "On" or "Off")); FT:SetSelected(b,s[entry[1]])
         end
-        page.buttons.fade:SetEnabled(s.stealth); page.buttons.fade:SetAlpha(s.stealth and 1 or .45)
+        page.buttons.fade:SetAlpha(s.stealth and 1 or .45)
         page.sizeLabel:SetText(string.format("Size: %d%%",math.floor(s.size*100+.5)))
         page.settingSize=true; page.sizeSlider:SetValue(s.size); page.settingSize=false
         FT:RefreshPreview(page.frame)
@@ -1202,7 +1202,7 @@ function alertPage:Open()
             local key=entry[1]
             local b=(i==1 and FT.AccentButton or FT.QuietButton)(FT,frame,"",w-48,32,entry[3]); b:SetPoint("TOPLEFT",24,-66-(i-1)*38)
             if b.SetMotionScriptsWhileDisabled then b:SetMotionScriptsWhileDisabled(true) end
-            b:SetScript("OnClick",function() local s=E:Settings(); s[key]=not s[key]; E:Apply() end)
+            b:SetScript("OnClick",function() local s=E:Settings(); s[key]=not s[key]; if s[key] and key=="fade" then s.stealth=true end; E:Apply() end)
             FT:Tooltip(b,entry[2],entry[4])
             self.buttons[key]=b
         end
@@ -1235,7 +1235,7 @@ function E:RefreshMarks()
     local s=self:Settings()
     page.alerts.label:SetText("Marked player alerts: "..(s.marks and "On" or "Off")); FT:SetSelected(page.alerts,s.marks)
     page.tip.label:SetText("Show the mark in tooltips: "..(s.markTooltip and "On" or "Off")); FT:SetSelected(page.tip,s.markTooltip)
-    page.tip:SetEnabled(s.marks); page.tip:SetAlpha(s.marks and 1 or .45)
+    page.tip:SetAlpha(s.marks and 1 or .45)
     local keys={}
     for key in pairs(self:Marks()) do keys[#keys+1]=key end
     table.sort(keys,function(a,b) return (self:Marks()[a].seen or 0)>(self:Marks()[b].seen or 0) end)
@@ -1279,7 +1279,7 @@ function markPage:Open()
         FT:Tooltip(self.alerts,"Marked player alerts","Red alert when a player you marked shows up.")
         self.tip=FT:QuietButton(frame,"",w-48,32,"tooltip"); self.tip:SetPoint("TOPLEFT",24,-104)
         if self.tip.SetMotionScriptsWhileDisabled then self.tip:SetMotionScriptsWhileDisabled(true) end
-        self.tip:SetScript("OnClick",function() local s=E:Settings(); s.markTooltip=not s.markTooltip; E:Refresh() end)
+        self.tip:SetScript("OnClick",function() local s=E:Settings(); s.markTooltip=not s.markTooltip; if s.markTooltip then s.marks=true; E:Apply() end; E:Refresh() end)
         FT:Tooltip(self.tip,"Show the mark in tooltips","Show \"Marked\" and your reason on their tooltip.")
         local mark=FT:QuietButton(frame,"Mark my target",w-48,32,"add"); mark:SetPoint("TOPLEFT",24,-142)
         mark:SetScript("OnClick",function() E:MarkUnit("target") end)

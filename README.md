@@ -1,6 +1,6 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 1.4.0.**
+**Quality-of-life tools for WoW: Forever — version 1.5.0.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
 one place. Everything starts **off**, so the game looks like Blizzard's until you
@@ -46,7 +46,10 @@ the home window. Use **`/rl`** to reload the UI.
   Add all fits your macro tab (Make room), hides macros you never use, and can
   give unlearned spells their icon so bars can be set up from level 1.
   A macro can also equip items (a weapon swap, for example): pick a slot and an
-  item you wear or carry. The **Macro guide** explains about 50 kinds of macro
+  item you wear or carry. When a better poison or mana gem arrives, or you
+  equip a new weapon your swap macros don't use, ForeverTools asks to update
+  your macros (your own too), with a main and off hand pick for weapon swaps.
+  The **Macro guide** explains about 50 kinds of macro
   with an example each, ready to add to your own macros.
   The ForeverTools logo in the game's macro window opens the macro editor.
 - **Buff reminders:** Self and group buff notices with talent-based choices,
@@ -57,6 +60,10 @@ the home window. Use **`/rl`** to reload the UI.
   Food reminders for every class: XP food (Well Fed gives 5% more experience
   from kills in Forever, while leveling or always) and stat food, each only
   while you carry that food.
+  Reagent reminder: in a city or inn, a notice when you are low on a
+  reagent your spells need (candles, Ankh, runes, seeds, powders) or, for
+  rogues, on your poisons. You set when each one counts as low. Quiet with the
+  Reagent Economy legacy talent (poisons still count).
   Notices hide in combat, except for buffs you set to also remind in combat
   (Battle Shout, for example), or all of them at once. A notice can wait until
   you have the rage, mana or energy to cast the buff.

@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "1.4.0"
+FT.version = "1.5.0"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -1081,6 +1081,18 @@ end
 function FT:ShowSwitch(button, on)
     local sw = switchParts(button)
     button.switchMode = true
+    button.ftSwitchOn = on and true or false
+    -- Turning a setting on also turns on the main switch it sits under.
+    if not button.ftFollowHooked and button.HookScript then
+        button.ftFollowHooked = true
+        -- PostClick: a page that sets its own OnClick later keeps this.
+        local follow = function(owner)
+            C_Timer.After(0, function() FT:FollowMaster(owner) end)
+            -- Pages that redraw a moment later: look once more.
+            C_Timer.After(.35, function() FT:FollowMaster(owner) end)
+        end
+        if button:GetScript("PostClick") then button:HookScript("PostClick", follow) else button:SetScript("PostClick", follow) end
+    end
     sw.track:Show(); sw.knob:Show(); sw.text:Show()
     if on then sw.track:SetVertexColor(.80, .62, .23, 1); sw.knob:SetVertexColor(1, .96, .86, 1); sw.text:SetText("On"); sw.text:SetTextColor(1, .82, 0)
     else sw.track:SetVertexColor(.27, .25, .22, 1); sw.knob:SetVertexColor(.78, .74, .66, 1); sw.text:SetText("Off"); sw.text:SetTextColor(.62, .56, .46) end
@@ -1132,6 +1144,29 @@ function FT:DimUnder(master, on)
     end
     for _, child in ipairs({page:GetChildren()}) do visit(child) end
     for _, region in ipairs({page:GetRegions()}) do if region.GetObjectType and region:GetObjectType() == "FontString" then visit(region) end end
+end
+-- A setting turned on (a switch, or a choice other than off) under a main
+-- switch that is off turns that main switch on too, so it does something
+-- right away. A setting turned off leaves the main switch as it is.
+local OFF_VALUES = {off = true, none = true, never = true, [""] = true}
+function FT:FollowMaster(control, value)
+    if not control or control.accent then return end
+    local needs = control.ftNeeds
+    if value ~= nil then
+        local off = value == false or value == 0 or (type(value) == "string" and OFF_VALUES[value:lower()])
+        if off and not (needs and needs.any) then return end
+    elseif not (control.switchMode and control.ftSwitchOn) then return end
+    -- A setting that needs another one (no main switch above it): that one.
+    if needs then
+        if not needs.get() then needs.on() end
+        return
+    end
+    local page = control.GetParent and control:GetParent()
+    local master = page and page.ftDimmed and page.ftDimmed[control]
+    if not master or master.ftDimOn ~= false or not master.switchMode or master.ftSwitchOn then return end
+    if not (master.IsShown and master:IsShown()) or not master:GetScript("OnClick") then return end
+    if InCombatLockdown() and master.IsProtected and master:IsProtected() then return end
+    master:Click()
 end
 -- Greying keeps the page's own transparency for a control (a page may fade
 -- a setting itself): the two are multiplied.
@@ -1507,6 +1542,9 @@ SlashCmdList.FOREVERTOOLS = function(message)
         else FT:DebugBox("Class color debug", function() if FT.lastColorReport then print("In the fight: " .. FT.lastColorReport); print("") end; print("Now: " .. line) end) end
     elseif command == "ringdebug" then if FT.modules.MinimapIcons then FT:DebugBox("Minimap button rings", function() FT.modules.MinimapIcons:RingDebug() end) end
     elseif command == "trackdebug" then if FT.modules.System then FT:DebugBox("Minimap tracking debug", function() FT.modules.System:TrackingDebug() end) end
+    elseif command == "weaponswap" or command == "weaponswaps" then if FT.MacroWatch then FT.MacroWatch:Open() end
+    elseif command == "iconaudit" then if FT.modules.MacroForge then FT:DebugBox("Icon audit", function() FT.modules.MacroForge:IconAudit() end) end
+    elseif command == "reagentdebug" then if FT.Reagents then FT:DebugBox("Reagents debug", function() FT.Reagents:Debug() end) end
     elseif command == "recipesdebug" then if FT.Recipes then FT:DebugBox("Recipes debug", function() FT.Recipes:Debug() end) end
     elseif command == "sr" or command == "softres" then FT:OpenModule("SoftRes")
     elseif command:match("^srtest") or command:match("^srdemo") then if FT.SoftResDemo then FT.SoftResDemo:Ask(command:match("^%a+%s+(%a+)")) end
@@ -1775,6 +1813,7 @@ function FT:ShowChoices(owner)
             row:SetScript("OnClick", function(clicked)
                 local current = menu.owner; local selected = clicked.item
                 menu:Hide(); current.onSelect(selected.value); FT:Peeked(current)
+                FT:FollowMaster(current, selected.value)
             end)
             menu.rows[index] = row
         end

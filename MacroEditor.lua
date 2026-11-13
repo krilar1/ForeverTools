@@ -27,7 +27,7 @@ function Editor:FindInstalled()
     local record = self:Record()
     local tracked = record.installed[self:CharacterKey()]
     local account, character = GetNumMacros()
-    local scope = (self.entry.class or self.entry.characterOnly) and "character" or self.scope
+    local scope = Macros:ScopeFor(self.entry)
     local first = scope == "character" and (MAX_ACCOUNT_MACROS or 120) + 1 or 1
     local count = scope == "character" and character or account
     local variants = {}
@@ -327,7 +327,7 @@ function Editor:PrepareEntry(entry, body)
     FT:FlushMacroRevision(self.entry)
     self:CreateUI(); self.pendingSave = nil
     self.entry = copy(entry); self.sourceBody = body; self.templateBody = body
-    self.scope = (entry.class or entry.characterOnly) and "character" or Macros.scope
+    self.scope = Macros:ScopeFor(entry)
     self.entryLabel:SetText(entry.name .. " • local draft")
     self.rank = "max"; self.target = "standard"; self.modifier = ""; self.spellName = entry.name
     local installed, problem = self:FindInstalled()

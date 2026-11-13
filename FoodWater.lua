@@ -149,7 +149,7 @@ function Meal:Update()
     local function ours(body) return self:Ours(body) end
     local list=FT:FollowedMacros(NAME,ours)
     if #list==0 then return 0 end
-    if InCombatLockdown() or (MacroFrame and MacroFrame.IsShown and MacroFrame:IsShown()) then self.pending=true; return 0 end
+    if InCombatLockdown() then self.pending=true; return 0 end
     self.pending=nil
     return FT:UpdateFollowed(NAME,ours,self:Body())
 end

@@ -68,6 +68,32 @@ function Layout:Apply(text)
     if not found then return false,"The game did not accept it. Import it in Edit Mode instead." end
     return true,name
 end
+-- Your own layouts (not the game's Modern and Classic): {name=, index=}
+-- (index as the game counts them, built-in ones first), and the active index.
+function Layout:Custom()
+    local list={}
+    local api=C_EditMode
+    if type(api)~="table" or not api.GetLayouts then return list end
+    local ok,info=pcall(api.GetLayouts)
+    if not ok or type(info)~="table" or type(info.layouts)~="table" then return list end
+    local base=builtInCount()
+    for i,layout in ipairs(info.layouts) do
+        local name=type(layout)=="table" and layout.layoutName
+        if type(name)=="string" and name~="" and not (issecretvalue and issecretvalue(name)) then list[#list+1]={name=name,index=base+i} end
+    end
+    return list,type(info.activeLayout)=="number" and info.activeLayout or nil
+end
+-- Switch to one of the game's layouts by its index (outside combat, Edit Mode closed).
+function Layout:Use(index)
+    if type(index)~="number" then return false end
+    if InCombatLockdown() then return false,"Outside combat." end
+    if EditModeManagerFrame and EditModeManagerFrame.IsShown and EditModeManagerFrame:IsShown() then return false,"Close Edit Mode first." end
+    local api=C_EditMode
+    if type(api)~="table" or not api.SetActiveLayout then return false end
+    local _,active=self:Custom()
+    if active==index then return true end
+    return (pcall(api.SetActiveLayout,index))
+end
 -- Whether the active layout can be read (a layout of the player's own).
 function Layout:CanRead() return (self:Read())~=nil end
 function Layout:Refresh()

@@ -68,16 +68,21 @@ local function remember(self,frame,name,again)
     end
     if #points>0 then self.originals[name]=points end
 end
+-- frame.ftGrowUp (Bags > special bag rows): how much taller than the game
+-- makes it the window is now; it grows up, so its top sits that much higher.
+local function growUp(frame) local v=frame and tonumber(frame.ftGrowUp); return v or 0 end
 function M:Place(frame,name)
     local s=self:Settings(); local p=s.frames[name]
     if not s.enabled or not p or not frame then return end
+    -- The reagent bag tucked into the all-in-one bag stays tucked away.
+    if frame.ftRowsParked or self.dragging==frame then return end
     -- Already there: nothing to do (no needless redraw of the window).
     if frame:GetNumPoints()==1 then
         local point,rel,relPoint,x,y=frame:GetPoint(1)
-        if point=="TOPLEFT" and rel==UIParent and relPoint=="BOTTOMLEFT" and safe(x) and safe(y) and math.abs(x-p.x)<.5 and math.abs(y-p.y)<.5 then return end
+        if point=="TOPLEFT" and rel==UIParent and relPoint=="BOTTOMLEFT" and safe(x) and safe(y) and math.abs(x-p.x)<.5 and math.abs(y-(p.y+growUp(frame)))<.5 then return end
     end
     if locked(frame) then self.pending[name]=true; self:WatchFight(); return end
-    frame:ClearAllPoints(); frame:SetPoint("TOPLEFT",UIParent,"BOTTOMLEFT",p.x,p.y)
+    frame:ClearAllPoints(); frame:SetPoint("TOPLEFT",UIParent,"BOTTOMLEFT",p.x,p.y+growUp(frame))
 end
 -- Back where the game puts it, right away (not only the next time it opens).
 function M:Restore(frame,name)
@@ -108,7 +113,7 @@ function M:Handle(frame,name)
 end
 function M:Start(f,name)
     local s=self:Settings()
-    if not s.enabled or not (self.moving or s.anytime) then return end
+    if not s.enabled or not (self.moving or s.anytime or self.withMovers) then return end
     if locked(f) then FT:Toast(LABEL[name].." can't be moved during a fight.",2); return end
     if not self:Settings().frames[name] then remember(self,f,name,true) end
     self.dragging=f; f:StartMoving()
@@ -118,14 +123,27 @@ function M:Stop(f,name)
     self.dragging=nil; f:StopMovingOrSizing(); self:Save(f,name)
 end
 -- The title strips take the mouse only while unlocked (Move windows / Done).
-function M:Unlocked() local s=self:Settings(); return (s.enabled and (self.moving or s.anytime)) and true or false end
+function M:Unlocked() local s=self:Settings(); return (s.enabled and (self.moving or s.anytime or self.withMovers)) and true or false end
+-- Move elements is on: open game windows can be dragged too (no bar of our
+-- own, nothing opened). Turns Move game windows on, since a moved window
+-- needs it to stay where you put it.
+function M:WithMovers(on)
+    self.withMovers=on and true or nil
+    if on then
+        local s=self:Settings()
+        if not s.enabled then s.enabled=true; self:Apply() end
+        self:AttachAll(); self:HookPanels()
+    end
+    self:Handles(self:Unlocked())
+    self:Refresh()
+end
 function M:Handles(on)
     for frame in pairs(self.known) do if frame.ftMoveHandle then frame.ftMoveHandle:EnableMouse(on and true or false) end end
 end
 function M:Save(frame,name)
     local left,top=frame:GetLeft(),frame:GetTop()
     if not (safe(left) and safe(top)) then return end
-    self:Settings().frames[name]={x=left,y=top}
+    self:Settings().frames[name]={x=left,y=top-growUp(frame)}
     -- Keep the game from saving its own copy of the place in its layout file.
     if frame.SetUserPlaced then pcall(frame.SetUserPlaced,frame,false) end
     self:Place(frame,name)

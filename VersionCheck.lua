@@ -7,6 +7,12 @@ local _,FT=...
 -- once more at the next login, until you update). Only the version number
 -- is sent; nothing else about you or your settings.
 local V={}
+-- CurseForge puts the release tag here when it packages a release (keyword
+-- substitution). Copies not from CurseForge (test builds, the repo folder)
+-- keep the placeholder: they never tell anyone their version, so nobody
+-- hears about a version that isn't out yet. They still hear about newer ones.
+local PACKAGED="@project-version@"
+function V:TestBuild() return PACKAGED:sub(1,1)=="@" end
 local PREFIX="FTVER"
 local GAP=120 -- seconds between two sends on the same channel
 local function plain(v) return v~=nil and not (issecretvalue and issecretvalue(v)) end
@@ -33,7 +39,7 @@ function V:On()
     return not s or s.versionCheck~=false
 end
 function V:Send(channel)
-    if not self:On() or not (C_ChatInfo and C_ChatInfo.SendAddonMessage) then return end
+    if not self:On() or self:TestBuild() or not (C_ChatInfo and C_ChatInfo.SendAddonMessage) then return end
     local t=GetTime()
     self.sent=self.sent or {}
     if self.sent[channel] and t-self.sent[channel]<GAP then return end

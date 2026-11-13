@@ -87,6 +87,40 @@ end
 -- Event driven: cooldown and bar changes trigger one pass (at most ten a
 -- second). While an icon is grey, look again once a second so it turns back
 -- when the cooldown ends.
+-- After a loading screen (leaving a dungeon) the game's own bars can miss a
+-- cooldown that is already running (Sprint showed ready, then the swipe came
+-- 10-15 seconds later). For a while after it, a button whose spell is cooling
+-- down but shows no swipe gets it from the game's own cooldown for that slot.
+-- Only plain values are used; the button itself is never touched, only its
+-- cooldown swipe (allowed in fights too).
+local function actionCooldown(slot)
+    if C_ActionBar and C_ActionBar.GetActionCooldown then
+        local ok,info=pcall(C_ActionBar.GetActionCooldown,slot)
+        if ok and type(info)=="table" and not (issecretvalue and issecretvalue(info)) then return info.startTime,info.duration,info.modRate end
+    end
+    if GetActionCooldown then local ok,start,duration,_,modRate=pcall(GetActionCooldown,slot); if ok then return start,duration,modRate end end
+end
+local function plainNumber(v) return type(v)=="number" and not (issecretvalue and issecretvalue(v)) end
+local function fixSwipes()
+    local now=GetTime()
+    for _,prefix in ipairs(bars) do for i=1,12 do
+        local button=_G[prefix..i]
+        local slot=button and button.action
+        local cd=button and (button.cooldown or button.Cooldown)
+        if plainNumber(slot) and slot>0 and cd and cd.SetCooldown and cd.GetCooldownTimes and button.IsVisible and button:IsVisible() then
+            local start,duration,modRate=actionCooldown(slot)
+            if plainNumber(start) and plainNumber(duration) and duration>1.5 and start>0 and start+duration>now+.5 then
+                local ok,shownStart,shownDuration=pcall(cd.GetCooldownTimes,cd)
+                if ok and plainNumber(shownStart) and plainNumber(shownDuration) then
+                    -- Not shown, or an older one: put the running cooldown on.
+                    if shownDuration<=0 or shownStart+shownDuration<(start+duration)*1000-500 then
+                        pcall(cd.SetCooldown,cd,start,duration,plainNumber(modRate) and modRate or 1)
+                    end
+                end
+            end
+        end
+    end end
+end
 local events=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_ENTERING_WORLD","ACTIONBAR_UPDATE_COOLDOWN","SPELL_UPDATE_COOLDOWN","ACTIONBAR_SLOT_CHANGED","ACTIONBAR_PAGE_CHANGED","UPDATE_BONUS_ACTIONBAR","UPDATE_SHAPESHIFT_FORM"}) do pcall(events.RegisterEvent,events,event) end
 local function pass() FT:Coalesce("cooldownStyle",update,.1) end
@@ -95,12 +129,12 @@ events:SetScript("OnEvent",function(_,event)
     pass()
     -- After a loading screen (leaving a dungeon) the cooldowns arrive a
     -- little later, often without a new event: look again for a few seconds.
-    if event=="PLAYER_ENTERING_WORLD" then recheck=5 end
+    if event=="PLAYER_ENTERING_WORLD" then recheck=20 end
 end)
 local elapsed=0
 events:SetScript("OnUpdate",function(_,dt)
     if next(icons)==nil and not hiddenSeen and recheck<=0 then elapsed=0; return end
     elapsed=elapsed+dt; if elapsed<1 then return end; elapsed=0
-    if recheck>0 then recheck=recheck-1 end
+    if recheck>0 then recheck=recheck-1; fixSwipes() end
     hiddenSeen=false; update()
 end)

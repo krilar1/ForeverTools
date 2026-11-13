@@ -30,9 +30,12 @@ function Macros:CharacterMacros()
     return list
 end
 
+-- "known" only for spells in your spellbook; a level for ones to come.
 local function levelText(entry)
-    local level = entry.learnLevel or 0
-    return level > 0 and level < 99 and ("level " .. level) or "known"
+    local level = entry.learnLevel
+    if level == 0 then return "known" end
+    if type(level) == "number" and level > 0 and level < 99 then return "level " .. level end
+    return ""
 end
 local function makeColumn(frame, x, title, hint)
     local column = {}
@@ -49,6 +52,13 @@ local function makeColumn(frame, x, title, hint)
     column.rows = {}
     return column
 end
+-- Moves a column (when the delete side is hidden, the add side moves left).
+local function placeColumn(column, x)
+    column.title:ClearAllPoints(); column.title:SetPoint("TOPLEFT", x, -100)
+    column.hint:ClearAllPoints(); column.hint:SetPoint("TOPLEFT", x, -126)
+    column.box:ClearAllPoints(); column.box:SetPoint("TOPLEFT", x, -162)
+end
+local WIDE, NARROW = 700, 380
 local function fillColumn(column, items, onToggle)
     for _, row in ipairs(column.rows) do row:Hide() end
     for index, item in ipairs(items) do
@@ -94,12 +104,17 @@ function Macros:RefreshRoom()
     local used, deleting, adding, max = self:RoomCounts()
     local total = used - deleting + adding
     local fits = total <= max
-    frame.counter:SetText(string.format("Slots: %d used  -  %d deleted  +  %d added  =  %s%d / %d|r",
-        used, deleting, adding, fits and "|cff7dff8a" or "|cffff6b6b", total, max))
+    -- With nothing to delete, only what is added counts.
+    if used == 0 then
+        frame.counter:SetText(string.format("Slots: %d added  =  %s%d / %d|r", adding, fits and "|cff7dff8a" or "|cffff6b6b", total, max))
+    else
+        frame.counter:SetText(string.format("Slots: %d used  -  %d deleted  +  %d added  =  %s%d / %d|r",
+            used, deleting, adding, fits and "|cff7dff8a" or "|cffff6b6b", total, max))
+    end
     local ready = fits and (deleting + adding) > 0
     frame.go.label:SetText(deleting > 0 and string.format("Delete %d & add %d", deleting, adding) or string.format("Add %d macros", adding))
     frame.go:SetEnabled(ready); frame.go:SetAlpha(ready and 1 or .45)
-    frame.status:SetText(fits and (adding > 0 and "It fits." or "Tick the macros you want to add.")
+    frame.status:SetText(fits and (adding > 0 and "" or "Tick the macros you want to add.")
         or string.format("Tick %d more to delete, or untick %d to add.", total - max, total - max))
     frame.status:SetTextColor(fits and 0.49 or 1, fits and 1 or 0.42, fits and 0.54 or 0.42)
 end
@@ -155,10 +170,19 @@ function Macros:OpenMakeRoom(className)
     self.room = {className = className, current = current, new = new}
     local foreign = className ~= self:PlayerClass()
     frame.intro:SetText((foreign and ("|cffff6b6bYou are a " .. self:PlayerClass() .. ", not a " .. className .. ".|r ") or "")
-        .. string.format("%d new %s macros, %d free slots. Delete some, or add fewer.", #new, className, free))
+        .. string.format(#current > 0 and "%d new %s macros, %d free slots. Delete some, or add fewer." or "%d new %s macros, %d free slots. Untick some to fit.", #new, className, free))
     -- An empty Character tab has nothing to delete: only the Add side matters.
     local hasCurrent = #current > 0
     for _, widget in ipairs({frame.left.title, frame.left.hint, frame.left.box, frame.tickUnchanged, frame.clearLeft}) do widget:SetShown(hasCurrent) end
+    -- No empty half: the window is only as wide as the add list then.
+    local width = hasCurrent and WIDE or NARROW
+    frame:SetWidth(width)
+    placeColumn(frame.right, hasCurrent and 358 or math.floor((NARROW - 318) / 2))
+    frame.intro:SetWidth(width - 48)
+    -- Narrow: the slot line and "It fits" go above the buttons, not behind them.
+    frame.counter:ClearAllPoints(); frame.counter:SetPoint("BOTTOMLEFT", 24, hasCurrent and 58 or 92)
+    frame.status:ClearAllPoints(); frame.status:SetPoint("BOTTOMLEFT", 24, hasCurrent and 32 or 70)
+    if frame.intro.SetWordWrap then frame.intro:SetWordWrap(true) end
     fillColumn(frame.left, current, function() self:RefreshRoom() end)
     fillColumn(frame.right, new, function() self:RefreshRoom() end)
     self:RefreshRoom()

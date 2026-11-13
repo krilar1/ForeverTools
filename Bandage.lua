@@ -51,6 +51,10 @@ function FT:UpdateFollowed(name,ours,body)
             if EditMacro and pcall(EditMacro,macro.index,nil,nil,body) then changed=changed+1; self:RememberFollowed(name,macro.slot,body) end
         else self:RememberFollowed(name,macro.slot,body) end
     end
+    -- The game's macro window is open: show the new text there.
+    if changed>0 and MacroFrame and MacroFrame.IsShown and MacroFrame:IsShown() then
+        if MacroFrame.Update then pcall(MacroFrame.Update,MacroFrame) elseif MacroFrame_Update then pcall(MacroFrame_Update) end
+    end
     return changed
 end
 local NAME="Bandage"
@@ -152,8 +156,9 @@ function Bandage:Update()
     if not GetMacroInfo or not EditMacro or not GetNumMacros then return 0 end
     local list=FT:FollowedMacros(NAME,function(body) return self:Ours(body) end)
     if #list==0 then return 0 end
-    -- Not in a fight, and not while you have the game's macro window open.
-    if InCombatLockdown() or (MacroFrame and MacroFrame.IsShown and MacroFrame:IsShown()) then self.pending=true; return 0 end
+    -- Not in a fight. With the game's macro window open it is updated too,
+    -- and the window shows the new text.
+    if InCombatLockdown() then self.pending=true; return 0 end
     self.pending=nil
     return FT:UpdateFollowed(NAME,function(body) return self:Ours(body) end,self:Body())
 end

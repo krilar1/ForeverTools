@@ -27,10 +27,13 @@ end
 function Bags:Settings()
     if type(FT.db.bags)~="table" then FT.db.bags={} end
     local s=FT.db.bags
-    for _,key in ipairs({"gold","view","counts","locked","buttons"}) do if type(s[key])~="boolean" then s[key]=false end end
+    for _,key in ipairs({"gold","view","counts","locked","buttons","rows"}) do if type(s[key])~="boolean" then s[key]=false end end
     for key,default in pairs({countSplit=true,countSelf=true,countGuild=true,countShift=false,countSpacer=true,countFullNames=true}) do
         if type(s[key])~="boolean" then s[key]=default end
     end
+    -- 1.5.0: full names on for everyone once (before 1.4.0 the default was
+    -- off and was saved); turning it off afterwards sticks.
+    if s.fullNamesOn~=true then s.fullNamesOn=true; s.countFullNames=true end
     if s.countStyle~="each" and s.countStyle~="total" and s.countStyle~="both" then s.countStyle="each" end
     if s.countPlace~="inside" and s.countPlace~="above" and s.countPlace~="below" then s.countPlace="inside" end
     -- Bag order (BagOrder.lua): "game" leaves the layout alone; insert and
@@ -378,16 +381,18 @@ function Bags:AddMail(c,add)
     for slot=1,(type(c.mail)=="table" and c.mail.size or 0) do local it=c.mail[slot]; if it then add(it[1],it[2] or 1,"mail") end end
     for _,it in ipairs(type(c.mailSent)=="table" and c.mailSent or {}) do add(it[1],it[2] or 1,"mail") end
 end
--- Which of your characters a mail goes to ("Name" or "Name-Realm"), on this
+-- Which of your characters a mail goes to ("Name", "Full Name" or "Name-Realm"), on this
 -- ruleset. Nil for anyone else (their mail isn't tracked).
 function Bags:CharacterNamed(recipient)
     if type(recipient)~="string" or recipient=="" or not plain(recipient) then return end
     local name,realm=recipient:match("^%s*([^%-]+)%-?(.-)%s*$")
+    name=name:match("^(.-)%s*$")
     if not name then return end
     name=name:lower()
     local ruleset=self:Ruleset()
     for guid,c in pairs(self:Store().chars) do
-        if type(c)=="table" and type(c.name)=="string" and c.name:lower()==name and sameRealm(c.realm)==ruleset
+        -- Forever names have a last name too: "Camping" or "Camping Enthusiast".
+        if type(c)=="table" and type(c.name)=="string" and (c.name:lower()==name or (type(c.fullName)=="string" and c.fullName:lower()==name)) and sameRealm(c.realm)==ruleset
             and (realm=="" or sameRealm(realm)==sameRealm(c.realm)) then return guid,c end
     end
 end
@@ -568,6 +573,27 @@ function Bags:Rulesets()
     end
     table.sort(list,function(a,b) if a==self:Ruleset() then return true elseif b==self:Ruleset() then return false end return a<b end)
     return list
+end
+-- A ruleset's short name: "CAMWOW EU4 Realm 4 PvP" -> "PvP". Two rulesets
+-- with the same short name: yours is "PvP", the other "PvP (Realm 8)".
+local function shortRuleset(name)
+    if type(name)~="string" then return "?" end
+    local rest=name:match("[Rr]ealm%s*%d+%s+(.+)$")
+    if rest and rest~="" then return rest end
+    for _,word in ipairs({"Hardcore","PvP","PvE","RP"}) do if name:find(word,1,true) then return word end end
+    return name
+end
+function Bags:RulesetLabel(key)
+    local full=(self.realmNames and self.realmNames[key]) or key
+    local short=shortRuleset(full)
+    if key==self:Ruleset() then return short end
+    for other,name in pairs(self.realmNames or {}) do
+        if other~=key and shortRuleset(name)==short then
+            local n=type(full)=="string" and full:match("[Rr]ealm%s*(%d+)")
+            return n and (short.." (Realm "..n..")") or full
+        end
+    end
+    return short
 end
 function Bags:ClassName(c,guid,full)
     local name=(full and c and c.fullName) or (c and c.name) or "?"
@@ -1329,6 +1355,7 @@ function Bags:Apply()
     if not s.view then for _,view in pairs(self.views or {}) do view:Hide() end end
     if self:Recording() then FT:Coalesce("ftBagsScan",function() self:ScanBags() end,1) end
     if FT.BagOrder then FT.BagOrder:Apply() end
+    if FT.BagRows then FT.BagRows:Apply() end
     self:Refresh()
 end
 FT:RegisterModule("Bags",Bags)
@@ -1406,6 +1433,7 @@ FT.Bags=Bags
 -- Settings pages: Bags (switches) and Characters (who is remembered) ---------
 local switches={
     {"gold","Gold tooltip","INV_Misc_Coin_02","Hover your bag's gold to see every character's gold and the total."},
+    {"rows","Quivers and soul bags on their own row","INV_Misc_Quiver_02","In the all-in-one bag, a quiver, ammo pouch, soul bag, reagent bag or other bag for one kind of item gets its own row at the bottom. Its small icon above the row, or the bag on your bag bar, hides or shows the row."},
     {"view","Bank and other characters","INV_Misc_Bag_08","Right-click your bag's portrait to see your bank from anywhere (view only). Left-click it for other characters' bags."},
     {"buttons","Extra buttons on the bag","INV_Misc_Bag_10","Bank and character buttons next to the sort button."},
     {"locked","Lock bag and bank views","INV_Misc_Key_03","Keep the view windows in place."},
@@ -1419,7 +1447,7 @@ function Bags:Refresh()
         local b=page.buttons[entry[1]]
         b.label:SetText(entry[2]..": "..(s[entry[1]] and "On" or "Off")); FT:SetSelected(b,s[entry[1]])
     end
-    for _,key in ipairs({"locked","buttons"}) do page.buttons[key]:SetEnabled(s.view); page.buttons[key]:SetAlpha(s.view and 1 or .45) end
+    for _,key in ipairs({"locked","buttons"}) do page.buttons[key]:SetAlpha(s.view and 1 or .45) end
     local st=FT.db.bagStore
     local count=0
     if type(st)=="table" and type(st.chars)=="table" then for _ in pairs(st.chars) do count=count+1 end end
@@ -1432,7 +1460,7 @@ Bags.page=page
 function page:Open()
     if not self.frame then
         local hub=FT:HubOf("BagsGeneral"); local width=hub and hub.width or 540
-        local frame=FT:Window("ForeverToolsBagsGeneral","Bags",width,420); self.frame=frame
+        local frame=FT:Window("ForeverToolsBagsGeneral","Bags",width,460); self.frame=frame
         FT:PageInfo(frame,"Bags","Extras for the game's bag window. Characters are remembered at login, on this account only.")
         local hint=FT:Label(frame,"Gold, bank and alts' bags from your bag.",12); hint:SetPoint("TOPLEFT",24,-66); hint:SetWidth(width-48); hint:SetTextColor(.66,.59,.48)
         self.buttons={}
@@ -1442,6 +1470,8 @@ function page:Open()
             if b.SetMotionScriptsWhileDisabled then b:SetMotionScriptsWhileDisabled(true) end
             b:SetScript("OnClick",function()
                 local s=Bags:Settings(); s[key]=not s[key]
+                -- These only work with the bank and character views on.
+                if s[key] and (key=="locked" or key=="buttons") then s.view=true end
                 Bags:Apply()
             end)
             FT:Tooltip(b,entry[2],entry[4])
@@ -1512,7 +1542,7 @@ function list:Refresh()
         r.heading:SetShown(heading); r.toggle:SetShown(heading); r.icon:SetShown(not heading); r.name:SetShown(not heading); r.meta:SetShown(not heading); r.forget:SetShown(not heading)
         r.headingKey=heading and row.heading or nil
         if heading then
-            local shown=(Bags.realmNames and Bags.realmNames[row.heading]) or row.heading
+            local shown=Bags:RulesetLabel(row.heading)
             r.heading:SetText((row.heading==Bags:Ruleset() and (shown.." (this ruleset)") or shown).."  |cffb8ab8a("..row.count..")|r")
             r.toggle:SetTexture(list.open[row.heading] and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up")
         elseif row.guid then

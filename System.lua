@@ -188,7 +188,8 @@ local pages={
         {"sellWhite","Also sell white gear","INV_Misc_Coin_03","Also sell white weapons and armor you don't need. Can be bought back."},
         {"autoRepair","Auto-repair","Trade_BlackSmithing","Repair your gear at merchants."},
         {"guildRepair","Use guild funds for repairs first","INV_Shirt_GuildTabard_01","Use guild repair money when allowed."},
-        {"mailAlts","Mailbox: only suggest my alts","INV_Letter_15","When you type a name to send mail to, only your own characters on this realm are suggested, not guildies first. A switch next to the To: box suggests everyone again when you need to."},
+        {"mailAlts","Mailbox: only suggest my alts","INV_Letter_15","When you type a name to send mail to, only your own characters on this realm are suggested, not guildies first. A switch next to the To: box suggests everyone again when you need to, and an arrow beside it lists your alts to pick from."},
+        {"mailGold","Mailbox: gold amount as subject","INV_Misc_Coin_01","Sending only money to one of your alts fills in the subject with the amount (12g 50s). Only an empty subject is filled; type your own any time."},
     }},
     {key="SystemErrors",title="Error messages",hint="Red text when an action fails.",items={
         {"hideErrors","Hide error messages","Ability_Rogue_Disguise","Hide the red error text (Out of range, Not enough rage...). Bag full and similar still show."},
@@ -204,7 +205,7 @@ local pages={
     }},
 }
 System.pages=pages
-local toggles={gameMenuButton=true,versionCheck=true,minimapTarget=true,hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,shortKeys=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,mailAlts=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietLogin=true,quietNoControl=true}
+local toggles={gameMenuButton=true,versionCheck=true,minimapTarget=true,hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,shortKeys=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,mailAlts=true,mailGold=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietLogin=true,quietNoControl=true}
 -- Switches that are the game's own settings: read and written directly,
 -- never stored by ForeverTools. "Unavailable" when the game has no such setting.
 local gameOptions={scriptErrors="scriptErrors",deathGlow="ffxDeath"}
@@ -257,7 +258,7 @@ function System:Values()
     if coords==nil then coords=not getter or getter("minimapShowPlayerCoords")=="1" end
     return {welcome=FT.db.welcome==true,whatsNew=s.hideWhatsNew~=true,minimap=FT.db.minimapEnabled~=false,coordinates=coords,
         minimapTarget=select(2,self:TargetTracking())==true,minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=gameOption("scriptErrors")=="1",deathGlow=gameOption("ffxDeath")~="0",
-        hiddenUIHint=s.hiddenUIHint==true,autoRole=s.autoRole==true,shortKeys=s.shortKeys==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true,mailAlts=s.mailAlts==true,
+        hiddenUIHint=s.hiddenUIHint==true,autoRole=s.autoRole==true,shortKeys=s.shortKeys==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true,mailAlts=s.mailAlts==true,mailGold=s.mailGold==true,
         hideErrors=s.hideErrors==true,errorsInCombat=s.errorsInCombat==true,quietLogin=s.quietLogin==true,quietNoControl=s.quietNoControl~=false,versionCheck=s.versionCheck~=false,gameMenuButton=s.gameMenuButton~=false}
 end
 function System:Refresh()
@@ -274,21 +275,22 @@ function System:Refresh()
             local a=FT.modules.IconStyles:Area("minimap")
             local v=key=="minimapRings" and a.addonRings or (a.groupRings==nil and a.addonRings or a.groupRings)
             button.label:SetText((key=="minimapRings" and "Rings on the minimap: " or "Rings in the group: ")..(v=="dark" and "Dark" or "Gold"))
-            if key=="groupRings" then button:SetEnabled(values.minimapIcons); button:SetAlpha(values.minimapIcons and 1 or .45) end
+            if key=="groupRings" then button:SetAlpha(values.minimapIcons and 1 or .45) end
         end
         if key=="minimapKeep" then
             local n=0; for _ in pairs(FT.modules.MinimapIcons:Kept()) do n=n+1 end
             button.label:SetText("Keep on the minimap: "..(n==0 and "None" or (n==1 and "1 button" or (n.." buttons"))))
-            button:SetEnabled(values.minimapIcons); button:SetAlpha(values.minimapIcons and 1 or .45)
+            button:SetAlpha(values.minimapIcons and 1 or .45)
         end
         if key=="minimapIconsVertical" then
             local vertical=self:Settings().minimapIconsVertical==true
             button.label:SetText("Grouped buttons: "..(vertical and "Vertical" or "Horizontal"))
-            button:SetEnabled(values.minimapIcons); button:SetAlpha(values.minimapIcons and 1 or .45)
+            button:SetAlpha(values.minimapIcons and 1 or .45)
         end
-        if key=="guildRepair" then button:SetEnabled(values.autoRepair); button:SetAlpha(values.autoRepair and 1 or .45) end
-        if key=="sellWhite" then button:SetEnabled(values.autoSell); button:SetAlpha(values.autoSell and 1 or .45) end
-        if key=="errorsInCombat" then button:SetEnabled(values.hideErrors); button:SetAlpha(values.hideErrors and 1 or .45) end
+        -- Greyed while the setting it needs is off; clicking turns both on.
+        if key=="guildRepair" then button:SetAlpha(values.autoRepair and 1 or .45) end
+        if key=="sellWhite" then button:SetAlpha(values.autoSell and 1 or .45) end
+        if key=="errorsInCombat" then button:SetAlpha(values.hideErrors and 1 or .45) end
         if key=="backups" then
             button.label:SetText("Backups and restore ("..FT.modules.Backups:Count()..")")
         end
@@ -368,6 +370,8 @@ function System:Refresh()
         end
     end
 end
+-- Settings that only work with another one on.
+local SYSTEM_NEEDS={sellWhite="autoSell",guildRepair="autoRepair",errorsInCombat="hideErrors"}
 function System:Click(key)
     if key=="minimapIcons" then FT.modules.MinimapIcons:Toggle();return end
     if key=="minimapIconsVertical" then FT.modules.MinimapIcons:ToggleVertical();return end
@@ -451,7 +455,12 @@ function System:Click(key)
     elseif key=="coordinates" then
         if s.coordinates==nil then local get=(C_CVar and C_CVar.GetCVar) or GetCVar; s.coordinates=not get or get("minimapShowPlayerCoords")=="1" end
         s.coordinates=not s.coordinates
-    else s[key]=not (s[key]==true) end
+    else
+        s[key]=not (s[key]==true)
+        -- A setting that only works with another one turns that one on too.
+        local parent=SYSTEM_NEEDS[key]
+        if s[key] and parent then s[parent]=true end
+    end
     self:Apply()
 end
 local function buildPage(page)
@@ -503,7 +512,12 @@ local function buildPage(page)
                             if value=="dark" and skins:Settings().minimap~=true then FT:Toast("Turn on Skins > Minimap for dark rings.",4) end
                             System:Refresh()
                         end)
-                elseif key=="minimapKeep" then
+                end
+                -- Grouping choices: picking one turns grouping on.
+                if key=="groupRings" or key=="minimapKeep" or key=="minimapIconsVertical" then
+                    b.ftNeeds={any=true,get=function() return System:Settings().minimapIcons==true end,on=function() System:Click("minimapIcons") end}
+                end
+                if key=="minimapKeep" then
                     b.options=function() return FT.modules.MinimapIcons:KeepChoices() end
                 elseif key=="minimapIconsVertical" then
                     FT:MakeChoice(b,{{false,"Horizontal","Side by side, a new row after 6."},{true,"Vertical","One below the other."}},
@@ -607,7 +621,7 @@ function System:TooltipLayout(tip)
     if not unit or not safeCall(UnitIsPlayer,unit) then return end
     local prefix=tip:GetName() or "GameTooltip"
     local function plain(text) return (text or ""):gsub("|c%x%x%x%x%x%x%x%x",""):gsub("|r",""):match("^%s*(.-)%s*$") end
-    local guild=safeCall(GetGuildInfo,unit)
+    local guild,guildRank=safeCall(GetGuildInfo,unit)
     local race=safeCall(UnitRace,unit)
     local class=safeCall(UnitClass,unit)
     local rows={}; local details
@@ -685,6 +699,10 @@ function System:TooltipLayout(tip)
         elseif color and color.WrapTextInColorCode then tag=color:WrapTextInColorCode(tag)
         elseif color and color.r then tag=tipModule.hex(color.r,color.g,color.b)..tag.."|r"
         else tag="|cffffffff"..tag.."|r" end
+        -- Their guild rank right behind the name (Tooltip > Guild rank), a
+        -- little smaller: a marker here, room for it in the line, and the
+        -- rank drawn over that room (Tooltip.lua, ApplyTooltip).
+        if tipSettings.guildRank and type(guildRank)=="string" and guildRank~="" then tag=tag.."{ftrank}" end
         parts.guild=tag
     end
     parts.target="|cffffd100Target: None|r"
@@ -698,9 +716,21 @@ function System:TooltipLayout(tip)
     tip:ClearLines()
     tip.ftNameLine,tip.ftDetailsLine,tip.ftTargetLine=nil,nil,nil
     tip.ftGuildOnName=false
+    tip.ftRank=nil
     for _,line in ipairs(lines) do
-        tip:AddLine(line.text,1,1,1)
+        local text=line.text
+        local at,stop=text:find("{ftrank}",1,true)
+        if at then
+            local before,after=text:sub(1,at-1),text:sub(stop+1)
+            local lineSize=line.name and ((tipSettings.name>0 and tipSettings.name) or nativeSize or 14)
+                or ((tipSettings.details>0 and tipSettings.details) or select(2,(_G[prefix.."TextLeft2"] or headingLine):GetFont()) or 12)
+            local room=tipModule:RankRoom(guildRank,headingLine,lineSize)
+            if room then text=before..room..after; tip.ftRank={before=before,rank=guildRank}
+            else text=before.." |cffb4aa96"..guildRank.."|r"..after end
+        end
+        tip:AddLine(text,1,1,1)
         local index=tip:NumLines()
+        if at and tip.ftRank then tip.ftRank.index=index end
         if line.name and not tip.ftNameLine then tip.ftNameLine=index end
         if line.details and not line.name and not tip.ftDetailsLine then tip.ftDetailsLine=index end
         if line.target then tip.ftTargetLine=index end
@@ -902,7 +932,7 @@ events:SetScript("OnEvent",function()
     System:Apply()
     if not GameTooltip or System.hooked then return end
     System.hooked=true
-    GameTooltip:HookScript("OnTooltipCleared",function(tip) System:ClearTargetPlayerDisplay(tip);tip.ftTargetLine=nil;tip.ftTargetedLine=nil;tip.ftNameLine=nil;tip.ftDetailsLine=nil;tip.ftPlayerLayout=nil;tip.ftGuildOnName=nil;tip.ftBuffSource=nil;tip.ftAddonHelp=nil;tip.ftSpellID=nil end)
+    GameTooltip:HookScript("OnTooltipCleared",function(tip) System:ClearTargetPlayerDisplay(tip);tip.ftTargetLine=nil;tip.ftTargetedLine=nil;tip.ftNameLine=nil;tip.ftDetailsLine=nil;tip.ftPlayerLayout=nil;tip.ftRank=nil;if tip.ftRankText then tip.ftRankText:Hide() end;tip.ftGuildOnName=nil;tip.ftBuffSource=nil;tip.ftAddonHelp=nil;tip.ftSpellID=nil end)
     local function showBuffSource(tip,unit,aura)
         if tip~=GameTooltip or tip.ftBuffSource or not aura then return end
         local caster=aura.sourceUnit

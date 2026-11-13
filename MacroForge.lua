@@ -20,7 +20,7 @@ local classMacros = {
         {"Fireball", 12, nil, "spell_fire_fireball02"}, {"Frostbolt", 11, nil, "spell_frost_frostbolt02"}, {"Arcane Missiles", 8, nil, "spell_nature_starfall"}, {"Polymorph", 4, nil, "spell_nature_polymorph"}, {"Counterspell", 1, nil, "spell_frost_iceshock"}, {"Fire Blast", 7, nil, "spell_fire_fireball"}, {"Scorch", 7, nil, "spell_fire_soulburn"}, {"Blink", 1, "self", "spell_arcane_blink"}, {"Frost Nova", 4, nil, "spell_frost_frostnova"}, {"Ice Block", 1, "self", "spell_frost_frost"}, {"Mana Shield", 6, "self", "spell_shadow_detectlesserinvisibility"},
     },
     Paladin = {
-        {"Holy Light", 11, "friendly", "spell_holy_holybolt"}, {"Flash of Light", 7, "friendly", "spell_holy_flashheal"}, {"Blessing of Might", 7, "friendly", "spell_holy_fistofjustice"}, {"Blessing of Wisdom", 6, "friendly", "spell_holy_sealofwisdom"}, {"Blessing of Protection", 3, "friendly", "spell_holy_sealofprotection"}, {"Blessing of Freedom", 1, "friendly", "spell_holy_sealofvalor"}, {"Blessing of Kings", 1, "friendly", "spell_magic_magearmor"}, {"Blessing of Sacrifice", 1, "friendly", "spell_holy_sealofsacrifice"}, {"Purify", 1, "friendly", "spell_holy_purify"}, {"Cleanse", 1, "friendly", "spell_holy_renew"}, {"Lay on Hands", 3, "friendly", "spell_holy_layonhands"}, {"Redemption", 5, "friendly", "spell_holy_resurrection"}, {"Judgement", 6, "startattack", "spell_holy_righteousfury"}, {"Hammer of Justice", 4, "startattack", "spell_holy_sealofmight"}, {"Holy Strike", 1, "startattack", "inv_sword_2h_ashbringercorrupt"}, {"Seal of Righteousness", 8, "self", "ability_thunderbolt"}, {"Seal of Command", 5, "self", "ability_warrior_innerrage"}, {"Seal of Wisdom", 5, "self", "spell_holy_sealofwisdom"}, {"Seal of Light", 4, "self", "spell_holy_healingaura"}, {"Consecration", 5, nil, "spell_holy_innerfire"}, {"Divine Shield", 2, "self", "spell_holy_divineshield"}, {"Divine Intervention", 1, "friendly", "spell_holy_divineintervention"},
+        {"Holy Light", 11, "friendly", "spell_holy_holybolt"}, {"Flash of Light", 7, "friendly", "spell_holy_flashheal"}, {"Blessing of Might", 7, "friendly", "spell_holy_fistofjustice"}, {"Blessing of Wisdom", 6, "friendly", "spell_holy_sealofwisdom"}, {"Blessing of Protection", 3, "friendly", "spell_holy_sealofprotection"}, {"Blessing of Freedom", 1, "friendly", "spell_holy_sealofvalor"}, {"Blessing of Kings", 1, "friendly", "spell_magic_magearmor"}, {"Blessing of Sacrifice", 1, "friendly", "spell_holy_sealofsacrifice"}, {"Purify", 1, "friendly", "spell_holy_purify"}, {"Cleanse", 1, "friendly", "spell_holy_renew"}, {"Lay on Hands", 3, "friendly", "spell_holy_layonhands"}, {"Redemption", 5, "friendly", "spell_holy_resurrection"}, {"Judgement", 6, "startattack", "spell_holy_righteousfury"}, {"Hammer of Justice", 4, "startattack", "spell_holy_sealofmight"}, {"Holy Strike", 1, "startattack", "classicon_paladin"}, {"Seal of Righteousness", 8, "self", "ability_thunderbolt"}, {"Seal of Command", 5, "self", "ability_warrior_innerrage"}, {"Seal of Wisdom", 5, "self", "spell_holy_sealofwisdom"}, {"Seal of Light", 4, "self", "spell_holy_healingaura"}, {"Consecration", 5, nil, "spell_holy_innerfire"}, {"Divine Shield", 2, "self", "spell_holy_divineshield"}, {"Divine Intervention", 1, "friendly", "spell_holy_divineintervention"},
     },
     Priest = {
         {"Lesser Heal", 3, "friendly", "spell_holy_lesserheal"}, {"Heal", 4, "friendly", "spell_holy_heal"}, {"Flash Heal", 7, "friendly", "spell_holy_flashheal"}, {"Renew", 10, "friendly", "spell_holy_renew"}, {"Power Word: Shield", 10, "friendly", "spell_holy_powerwordshield"}, {"Dispel Magic", 2, "friendly", "spell_holy_dispelmagic"}, {"Cure Disease", 1, "friendly", "spell_holy_nullifydisease"}, {"Levitate", 1, "friendly", "spell_holy_layonhands"}, {"Resurrection", 5, "friendly", "spell_holy_resurrection"}, {"Mind Blast", 9, nil, "spell_shadow_unholyfrenzy"}, {"Shadow Word: Pain", 8, nil, "spell_shadow_shadowwordpain"}, {"Mind Flay", 6, nil, "spell_shadow_siphonmana"}, {"Psychic Scream", 4, nil, "spell_shadow_psychicscream"}, {"Silence", 1, nil, "spell_shadow_impphaseshift"},
@@ -50,7 +50,7 @@ end
 
 -- Eat & Drink (FoodWater.lua): eats when hurt, drinks when mana is low. Its
 -- text follows your health, mana and bags, so it keeps its own name.
-table.insert(classMacros.Mage,1,{"Eat & Drink",1,"generic","inv_misc_food_73",
+table.insert(classMacros.Mage,1,{"Eat & Drink",1,"generic","inv_misc_food_73cinnamonroll",
     function() return KT.modules.FoodWater and KT.modules.FoodWater:Body() or "#showtooltip" end,nil,
     "One button for conjured food and water: eats when hurt, drinks when low on mana, conjures more when you run out. Kept up to date, also if renamed. Edit it yourself and it is left alone.",named=true})
 -- Teleports and portals are spells you click from the spellbook once in a
@@ -110,6 +110,7 @@ for _, base in ipairs({"Instant Poison", "Deadly Poison", "Crippling Poison", "M
     addFamily(base, "item", members)
 end
 addFamily("Conjure Mana Agate", "spell", {"Conjure Mana Agate", "Conjure Mana Jade", "Conjure Mana Citrine", "Conjure Mana Ruby"})
+MacroForge.FAMILIES = FAMILIES
 function MacroForge:Family(name) return type(name) == "string" and familyOf[name:lower()] or nil end
 -- Members you have now, worst first, by the names the game uses.
 function MacroForge:FamilyAvailable(fam)
@@ -202,19 +203,25 @@ MacroForge.UpdatePoisonMacros = MacroForge.UpdateFamilyMacros
 do
     local watch = CreateFrame("Frame")
     for _, e in ipairs({"BAG_UPDATE_DELAYED", "PLAYER_REGEN_ENABLED", "PLAYER_LOGIN", "SPELLS_CHANGED", "LEARNED_SPELL_IN_TAB"}) do pcall(watch.RegisterEvent, watch, e) end
+    -- New versions in your bags or spellbook: MacroWatch.lua asks before
+    -- changing your macros (or does it by itself, as you chose).
     watch:SetScript("OnEvent", function()
         if not KT.dbReady then return end
         local _, class = UnitClass("player"); if class ~= "ROGUE" and class ~= "MAGE" then watch:UnregisterAllEvents(); return end
-        if KT.Coalesce then KT:Coalesce("familyMacros", function() MacroForge:UpdateFamilyMacros() end, 1) else MacroForge:UpdateFamilyMacros() end
+        if KT.MacroWatch then KT:Coalesce("familyMacros", function() KT.MacroWatch:CheckFamilies() end, 1) end
     end)
 end
-local POISON_NOTE = "Left-click puts it on your main hand, right-click on your off hand (a key bind counts as a left-click). It uses the newest version in your bags and updates by itself when you get a better one (or pick an earlier one). If the weapon already has a poison, the game asks first, unless Auto-replace poison is on."
+local POISON_NOTE = "Left-click puts it on your main hand, right-click on your off hand (a key bind counts as a left-click). It uses the newest version in your bags. When you get a better one, ForeverTools asks to update your macros (Macro settings > Update macros), or pick an earlier one. If the weapon already has a poison, the game asks first, unless Auto-replace poison is on."
 
 local genericMacros = {
     {"1-shot combo", 1, "generic", "spell_nature_bloodlust", "#showtooltip"},
     {"Start attack", 1, "generic", "inv_sword_04", "#showtooltip\n/startattack"},
     {"Stop casting", 1, "generic", "spell_shadow_teleport", "#showtooltip\n/stopcasting"},
     {"Focus mouseover", 1, "generic", "ability_hunter_snipershot", "#showtooltip\n/focus [@mouseover,exists]"},
+    -- One button: with a focus it clears it ("none" focuses nothing), else
+    -- it focuses your target. One line, so both checks see the same state.
+    {"Focus", 1, "generic", "spell_holy_mindvision", "#showtooltip\n/focus [@focus,exists] none; [@target,exists] target", nil,
+        "Click: focus your target. Click again: clear the focus."},
     {"Role Poll", 1, "generic", "spell_holy_powerwordshield", "#showtooltip\n/run InitiateRolePoll()"},
     {"Party GZ", 1, "generic", "inv_misc_rabbit", "#showtooltip GZ\n/P GZ!!!\n/P (\\ /)\n/P (^_^)\n/p (*(\")(\")", "#showtooltip\n/P GZ!!!\n/P (\\ /)\n/P (^_^)\n/p (*(\")(\")"},
     {"Target nearest enemy", 1, "generic", "ability_hunter_assassinate2", "#showtooltip\n/targetenemy [noharm][dead]\n/startattack"},
@@ -436,7 +443,9 @@ function MacroForge:CreateCustom(name,forClass)
     self:Status("Macro created at the top. Add spells or edit it, then Add.")
 end
 function MacroForge:RefreshNewPanel()
-    KT:SetSelected(self.newGeneric,not self.newClass)
+    local general=not self.newClass and self.newScope=="account"
+    if self.newGeneral then KT:SetSelected(self.newGeneral,general) end
+    KT:SetSelected(self.newGeneric,not self.newClass and not general)
     KT:SetSelected(self.newClassButton,self.newClass==true)
 end
 
@@ -445,6 +454,8 @@ end
 -- means a wrong name can never show as an empty square.
 local iconIDs = {}
 local function iconFile(name)
+    -- A number is the icon's file ID (new Forever icons have no name yet).
+    if type(name) == "string" and name:match("^%d+$") then return tonumber(name) end
     if type(name) ~= "string" or name == "" or not GetFileIDFromPath then return nil end
     local key = name:lower()
     if iconIDs[key] == nil then
@@ -453,7 +464,73 @@ local function iconFile(name)
     end
     return iconIDs[key] or nil
 end
+-- Where a macro goes: class and race macros to Character; your own macros
+-- where you put them (General or Character); the rest by Settings > Save to.
+function MacroForge:ScopeFor(entry)
+    if entry.class or entry.characterOnly or entry.category == "racial" then return "character" end
+    if entry.toGeneral then return "account" end
+    if entry.saveTo == "account" or entry.saveTo == "character" then return entry.saveTo end
+    return self.scope == "account" and "account" or "character"
+end
+-- The icon a macro's text shows, the way the game picks it: #showtooltip's
+-- spell or item, else the first /cast or /use. Gear slots (13, 14), bag
+-- slots, item IDs, items and spells by name. Nil when it can't tell yet.
+local function plainTexture(t) if t == nil or (issecretvalue and issecretvalue(t)) then return nil end return t end
+local function firstOption(rest)
+    rest = rest:gsub("%b[]", " ")
+    for part in (rest .. ";"):gmatch("([^;]*);") do
+        part = part:gsub("^%s*reset=%S+%s*", ""):match("^%s*(.-)%s*$")
+        part = part:match("^([^,]+)") or part
+        part = part and part:match("^%s*!?(.-)%s*$")
+        if part and part ~= "" then return part end
+    end
+end
+local function actionIcon(what, preferItem)
+    if not what or what == "" then return nil end
+    local slot = tonumber(what)
+    if slot and slot >= 1 and slot <= 19 then return plainTexture(GetInventoryItemTexture and GetInventoryItemTexture("player", slot)) end
+    local bag, bagSlot = what:match("^(%d+)%s+(%d+)$")
+    if bag and C_Container and C_Container.GetContainerItemInfo then
+        local ok, info = pcall(C_Container.GetContainerItemInfo, tonumber(bag), tonumber(bagSlot))
+        return ok and type(info) == "table" and plainTexture(info.iconFileID) or nil
+    end
+    local id = what:match("^item:(%d+)")
+    local function item()
+        local key = id and tonumber(id) or what
+        if C_Item and C_Item.GetItemIconByID then local ok, t = pcall(C_Item.GetItemIconByID, key); t = ok and plainTexture(t); if t then return t end end
+        if GetItemIcon then local ok, t = pcall(GetItemIcon, key); return ok and plainTexture(t) or nil end
+    end
+    local function spell()
+        if id then return nil end
+        if C_Spell and C_Spell.GetSpellTexture then local ok, t = pcall(C_Spell.GetSpellTexture, what); return ok and plainTexture(t) or nil end
+        if GetSpellTexture then local ok, t = pcall(GetSpellTexture, what); return ok and plainTexture(t) or nil end
+    end
+    if preferItem then return item() or spell() end
+    return spell() or item()
+end
+function MacroForge:BodyIcon(body)
+    if type(body) ~= "string" or body == "" then return nil end
+    local shown
+    for line in (body .. "\n"):gmatch("([^\n]*)\n") do
+        local cmd, rest = line:match("^%s*([#/][%a]+)%s*(.-)%s*$")
+        cmd = cmd and cmd:lower()
+        if cmd == "#showtooltip" or cmd == "#show" then
+            if rest ~= "" then shown = firstOption(rest); if shown then return actionIcon(shown, false) end end
+        elseif cmd == "/use" or cmd == "/equip" or cmd == "/equipslot" then
+            local what = firstOption(rest)
+            if cmd == "/equipslot" and what then what = what:match("^%d+%s+(.+)$") or what end
+            if what then return actionIcon(what, true) end
+        elseif cmd == "/cast" or cmd == "/castsequence" or cmd == "/castrandom" then
+            local what = firstOption(rest); if what then return actionIcon(what, false) end
+        end
+    end
+end
 function MacroForge:IconForEntry(entry)
+    if entry.category == "custom" then
+        local body = KT:MacroBody(entry, self:DefaultBody(entry))
+        local live = self:BodyIcon(body)
+        if live then return live end
+    end
     if entry.category == "classPicker" or entry.category == "generic" then return "Interface\\Icons\\" .. (entry.icon or "INV_MISC_QUESTIONMARK") end
     if entry.fixedIcon and iconFile(entry.icon) then return iconFile(entry.icon) end
     local texture
@@ -463,7 +540,7 @@ function MacroForge:IconForEntry(entry)
     -- The generic book is what the game reports for some class skills: a
     -- named icon from the list is better.
     if texture and texture == iconFile("INV_Misc_Book_09") and iconFile(entry.icon) and entry.icon:lower() ~= "inv_misc_book_09" then texture = nil end
-    return texture or entry.liveIcon or (self.futureIcons and self.futureIcons[entry.name]) or iconFile(entry.icon) or iconFile("INV_Misc_Book_09") or 134400
+    return texture or entry.liveIcon or (self.futureIcons and self.futureIcons[entry.name]) or self:SeenIcon(entry.class, entry.name) or iconFile(entry.icon) or iconFile("INV_Misc_Book_09") or 134400
 end
 function MacroForge:ClassIcon(className)
     return "Interface\\Icons\\" .. (classIcons[className] or "INV_Misc_QuestionMark")
@@ -649,7 +726,7 @@ function MacroForge:CreateEntry(entry, confirmed)
         self.skipReason = "exists"
         return false
     end
-    local scope = entry.toGeneral and "account" or ((entry.class or entry.characterOnly) and "character" or self.scope)
+    local scope = self:ScopeFor(entry)
     local accountCount, characterCount = GetNumMacros()
     -- The client is authoritative. Some beta builds expose stale slot constants;
     -- do not reject a valid creation merely because a guessed limit was reached.
@@ -759,13 +836,76 @@ function MacroForge:LearnLevels()
             end
         end)
     end
+    self:RememberIcons(icons)
     return ok and levels or {}
 end
+-- The game's own icon for every spell a character has seen (learned, in the
+-- spellbook for later, or a talent), kept per class for the whole account.
+-- Lists use it before the built-in icon names, so a spell shows its real
+-- icon on every character and in other classes' lists once seen anywhere.
+function MacroForge:RememberIcons(future)
+    local class = classKey(); if not class or not KT.dbReady then return end
+    if type(KT.db.spellIcons) ~= "table" then KT.db.spellIcons = {} end
+    local store = KT.db.spellIcons[class]; if type(store) ~= "table" then store = {}; KT.db.spellIcons[class] = store end
+    -- The generic book (what the game shows for some class skills) is never kept.
+    local bookIcon = iconFile("INV_Misc_Book_09")
+    for name, id in pairs(future or {}) do if type(id) == "number" and id > 0 and id ~= bookIcon then store[name] = id end end
+    local book = KT.modules.CustomKeybinds
+    local ok, spells = pcall(book and book.LearnedSpells or function() end, book)
+    if ok and type(spells) == "table" then
+        for _, spell in ipairs(spells) do
+            if type(spell.name) == "string" and type(spell.icon) == "number" and spell.icon > 0 and not (issecretvalue and issecretvalue(spell.icon)) and spell.icon ~= bookIcon then store[spell.name] = spell.icon end
+        end
+    end
+end
+function MacroForge:SeenIcon(className, name)
+    local all = KT.db and KT.db.spellIcons
+    local store = type(all) == "table" and all[className]
+    local id = type(store) == "table" and store[name]
+    return type(id) == "number" and id > 0 and id or nil
+end
+-- /ft iconaudit: your class's macros whose built-in icon differs from the
+-- game's. Kept in your saved settings too, so the list can be fixed.
+function MacroForge:IconAudit()
+    local class = classKey(); if not class then return end
+    self:LearnLevels()
+    local lines, wrong = {}, {}
+    local book = KT.modules.CustomKeybinds
+    for _, entry in ipairs(self:BulkEntries(class)) do
+        if entry.icon and not entry.fixedIcon and entry.category ~= "generic" then
+            local listed = iconFile(entry.icon)
+            local game = entry.liveIcon or (self.futureIcons and self.futureIcons[entry.name]) or self:SeenIcon(class, entry.name)
+            if game == iconFile("INV_Misc_Book_09") then game = nil end
+            if not listed then
+                lines[#lines + 1] = entry.name .. ": built-in icon " .. entry.icon .. " doesn't exist" .. (game and (", game uses " .. game) or "")
+                wrong[entry.name] = {listed = entry.icon, game = game or false}
+            elseif game and game ~= listed then
+                lines[#lines + 1] = entry.name .. ": built-in " .. entry.icon .. " (" .. listed .. "), game uses " .. game
+                wrong[entry.name] = {listed = entry.icon, game = game}
+            end
+        end
+    end
+    if type(KT.db.iconAudit) ~= "table" then KT.db.iconAudit = {} end
+    KT.db.iconAudit[class] = wrong
+    print("|cffffd100ForeverTools icon audit (" .. class .. "):|r " .. (#lines == 0 and "every icon matches the game." or (#lines .. " differ:")))
+    for _, l in ipairs(lines) do print("  " .. l) end
+end
+-- Learned from a book, not a trainer: listed for your own class only once
+-- you know them (plain Polymorph is always there).
+local BOOK_SPELLS = {["Polymorph: Pig"] = true, ["Polymorph: Turtle"] = true}
+MacroForge.BOOK_SPELLS = BOOK_SPELLS
 function MacroForge:BulkEntries(className)
     className = className or self:BulkClass()
     local entries = {}
     addEntries(entries, classMacros[className], className, nil, "class")
     self:AddLearnedEntries(entries,className)
+    if className == classKey() then
+        local levels = self:LearnLevels()
+        for i = #entries, 1, -1 do
+            local name = entries[i].name
+            if BOOK_SPELLS[name] and levels[name] ~= 0 and not entries[i].fromSpellbook then table.remove(entries, i) end
+        end
+    end
     -- Your own class: spells you know first, then by the level you learn them,
     -- so running out of macro slots only affects spells for later levels.
     if className == classKey() then
@@ -1276,11 +1416,23 @@ function MacroForge:SetEquipLine(slot,name)
         else self:Status("This macro now equips "..name..".") end
     end
 end
+-- The icon of an item a macro equips: from what you wear and carry, else
+-- the game's item data; nil when unknown.
+function MacroForge:EquipIcon(slot,name)
+    if not name or name=="" then return nil end
+    local list=(slot==16 or slot==17) and self:WeaponChoices(slot) or (self.EquipChoices and self:EquipChoices(slot)) or {}
+    for _,entry in ipairs(list) do if entry.value==name and entry.icon then return entry.icon end end
+    local instant=(C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    if instant then local ok,_,_,_,_,icon=pcall(instant,name); if ok and plain(icon) and icon then return icon end end
+end
+local HAND_ART={[16]="Interface\\PaperDoll\\UI-PaperDoll-Slot-MainHand",[17]="Interface\\PaperDoll\\UI-PaperDoll-Slot-SecondaryHand"}
 function MacroForge:RefreshEquip()
     for slot,drop in pairs(self.handDrops or {}) do
         local current=self:EquipLine(slot)
         drop.value=current or ""
         drop.label:SetText(current and self:ColoredItem(current,self:EquipQuality(slot,current)) or "No swap")
+        -- The chosen weapon's icon; the empty hand when there is no swap.
+        if drop.icon then drop.icon:SetTexture(self:EquipIcon(slot,current) or HAND_ART[slot]) end
         KT:SetSelected(drop,current~=nil)
     end
     if not self.equipSlot or not self.equipItem then return end
@@ -1292,6 +1444,7 @@ function MacroForge:RefreshEquip()
     local current=self:EquipLine(slot)
     self.equipItem.value=current or ""
     self.equipItem.label:SetText(current and self:ColoredItem(current,self:EquipQuality(slot,current)) or "Choose an item")
+    if self.equipItem.icon then self.equipItem.icon:SetTexture(self:EquipIcon(slot,current) or "Interface\\Icons\\Trade_Engineering") end
 end
 function MacroForge:RenderHistory()
     if not self.historyPanel or not self.selectedMacro then return end

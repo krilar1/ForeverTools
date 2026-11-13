@@ -1,3 +1,37 @@
+# ForeverTools 1.5.0 (2026-11-13)
+
+## New
+- **Reagent reminder** (Buff reminders → Your buffs → Reagents, off at first): in a city or inn, a notice when you are low on a reagent your spells need: Holy and Sacred Candles, Ankh, Runes of Teleportation and Portals, Arcane Powder, Light Feathers, seeds and berries, Symbols, Flash and Blinding Powder and more. It reads which reagents from your spells, so you only hear about the ones you use. Rogues are also reminded about the poisons they use. **Low amounts** sets when each one counts as low (0: never); for example under 3 Ankhs, under 5 runes, under 10 candles. Quiet with the Reagent Economy legacy talent (poisons still count). `/ft reagentdebug` shows what it reads.
+
+- **Update macros** (Macro settings, Ask at first): when a better poison or mana gem is in your bags, ForeverTools asks "Instant Poison III is in your bags. Update 2 macros?" (Update, Not now, Always). Your own macros count too: the old name is swapped for the new one, whole names only. Asked once per new version.
+- **New weapons and weapon swaps:** when you equip a weapon none of your swap macros uses in place of one they use, a window shows each group of macros with what they put in your main hand and off hand: for example Sinister Strike (sword in the main hand, dagger in the off hand) and Backstab and Ambush (the other way round). The new weapon is already put in wherever the old one was; change any hand, then Update macros. Asked once per weapon; never in a fight; `/ft weaponswap` opens it any time. Update macros can also be set to Automatically or Off.
+
+- **Settings turn on what they need:** turning on a setting (or picking a choice other than Off) under a main switch that is off now turns that main switch on too, everywhere in ForeverTools: for example XP food or Stat food turns on Self reminders, Also sell white gear turns on Auto-sell, Also my group turns on Thank for buffs. Settings that needed another one are no longer locked while it's off; they stay greyed until you click them. Turning a setting off leaves the main switch as it is.
+- **Skins:** changing a group's look (style, colors, transparency, shadow) while none of its parts is skinned turns them all on, so you see the change. If any part is on, your switches are left as they are. The bank keeps its own switch.
+- **Quivers and soul bags on their own row** (Bags, off at first): in the all-in-one bag, a quiver, ammo pouch, soul bag or other bag for one kind of item gets its own row at the bottom, instead of being mixed in with your other slots. The bag's small icon in the bag's bottom bar hides or shows it; so does clicking that bag on your bag bar while your bag is open. Remembered per character. Works with Bag order. The reagent bag too: its slots sit in their own row instead of a separate window; its icon (or the bag on your bag bar) opens and closes it.
+- **New character: Edit Mode layout.** If you have made Edit Mode layouts of your own, the new character window also asks which one this character uses (yours suggested, the one you use first; or Don't change). Without your own layouts nothing changes.
+- **Characters list:** rulesets show their short name ("PvP" instead of "CAMWOW EU4 Realm 4 PvP").
+- **Macros: your own macros to General.** New macro now asks General (all your characters), Character or My class, and remembers it. Any generic or own macro's ... menu has "Add to General macros" (or Character) for one click.
+- **Macros: icons follow the text.** Your own macros show the icon of what they use (a trinket in slot 13, an item, a spell), and change at once when you swap gear, type or learn a spell.
+- **Move elements moves game windows too.** While Move elements is on, open game windows (bags, character, spellbook...) can be dragged by their title bar as well. Nothing extra opens. Turns on Move game windows so they stay where you put them.
+- **Tooltip: guild rank** (Tooltip → Extras, off at first): their guild rank right behind the guild name, a little smaller: "<Guild> Officer".
+- **New generic macro: Focus.** One button: click to focus your target, click again to clear the focus.
+- **Mailbox alt list:** a small arrow next to the "Only my alts" icon lists your characters on this realm and faction, with class icon, class colour and full name. Pick one to fill in the name. The To: box is now as wide as the Subject box, with both buttons just right of it, so full names fit; the postage moves up beside the close button.
+- **Mailbox: gold amount as subject** (System → Loot, merchant and mail, off at first): sending only money to one of your alts fills in the subject with the amount ("12g 50s"). Only an empty subject is filled, never for C.O.D. or mail with items; type your own any time.
+
+## Fixes
+- **Bandage and Eat & Drink macros** also update while the game's macro window is open (they waited until it was closed), and the Macros page shows their current text.
+- **Diminishing returns:** Blind and Confounding Flash were missing; they count as fears and disorients now.
+- **Item counts: full character names** are now on for everyone (it was saved as off from before 1.4.0). You can still turn it off in Appearance → Item counts.
+- **Item counts: mail to your alts** now counts when you write their full name ("Camping Enthusiast"), not only the first name.
+- **Macro icons:** ForeverTools remembers the game's own icon for every spell your characters have seen (learned, coming later in the spellbook, or a talent) and uses it in the macro lists, also in other classes' lists. The Eat & Drink icon was missing. `/ft iconaudit` lists built-in icons that differ from the game's. Forever's new spells (Divine Grace, Contingency Plan, Seal of Fury, Shank, Call of the Elements and others) had a book icon; they, Holy Strike, Devouring Plague, Teleport: Dalaran, Curse of Weakness, Create Soulstone and Create Firestone now use Forever's own icons.
+- **Make room** is only as wide as the add list when your Character tab is empty (no empty half).
+- **Polymorph: Pig and Turtle** (learned from books) are only listed once you know them; "known" is only shown for spells you know.
+- **Weapon swap icons** in the macro editor (Main hand / Off hand) show the chosen weapon instead of an empty slot.
+- **Interrupt bar shows your whole group:** a mage's Counterspell, a warrior's Pummel, a rogue's Kick, a shaman's Earth Shock, a paladin's Hammer of Justice, a druid's Bash, and a warlock's Spell Lock (with a Felhunter out) show as soon as they join, even without ForeverTools. Before, they only showed after the game let you see them use it, which it often hides in fights. When someone uses another interrupt (a warrior's Shield Bash), that one replaces the guess.
+- **Cooldowns after a loading screen:** leaving a dungeon, a spell on cooldown (Sprint, for example) could look ready on your bars for 10–15 seconds. For a short while after a loading screen, ForeverTools puts the missing cooldown on the button.
+- **Interrupt bar:** no "Ready" text; a row only shows the seconds while it cools down.
+
 # ForeverTools 1.4.0 (2026-11-11)
 
 ## New

@@ -65,6 +65,16 @@ function M:DefaultBody(entry)
 end
 -- Already in your WoW macros (its normal text, or the text you edited here)?
 local followers = {["Eat & Drink"] = "FoodWater", Bandage = "Bandage"}
+-- The text shown in the editor. Macros that follow your bags (Bandage, Eat &
+-- Drink) show what is in your bags now, unless you wrote your own text.
+function M:PreviewBody(entry)
+    local live = self:BuildMacro(entry)
+    local body = KT:MacroBody(entry, live)
+    local follow = followers[entry.name] and KT.modules[followers[entry.name]]
+    if follow and follow.Ours and body ~= live and follow:Ours(body) then return live end
+    return body
+end
+M.followers = followers
 function M:IsAdded(entry)
     if not GetNumMacros or not GetMacroInfo then return false end
     -- Macros kept up to date are found under any name (renamed to blank, say).
@@ -126,6 +136,14 @@ function M:RowMenu(owner, entry)
     elseif entry.category == "custom" then
         list[#list + 1] = {value = "delete", label = "Delete for good", icon = "Interface\\RaidFrame\\ReadyCheck-NotReady", tooltip = "Delete this macro for good. Asks first."}
     end
+    -- Your own and generic macros: the other tab in one click.
+    local free = not (entry.class or entry.characterOnly or entry.category == "racial")
+    if not hidden and free and not self:IsAdded(entry) then
+        local other = self:ScopeFor(entry) == "account" and "character" or "account"
+        list[#list + 1] = {value = "to:" .. other, label = other == "account" and "Add to General macros" or "Add to Character macros",
+            icon = other == "account" and "Interface\\Icons\\" .. KT.icons.general or self:ClassIcon(classKey()),
+            tooltip = other == "account" and "Shared by all your characters." or "Only this character."}
+    end
     local body = self:DefaultBody(entry)
     if KT:MacroBody(entry, body) ~= body then
         list[#list + 1] = {value = "default", label = "Restore its original text", icon = "Interface\\Icons\\" .. KT.icons.reset, tooltip = "Forget your edits. Asks first."}
@@ -133,7 +151,16 @@ function M:RowMenu(owner, entry)
     owner.options = function() return list end
     owner.value = nil; owner.menuWidth = 240
     owner.onSelect = function(value)
-        if value == "hide" then self:SetHidden(entry, true)
+        if type(value) == "string" and value:sub(1, 3) == "to:" then
+            local scope = value:sub(4)
+            -- Your own macro remembers where it goes; a built-in one goes there once.
+            if entry.category == "custom" then entry.saveTo = scope; self:QuickAdd(entry)
+            else
+                local saved = entry.saveTo; entry.saveTo = scope
+                self:QuickAdd(entry); entry.saveTo = saved
+            end
+            if self.selectedMacro == entry then self:UpdateAddButton() end
+        elseif value == "hide" then self:SetHidden(entry, true)
         elseif value == "delete" then self:DeleteEntry(entry)
         elseif value == "default" then
             KT:Confirm("Restore the original text of " .. entry.name .. "? Your edits are forgotten.", function()
@@ -166,7 +193,7 @@ local function makeRow(self)
     row.more.label:ClearAllPoints(); row.more.label:SetPoint("CENTER", 0, 3)
     if row.more.icon then row.more.icon:Hide() end
     row.more:SetScript("OnClick", function(owner) if row.entry then self:RowMenu(owner, row.entry) end end)
-    KT:Tooltip(row.more, "More", "Hide, remove, or restore its original text.")
+    KT:Tooltip(row.more, "More", "Add to the other tab, hide, remove, or restore its original text.")
     row.action = KT:QuietButton(row, "Add", 104, 32); row.action:SetPoint("RIGHT", row.more, "LEFT", -6, 0)
     if row.action.icon then row.action.icon:Hide() end
     row.action.label:ClearAllPoints(); row.action.label:SetPoint("CENTER", 0, 0)
@@ -188,6 +215,14 @@ local function makeRow(self)
     return row
 end
 function M:UpdateFilters() end
+-- Icons follow the game: gear you equip, items the game has just loaded,
+-- spells you learn. Only the rows on screen, a moment after the change.
+function M:RefreshIcons()
+    if not (self.uiReady and self.frame and self.frame:IsShown()) then return end
+    for _, row in ipairs(self.rows or {}) do
+        if row:IsShown() and row.entry then row.icon:SetTexture(self:IconForEntry(row.entry)) end
+    end
+end
 function M:RenderList()
     if not self.uiReady then return end
     local view = self.view or "class"
@@ -299,7 +334,7 @@ function M:UpdatePreview()
     self.mouseoverButton.label:SetText(showMouseover and ((self.mouseover and "Mouseover: On" or "Mouseover: Off") .. (own and " *" or "")) or "Mouseover: not for this one")
     KT:SetSelected(self.mouseoverButton, showMouseover and self.mouseover)
     self.loadingPreview = true
-    self.preview:SetText(KT:MacroBody(entry, self:BuildMacro(entry)))
+    self.preview:SetText(self:PreviewBody(entry))
     self.loadingPreview = false
     self:UpdateScopeButton()
     self:UpdateDefaultButton()
@@ -312,7 +347,7 @@ function M:UpdateDefaultButton()
 end
 function M:UpdateAddButton()
     local entry = self.selectedMacro; if not entry or not self.addButton then return end
-    local character = entry.class or entry.characterOnly or entry.category == "racial" or self.scope ~= "account"
+    local character = self:ScopeFor(entry) == "character"
     local added = self:IsAdded(entry)
     -- Already in your macros: saving writes your changes into it.
     self.addButton.label:SetText(added and "Save changes to your macro" or ("Save to " .. (character and "Character" or "General") .. " macros"))
@@ -343,6 +378,11 @@ function M:UpdateIconsButton()
     local on = KT.db.macroUnlearnedIcons == true
     self.iconsButton.label:SetText("Icons for unlearned spells: " .. (on and "On" or "Off"))
     KT:SetSelected(self.iconsButton, on)
+end
+function M:UpdateUpdatesButton()
+    if not self.updatesButton then return end
+    local mode = KT.MacroWatch and KT.MacroWatch:Mode() or "ask"
+    self.updatesButton.label:SetText("Update macros: " .. ({ask = "Ask", auto = "Automatically", off = "Off"})[mode])
 end
 function M:UpdatePoisonButton()
     local on = KT.db.macroPoisonConfirm == true
@@ -393,7 +433,8 @@ function M:CreateCustom(name, forClass)
     local catalogue = class and D.classMacros[class] or D.genericMacros
     for _, entry in ipairs(catalogue or {}) do if entry[1] == name then self:Status("That name already belongs to a built-in macro.", true); return end end
     KT.db.customMacros = type(KT.db.customMacros) == "table" and KT.db.customMacros or {}
-    local entry = {name = name, code = "#showtooltip", class = class, category = "custom", icon = "INV_Misc_Note_01", kind = "custom"}
+    local entry = {name = name, code = "#showtooltip", class = class, category = "custom", icon = "INV_Misc_Note_01", kind = "custom",
+        saveTo = not class and (self.newScope == "account" and "account" or "character") or nil}
     KT.db.customMacros[#KT.db.customMacros + 1] = entry
     self.newPanel:Hide()
     self.counts = nil
@@ -439,6 +480,7 @@ function M:CreateEditor(frame)
         if self.selectedMacro and userInput and not self.loadingPreview then
             KT:StoreMacroBody(self.selectedMacro, box:GetText())
             self:UpdateDefaultButton(); self:RefreshQuickButtons()
+            if self.selectedMacro.category == "custom" then self:RefreshIcons() end
         end
     end)
     self.preview:SetScript("OnEditFocusLost", function() KT:FlushMacroRevision(self.selectedMacro) end)
@@ -490,7 +532,7 @@ function M:CreateEditor(frame)
         self:UpdatePreview()
         if self.UpdateFamilyMacros then self:UpdateFamilyMacros() end
     end)
-    KT:Tooltip(self.familyButton, "Version", "Newest: the macro uses the best one you have and updates by itself. Or pick an earlier one to keep.")
+    KT:Tooltip(self.familyButton, "Version", "Newest: the macro uses the best one you have; when a better one comes, you are asked to update (Macro settings > Update macros). Or pick an earlier one to keep.")
     local HALF = math.floor((FULL - 8) / 2)
     self.mouseoverButton = KT:QuietButton(detail, "", FULL - 172, 30, "mouseover"); self.mouseoverButton:SetPoint("TOPLEFT", 184, -156)
     if self.mouseoverButton.SetMotionScriptsWhileDisabled then self.mouseoverButton:SetMotionScriptsWhileDisabled(true) end
@@ -566,7 +608,7 @@ function M:CreateUI()
     self.bulkButton:SetScript("OnClick", function() self:ConfirmBulk(); C_Timer.After(0, function() self:Changed() end) end)
     KT:Tooltip(self.bulkButton, "Add the missing ones", function() return "Add every " .. self:BulkClass() .. " macro not in your Character macros yet. Ones you have are left alone." end)
     self.newButton = KT:AccentButton(frame, "+ New macro", 220, 30, "add"); self.newButton:SetPoint("TOPRIGHT", -24, -62)
-    self.newButton:SetScript("OnClick", function() self.newName:SetText(""); self.newClass = false; self:RefreshNewPanel(); self.newPanel:Show(); if self.newName.SetFocus then self.newName:SetFocus() end end)
+    self.newButton:SetScript("OnClick", function() self.newName:SetText(""); self.newClass = false; self.newScope = self.scope == "account" and "account" or "character"; self:RefreshNewPanel(); self.newPanel:Show(); if self.newName.SetFocus then self.newName:SetFocus() end end)
     KT:Tooltip(self.newButton, "New macro", "Make your own macro.")
     self.classPicker = KT:Dropdown(frame, 200, function()
         local list = {}
@@ -590,12 +632,17 @@ function M:CreateUI()
     self.newName = CreateFrame("EditBox", nil, newPanel, "InputBoxTemplate"); self.newName:SetSize(370, 28); self.newName:SetPoint("TOPLEFT", 25, -79)
     self.newName:SetFont(KT.bodyFont, 14, ""); self.newName:SetAutoFocus(false)
     self.newName:SetScript("OnEscapePressed", function() newPanel:Hide() end)
-    self.newGeneric = KT:QuietButton(newPanel, "Generic", 180, 32, "generic"); self.newGeneric:SetPoint("TOPLEFT", 18, -122)
-    self.newGeneric:SetScript("OnClick", function() self.newClass = false; self:RefreshNewPanel() end)
-    self.newClassButton = KT:QuietButton(newPanel, "My class", 180, 32, "classes"); self.newClassButton:SetPoint("LEFT", self.newGeneric, "RIGHT", 16, 0)
+    -- Where it goes: General (all your characters), Character (this one) or
+    -- My class (this class's list, Character tab).
+    self.newGeneral = KT:QuietButton(newPanel, "General", 120, 32, "general"); self.newGeneral:SetPoint("TOPLEFT", 18, -122)
+    self.newGeneral:SetScript("OnClick", function() self.newClass = false; self.newScope = "account"; self:RefreshNewPanel() end)
+    self.newGeneric = KT:QuietButton(newPanel, "Character", 120, 32, "generic"); self.newGeneric:SetPoint("LEFT", self.newGeneral, "RIGHT", 12, 0)
+    self.newGeneric:SetScript("OnClick", function() self.newClass = false; self.newScope = "character"; self:RefreshNewPanel() end)
+    self.newClassButton = KT:QuietButton(newPanel, "My class", 120, 32, "classes"); self.newClassButton:SetPoint("LEFT", self.newGeneric, "RIGHT", 12, 0)
     self.newClassButton:SetScript("OnClick", function() self.newClass = true; self:RefreshNewPanel() end)
-    KT:Tooltip(self.newClassButton, "My class", "This class only. Saves to Character macros.")
-    KT:Tooltip(self.newGeneric, "Generic", "Any class. Settings > Save to picks the tab.")
+    KT:Tooltip(self.newGeneral, "General", "Any class. Goes to General macros: shared by all your characters.")
+    KT:Tooltip(self.newGeneric, "Character", "Any class. Goes to this character's macros.")
+    KT:Tooltip(self.newClassButton, "My class", "Listed with your class's macros. Goes to Character macros.")
     local createCustom = KT:AccentButton(newPanel, "Create macro", 384, 32, "add"); createCustom:SetPoint("BOTTOM", 0, 20); self.createCustomButton = createCustom
     createCustom:SetScript("OnClick", function() self:CreateCustom(self.newName:GetText(), self.newClass) end)
     -- Status line (and the list of skipped macros after adding many).
@@ -767,6 +814,16 @@ function M:CreateSettings()
     end)
     KT:Tooltip(self.poisonButton, "Confirm replacing poisons", "Rogues: when a weapon already has a poison, the game asks if you want to replace it. On: the poison macros click Yes for you (they get the line /click StaticPopup1Button1). Off: you click Yes yourself. Poison macros you already added change when you add them again.")
     hint(self.poisonButton, "Rogue poison macros: click Yes on \"replace poison?\" for you.")
+    -- New poisons, mana gems and weapons (MacroWatch.lua).
+    self.updatesButton = KT:QuietButton(frame, "", W - 48, 32, "macros"); self.updatesButton:SetPoint("TOPLEFT", 24, -416)
+    KT:MakeChoice(self.updatesButton, {
+        {"ask", "Ask", "A question when a better poison or mana gem, or a new weapon, means your macros should change."},
+        {"auto", "Automatically", "Your macros change by themselves (a short message says so)."},
+        {"off", "Off", "Your macros are never changed for you."},
+    }, function() return KT.MacroWatch and KT.MacroWatch:Mode() or "ask" end, function(value) KT.db.macroUpdates = value; if value ~= "auto" then KT.db.macroFamilyAuto = nil end; self:UpdateUpdatesButton() end)
+    KT:Tooltip(self.updatesButton, "Update macros", "When a better poison or mana gem is in your bags, or you equip a new weapon your weapon swap macros don't use. Every macro counts, your own too. /ft weaponswap shows your weapon swaps any time.")
+    hint(self.updatesButton, "New poisons, mana gems and weapons: ask first, change by themselves, or never.")
+    self:UpdateUpdatesButton()
     self.deleteButton = KT:QuietButton(frame, "Delete Character macros...", W - 48, 32, "delete"); self.deleteButton:SetPoint("TOPLEFT", 24, -276)
     self.deleteButton.options = function()
         return {
@@ -826,7 +883,17 @@ KT:RegisterModule("MacroSettings", settingsPage)
 -- Your macros changed (added, deleted, edited in the game's window).
 local events = CreateFrame("Frame")
 events:RegisterEvent("UPDATE_MACROS")
-events:SetScript("OnEvent", function()
+for _, event in ipairs({"PLAYER_EQUIPMENT_CHANGED", "GET_ITEM_INFO_RECEIVED", "SPELLS_CHANGED", "BAG_UPDATE_DELAYED"}) do events:RegisterEvent(event) end
+events:SetScript("OnEvent", function(_, event)
+    if event ~= "UPDATE_MACROS" then
+        if M.frame and M.frame:IsShown() then KT:Coalesce("macroIcons", function()
+            M:RefreshIcons()
+            -- An open Bandage or Eat & Drink shows the bags' new text (not while you type in it).
+            local entry = M.selectedMacro
+            if entry and followers[entry.name] and M.expanded and M.preview and not (M.preview.HasFocus and M.preview:HasFocus()) then M:UpdatePreview() end
+        end, .6) end
+        return
+    end
     M.counts = nil
     if M.frame and M.frame:IsShown() and not InCombatLockdown() then KT:Coalesce("macroListChanged", function() M:RenderList(); KT:RefreshDock(M.frame) end, .2) end
 end)

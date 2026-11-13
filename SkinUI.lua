@@ -84,7 +84,20 @@ local function has(list,set) for _,p in ipairs(list) do if set[p] then return tr
 local function contains(list,key) for _,p in ipairs(list) do if p==key then return true end end return false end
 function S:EachEdited(fn) for _,key in ipairs(self:EditedParts()) do fn(self:Area(key),key) end end
 function S:Lead() return self:Area(self:EditedParts()[1] or "actions") end
+-- Changing a group's look while none of its parts is skinned turns them
+-- all on (not the bank, which keeps its own switch), or the change would
+-- show nothing. With any part on, the switches are left as you set them.
+function S:LookChanged()
+    local g=self:CurrentGroup()
+    if not g or g.key=="everything" then return end
+    local root=self:Settings()
+    for _,p in ipairs(g.parts or {}) do if root[p]==true then return end end
+    local any=false
+    for _,p in ipairs(g.parts or {}) do if p~="bank" then root[p]=true; any=true end end
+    if any then FT:Toast(g.label..": skins turned on, so you can see the look.",3) end
+end
 function S:SetOpacity(value)
+    self:LookChanged()
     self:EachEdited(function(s) s.opacity=math.max(0,math.min(1,value)); s.preset="custom" end); self:LiveApply()
 end
 -- Sliders fire many times a second while you drag. Repainting the whole UI
@@ -117,6 +130,7 @@ local function presetInto(self,s,key,value)
     end end
 end
 function S:UsePreset(value)
+    self:LookChanged()
     self:EachEdited(function(s,key) presetInto(self,s,key,value) end)
     self:Apply()
 end
@@ -146,7 +160,7 @@ end
 function S:OpenColorPicker(setting)
     local lead=self:Lead(); local old={unpack(lead[setting])}
     local olds={}; self:EachEdited(function(s,key) olds[key]={value={unpack(s[setting])},preset=s.preset} end)
-    local function change() local r,g,b=ColorPickerFrame:GetColorRGB(); self:EachEdited(function(s) s[setting]={r,g,b}; s.preset="custom" end); self:LiveApply() end
+    local function change() local r,g,b=ColorPickerFrame:GetColorRGB(); self:LookChanged(); self:EachEdited(function(s) s[setting]={r,g,b}; s.preset="custom" end); self:LiveApply() end
     local function cancel() self:EachEdited(function(s,key) local o=olds[key]; if o then s[setting]=o.value; s.preset=o.preset end end); self:Apply() end
     if ColorPickerFrame and ColorPickerFrame.SetupColorPickerAndShow then
         FT:TrackColorPicker();ColorPickerFrame:SetupColorPickerAndShow({r=old[1],g=old[2],b=old[3],hasOpacity=false,swatchFunc=change,cancelFunc=cancel})
@@ -359,35 +373,35 @@ function S:Open()
             if high and high.SetText then high:SetText("See-through") end
             return label,slider
         end
-        self.borderLabel,self.borderSlider=slider(function(v) self:EachEdited(function(s) s.borderOpacity=1-v end); self:LiveApply() end)
+        self.borderLabel,self.borderSlider=slider(function(v) self:LookChanged(); self:EachEdited(function(s) s.borderOpacity=1-v end); self:LiveApply() end)
         FT:Tooltip(self.borderSlider,"Border transparency","0% solid, 100% hidden.")
         self.opacityLabel,self.opacitySlider=slider(function(v) self:SetOpacity(1-v) end)
         FT:Tooltip(self.opacitySlider,"Fill transparency","0% solid, 100% hidden.")
-        self.slotLabel,self.slotSlider=slider(function(v) self:Area("bagWindows").slotOpacity=1-v;self:LiveApply() end)
+        self.slotLabel,self.slotSlider=slider(function(v) self:LookChanged(); self:Area("bagWindows").slotOpacity=1-v;self:LiveApply() end)
         FT:Tooltip(self.slotSlider,"Slot color transparency","0% solid, 100% hidden.")
         self.slotColorButton,self.slotColorSwatch=colorButton("Slot color","slotColor")
         self.slotColorButton:SetScript("OnClick",function()
             local b=self:Area("bagWindows"); local old={unpack(b.slotColor)}
-            local function change() local r,g,bl=ColorPickerFrame:GetColorRGB(); b.slotColor={r,g,bl}; self:LiveApply() end
+            local function change() local r,g,bl=ColorPickerFrame:GetColorRGB(); self:LookChanged(); b.slotColor={r,g,bl}; self:LiveApply() end
             local function cancel() b.slotColor=old; self:Apply() end
             if ColorPickerFrame and ColorPickerFrame.SetupColorPickerAndShow then FT:TrackColorPicker(); ColorPickerFrame:SetupColorPickerAndShow({r=old[1],g=old[2],b=old[3],hasOpacity=false,swatchFunc=change,cancelFunc=cancel}) end
         end)
         FT:Tooltip(self.slotColorButton,"Bag slot color","The square behind each bag slot.")
-        self.thickness=FT.modules.FontManager:Stepper(self.frame,205,function() local choices={}; for i=1,4 do choices[i]={value=i} end; return choices end,function(v) self:EachEdited(function(s) s.thickness=v end); self:Apply() end)
+        self.thickness=FT.modules.FontManager:Stepper(self.frame,205,function() local choices={}; for i=1,4 do choices[i]={value=i} end; return choices end,function(v) self:LookChanged(); self:EachEdited(function(s) s.thickness=v end); self:Apply() end)
         FT:Tooltip(self.thickness,"Border thickness","Border thickness.")
         for _,step in ipairs({self.thickness.minus,self.thickness.plus}) do if step then FT:Tooltip(step,"Border thickness","Border thickness (1 to 4).") end end
         self.shadow=FT:QuietButton(self.frame,"",205,32,"skins")
-        self.shadow:SetScript("OnClick",function() local on=not self:Lead().shadow; self:EachEdited(function(s) s.shadow=on end); self:Apply() end)
+        self.shadow:SetScript("OnClick",function() local on=not self:Lead().shadow; self:LookChanged(); self:EachEdited(function(s) s.shadow=on end); self:Apply() end)
         FT:Tooltip(self.shadow,"Shadow","A soft shadow around each icon.")
         local function ends(slider,low,high)
             local l=slider.Low or (slider.GetName and slider:GetName() and _G[slider:GetName().."Low"])
             local h=slider.High or (slider.GetName and slider:GetName() and _G[slider:GetName().."High"])
             if l and l.SetText then l:SetText(low) end; if h and h.SetText then h:SetText(high) end
         end
-        self.shadowSizeLabel,self.shadowSizeSlider=slider(function(v) self:EachEdited(function(s) s.shadowSize=math.floor(v+.5) end); self:LiveApply() end)
+        self.shadowSizeLabel,self.shadowSizeSlider=slider(function(v) self:LookChanged(); self:EachEdited(function(s) s.shadowSize=math.floor(v+.5) end); self:LiveApply() end)
         self.shadowSizeSlider:SetMinMaxValues(1,8); self.shadowSizeSlider:SetValueStep(1); ends(self.shadowSizeSlider,"Tight","Wide")
         FT:Tooltip(self.shadowSizeSlider,"Shadow size","How far the shadow reaches (1 to 8).")
-        self.shadowStrengthLabel,self.shadowStrengthSlider=slider(function(v) self:EachEdited(function(s) s.shadowStrength=v end); self:LiveApply() end)
+        self.shadowStrengthLabel,self.shadowStrengthSlider=slider(function(v) self:LookChanged(); self:EachEdited(function(s) s.shadowStrength=v end); self:LiveApply() end)
         self.shadowStrengthSlider:SetMinMaxValues(.1,1); ends(self.shadowStrengthSlider,"Light","Dark")
         FT:Tooltip(self.shadowStrengthSlider,"Shadow darkness","How dark the shadow is.")
         for _,key in ipairs({"rares","elites"}) do

@@ -53,6 +53,9 @@ local function stops()
             set=function(on) if type(FT.db.thanks)~="table" then FT.db.thanks={} end; FT.db.thanks.enabled=on and true or false end},
         {key="reminders",chapter="Buff reminders",page="BuffReminder",title="Buff reminders",text="A notice when one of your buffs is missing.",
             find="Self reminders",quick=true,get=field("BuffReminder","enabled").get,set=field("BuffReminder","enabled").set},
+        {key="reagents",chapter="Buff reminders",page="BuffReminder",title="Reagent reminder",text="In a city or inn, a notice when you are low on reagents your spells need.",
+            find="Reagents:",get=field("BuffReminder","reagents").get,
+            set=function(on) local s=mod("BuffReminder"):Settings(); s.reagents=on and true or false; if on then s.enabled=true end; if FT.Reagents then FT.Reagents:Changed() end; apply("BuffReminder") end},
         {key="rankMarker",chapter="Buff reminders",page="BuffRanks",title="Low-rank marker",text="A corner on buttons below your best rank.",
             find="Marker on bars",get=field("BuffReminder","rankMarker").get,set=field("BuffReminder","rankMarker").set},
         {key="cooldowns",chapter="Buff reminders",page="CooldownReminder",title="Cooldown reminders",text="A nudge to use a big cooldown when it matters.",
@@ -118,6 +121,8 @@ local function stops()
             find="Auto-sell grey items",quick=true,get=sys("autoSell").get,set=sys("autoSell").set},
         {key="mailAlts",chapter="System",page="SystemMerchant",title="Mail your alts",text="Typing a name in the mailbox suggests only your own characters, not guildies first.",
             find="Mailbox: only suggest my alts",get=sys("mailAlts").get,set=sys("mailAlts").set},
+        {key="mailGold",chapter="System",page="SystemMerchant",title="Gold to your alts",text="Sending only money to an alt fills in the amount as the subject.",
+            find="Mailbox: gold amount as subject",get=sys("mailGold").get,set=sys("mailGold").set},
         {key="autoRepair",chapter="System",page="SystemMerchant",title="Auto-repair",text="Your gear is repaired at merchants.",
             find="Auto-repair",quick=true,get=sys("autoRepair").get,set=sys("autoRepair").set},
         {key="versionCheck",chapter="System",page="SystemGeneral",title="New version notice",text="One chat line when someone in your guild or group has a newer ForeverTools.",
@@ -128,6 +133,8 @@ local function stops()
             find="Gold tooltip",quick=true,get=bags("gold").get,set=bags("gold").set},
         {key="bankView",chapter="Bags",page="BagsGeneral",title="Bank and other characters",text="Right-click your bag's portrait: your bank and your other characters' bags.",
             find="Bank and other characters",quick=true,get=bags("view").get,set=bags("view").set},
+        {key="bagRows",chapter="Bags",page="BagsGeneral",title="Quivers and soul bags on their own row",text="In the all-in-one bag, special bags get their own row. Click the bag on your bag bar to hide its row.",
+            find="Quivers and soul bags on their own row",get=bags("rows").get,set=bags("rows").set},
     }
     return list
 end
@@ -461,7 +468,7 @@ local EVERYDAY={
     {"tooltip.target",true},{"tooltip.guild",true},
     {"bags.counts",true},{"bags.gold",true},
     {"chat.history",true},{"chat.tabs","hover"},{"chat.social","hover"},{"chat.icons","hover"},{"chat.input","hover"},
-    {"buffReminder.enabled",true},{"buffReminder.groupEnabled",true},{"buffReminder.food",true},{"buffReminder.lowRank",true},{"buffReminder.rankMarker",true},
+    {"buffReminder.enabled",true},{"buffReminder.groupEnabled",true},{"buffReminder.food",true},{"buffReminder.reagents",true},{"buffReminder.lowRank",true},{"buffReminder.rankMarker",true},
     {"rareAlert.enabled",true},{"rareAlert.sound",true},
     {"totems.range",true},{"totems.leftBehind",true},
     {"fps.enabled",true},{"flightTimer.enabled",true},{"queueTimer.enabled",true},{"moveWindows.enabled",true},{"lootRoll.custom",true},

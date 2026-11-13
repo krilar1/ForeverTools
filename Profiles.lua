@@ -58,7 +58,7 @@ function Profiles:ShowSwitcher(owner)
 end
 -- Only preferences are copied. Macro history and installed WoW macros belong to
 -- the character and are never rewritten by loading an appearance profile.
-local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","macroPoisonConfirm","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish","enemyCooldowns","actionFade"}
+local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","macroPoisonConfirm","macroUpdates","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish","enemyCooldowns","actionFade"}
 -- Every module that must redraw after settings change (load, login, reset).
 local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey","Totems","DruidMana","SellMarks","QueueTimer","Trinkets","AutoRelease","PersonalResource","Interrupts","Bags","Enemies","Diminish","EnemyCooldowns"}
 local function copy(value)
@@ -801,6 +801,34 @@ Profiles.templates={
     {key="soft",label="Soft Shadow",preset="soft",text="Soft see-through skins with a shadow. Nothing else is turned on."},
 }
 local TEMPLATE="template:"
+-- The Edit Mode choices for a new character: your own layouts (the active
+-- one first when it is yours), then "Keep the game's". Empty without any.
+local KEEP_LAYOUT="\001keep"
+function Profiles:LayoutChoices()
+    local layoutModule=FT.modules.EditModeLayout
+    if not (layoutModule and layoutModule.Custom) then return {} end
+    local list,active=layoutModule:Custom()
+    if #list==0 then return {} end
+    table.sort(list,function(a,b) if a.index==active then return true elseif b.index==active then return false end return a.index<b.index end)
+    local out={}
+    for _,l in ipairs(list) do out[#out+1]={value=l.index,label=l.name} end
+    out[#out+1]={value=KEEP_LAYOUT,label="Don't change"}
+    return out
+end
+function Profiles:LayoutLabel(value)
+    for _,o in ipairs(self:LayoutChoices()) do if o.value==value then return o.label end end
+    return "Don't change"
+end
+function Profiles:UseChosenLayout()
+    local frame=self.newCharacterFrame
+    local index=frame and frame.layoutPick and frame.layoutPick:IsShown() and frame.layoutChoice
+    if type(index)~="number" then return end
+    local layoutModule=FT.modules.EditModeLayout
+    if layoutModule and layoutModule.Use then
+        local ok,why=layoutModule:Use(index)
+        if not ok and why then FT:Toast("Edit Mode layout: "..why,4) end
+    end
+end
 function Profiles:ChoiceLabel(value)
     local t=self:Template(value); return t and (t.label.." (template)") or tostring(value or "")
 end
@@ -860,20 +888,28 @@ function Profiles:AskNewCharacter()
         local pick=FT:Dropdown(frame,512,function() return self:ChoiceList() end,function(value) frame.choice=value; frame.pick.value=value; frame.pick.label:SetText(self:ChoiceLabel(value)) end,"profiles")
         pick:SetPoint("TOPLEFT",24,-104); pick:SetHeight(34); pick.menuWidth=300; frame.pick=pick
         FT:Tooltip(pick,"Template or profile","A look to start from, or one of your profiles.")
+        -- Your own Edit Mode layouts (only when you have made one): the one
+        -- to use on this character too.
+        local layoutText=FT:Label(frame,"Edit Mode layout:",14); frame.layoutText=layoutText
+        local layoutPick=FT:Dropdown(frame,512,function() return self:LayoutChoices() end,function(value)
+            frame.layoutChoice=value; frame.layoutPick.value=value; frame.layoutPick.label:SetText(self:LayoutLabel(value))
+        end,"INV_Misc_Spyglass_03")
+        layoutPick:SetHeight(34); layoutPick.menuWidth=260; frame.layoutPick=layoutPick
+        FT:Tooltip(layoutPick,"Edit Mode layout","Where your bars and frames sit. Your own layouts; the game's Modern and Classic are left out.")
         local note=FT:Label(frame,"",12)
         note:SetPoint("TOPLEFT",24,-150); note:SetWidth(512); note:SetTextColor(.66,.59,.48); frame.note=note
         local new=FT:QuietButton(frame,"New profile",252,34,"add"); new:SetPoint("BOTTOMLEFT",24,22)
         new:SetScript("OnClick",function()
             local base=self:CharacterName(); local name,n=base,2
             while self:Store()[name] do name=base.." "..n; n=n+1 end
-            frame:Hide()
+            self:UseChosenLayout(); frame:Hide()
             if self:Create(name) and FT.modules.Onboarding then FT.modules.Onboarding:ShowSetup(false) end
         end)
         FT:Tooltip(new,"New profile","A new profile with everything off, then a short setup.")
         local import=FT:QuietButton(frame,"Import ForeverTools profile",252,34,"INV_Misc_Note_03"); import:SetPoint("BOTTOMLEFT",24,64)
         import:SetScript("OnClick",function()
             self:Transfer(true,function(name)
-                frame:Hide()
+                self:UseChosenLayout(); frame:Hide()
                 if self:Load(name,false,true) then FT:Toast('Profile "'..name..'" imported and in use.',4) end
             end)
         end)
@@ -885,9 +921,9 @@ function Profiles:AskNewCharacter()
         use:SetScript("OnClick",function()
             local name=frame.choice
             local template=self:Template(name)
-            if template then frame:Hide(); self:UseTemplate(template.key); return end
+            if template then self:UseChosenLayout(); frame:Hide(); self:UseTemplate(template.key); return end
             if not name or not self:Store()[name] then return end
-            frame:Hide()
+            self:UseChosenLayout(); frame:Hide()
             if self:Load(name,false,true) then FT:Toast('Using profile "'..name..'".',3) end
         end)
         FT:Tooltip(use,"Use","Use it on this character.")
@@ -920,7 +956,21 @@ function Profiles:AskNewCharacter()
         frame.note:SetText("Closing keeps your current settings. Change it any time in /ft > Profiles.")
     end
     frame.pick:ClearAllPoints(); frame.pick:SetPoint("TOPLEFT",24,compact and -84 or -104)
-    frame.note:ClearAllPoints(); frame.note:SetPoint("TOPLEFT",24,-150)
+    -- Edit Mode layout: only with layouts of your own; yours is suggested.
+    local layouts=self:LayoutChoices()
+    local withLayout=#layouts>1
+    local extra=withLayout and 72 or 0
+    frame.layoutText:SetShown(withLayout); frame.layoutPick:SetShown(withLayout)
+    frame.layoutChoice=withLayout and layouts[1].value or nil
+    if withLayout then
+        frame.layoutPick.value=frame.layoutChoice; frame.layoutPick.label:SetText(self:LayoutLabel(frame.layoutChoice))
+        frame.layoutPick:SetWidth(W-48)
+        local top=compact and -128 or -148
+        frame.layoutText:ClearAllPoints(); frame.layoutText:SetPoint("TOPLEFT",24,top)
+        frame.layoutPick:ClearAllPoints(); frame.layoutPick:SetPoint("TOPLEFT",24,top-24)
+    end
+    frame:SetHeight((compact and 180 or 304)+extra)
+    frame.note:ClearAllPoints(); frame.note:SetPoint("TOPLEFT",24,-150-extra)
     -- On the right side of the screen: other addons often ask their own
     -- first-login questions in the middle.
     frame:ClearAllPoints(); frame:SetPoint("RIGHT",UIParent,"RIGHT",-80,60); frame:Show()
@@ -1342,7 +1392,7 @@ function Profiles:ValidateImport(data)
     return result,skipped
 end
 function Profiles:StrictImport(data)
-    local result={}; local scalar={welcome="boolean",minimapEnabled="boolean",minimapAngle="number",minimapCollectorAngle="number",macroScope="string",macroUnlearnedIcons="boolean",macroBulkMouseover="boolean",macroPoisonConfirm="boolean"}
+    local result={}; local scalar={welcome="boolean",minimapEnabled="boolean",minimapAngle="number",minimapCollectorAngle="number",macroScope="string",macroUnlearnedIcons="boolean",macroBulkMouseover="boolean",macroPoisonConfirm="boolean",macroUpdates="string"}
     for _,key in ipairs(keys) do
         local v=data[key]
         if v~=nil then
@@ -1377,7 +1427,7 @@ function Profiles:StrictImport(data)
         end
     end
     if not check(result.trinkets,{enabled="boolean",vertical="boolean",numbers="boolean",mouseover="boolean",hideEmpty="boolean",size="number",x="number",y="number",locked="boolean"}) then return nil,"Invalid trinket menu settings." end
-    if not check(result.bags,{gold="boolean",view="boolean",counts="boolean",locked="boolean",buttons="boolean",countSplit="boolean",countSelf="boolean",countGuild="boolean",countShift="boolean",countSpacer="boolean",countFullNames="boolean",countStyle="string",countPlace="string",bagX="number",bagY="number",bankX="number",bankY="number",order="string",insert="string",cleanup="string"}) then return nil,"Invalid bag settings." end
+    if not check(result.bags,{gold="boolean",view="boolean",counts="boolean",locked="boolean",buttons="boolean",countSplit="boolean",countSelf="boolean",countGuild="boolean",countShift="boolean",countSpacer="boolean",countFullNames="boolean",fullNamesOn="boolean",countStyle="string",countPlace="string",bagX="number",bagY="number",bankX="number",bankY="number",order="string",insert="string",cleanup="string"}) then return nil,"Invalid bag settings." end
     if not check(result.enemies,{stealth="boolean",fade="boolean",marks="boolean",nearby="boolean",instances="boolean",sound="boolean",flash="boolean",markTooltip="boolean",size="number",nearSize="number",nearTime="number",x="number",y="number",nearX="number",nearY="number",nearDock="string",nearCollapsed="boolean",nearShowEmpty="boolean",nearAlong="number",nearCorner="string",nearRows="number",nearFade="boolean"}) then return nil,"Invalid enemy alert settings." end
     if not check(result.flightTimer,{enabled="boolean",font="string",size="number",outline="string",color="table",x="number",y="number"}) then return nil,"Invalid flight timer settings." end
     if not check(result.lootRoll,{x="number",y="number",custom="boolean"}) then return nil,"Invalid loot-roll position." end
@@ -1440,7 +1490,7 @@ function Profiles:StrictImport(data)
             end
         end
     end
-    if not check(result.tooltip,{guildFactionColor="boolean",guildFactionIcon="boolean",target="boolean",guild="boolean",healthBar="boolean",position="string",order="string",offsetX="number",offsetY="number",x="number",y="number",screenWidth="number",screenHeight="number",name="number",details="number",targetSize="number",targetedBy="boolean",layout="table",factionIcon="string",guildIconPosition="string",faction="string",factionHome="number"}) then return nil,"Invalid tooltip settings." end
+    if not check(result.tooltip,{guildFactionColor="boolean",guildRank="boolean",guildFactionIcon="boolean",target="boolean",guild="boolean",healthBar="boolean",position="string",order="string",offsetX="number",offsetY="number",x="number",y="number",screenWidth="number",screenHeight="number",name="number",details="number",targetSize="number",targetedBy="boolean",layout="table",factionIcon="string",guildIconPosition="string",faction="string",factionHome="number"}) then return nil,"Invalid tooltip settings." end
     if result.tooltip and result.tooltip.factionIcon and not FT.modules.Tooltip.iconPlaces[result.tooltip.factionIcon] then return nil,"Invalid faction icon place." end
     if result.tooltip and result.tooltip.faction and not FT.modules.Tooltip.factionModes[result.tooltip.faction] then return nil,"Invalid faction setting." end
     for _,entry in ipairs(result.tooltip and result.tooltip.layout or {}) do
@@ -1458,9 +1508,12 @@ function Profiles:StrictImport(data)
     if not check(result.smartKey,{enabled="boolean",key="string",confirmed="boolean"}) then return nil,"Invalid smart key settings." end
     if not check(result.fireAlert,{sound="string",channel="string"}) then return nil,"Invalid standing-in-fire settings." end
     if not check(result.rareAlert,{enabled="boolean",sound="boolean",soundKey="string",duration="number",size="number",glow="table",x="number",y="number"}) then return nil,"Invalid rare alert settings." end
-    if not check(result.buffReminder,{enabled="boolean",combatAll="boolean",selected="table",mainEnchant="string",offEnchant="string",mainPoison="boolean",offPoison="boolean",manualSpec="table",rankMarker="boolean",ignoredRanks="table",selfWhere="table",groupWhere="table",chosenSpec="table",hideAfter="number",styles="table",food="boolean",foodWhen="string",foodStat="boolean",camp="boolean",campRefresh="number",clickQuiet="number",powerReady="boolean",combat="table"}) then return nil,"Invalid buff reminders." end
+    if not check(result.buffReminder,{enabled="boolean",combatAll="boolean",selected="table",mainEnchant="string",offEnchant="string",mainPoison="boolean",offPoison="boolean",manualSpec="table",rankMarker="boolean",ignoredRanks="table",selfWhere="table",groupWhere="table",chosenSpec="table",hideAfter="number",styles="table",food="boolean",foodWhen="string",foodStat="boolean",camp="boolean",campRefresh="number",reagents="boolean",reagentLow="table",clickQuiet="number",powerReady="boolean",combat="table"}) then return nil,"Invalid buff reminders." end
     for name,on in pairs(result.buffReminder and result.buffReminder.combat or {}) do
         if type(name)~="string" or #name>80 or on~=true then return nil,"Invalid combat reminder." end
+    end
+    for key,n in pairs(result.buffReminder and type(result.buffReminder.reagentLow)=="table" and result.buffReminder.reagentLow or {}) do
+        if (type(key)~="number" and type(key)~="string") or type(n)~="number" then result.buffReminder.reagentLow[key]=nil end
     end
     if result.buffReminder and result.buffReminder.foodWhen~=nil and result.buffReminder.foodWhen~="leveling" and result.buffReminder.foodWhen~="always" then return nil,"Invalid food reminder." end
     -- Per-buff notice looks: a table per buff name; each value is checked again when it is used.

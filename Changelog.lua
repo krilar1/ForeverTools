@@ -4,6 +4,16 @@ local _,FT=...
 FT.quietReleases={["1.0.0"]=true,["1.0.1"]=true}
 FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
+    {version="1.5.0",notes={
+        {icon="Ability_Poisons",title="Macros keep up",text="New poison or weapon? Update in one click."},
+        {icon="INV_Misc_Bag_10",title="Reagent reminder",text="Low on reagents? A notice while in town."},
+        {icon="Spell_Frost_IceShock",title="Group interrupts",text="Mage, warrior and more on the bar."},
+        {icon="INV_Misc_Quiver_02",title="Bag rows",text="Quiver and reagent bag get their own row."},
+        {icon="INV_Letter_15",title="Mail to your alts",text="Pick an alt; gold fills in the subject."},
+        {icon="INV_Misc_Spyglass_03",title="Layout for new characters",text="Pick your Edit Mode layout with a profile."},
+        {icon="INV_Misc_Note_02",title="Guild rank",text="Their guild rank behind the guild name."},
+        {icon="Trade_BlackSmithing",title="Fixes",text="Icons, Sprint cooldown, bandage macro."},
+    }},
     {version="1.4.0",notes={
         {icon="Spell_Holy_Heal",title="Action bars on mouseover",text="Bars stay hidden until your mouse is over them."},
         {icon="INV_Letter_15",title="Mail suggests only your alts",text="No more guildies first when you type a name."},

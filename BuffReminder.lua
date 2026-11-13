@@ -88,6 +88,9 @@ function Reminder:Settings()
     if type(s.camp)~="boolean" then s.camp=false end
     -- Minutes before Well-Rested runs out to remind about the sleeping bag (0 = only when gone).
     if s.campRefresh~=0 and s.campRefresh~=10 then s.campRefresh=5 end
+    -- Reagents (Reagents.lua): off by default; low amounts per reagent.
+    if type(s.reagents)~="boolean" then s.reagents=false end
+    if type(s.reagentLow)~="table" then s.reagentLow={} end
     -- Minutes a clicked-away notice stays quiet (0: only until it changes).
     if s.clickQuiet~=0 and s.clickQuiet~=5 and s.clickQuiet~=30 and s.clickQuiet~=60 then s.clickQuiet=10 end
     -- Only remind about a self buff once you have the rage, mana or energy
@@ -904,7 +907,7 @@ end
 -- Does this buff (or "weapon:main"/"weapon:off") also remind in a fight?
 -- You can't eat in a fight, so food never does.
 function Reminder:CombatFor(key)
-    if key=="food" or key=="camp" then return false end
+    if key=="food" or key=="camp" or key=="reagents" then return false end
     local s=self:Settings()
     return s.combatAll==true or s.combat[key]==true
 end
@@ -1208,6 +1211,15 @@ function Reminder:Refresh(cachedSpells)
                 end
             end
         end
+        -- Low on reagents: only in a city or inn (Reagents:Notices checks).
+        if not fighting and s.reagents and FT.Reagents then
+            local low=FT.Reagents:Notices(learned)
+            for _,n in ipairs(low) do self.missing[#self.missing+1]=n; styleKeys[n]="reagents" end
+            if #low==0 and self.previewSelf then
+                local sample={name="Holy Candle",message="Low on Holy Candle (3) — preview",spell={icon="Interface\\Icons\\INV_Misc_Candle_01"}}
+                self.missing[#self.missing+1]=sample; styleKeys[sample]="reagents"
+            end
+        end
         local weaponKind=self:WeaponKind()
         if weaponKind and selfHere then
             local word=weaponKind=="poison" and "Poison" or "Weapon buff"
@@ -1398,6 +1410,7 @@ function Reminder:StyleInfo(key)
     end
     if key=="food" then local _,icon=self:FoodInfo(); return "Food buff",icon end
     if key=="camp" then return "Camp items","Interface\\Icons\\INV_Misc_Bag_08" end
+    if key=="reagents" then return "Reagents","Interface\\Icons\\INV_Misc_Candle_01" end
     if learned[key] then return key,learned[key].icon end
 end
 function Reminder:StyleChanged()
@@ -1778,7 +1791,7 @@ function Reminder:RefreshStyle()
     panel.combat.label:SetText(all and "Remind in combat: On (all buffs)" or ("Also remind in combat: "..(also and "On" or "Off"))); FT:SetSelected(panel.combat,also)
     panel.combat:SetAlpha(all and .5 or 1)
     -- You can't eat in a fight.
-    panel.combat:SetShown(self.styleKey~="food" and self.styleKey~="camp")
+    panel.combat:SetShown(self.styleKey~="food" and self.styleKey~="camp" and self.styleKey~="reagents")
     -- Everything below belongs to a look of its own.
     for _,control in ipairs(panel.styled) do
         control:SetAlpha(st and 1 or .4)
@@ -1907,6 +1920,9 @@ function Reminder:RefreshMenu(learned)
     FT:SetSelected(self.campToggle.gear,self:Style("camp")~=nil)
     self.campRefresh.label:SetText("Bag refresh: "..(s.campRefresh==0 and "When it's gone" or (s.campRefresh.." min before")))
     self.campRefresh:SetAlpha(s.camp and 1 or .5)
+    self.reagentToggle.label:SetText("Reagents: "..(s.reagents and "On" or "Off")); FT:SetSelected(self.reagentToggle,s.reagents)
+    FT:SetSelected(self.reagentToggle.gear,self:Style("reagents")~=nil)
+    self.reagentAmounts:SetAlpha(s.reagents and 1 or .5)
     self.foodWhen:SetAlpha(s.food and 1 or .5)
     if s.food then watched=watched+1 end
     self.watchedCount=watched
@@ -1984,6 +2000,9 @@ function Reminder:RefreshMenu(learned)
         headUsed=headUsed+1
         local ch=self.kindHeads[headUsed]; ch.ftHeading.icon="INV_Misc_Bag_08"; ch:SetText("Camping"); place(ch,X,y); y=y+HEAD
         place(self.campToggle,X,y); place(self.campRefresh,X+COL,y); y=y+ROW+GAP
+        headUsed=headUsed+1
+        local rh=self.kindHeads[headUsed]; rh.ftHeading.icon="INV_Misc_Candle_01"; rh:SetText("Reagents"); place(rh,X,y); y=y+HEAD
+        place(self.reagentToggle,X,y); place(self.reagentAmounts,X+COL,y); y=y+ROW+GAP
         headUsed=headUsed+1
         local h=self.kindHeads[headUsed]; h.ftHeading.icon="INV_Misc_Map_01"; h:SetText("Show in"); place(h,X,y); y=y+HEAD
         self:PlaceWhere("selfWhere",X,y);y=y+ROW
@@ -2085,16 +2104,16 @@ function Reminder:Build()
         for _,b in ipairs({self.toggle,self.groupToggle,self.moveButton,self.selfPreview}) do if b.label.SetWordWrap then b.label:SetWordWrap(false) end end
         self.specChoice=pane(FT:Dropdown(detail,W,function() return self:SpecChoices() end,function(value) self:PickSpec(value) end,"classes"))
         self.powerToggle=pane(FT:QuietButton(detail,"",232,32,"Spell_Nature_ManaRegenTotem"))
-        self.powerToggle:SetScript("OnClick",function() local s=self:Settings(); s.powerReady=not s.powerReady; self:Apply() end)
+        self.powerToggle:SetScript("OnClick",function() local s=self:Settings(); s.powerReady=not s.powerReady; if s.powerReady then s.enabled=true end; self:Apply() end)
         FT:Tooltip(self.powerToggle,"Wait for rage, mana or energy","Wait until you have the rage, mana or energy to cast the buff.")
         self.combatAllToggle=pane(FT:QuietButton(detail,"",232,32,"Ability_Warrior_BattleShout"))
-        FT:MakeChoice(self.combatAllToggle,{{false,"Chosen buffs","Only buffs you turned on with their gear."},{true,"All buffs","Every self buff and weapon buff you watch."}},function() return self:Settings().combatAll==true end,function(v) self:Settings().combatAll=v; self:Apply() end)
+        FT:MakeChoice(self.combatAllToggle,{{false,"Chosen buffs","Only buffs you turned on with their gear."},{true,"All buffs","Every self buff and weapon buff you watch."}},function() return self:Settings().combatAll==true end,function(v) self:Settings().combatAll=v; if v then self:Settings().enabled=true end; self:Apply() end)
         FT:Tooltip(self.combatAllToggle,"Remind in combat","All buffs: every watched buff also reminds in a fight. Chosen buffs: only those set with their gear. Food never does.")
         self.specChoice.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
         FT:Tooltip(self.specChoice,"Your talent tree","Each tree keeps its own buff list. Automatic follows your talents.")
         self.rows={}
         self.kindHeads={}
-        for i=1,8 do
+        for i=1,12 do
             local h=FT:Label(detail,"",14,true); FT:SectionHeading(h,nil,320,18); h:Hide(); self.kindHeads[i]=h
         end
         for i=1,12 do
@@ -2110,6 +2129,8 @@ function Reminder:Build()
                 local spec=self:CurrentSpec();local selection=self:Selection(spec)
                 local on=self:Enabled(entry,spec,self:Learned())
                 selection[entry.name]=not on
+                -- Watching a buff turns self reminders on.
+                if not on then self:Settings().enabled=true end
                 if not on and entry.group and entry.group~="protection" then
                     for _,other in ipairs(choices[self:Class()] or {}) do if other[3]==entry.group and other[1]~=entry.name then selection[other[1]]=false end end
                 end
@@ -2123,11 +2144,11 @@ function Reminder:Build()
         local food=pane(FT:QuietButton(detail,"",232,32,"welcome")); self.foodToggle=food
         food.label:SetFont(FT.font or "Fonts\\FRIZQT__.TTF",12,""); if food.label.SetWordWrap then food.label:SetWordWrap(false) end
         food.label:ClearAllPoints(); food.label:SetPoint("LEFT",food.icon,"RIGHT",8,0); food.label:SetPoint("RIGHT",food,"RIGHT",-32,0)
-        food:SetScript("OnClick",function() local s=self:Settings(); s.food=not s.food; self:Apply() end)
+        food:SetScript("OnClick",function() local s=self:Settings(); s.food=not s.food; if s.food then s.enabled=true end; self:Apply() end)
         FT:Tooltip(food,"XP food reminder","A notice when you lack the XP food buff (5% more kill XP). Only while you carry such food.")
         local stat=pane(FT:QuietButton(detail,"",232,32,"welcome")); self.foodStatToggle=stat
         stat.label:SetFont(FT.font or "Fonts\\FRIZQT__.TTF",12,""); if stat.label.SetWordWrap then stat.label:SetWordWrap(false) end
-        stat:SetScript("OnClick",function() local s=self:Settings(); s.foodStat=not s.foodStat; self:Apply() end)
+        stat:SetScript("OnClick",function() local s=self:Settings(); s.foodStat=not s.foodStat; if s.foodStat then s.enabled=true end; self:Apply() end)
         FT:Tooltip(stat,"Stat food reminder","A notice when you lack a stat food buff. Only while you carry such food.")
         food.gear=FT:QuietButton(food,"",24,24); food.gear:SetPoint("RIGHT",-4,0); FT:GearIcon(food.gear)
         food.gear:SetScript("OnClick",function() self:OpenStyle("food","Food buff") end)
@@ -2139,11 +2160,26 @@ function Reminder:Build()
         -- Camp items: tent and Cozy Sleeping Bag.
         local camp=pane(FT:QuietButton(detail,"",232,32,"welcome")); self.campToggle=camp
         camp.icon:SetTexture("Interface\\Icons\\INV_Misc_Bag_08")
-        camp:SetScript("OnClick",function() local s=self:Settings(); s.camp=not s.camp; self.campItems=nil; self:Apply() end)
+        camp:SetScript("OnClick",function() local s=self:Settings(); s.camp=not s.camp; if s.camp then s.enabled=true end; self.campItems=nil; self:Apply() end)
         FT:Tooltip(camp,"Tent & sleeping bag","While leveling: a notice to use your tent (rested XP worth 5% of a level, when you have less) or your Cozy Sleeping Bag (Well-Rested, up to +3% XP). Only when the item is in your bags and ready, you don't have its buff, you are not in an inn or city, and not at a campfire (Camp Benefits).")
         camp.gear=FT:QuietButton(camp,"",24,24); camp.gear:SetPoint("RIGHT",-4,0); FT:GearIcon(camp.gear)
         camp.gear:SetScript("OnClick",function() self:OpenStyle("camp","Camp items") end)
         FT:Tooltip(camp.gear,"Notice look","Its own look. Lit when set.")
+        -- Reagents (Reagents.lua): low on vendor reagents, in cities and inns.
+        local reagent=pane(FT:QuietButton(detail,"",232,32,"welcome")); self.reagentToggle=reagent
+        reagent.icon:SetTexture("Interface\\Icons\\INV_Misc_Candle_01")
+        reagent:SetScript("OnClick",function()
+            local s=self:Settings(); s.reagents=not s.reagents
+            if s.reagents and not s.enabled then s.enabled=true end
+            if FT.Reagents then FT.Reagents:Changed() end; self:Apply()
+        end)
+        FT:Tooltip(reagent,"Reagent reminder","In a city or inn: a notice when you are low on a reagent your spells need (candles, Ankh, runes, seeds, powders), so you can buy more before you leave. Rogues: also the poisons you use. Not with the Reagent Economy legacy talent (poisons still count).")
+        reagent.gear=FT:QuietButton(reagent,"",24,24); reagent.gear:SetPoint("RIGHT",-4,0); FT:GearIcon(reagent.gear)
+        reagent.gear:SetScript("OnClick",function() self:OpenStyle("reagents","Reagents") end)
+        FT:Tooltip(reagent.gear,"Notice look","Its own look. Lit when set.")
+        self.reagentAmounts=pane(FT:QuietButton(detail,"Low amounts",232,32,"generic"))
+        self.reagentAmounts:SetScript("OnClick",function() if FT.Reagents then FT.Reagents:OpenAmounts() end end)
+        FT:Tooltip(self.reagentAmounts,"Low amounts","When each reagent counts as low. Shows the reagents your spells need and how many you have.")
         self.campRefresh=pane(FT:QuietButton(detail,"",232,32,"reset"))
         FT:MakeChoice(self.campRefresh,{{5,"5 min before","Remind to lie down on the bag again 5 minutes before Well-Rested runs out."},{10,"10 min before","Remind 10 minutes before Well-Rested runs out."},{0,"When it's gone","Only when Well-Rested is gone."}},function() return self:Settings().campRefresh end,function(v) self:Settings().campRefresh=v; self:Apply() end)
         FT:Tooltip(self.campRefresh,"Sleeping bag refresh","When to remind you to use the sleeping bag again, so the stacks never run out.")
@@ -2158,6 +2194,7 @@ function Reminder:Build()
                 return list
             end,function(value)
                 if self:WeaponKind()=="poison" then self:Settings()[slot.."Poison"]=value=="on" else self:Settings()[slot.."Enchant"]=value end
+                if value~="" then self:Settings().enabled=true end
                 self:Apply()
             end,"welcome"))
             self[slot.."Dropdown"]=dropdown
@@ -2180,7 +2217,12 @@ function Reminder:Build()
                 local key=place[1]
                 local b=pane(FT:QuietButton(detail,place[2],88,30))
                 b.label:SetFont(FT.font or "Fonts\\FRIZQT__.TTF",12,""); if b.label.SetWordWrap then b.label:SetWordWrap(false) end
-                b:SetScript("OnClick",function() local s=self:Settings(); s[field][key]=not s[field][key]; self:Apply() end)
+                b:SetScript("OnClick",function()
+                    local s=self:Settings(); s[field][key]=not s[field][key]
+                    -- A place picked turns those reminders on.
+                    if s[field][key] then if field=="selfWhere" then s.enabled=true else s.groupEnabled=true end end
+                    self:Apply()
+                end)
                 FT:Tooltip(b,place[2],(field=="selfWhere" and "Show self-buff notices here. " or "Show group notices here (in a group). ")..place[3].." Pick as many places as you like.")
                 row.buttons[key]=b
             end
@@ -2223,7 +2265,7 @@ function Reminder:Build()
         self.rankToggle:SetScript("OnClick",function() local s=self:Settings();s.lowRank=not s.lowRank;self:Apply() end)
         FT:Tooltip(self.rankToggle,"Low-rank alerts","Warn when you cast a buff below your best rank. Visit a trainer once.")
         self.rankOneToggle=pane(FT:QuietButton(detail,"",232,32,"INV_Misc_Book_11"))
-        self.rankOneToggle:SetScript("OnClick",function() local s=self:Settings();s.ignoreRankOne=not s.ignoreRankOne;self:Apply() end)
+        self.rankOneToggle:SetScript("OnClick",function() local s=self:Settings();s.ignoreRankOne=not s.ignoreRankOne;if s.ignoreRankOne then s.lowRank=true end;self:Apply() end)
         FT:Tooltip(self.rankOneToggle,"Ignore rank 1","Never warn about rank 1 spells.")
         self.markerToggle=pane(FT:QuietButton(detail,"",232,32,"INV_Misc_Note_02"))
         self.markerToggle:SetScript("OnClick",function() local s=self:Settings();s.rankMarker=not s.rankMarker;self:Apply() end)
@@ -2279,7 +2321,8 @@ talentEvents:SetScript("OnEvent",function() Reminder.specCache=nil end)
 local bagEvents=CreateFrame("Frame"); bagEvents:RegisterEvent("BAG_UPDATE_DELAYED")
 bagEvents:SetScript("OnEvent",function()
     Reminder.foodKinds=nil; Reminder.campItems=nil
-    if FT.dbReady then local s=Reminder:Settings(); if s.enabled and (s.food or s.foodStat or s.camp) then FT:Coalesce("ftFoodBags",function() if Reminder.Refresh then Reminder:Refresh() end end,.5) end end
+    if FT.Reagents then FT.Reagents:Changed(); if FT.Reagents.frame and FT.Reagents.frame:IsShown() then FT.Reagents:RefreshAmounts() end end
+    if FT.dbReady then local s=Reminder:Settings(); if s.enabled and (s.food or s.foodStat or s.camp or s.reagents) then FT:Coalesce("ftFoodBags",function() if Reminder.Refresh then Reminder:Refresh() end end,.5) end end
 end)
 -- Many events in the same moment lead to one check.
 function Reminder:QueueApply(delay)

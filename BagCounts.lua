@@ -9,6 +9,17 @@ local Counts={}
 local function plain(v) return not (issecretvalue and issecretvalue(v)) end
 local function bags() return FT.Bags end
 local function settings() return bags():Settings() end
+-- "(bags 30, mail 10)": the words in tan, the amounts in white.
+local TAN,WHITE="|cffb8ab8a","|cffffffff"
+local function where(parts,amounts)
+    local out={}
+    for _,part in ipairs(parts) do
+        local word,n=part:match("^(%a+) (%d+)$")
+        if word and amounts then out[#out+1]=TAN..word.."|r "..WHITE..n.."|r" else out[#out+1]=TAN..(word or part).."|r" end
+    end
+    return TAN.."(|r"..table.concat(out,TAN..", |r")..TAN..")|r"
+end
+Counts.Where=where
 -- The lines for one item: {left, right} pairs, and the grand total.
 function Counts:Lines(id,s)
     s=s or settings()
@@ -24,8 +35,8 @@ function Counts:Lines(id,s)
     end
     local function right(e)
         local parts=split(e)
-        if s.countSplit and #parts>1 then return "|cffffffff"..e.total.."|r  |cffb8ab8a("..table.concat(parts,", ")..")|r" end
-        if s.countSplit and #parts==1 then return "|cffffffff"..e.total.."|r  |cffb8ab8a("..parts[1]:gsub(" %d+$","")..")|r" end
+        if s.countSplit and #parts>1 then return WHITE..e.total.."|r  "..where(parts,true) end
+        if s.countSplit and #parts==1 then return WHITE..e.total.."|r  "..where(parts,false) end
         return "|cffffffff"..e.total.."|r"
     end
     local me=B:Me()
@@ -173,8 +184,8 @@ function Counts:SampleLines(s)
             if e.bags>0 then parts[#parts+1]="bags "..e.bags end
             if e.bank>0 then parts[#parts+1]="bank "..e.bank end
             local right="|cffffffff"..e.total.."|r"
-            if s.countSplit and #parts>1 then right=right.."  |cffb8ab8a("..table.concat(parts,", ")..")|r"
-            elseif s.countSplit and #parts==1 then right=right.."  |cffb8ab8a("..parts[1]:gsub(" %d+$","")..")|r" end
+            if s.countSplit and #parts>1 then right=right.."  "..where(parts,true)
+            elseif s.countSplit and #parts==1 then right=right.."  "..where(parts,false) end
             rows[#rows+1]={colored(entry),right}; total=total+e.total
         end
     end

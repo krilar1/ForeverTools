@@ -5,12 +5,16 @@ local _,FT=...
 --   * Your own interrupts are read from your casts (always exact).
 --   * Group members with ForeverTools send theirs over the addon channel the
 --     moment they use one, with their real cooldown; they also say which
---     interrupts they know, so their row shows "Ready" before the first kick.
---   * Group members without ForeverTools show up when the game lets us see
---     their cast (it hides other players' spells at times, mostly in fights);
---     their cooldown is then the usual one for that spell.
+--     interrupts they know, so their row shows (ready) before the first kick.
+--   * Group members without ForeverTools get their class's interrupt as
+--     ready as soon as they join (a warlock only with a Felhunter out),
+--     since the game often hides other players' casts in fights. When their
+--     cast is seen, the row starts its cooldown (the usual one for that spell).
+--     Once a member reports or is seen using another interrupt, the guessed
+--     row goes.
 --   * Earth Shock shares its cooldown with Flame Shock and Frost Shock: any
 --     shock puts the interrupt on cooldown.
+--   * A ready row has no time text; one cooling down shows the seconds.
 --   * A plain frame of ours: shown, hidden and updated in fights too. The
 --     timer only runs while something is cooling down.
 local I={rows={},entries={}}
@@ -30,6 +34,10 @@ local SPELLS={
 }
 I.SPELLS=SPELLS
 local SHARED={["Flame Shock"]="Earth Shock",["Frost Shock"]="Earth Shock"}
+-- The interrupt every member of a class has (talents and pets left out:
+-- a warlock's Spell Lock only with a Felhunter out).
+local GUESS={MAGE={"Counterspell"},ROGUE={"Kick"},WARRIOR={"Pummel"},SHAMAN={"Earth Shock"},PALADIN={"Hammer of Justice"},DRUID={"Bash"}}
+I.GUESS=GUESS
 local PREFIX="FTINT"
 local ROW_GAP=2
 local ROW_BACK={0,0,0,.6}
@@ -84,6 +92,31 @@ function I:Roster()
     if IsInRaid and IsInRaid() then for i=1,40 do add("raid"..i) end
     elseif IsInGroup and IsInGroup() then for i=1,4 do add("party"..i) end end
     return out
+end
+-- Rows for group members we know nothing about yet, by class.
+function I:Guess()
+    local roster=self:Roster()
+    local me=UnitName and UnitName("player")
+    local real={}
+    for _,e in pairs(self.entries) do if e.source~="guess" then real[e.name]=true end end
+    for name,m in pairs(roster) do
+        if name~=me and not real[name] then
+            local list=GUESS[m.class]
+            if m.class=="WARLOCK" and UnitCreatureFamily then
+                local pet=m.unit:gsub("^(%a+)(%d+)$","%1pet%2")
+                local ok,family=pcall(UnitCreatureFamily,pet)
+                if ok and safe(family) and family=="Felhunter" then list={"Spell Lock"} end
+            end
+            for _,spell in ipairs(list or {}) do
+                local key=name.."|"..spell
+                if not self.entries[key] then self.entries[key]={name=name,spell=spell,cd=SPELLS[spell].cd,source="guess"} end
+            end
+        end
+    end
+    for key,e in pairs(self.entries) do
+        if e.source=="guess" and (real[e.name] or not roster[e.name]) then self.entries[key]=nil end
+    end
+    self:Changed()
 end
 function I:InGroup() return (IsInGroup and IsInGroup()) and true or false end
 -- An interrupt was used (or is known): start or keep its row.
@@ -149,7 +182,8 @@ function I:Cast(unit,spellID)
         local e=self.entries[who.."|"..spell]
         -- A synced member reports it themselves (with the exact cooldown).
         if e and e.source=="sync" and e.readyAt and e.readyAt>now()-.5 then return end
-        self:Note(who,spell,nil,true,e and e.source or "seen")
+        self:Note(who,spell,nil,true,(e and e.source~="guess" and e.source) or "seen")
+        if not e or e.source=="guess" then FT:Coalesce("interruptsGuess",function() self:Guess() end,.5) end
     end
 end
 function I:Message(text,sender)
@@ -159,6 +193,7 @@ function I:Message(text,sender)
     local kind,spell,cd=text:match("^(%a)|([^|]+)|([%d%.]+)$")
     if not kind or not SPELLS[spell] then return end
     self:Note(who,spell,cd,kind=="U","sync")
+    FT:Coalesce("interruptsGuess",function() self:Guess() end,.5)
 end
 -- Rows -------------------------------------------------------------------------
 function I:Bar()
@@ -296,7 +331,7 @@ function I:Paint()
             r.time:SetText(short(left)); r.time:SetTextColor(1,1,1); r.icon:SetDesaturated(true)
         else
             r.bar:SetValue(1); r.bar:SetStatusBarColor(cr,cg,cb,.85)
-            r.time:SetText("Ready"); r.time:SetTextColor(.6,1,.6); r.icon:SetDesaturated(false)
+            r.time:SetText(""); r.icon:SetDesaturated(false)
         end
         local skins=FT.modules.IconStyles; if skins and skins.BarRow then skins:BarRow(r,ROW_BACK) end
         r:Show()
@@ -375,7 +410,7 @@ function I:Apply()
     self:SetEvents(s.enabled)
     if s.enabled then
         if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix and not self.prefixed then self.prefixed=true; pcall(C_ChatInfo.RegisterAddonMessagePrefix,PREFIX) end
-        self:Bar(); self:Own(); self:Announce()
+        self:Bar(); self:Own(); self:Announce(); self:Guess()
     end
     if self.bar then self:Place(); self:Paint() end
     self:Refresh()
@@ -383,7 +418,7 @@ end
 function I:SetEvents(on)
     if self.listening==on then return end
     self.listening=on
-    local events={"UNIT_SPELLCAST_SUCCEEDED","CHAT_MSG_ADDON","GROUP_ROSTER_UPDATE","SPELLS_CHANGED","PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","PLAYER_ENTERING_WORLD"}
+    local events={"UNIT_SPELLCAST_SUCCEEDED","CHAT_MSG_ADDON","GROUP_ROSTER_UPDATE","SPELLS_CHANGED","PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","PLAYER_ENTERING_WORLD","UNIT_PET"}
     for _,event in ipairs(events) do
         if on then pcall(self.events.RegisterEvent,self.events,event) else pcall(self.events.UnregisterEvent,self.events,event) end
     end
@@ -467,11 +502,14 @@ I.events:SetScript("OnEvent",function(_,event,a,b,c,d)
         -- Someone joined: tell them, once the group settles (a battleground
         -- fires this many times a second), and at most every few seconds.
         FT:Coalesce("interruptsRoster",function() if not I.announced or now()-I.announced>=5 then I.announced=nil; I:Announce() end end,2)
-        I:Changed()
+        FT:Coalesce("interruptsGuess",function() I:Guess() end,.5)
     elseif event=="SPELLS_CHANGED" then
         FT:Coalesce("interruptsOwn",function() I:Own(); I.announced=nil; I:Announce() end,1)
+    elseif event=="UNIT_PET" then
+        -- A warlock's Felhunter came or went.
+        if safe(a) and type(a)=="string" and (a:match("^party%d") or a:match("^raid%d")) then FT:Coalesce("interruptsGuess",function() I:Guess() end,.5) end
     elseif event=="PLAYER_ENTERING_WORLD" then
-        I:Changed() -- in or out of an instance
+        FT:Coalesce("interruptsGuess",function() I:Guess() end,.5) -- in or out of an instance
     elseif event=="PLAYER_REGEN_DISABLED" then
         I.fighting=true; I:Changed()
     elseif event=="PLAYER_REGEN_ENABLED" then
