@@ -37,8 +37,12 @@ M.WINDOWS={
     {"ContainerFrame4","Bag 3"},{"ContainerFrame5","Bag 4"},{"ContainerFrame6","Reagent bag"},{"ContainerFrame7","Bank bag 1"},
     {"ContainerFrame8","Bank bag 2"},{"ContainerFrame9","Bank bag 3"},{"ContainerFrame10","Bank bag 4"},{"ContainerFrame11","Bank bag 5"},
     {"ContainerFrame12","Bank bag 6"},{"ContainerFrame13","Bank bag 7"},{"KeyRingFrame","Keyring"},
+    -- "World refresh in N minutes": a notice above the chat, not in Edit Mode.
+    {"ShardTransferImminentFrame","World refresh notice"},
 }
 local LABEL={}
+local REFRESH="ShardTransferImminentFrame"
+local BLUE={.51,.773,1}
 for _,entry in ipairs(M.WINDOWS) do LABEL[entry[1]]=entry[2] end
 local function safe(v) return v~=nil and not (issecretvalue and issecretvalue(v)) end
 local function busy() return InCombatLockdown and InCombatLockdown() end
@@ -49,6 +53,8 @@ function M:Settings()
     if type(s.frames)~="table" then s.frames={} end
     -- Drag the game's windows any time (not only after "Move windows now").
     if type(s.anytime)~="boolean" then s.anytime=false end
+    -- A bar on the world refresh notice that fills as the refresh nears.
+    if type(s.refreshBar)~="boolean" then s.refreshBar=false end
     for name,p in pairs(s.frames) do
         if type(name)~="string" or type(p)~="table" or type(p.x)~="number" or type(p.y)~="number" then s.frames[name]=nil end
     end
@@ -91,12 +97,11 @@ function M:Restore(frame,name)
     if points and #points>0 then
         frame:ClearAllPoints()
         for _,pt in ipairs(points) do pcall(frame.SetPoint,frame,pt[1],pt[2],pt[3],pt[4],pt[5]) end
-    elseif frame:IsShown() and UIPanelWindows and UIPanelWindows[name] and HideUIPanel and ShowUIPanel then
-        -- A side window we never saw placed: let the game place it again.
-        HideUIPanel(frame); ShowUIPanel(frame)
-    elseif frame:IsShown() and name:find("^ContainerFrame") and UpdateContainerFrameAnchors then
-        pcall(UpdateContainerFrameAnchors)
     end
+    -- Never by hiding and showing it, or asking the game to place its bags
+    -- again: run from an addon, that leaves the game's windows marked as
+    -- touched by an addon and can get the game's own actions blocked. A
+    -- window we never saw placed goes back the next time it opens.
 end
 -- A strip along the top of the window (its title bar) to drag it by, so
 -- windows whose insides are covered by buttons and lists can be moved too.
@@ -135,6 +140,7 @@ function M:WithMovers(on)
         self:AttachAll(); self:HookPanels()
     end
     self:Handles(self:Unlocked())
+    self:RefreshBar(); self:StandIn(self:Unlocked() and (self.moving or self.withMovers)); self:Cover()
     self:Refresh()
 end
 function M:Handles(on)
@@ -227,6 +233,7 @@ function M:Reset(name)
     local s=self:Settings(); s.frames[name]=nil
     local frame=_G[name]
     if frame and self.known[frame] then self:Restore(frame,name) end
+    if name==REFRESH and self.standIn and self.standIn:IsShown() then self:StandIn(true) end
     self:Refresh()
 end
 function M:ResetAll()
@@ -243,6 +250,7 @@ function M:SetMoving(on)
     if self.moving then self:AttachAll(); self:HookPanels() end
     self:Handles(self:Unlocked())
     local bar=self:Bar(); bar:SetShown(self.moving)
+    self:RefreshBar(); self:StandIn(self:Unlocked() and (self.moving or self.withMovers)); self:Cover()
     self:Refresh()
 end
 function M:ToggleMoving() self:SetMoving(not self.moving) end
@@ -264,6 +272,7 @@ function M:Apply()
     local s=self:Settings()
     if not s.enabled and self.moving then self.moving=false; if self.bar then self.bar:Hide() end end
     self:Handles(self:Unlocked())
+    self:RefreshBar()
     if s.enabled then
         self:AttachAll(); self:HookPanels(); self:PlaceShown()
     else
@@ -279,6 +288,95 @@ function M:Moved()
     table.sort(out,function(a,b) if a.label~=b.label then return a.label<b.label end; return a.name<b.name end)
     return out
 end
+-- World refresh notice ------------------------------------------------------
+-- "World refresh in N minutes" only shows before a refresh, so while you
+-- move windows a look-alike stands in for it where it will show, to drag.
+function M:RefreshBar()
+    local f=_G[REFRESH]
+    if type(f)~="table" or f.ftRefreshBar or not f.HookScript then return end
+    local bar=FT:ProgressBar(f,4); f.ftRefreshBar=bar
+    bar:SetPoint("BOTTOMLEFT",f,"BOTTOMLEFT",10,8); bar:SetPoint("BOTTOMRIGHT",f,"BOTTOMRIGHT",-10,8)
+    bar:SetColor(unpack(BLUE)); bar:Hide()
+    -- Runs after the game's own update, which sets the height each frame.
+    f:HookScript("OnUpdate",function(frame)
+        local t,start=frame.timer,frame.startingTimer
+        local on=FT.dbReady and M:Settings().refreshBar and safe(t) and safe(start) and type(t)=="number" and type(start)=="number" and start>0 and t>0
+        bar:SetShown(on and true or false)
+        if on then bar:SetFraction(1-t/start); frame:SetHeight(frame:GetHeight()+8) end
+    end)
+    -- The chat's alert list places its notices again whenever one comes or
+    -- goes: a moved notice goes back to your spot right after.
+    local list=_G.ChatAlertFrame
+    if type(list)=="table" and type(list.UpdateAnchors)=="function" and hooksecurefunc then
+        hooksecurefunc(list,"UpdateAnchors",function()
+            local s=M:Settings()
+            if s.enabled and s.frames[REFRESH] and f:IsShown() and M.dragging~=f then M:Place(f,REFRESH) end
+        end)
+    end
+    f:HookScript("OnShow",function() if M.standIn then M.standIn:Hide() end; M:Cover() end)
+    f:HookScript("OnHide",function() M:Cover(); if M:Unlocked() and (M.moving or M.withMovers) then M:StandIn(true) end end)
+end
+-- The real notice while you move things: the same gold box as other
+-- elements, with its name, to drag it by.
+function M:Cover()
+    local real=_G[REFRESH]
+    local on=type(real)=="table" and real:IsShown() and self:Unlocked() and (self.moving or self.withMovers)
+    local c=self.cover
+    if not on then if c then c:Hide() end; return end
+    if not c then
+        c=CreateFrame("Frame",nil,UIParent); self.cover=c
+        c:SetFrameStrata("DIALOG"); c:EnableMouse(true); c:RegisterForDrag("LeftButton")
+        FT:MoverBox(c,0)
+        c.label=FT:Label(c,"World refresh notice",12,true); c.label:SetPoint("BOTTOMLEFT",c,"TOPLEFT",0,3); c.label:SetTextColor(1,.82,0)
+        c:SetScript("OnDragStart",function() local r=_G[REFRESH]; if r then M:Start(r,REFRESH) end end)
+        c:SetScript("OnDragStop",function() local r=_G[REFRESH]; if r then M:Stop(r,REFRESH) end end)
+        FT:Tooltip(c,"World refresh notice","Drag to move it. Reset on the Move game windows page puts it back.")
+    end
+    c:ClearAllPoints(); c:SetAllPoints(real); c:Show()
+end
+function M:StandIn(on)
+    local real=_G[REFRESH]
+    if not on or type(real)~="table" or real:IsShown() then if self.standIn then self.standIn:Hide() end; return end
+    local f=self.standIn
+    if not f then
+        f=CreateFrame("Frame","ForeverToolsRefreshStandIn",UIParent); self.standIn=f
+        f:SetWidth(250); f:SetFrameStrata("DIALOG"); f:SetClampedToScreen(true)
+        f:SetMovable(true); f:EnableMouse(true); f:RegisterForDrag("LeftButton")
+        FT:Panel(f)
+        f.box=CreateFrame("Frame",nil,f); f.box:SetAllPoints(); f.box:SetFrameLevel(f:GetFrameLevel()+5); FT:MoverBox(f.box,0)
+        f.name=FT:Label(f,"World refresh notice",12,true); f.name:SetPoint("BOTTOMLEFT",f,"TOPLEFT",0,3); f.name:SetTextColor(1,.82,0)
+        f.text=FT:Label(f,"World refresh in 9 Minutes.",13)
+        f.text:SetPoint("TOPLEFT",10,-10); f.text:SetPoint("RIGHT",-10,0); f.text:SetJustifyH("LEFT"); f.text:SetTextColor(unpack(BLUE))
+        if f.text.SetWordWrap then f.text:SetWordWrap(true) end
+        f.hint=FT:Label(f,"An example: drag to move",11); f.hint:SetPoint("TOPLEFT",f,"BOTTOMLEFT",2,-4); f.hint:SetTextColor(.66,.59,.48)
+        f.bar=FT:ProgressBar(f,4); f.bar:SetPoint("BOTTOMLEFT",10,8); f.bar:SetPoint("BOTTOMRIGHT",-10,8); f.bar:SetColor(unpack(BLUE))
+        f:SetScript("OnUpdate",function(self_) self_.bar:SetFraction(((GetTime() or 0)%40)/40) end)
+        f:SetScript("OnDragStart",function(self_) self_:StartMoving() end)
+        f:SetScript("OnDragStop",function(self_)
+            self_:StopMovingOrSizing()
+            local left,top=self_:GetLeft(),self_:GetTop()
+            if left and top then M:Settings().frames[REFRESH]={x=left,y=top}; M:Refresh() end
+            M:StandIn(true)
+        end)
+        FT:Tooltip(f,"World refresh notice","Shows before a world refresh, with how long is left. Drag this example to where you want the notice.")
+    end
+    local bar=self:Settings().refreshBar
+    f.bar:SetShown(bar)
+    f:SetHeight((f.text:GetStringHeight() or 14)+20+(bar and 8 or 0))
+    f:ClearAllPoints()
+    local p=self:Settings().frames[REFRESH]
+    if p then f:SetPoint("TOPLEFT",UIParent,"BOTTOMLEFT",p.x,p.y)
+    else
+        -- Where the game shows it: its own anchor (above the chat).
+        local placed=false
+        for i=1,(real.GetNumPoints and real:GetNumPoints() or 0) do
+            local pt,rel,rp,x,y=real:GetPoint(i)
+            if safe(pt) and safe(x) and safe(y) then f:SetPoint(pt,rel,rp,x,y); placed=true end
+        end
+        if not placed then f:SetPoint("BOTTOMLEFT",ChatFrame1 or UIParent,"TOPLEFT",30,90) end
+    end
+    f:Show()
+end
 -- Page -----------------------------------------------------------------------
 local ROWS=8
 function M:Refresh()
@@ -287,6 +385,7 @@ function M:Refresh()
     self.toggle.label:SetText("Move game windows: "..(s.enabled and "On" or "Off")); FT:SetSelected(self.toggle,s.enabled)
     self.unlock.label:SetText(self.moving and "Done moving" or "Move windows now"); FT:SetSelected(self.unlock,self.moving)
     self.anytime.label:SetText("Drag them any time: "..(s.anytime and "On" or "Off"))
+    self.refreshToggle.label:SetText("World refresh progress bar: "..(s.refreshBar and "On" or "Off")); FT:SetSelected(self.refreshToggle,s.refreshBar)
     local list=self:Moved()
     for i=1,ROWS do
         local row=self.rows[i]; local e=list[i]
@@ -299,7 +398,7 @@ function M:Refresh()
 end
 function M:Open()
     if not self.frame then
-        local frame=FT:Window("ForeverToolsMoveWindowsPage","Move game windows",540,640); self.frame=frame
+        local frame=FT:Window("ForeverToolsMoveWindowsPage","Move game windows",540,680); self.frame=frame
         FT:PageInfo(frame,"Move game windows","Drag the game's own windows where you want them: character, spellbook, quest log, calendar, bank and more.\n\nClick Move windows now, drag by the title bar, then Done. Reset puts one back.\n\nWindows with action buttons can't move in a fight. Edit Mode frames stay with Edit Mode.")
         local hint=FT:Label(frame,"Drag game windows by their title bar.",12); hint:SetPoint("TOPLEFT",24,-64); hint:SetWidth(492); hint:SetTextColor(.66,.59,.48)
         self.toggle=FT:AccentButton(frame,"",492,34,"move"); self.toggle:SetPoint("TOPLEFT",24,-90)
@@ -315,19 +414,22 @@ function M:Open()
         self.anytime=FT:QuietButton(frame,"",492,32,"move"); self.anytime:SetPoint("TOPLEFT",24,-170)
         self.anytime:SetScript("OnClick",function() local s=self:Settings(); s.anytime=not s.anytime; if s.anytime then s.enabled=true end; self:Apply() end)
         FT:Tooltip(self.anytime,"Drag them any time","Drag title bars any time, without Move windows now.")
-        local title=FT:Label(frame,"Moved windows",14); title:SetPoint("TOPLEFT",24,-216); title:SetTextColor(1,.82,0)
+        self.refreshToggle=FT:QuietButton(frame,"",492,32,"Spell_Holy_BorrowedTime"); self.refreshToggle:SetPoint("TOPLEFT",24,-210)
+        self.refreshToggle:SetScript("OnClick",function() local s=self:Settings(); s.refreshBar=not s.refreshBar; self:RefreshBar(); if self.standIn and self.standIn:IsShown() then self:StandIn(true) end; self:Refresh() end)
+        FT:Tooltip(self.refreshToggle,"World refresh notice","A bar on the \"World refresh in N minutes\" notice that fills as the refresh nears. While you move windows, an example of the notice shows so you can drag it.")
+        local title=FT:Label(frame,"Moved windows",14); title:SetPoint("TOPLEFT",24,-256); title:SetTextColor(1,.82,0)
         self.rows={}
         for i=1,ROWS do
-            local row=CreateFrame("Frame",nil,frame); row:SetSize(492,34); row:SetPoint("TOPLEFT",24,-240-(i-1)*38)
+            local row=CreateFrame("Frame",nil,frame); row:SetSize(492,34); row:SetPoint("TOPLEFT",24,-280-(i-1)*38)
             row.label=FT:Label(row,"",14); row.label:SetPoint("LEFT",8,0); row.label:SetWidth(330); row.label:SetJustifyH("LEFT")
             row.reset=FT:QuietButton(row,"Reset",140,30,"reset"); row.reset:SetPoint("RIGHT")
             row.reset:SetScript("OnClick",function() if row.entry then self:Reset(row.entry.name) end end)
             FT:Tooltip(row.reset,"Reset","Put this window back where the game puts it.")
             self.rows[i]=row
         end
-        self.empty=FT:Label(frame,"None yet. Click Move windows now and drag a window.",13); self.empty:SetPoint("TOPLEFT",32,-248); self.empty:SetWidth(476); self.empty:SetTextColor(.66,.59,.48)
-        self.more=FT:Label(frame,"",12); self.more:SetPoint("TOPLEFT",32,-244-ROWS*38); self.more:SetWidth(476); self.more:SetTextColor(.66,.59,.48)
-        self.resetAll=FT:QuietButton(frame,"Reset all",240,32,"reset"); self.resetAll:SetPoint("TOPLEFT",24,-274-ROWS*38)
+        self.empty=FT:Label(frame,"None yet. Click Move windows now and drag a window.",13); self.empty:SetPoint("TOPLEFT",32,-288); self.empty:SetWidth(476); self.empty:SetTextColor(.66,.59,.48)
+        self.more=FT:Label(frame,"",12); self.more:SetPoint("TOPLEFT",32,-284-ROWS*38); self.more:SetWidth(476); self.more:SetTextColor(.66,.59,.48)
+        self.resetAll=FT:QuietButton(frame,"Reset all",240,32,"reset"); self.resetAll:SetPoint("TOPLEFT",24,-314-ROWS*38)
         self.resetAll:SetScript("OnClick",function() FT:Confirm("Put every moved window back?",function() self:ResetAll() end) end)
         FT:Tooltip(self.resetAll,"Reset all","Put every moved window back.")
     end

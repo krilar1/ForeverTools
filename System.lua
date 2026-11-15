@@ -1,54 +1,33 @@
 local _,FT=...
 local System={}
--- Other addons' login lines (System > General > Hide other addons' login
--- messages). Chat windows get a stand-in for AddMessage from the moment
--- ForeverTools loads until 20 seconds after you enter the world; then the
--- game's own is put back. With the switch off it is put back as soon as the
--- settings have loaded. Lines the game hides (secret values) pass untouched.
-local quiet={frames={},untilTime=math.huge}
-local function quietLine(text)
-    if not FT.dbReady or type(FT.db)~="table" or type(FT.db.system)~="table" or FT.db.system.quietLogin~=true then return false end
-    if type(text)~="string" or (issecretvalue and issecretvalue(text)) then return false end
-    if GetTime and GetTime()>quiet.untilTime then return false end
-    if text:find("ForeverTools",1,true) then return false end
-    local plain=text:gsub("|H.-|h(.-)|h","%1"):gsub("|c%x%x%x%x%x%x%x%x",""):gsub("|r",""):gsub("|T.-|t","")
-    plain=plain:gsub("^%s+",""):lower()
-    -- Chat from players and channels starts with a name or channel in brackets.
-    if plain:sub(1,1)=="[" then return false end
-    -- The game's own greeting stays.
-    if plain:find("welcome to world of warcraft",1,true) then return false end
-    return plain:find("v%d+%.%d") or plain:find("version %d") or plain:find("loaded") or plain:find("%d+%.%d+%.%d+")
-        or plain:find("welcome to ",1,true) or plain:find("thanks for using",1,true) or plain:find("thank you for using",1,true)
-end
-function System:QuietWrap()
-    for i=1,(NUM_CHAT_WINDOWS or 10) do
-        local frame=_G["ChatFrame"..i]
-        if frame and not quiet.frames[frame] and type(frame.AddMessage)=="function" then
-            local original=frame.AddMessage
-            local stand=function(owner,text,...) if quietLine(text) then return end; return original(owner,text,...) end
-            quiet.frames[frame]={original=original,stand=stand}; frame.AddMessage=stand
-        end
+-- "Hide other addons' login messages" is gone: hiding a chat line means
+-- standing in for the chat window's AddMessage, and the game then counts its
+-- chat as touched by ForeverTools until /reload (whispers you sent could be
+-- blocked). Putting the game's own back does not undo that.
+-- /ft chatdebug: is the game's chat still its own? Run it when whispers
+-- stop going out, before /reload: "tainted by" names who touched it.
+function System:ChatDebug()
+    local sys=self:Settings()
+    local chat=FT.modules.Chat and FT.modules.Chat:Settings() or {}
+    print("Keep chat: "..tostring(chat.history==true).."  links: "..tostring(sys.chatLinks==true))
+    local function check(label,owner,key)
+        if not issecurevariable then return end
+        local ok,secure,by
+        if owner then ok,secure,by=pcall(issecurevariable,owner,key) else ok,secure,by=pcall(issecurevariable,key) end
+        if not ok then return end
+        if secure then print("  "..label..": game's own") else print("  "..label..": |cffff8080tainted by "..tostring(by).."|r") end
     end
-end
-function System:QuietUnwrap()
-    for frame,rec in pairs(quiet.frames) do
-        -- Only if nothing else replaced it since; otherwise ours just passes lines on.
-        if frame.AddMessage==rec.stand then frame.AddMessage=rec.original; quiet.frames[frame]=nil end
+    for i=1,(NUM_CHAT_WINDOWS or 10) do local f=_G["ChatFrame"..i]; if f then check("ChatFrame"..i..".AddMessage",f,"AddMessage") end end
+    for _,g in ipairs({"ACTIVE_CHAT_EDIT_BOX","LAST_ACTIVE_CHAT_EDIT_BOX","ChatEdit_SetLastTellTarget","ChatEdit_GetLastTellTarget","ChatEdit_SendText","ChatEdit_ParseText","ChatFrame_SendTell","SendChatMessage"}) do
+        if _G[g]~=nil then check(g,nil,g) end
     end
-    quiet.untilTime=0
-end
-System:QuietWrap()
-do
-    local f=CreateFrame("Frame"); f:RegisterEvent("ADDON_LOADED"); f:RegisterEvent("PLAYER_ENTERING_WORLD")
-    f:SetScript("OnEvent",function(owner,event,name)
-        if event=="ADDON_LOADED" then
-            if name==(FT.name or "ForeverTools") and not (type(FT.db)=="table" and type(FT.db.system)=="table" and FT.db.system.quietLogin==true) then System:QuietUnwrap() end
-            return
-        end
-        owner:UnregisterAllEvents()
-        quiet.untilTime=(GetTime and GetTime() or 0)+20
-        C_Timer.After(21,function() System:QuietUnwrap() end)
-    end)
+    if C_ChatInfo then check("C_ChatInfo.SendChatMessage",C_ChatInfo,"SendChatMessage") end
+    local box=ChatFrame1EditBox or (ChatFrame1 and ChatFrame1.editBox)
+    if box then for _,k in ipairs({"chatType","tellTarget","channelTarget","lastTell","setText","text"}) do if rawget(box,k)~=nil then check("ChatFrame1EditBox."..k,box,k) end end end
+    if ChatFrameUtil then for _,k in ipairs({"SetLastTellTarget","GetLastTellTarget","SendTell"}) do if ChatFrameUtil[k]~=nil then check("ChatFrameUtil."..k,ChatFrameUtil,k) end end end
+    if FT.db and type(FT.db.blockedActions)=="table" and FT.db.blockedActions[1] then
+        local b=FT.db.blockedActions[1]; print("Last block: "..tostring(b.day or "").." "..tostring(b.when).." "..tostring(b.func))
+    end
 end
 local function usable(value)
     return (not issecretvalue or not issecretvalue(value)) and value~=nil
@@ -92,6 +71,7 @@ function System:Settings()
 end
 function System:Apply()
     local s=self:Settings()
+    if FT.modules.ChatLinks and FT.modules.ChatLinks.Apply then FT.modules.ChatLinks:Apply() end
     -- Forever's own option, rather than hiding an unrelated minimap region.
     if s.coordinates~=nil and C_CVar and C_CVar.GetCVar and C_CVar.SetCVar then
         if C_CVar.GetCVar("minimapShowPlayerCoords")~=nil then C_CVar.SetCVar("minimapShowPlayerCoords",s.coordinates and "1" or "0") end
@@ -150,7 +130,6 @@ local pages={
     {key="SystemGeneral",sections={{"Messages","welcome"},{"Setup","setup"},{"Help","scriptErrors"}},title="General",hint="Messages, setup, reset and help.",items={
         {"welcome","Welcome message","welcome","A short \"ForeverTools loaded\" line at login."},
         {"quietNoControl","Hide notices while you can't play","Ability_Mount_Wyvern_01","Notices wait on flight paths, in vehicles and cutscenes."},
-        {"quietLogin","Hide other addons' login messages","Spell_Holy_Silence","Hide other addons' \"loaded\" lines at login. Player and game chat is never hidden."},
         {"hiddenUIHint","Show key when interface is hidden","INV_Misc_Eye_01","Show which key brings the interface back after hiding it (Alt+Z)."},
         {"whatsNew","What's new after updates","INV_Misc_Note_05","Show what changed after an update."},
         {"gameMenuButton","Move elements in the game menu","Ability_Rogue_Sprint","A Move elements button (with the ForeverTools logo) in the game's own menu (Esc), under Macros."},
@@ -205,7 +184,7 @@ local pages={
     }},
 }
 System.pages=pages
-local toggles={gameMenuButton=true,versionCheck=true,minimapTarget=true,hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,shortKeys=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,mailAlts=true,mailGold=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietLogin=true,quietNoControl=true}
+local toggles={gameMenuButton=true,versionCheck=true,minimapTarget=true,hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,shortKeys=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,mailAlts=true,mailGold=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietNoControl=true}
 -- Switches that are the game's own settings: read and written directly,
 -- never stored by ForeverTools. "Unavailable" when the game has no such setting.
 local gameOptions={scriptErrors="scriptErrors",deathGlow="ffxDeath"}
@@ -259,7 +238,7 @@ function System:Values()
     return {welcome=FT.db.welcome==true,whatsNew=s.hideWhatsNew~=true,minimap=FT.db.minimapEnabled~=false,coordinates=coords,
         minimapTarget=select(2,self:TargetTracking())==true,minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=gameOption("scriptErrors")=="1",deathGlow=gameOption("ffxDeath")~="0",
         hiddenUIHint=s.hiddenUIHint==true,autoRole=s.autoRole==true,shortKeys=s.shortKeys==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true,mailAlts=s.mailAlts==true,mailGold=s.mailGold==true,
-        hideErrors=s.hideErrors==true,errorsInCombat=s.errorsInCombat==true,quietLogin=s.quietLogin==true,quietNoControl=s.quietNoControl~=false,versionCheck=s.versionCheck~=false,gameMenuButton=s.gameMenuButton~=false}
+        hideErrors=s.hideErrors==true,errorsInCombat=s.errorsInCombat==true,quietNoControl=s.quietNoControl~=false,versionCheck=s.versionCheck~=false,gameMenuButton=s.gameMenuButton~=false}
 end
 function System:Refresh()
     if not self.buttons then return end
@@ -561,6 +540,140 @@ function System:QueueSpellID(tip,id,kind)
     C_Timer.After(0,function()
         if (tip.ftSpellGeneration or 0)==generation and tip:IsShown() then self:SpellID(tip,id,kind) end
     end)
+end
+-- An item tooltip's ID when the game hides it (fights): the bag slot,
+-- action button or equipment slot the mouse is on, or the item link.
+-- Item IDs seen out of a fight, so a fight's hidden tooltip can still show
+-- one: by bag slot and by item name. Filled when bags change (out of a fight)
+-- and from every item tooltip with a visible ID.
+System.itemSlots,System.itemNames={},{}
+local function tipName(tip)
+    local name=tip.GetName and tip:GetName()
+    local line=name and _G[name.."TextLeft1"]
+    if not line or not line.GetText then return end
+    local okT,text=pcall(line.GetText,line)
+    if okT and usable(text) and type(text)=="string" and text~="" then return text end
+end
+function System:RememberItem(tip,id)
+    if not (usable(id) and type(id)=="number" and id>0) then return end
+    local name=tipName(tip)
+    if name then self.itemNames[name]=id end
+end
+function System:ScanBagItems()
+    if InCombatLockdown() or not (C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemID) then return end
+    local slots={}
+    for bag=-3,(NUM_TOTAL_EQUIPPED_BAG_SLOTS or 5)+(NUM_BANKBAGSLOTS or 7) do
+        local okN,count=pcall(C_Container.GetContainerNumSlots,bag)
+        if okN and usable(count) and type(count)=="number" then
+            for slot=1,count do
+                local okI,id=pcall(C_Container.GetContainerItemID,bag,slot)
+                if okI and usable(id) and type(id)=="number" then slots[bag..":"..slot]=id end
+            end
+        end
+    end
+    self.itemSlots=slots
+end
+do
+    local f=CreateFrame("Frame")
+    for _,e in ipairs({"PLAYER_ENTERING_WORLD","BAG_UPDATE_DELAYED","BANKFRAME_OPENED","PLAYERBANKSLOTS_CHANGED","PLAYER_REGEN_ENABLED"}) do pcall(f.RegisterEvent,f,e) end
+    f:SetScript("OnEvent",function() if FT.dbReady and System:Settings().spellID then FT:Coalesce("itemScan",function() System:ScanBagItems() end,.5) end end)
+end
+function System:ItemIDFromOwner(tip)
+    local function ok(v) return usable(v) and type(v)=="number" and v>0 and v or nil end
+    local debug=self.itemDebugUntil and GetTime()<self.itemDebugUntil
+    local function say(...) if debug then print("|cffffd100FT item ID|r",...) end end
+    local owner=tip.GetOwner and tip:GetOwner()
+    say("owner",owner and owner.GetName and owner:GetName() or tostring(owner))
+    if owner then
+        -- Bag and bank slots.
+        if owner.GetBagID and owner.GetID and C_Container and C_Container.GetContainerItemID then
+            local okB,bag=pcall(owner.GetBagID,owner); local okS,slot=pcall(owner.GetID,owner)
+            if okB and okS and ok(slot) and usable(bag) and type(bag)=="number" then
+                local okI,id=pcall(C_Container.GetContainerItemID,bag,slot); id=okI and ok(id)
+                say("bag",bag,slot,"game:",tostring(id),"saved:",tostring(self.itemSlots[bag..":"..slot]))
+                if id then return id end
+                id=self.itemSlots[bag..":"..slot]
+                if id then return id end
+            end
+        end
+        -- Action buttons with an item (or an item macro).
+        local action=owner.action or (owner.GetAttribute and owner:GetAttribute("action"))
+        if ok(action) and GetActionInfo then
+            local okA,kind,id=pcall(GetActionInfo,action)
+            if okA and kind=="item" and ok(id) then return id end
+        end
+        -- Character window slots.
+        if owner.GetID and GetInventoryItemID and owner.GetName then
+            local name=owner:GetName()
+            if type(name)=="string" and name:find("^Character.+Slot$") then
+                local okI,id=pcall(GetInventoryItemID,"player",owner:GetID()); id=okI and ok(id)
+                if id then return id end
+            end
+        end
+    end
+    if tip.GetItem then
+        local okL,_,link=pcall(tip.GetItem,tip)
+        say("link",okL and usable(link) and tostring(link) or "hidden")
+        if okL and usable(link) and type(link)=="string" then return tonumber(link:match("item:(%d+)")) end
+    end
+    local name=tipName(tip)
+    say("name",tostring(name),"saved:",tostring(name and self.itemNames[name]))
+    return name and self.itemNames[name]
+end
+-- A spell tooltip's ID when the game hides it (fights): the action button
+-- the mouse is on, the tooltip's spell, or the IDs seen before the fight
+-- (by name and rank), or your spellbook.
+System.spellNames={}
+local function tipRank(tip)
+    local name=tip.GetName and tip:GetName()
+    local line=name and _G[name.."TextRight1"]
+    if not line or not line.GetText or (line.IsShown and not line:IsShown()) then return "" end
+    local okT,text=pcall(line.GetText,line)
+    return okT and usable(text) and type(text)=="string" and text or ""
+end
+function System:RememberSpell(tip,id)
+    if not (usable(id) and type(id)=="number" and id>0) then return end
+    local name=tipName(tip)
+    if name then self.spellNames[name.."|"..tipRank(tip)]=id; self.spellNames[name]=self.spellNames[name] or id end
+end
+function System:SpellIDFromTip(tip)
+    local function ok(v) return usable(v) and type(v)=="number" and v>0 and v or nil end
+    local debug=self.itemDebugUntil and GetTime()<self.itemDebugUntil
+    local function say(...) if debug then print("|cffffd100FT spell ID|r",...) end end
+    local owner=tip.GetOwner and tip:GetOwner()
+    if owner then
+        local action=owner.action or (owner.GetAttribute and owner:GetAttribute("action"))
+        if ok(action) and GetActionInfo then
+            local okA,kind,id=pcall(GetActionInfo,action)
+            say("action",action,tostring(okA and usable(kind) and kind),tostring(okA and usable(id) and id or "hidden"))
+            if okA and usable(kind) and kind=="spell" and ok(id) then return id end
+        end
+    end
+    if tip.GetSpell then
+        local okS,_,id=pcall(tip.GetSpell,tip)
+        say("tooltip spell",okS and usable(id) and tostring(id) or "hidden")
+        if okS and ok(id) then return id end
+    end
+    local name=tipName(tip)
+    if not name then say("name hidden"); return end
+    local id=self.spellNames[name.."|"..tipRank(tip)]
+    if not id then
+        local reminder=FT.modules.BuffReminder
+        local okL,learned=pcall(function() return reminder and reminder:Learned() end)
+        local info=okL and type(learned)=="table" and learned[name]
+        id=info and ok(info.value)
+    end
+    id=id or self.spellNames[name]
+    say("name",name,tipRank(tip),"saved:",tostring(id))
+    return id
+end
+function System:AuraSpellID(tip,id)
+    if usable(id) then self:RememberSpell(tip,id) else id=self:SpellIDFromTip(tip) end
+    if usable(id) then self:SpellID(tip,id) end
+end
+function System:ItemDebug()
+    self.itemDebugUntil=GetTime()+60
+    print("|cffffd100FT item ID|r for 60 s: hover items and spells in a fight; each hidden ID prints how it was looked for.")
 end
 function System:SpellID(tip,id,kind,building)
     if not self:Settings().spellID or not tip or tip.ftAddonHelp or not usable(id) or type(id)~="number" or id<=0 then return end
@@ -960,14 +1073,14 @@ events:SetScript("OnEvent",function()
         local harmful=filter and type(filter)=="string" and filter:find("HARMFUL",1,true)
         if not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then return end
         local ok,aura=pcall(C_UnitAuras.GetAuraDataByIndex,unit,index,filter or "HELPFUL")
-        if ok and aura then if not harmful then showBuffSource(tip,unit,aura) end;System:SpellID(tip,aura.spellId) end
+        if ok and aura then if not harmful then showBuffSource(tip,unit,aura) end;System:AuraSpellID(tip,aura.spellId) end
     end
     local function buffSourceByID(tip,unit,id)
         if not usable(unit) or not usable(id) or type(unit)~="string" or not C_UnitAuras or not C_UnitAuras.GetAuraDataByAuraInstanceID then return end
         local ok,aura=pcall(C_UnitAuras.GetAuraDataByAuraInstanceID,unit,id)
         if ok and aura then
             if usable(aura.isHelpful) and aura.isHelpful then showBuffSource(tip,unit,aura) end
-            System:SpellID(tip,aura.spellId)
+            System:AuraSpellID(tip,aura.spellId)
         end
     end
     if hooksecurefunc then
@@ -984,11 +1097,30 @@ events:SetScript("OnEvent",function()
             local dataType=Enum.TooltipDataType[kind]
             local label=kind
             if dataType then TooltipDataProcessor.AddTooltipPostCall(dataType,function(tip,data)
-                if data then System:SpellID(tip,data.id,label,true) end
+                if not System:Settings().spellID then return end
+                local id
+                if usable(data) then local okD,v=pcall(function() return data.id end); if okD then id=v end end
+                -- In a fight the game can hide the ID in the tooltip's data:
+                -- then it is read from what the tooltip belongs to.
+                if label=="Item" then
+                    if usable(id) then System:RememberItem(tip,id)
+                    else
+                        if System.itemDebugUntil and GetTime()<System.itemDebugUntil then print("|cffffd100FT item ID|r","tooltip data: "..(usable(data) and "ID hidden" or "all hidden")) end
+                        id=System:ItemIDFromOwner(tip)
+                    end
+                end
+                if not usable(id) then return end
+                System:SpellID(tip,id,label,true)
             end) end
         end
         if Enum.TooltipDataType.Spell then
-            TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Spell,function(tip,data) if data then System:SpellID(tip,data.id,"Spell",true) end end)
+            TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Spell,function(tip,data)
+                if not System:Settings().spellID then return end
+                local id
+                if usable(data) then local okD,v=pcall(function() return data.id end); if okD then id=v end end
+                if usable(id) then System:RememberSpell(tip,id) else id=System:SpellIDFromTip(tip) end
+                if usable(id) then System:SpellID(tip,id,"Spell",true) end
+            end)
         end
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit,function(tip) if tip==GameTooltip then System:TooltipTarget(tip) end end)
     elseif not GameTooltip.HasScript or GameTooltip:HasScript("OnTooltipSetUnit") then

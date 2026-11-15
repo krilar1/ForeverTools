@@ -34,7 +34,9 @@ function Tip:Settings()
         -- Legacy builds stored this switch under System.
         s.target=FT.db.system~=nil and FT.db.system.tooltipTarget==true
     end
-    if s.guild==nil then s.guild=false end
+    -- The guild shows like the game's own tooltip. Before 1.6.0 it was saved
+    -- as off for everyone, which hid enemy (and friendly) guilds: on once.
+    if s.guild==nil or not s.guildOn160 then s.guild=true; s.guildOn160=true end
     if s.guildFactionColor==nil then s.guildFactionColor=false end
     if s.guildRank==nil then s.guildRank=false end
     if s.healthBar==nil then s.healthBar=true end

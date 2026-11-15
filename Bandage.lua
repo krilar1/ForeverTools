@@ -1,6 +1,7 @@
 local _,FT=...
 -- The "Bandage" macro (Macros > Generic): stop attacking, then bandage
--- yourself with the best bandage you carry.
+-- the friend under your mouse, your friendly target, or yourself with the
+-- best bandage you carry.
 --   * The macro lists the bandages in your bags, best first, so when the best
 --     one runs out in a fight the next line takes over.
 --   * Its icon and tooltip are the bandage it uses first.
@@ -58,6 +59,8 @@ function FT:UpdateFollowed(name,ours,body)
     return changed
 end
 local NAME="Bandage"
+-- The friend under your mouse, a friendly target, or yourself.
+local TARGET="[@mouseover,help,nodead][help,nodead][@player]"
 local LIMIT=255
 -- Standard bandages with how good they are (higher is better). A bandage the
 -- game calls a bandage but that is not listed here is ranked by its item level.
@@ -127,10 +130,10 @@ function Bandage:Body()
     if #carried>0 then
         local function ref(item) return item.name or ("item:"..item.id) end
         lines={"#showtooltip "..ref(carried[1]),"/stopattack"}
-        for _,item in ipairs(carried) do lines[#lines+1]="/use [@player] "..ref(item) end
+        for _,item in ipairs(carried) do lines[#lines+1]="/use "..TARGET.." "..ref(item) end
     else
         lines={"#showtooltip","/stopattack"}
-        for _,id in ipairs(ORDER) do lines[#lines+1]="/use [@player] item:"..id end
+        for _,id in ipairs(ORDER) do lines[#lines+1]="/use "..TARGET.." item:"..id end
     end
     -- Keep within the game's 255 characters: the weakest lines go first.
     local body=table.concat(lines,"\n")
@@ -146,7 +149,8 @@ function Bandage:Ours(body)
         count=count+1
         if count==1 then if line:sub(1,12)~="#showtooltip" then return false end
         elseif count==2 then if line~="/stopattack" then return false end
-        elseif line:sub(1,15)~="/use [@player] " then return false end
+        -- Before 1.6.0 the macro bandaged only you ([@player]): still ours.
+        elseif line:sub(1,15)~="/use [@player] " and line:sub(1,#TARGET+6)~="/use "..TARGET.." " then return false end
     end
     return count>=3
 end
@@ -168,7 +172,7 @@ FT:RegisterModule("Bandage",Bandage)
 -- Bring every followed macro up to date: after your macros change, and when
 -- you close the game's macro window (nothing is rewritten while it is open).
 function FT:RefreshFollowed()
-    for _,key in ipairs({"Bandage","FoodWater"}) do
+    for _,key in ipairs({"Bandage","FoodWater","Cures"}) do
         local follow=self.modules[key]
         if follow and follow.Update then pcall(follow.Update,follow) end
     end

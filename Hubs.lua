@@ -15,7 +15,7 @@ local function macroCount(view, named)
     if not ok then return "" end
     local who = ""
     if named then
-        if view == "class" then local name = UnitClass("player"); who = (name or "") .. " · "
+        if view == "class" or view == "pvp" then local name = UnitClass("player"); who = (name or "") .. " · "
         else local name = UnitRace("player"); who = (name or "") .. " · " end
     end
     return who .. added .. " of " .. total .. " added"
@@ -74,11 +74,17 @@ local hubs = {
     {key = "PvP", width = 540, height = 640, title = "PvP", pages = {
         {"EnemyAlerts", "Enemy alerts", "Ability_Stealth", function()
             local s = settings("Enemies")
+            if s.kd and FT.Enemies and FT.Enemies.KDTotals then
+                local k, d = FT.Enemies:KDTotals()
+                return (s.stealth and "Stealth on" or "Stealth off") .. " · " .. k .. " kills, " .. d .. " deaths"
+            end
             return (s.stealth and "Stealth on" or "Stealth off") .. " · marked " .. onOff(s.marks):lower()
         end},
         {"EnemyMarks", "Marked players", "Ability_Hunter_SniperShot", function()
             local n = 0; for _ in pairs(type(FT.db.enemyMarks) == "table" and FT.db.enemyMarks or {}) do n = n + 1 end
-            return n == 0 and "None yet" or (n .. " marked")
+            local g = 0; for _ in pairs(type(FT.db.enemyGuilds) == "table" and FT.db.enemyGuilds or {}) do g = g + 1 end
+            if n + g == 0 then return "None yet" end
+            return (n > 0 and (n .. " marked") or "") .. (n > 0 and g > 0 and " · " or "") .. (g > 0 and (g .. (g == 1 and " guild" or " guilds")) or "")
         end},
         {"EnemyNearby", "Nearby enemies", "INV_Misc_Spyglass_02", function() return onOff(settings("Enemies").nearby) end},
         {"QueueTimer", "Battleground timer", "INV_Misc_PocketWatch_01", function() return onOff(settings("QueueTimer").enabled) end},
@@ -110,6 +116,7 @@ local hubs = {
             return "ClassIcon_" .. (class and (class:sub(1, 1) .. class:sub(2):lower()) or "Warrior")
         end, function() return macroCount("class", true) end},
         {"MacroRace", "My race", "INV_Misc_Head_Human_01", function() return macroCount("race", true) end},
+        {"MacroPvP", "PvP", "Ability_Warrior_Challange", function() return macroCount("pvp", true) end},
         {"MacroGeneric", "Generic", "INV_Misc_Gear_01", function() return macroCount("generic") end},
         {"MacroOwn", "My own macros", "INV_Feather_05", function()
             local m = mod("MacroForge"); if not m or not m.ViewEntries then return "" end
@@ -203,7 +210,7 @@ local tips = {
     FlightTimer = "Time until you land.",
     SystemMinimap = "Minimap button, coordinates, button grouping.",
     SystemQuests = "Quest tracker at login, loot-roll position.",
-    Interrupts = "Your group's interrupts and cooldowns.",
+    Interrupts = "Your group's interrupts and cooldowns (with other ForeverTools users).",
     EnemyCooldowns = "Big cooldowns enemy players have used.",
     SystemErrors = "Hide the red error text.",
     Movers = "Drag ForeverTools' things on screen.",
@@ -215,6 +222,7 @@ local tips = {
     GameTweaks = "Game settings the menu doesn't show: sharpness, grass, weather, scenery.",
     MacroForge = "Ready-made macros for your class.",
     MacroRace = "Macros for your race's own abilities.",
+    MacroPvP = "PvP macros for your class: focus, crowd control, interrupts.",
     MacroGeneric = "Macros for any class.",
     MacroOwn = "Macros you made yourself.",
     MacroOther = "Look at another class's macros, for an alt.",

@@ -1405,13 +1405,13 @@ function Profiles:StrictImport(data)
     end
     if not check(result.fps,{enabled="boolean",fontSize="number",x="number",y="number",screenWidth="number",screenHeight="number",align="string",anchorX="number",anchorY="number",anchorWidth="number",anchorHeight="number"}) then return nil,"Invalid FPS settings." end
     if not check(result.queueTimer,{enabled="boolean",size="number",x="number",y="number"}) then return nil,"Invalid battleground timer settings." end
-    if not check(result.diminish,{enabled="boolean",target="boolean",focus="boolean",self="boolean",side="string",size="number",places="table",fontSize="number",text="string"}) then return nil,"Invalid diminishing returns settings." end
+    if not check(result.diminish,{enabled="boolean",target="boolean",focus="boolean",self="boolean",tot="boolean",side="string",size="number",places="table",fontSize="number",text="string"}) then return nil,"Invalid diminishing returns settings." end
     if not check(result.enemyCooldowns,{enabled="boolean",bar="boolean",targetIcons="boolean",where="string",grow="string",name="string",side="string",icon="number",rows="number",targetSize="number",timeScale="number",nameScale="number",tx="number",ty="number",x="number",y="number"}) then return nil,"Invalid enemy cooldown settings." end
     if not check(result.autoRelease,{enabled="boolean",keepSelfRes="boolean"}) then return nil,"Invalid auto release settings." end
     if not check(result.personal,{order="table",text="table",preview="table"}) then return nil,"Invalid personal resource settings." end
-    if not check(result.interrupts,{enabled="boolean",when="string",self="boolean",solo="boolean",width="number",size="number",x="number",y="number",dock="string",grow="string",rows="number"}) then return nil,"Invalid interrupt bar settings." end
+    if not check(result.interrupts,{enabled="boolean",when="string",self="boolean",solo="boolean",say="boolean",sayChat="string",sayText="string",width="number",size="number",x="number",y="number",dock="string",grow="string",rows="number"}) then return nil,"Invalid interrupt bar settings." end
     if not check(result.thanks,{enabled="boolean",group="boolean"}) then return nil,"Invalid thanks settings." end
-    if not check(result.moveWindows,{enabled="boolean",anytime="boolean",frames="table"}) then return nil,"Invalid window settings." end
+    if not check(result.moveWindows,{enabled="boolean",anytime="boolean",frames="table",refreshBar="boolean"}) then return nil,"Invalid window settings." end
     if type(result.moveWindows)=="table" and type(result.moveWindows.frames)=="table" then
         for name,p in pairs(result.moveWindows.frames) do
             if type(name)~="string" or #name>80 or type(p)~="table" or type(p.x)~="number" or type(p.y)~="number" then return nil,"Invalid window settings." end
@@ -1427,9 +1427,9 @@ function Profiles:StrictImport(data)
         end
     end
     if not check(result.trinkets,{enabled="boolean",vertical="boolean",numbers="boolean",mouseover="boolean",hideEmpty="boolean",size="number",x="number",y="number",locked="boolean"}) then return nil,"Invalid trinket menu settings." end
-    if not check(result.bags,{gold="boolean",view="boolean",counts="boolean",locked="boolean",buttons="boolean",countSplit="boolean",countSelf="boolean",countGuild="boolean",countShift="boolean",countSpacer="boolean",countFullNames="boolean",fullNamesOn="boolean",countStyle="string",countPlace="string",bagX="number",bagY="number",bankX="number",bankY="number",order="string",insert="string",cleanup="string"}) then return nil,"Invalid bag settings." end
-    if not check(result.enemies,{stealth="boolean",fade="boolean",marks="boolean",nearby="boolean",instances="boolean",sound="boolean",flash="boolean",markTooltip="boolean",size="number",nearSize="number",nearTime="number",x="number",y="number",nearX="number",nearY="number",nearDock="string",nearCollapsed="boolean",nearShowEmpty="boolean",nearAlong="number",nearCorner="string",nearRows="number",nearFade="boolean"}) then return nil,"Invalid enemy alert settings." end
-    if not check(result.flightTimer,{enabled="boolean",font="string",size="number",outline="string",color="table",x="number",y="number"}) then return nil,"Invalid flight timer settings." end
+    if not check(result.bags,{skipBank="boolean",rows="boolean",gold="boolean",view="boolean",counts="boolean",locked="boolean",buttons="boolean",countSplit="boolean",countSelf="boolean",countGuild="boolean",countShift="boolean",countSpacer="boolean",countFullNames="boolean",fullNamesOn="boolean",countStyle="string",countPlace="string",bagX="number",bagY="number",bankX="number",bankY="number",order="string",insert="string",cleanup="string"}) then return nil,"Invalid bag settings." end
+    if not check(result.enemies,{kd="boolean",stealth="boolean",fade="boolean",marks="boolean",nearby="boolean",instances="boolean",sound="boolean",flash="boolean",markTooltip="boolean",size="number",nearSize="number",nearTime="number",x="number",y="number",nearX="number",nearY="number",nearDock="string",nearCollapsed="boolean",nearShowEmpty="boolean",nearAlong="number",nearCorner="string",nearRows="number",nearFade="boolean"}) then return nil,"Invalid enemy alert settings." end
+    if not check(result.flightTimer,{enabled="boolean",font="string",size="number",outline="string",color="table",x="number",y="number",bar="boolean"}) then return nil,"Invalid flight timer settings." end
     if not check(result.lootRoll,{x="number",y="number",custom="boolean"}) then return nil,"Invalid loot-roll position." end
     if not check(result.leveling,{enabled="boolean",progress="boolean",rested="boolean",perHour="boolean",timeToLevel="boolean",kills="boolean",tooltip="boolean",fontSize="number",x="number",y="number",screenWidth="number",screenHeight="number",layout="string",order="table",background="boolean",backgroundColor="table",backgroundAlpha="number",align="string"}) then return nil,"Invalid leveling settings." end
     if result.leveling and result.leveling.backgroundColor then
@@ -1490,7 +1490,7 @@ function Profiles:StrictImport(data)
             end
         end
     end
-    if not check(result.tooltip,{guildFactionColor="boolean",guildRank="boolean",guildFactionIcon="boolean",target="boolean",guild="boolean",healthBar="boolean",position="string",order="string",offsetX="number",offsetY="number",x="number",y="number",screenWidth="number",screenHeight="number",name="number",details="number",targetSize="number",targetedBy="boolean",layout="table",factionIcon="string",guildIconPosition="string",faction="string",factionHome="number"}) then return nil,"Invalid tooltip settings." end
+    if not check(result.tooltip,{guildOn160="boolean",guildFactionColor="boolean",guildRank="boolean",guildFactionIcon="boolean",target="boolean",guild="boolean",healthBar="boolean",position="string",order="string",offsetX="number",offsetY="number",x="number",y="number",screenWidth="number",screenHeight="number",name="number",details="number",targetSize="number",targetedBy="boolean",layout="table",factionIcon="string",guildIconPosition="string",faction="string",factionHome="number"}) then return nil,"Invalid tooltip settings." end
     if result.tooltip and result.tooltip.factionIcon and not FT.modules.Tooltip.iconPlaces[result.tooltip.factionIcon] then return nil,"Invalid faction icon place." end
     if result.tooltip and result.tooltip.faction and not FT.modules.Tooltip.factionModes[result.tooltip.faction] then return nil,"Invalid faction setting." end
     for _,entry in ipairs(result.tooltip and result.tooltip.layout or {}) do
@@ -1508,7 +1508,7 @@ function Profiles:StrictImport(data)
     if not check(result.smartKey,{enabled="boolean",key="string",confirmed="boolean"}) then return nil,"Invalid smart key settings." end
     if not check(result.fireAlert,{sound="string",channel="string"}) then return nil,"Invalid standing-in-fire settings." end
     if not check(result.rareAlert,{enabled="boolean",sound="boolean",soundKey="string",duration="number",size="number",glow="table",x="number",y="number"}) then return nil,"Invalid rare alert settings." end
-    if not check(result.buffReminder,{enabled="boolean",combatAll="boolean",selected="table",mainEnchant="string",offEnchant="string",mainPoison="boolean",offPoison="boolean",manualSpec="table",rankMarker="boolean",ignoredRanks="table",selfWhere="table",groupWhere="table",chosenSpec="table",hideAfter="number",styles="table",food="boolean",foodWhen="string",foodStat="boolean",camp="boolean",campRefresh="number",reagents="boolean",reagentLow="table",clickQuiet="number",powerReady="boolean",combat="table"}) then return nil,"Invalid buff reminders." end
+    if not check(result.buffReminder,{noticeLayout="string",enabled="boolean",combatAll="boolean",selected="table",mainEnchant="string",offEnchant="string",mainPoison="boolean",offPoison="boolean",manualSpec="table",rankMarker="boolean",ignoredRanks="table",selfWhere="table",groupWhere="table",chosenSpec="table",hideAfter="number",styles="table",food="boolean",foodWhen="string",foodStat="boolean",camp="boolean",campRefresh="number",reagents="boolean",reagentLow="table",clickQuiet="number",powerReady="boolean",combat="table"}) then return nil,"Invalid buff reminders." end
     for name,on in pairs(result.buffReminder and result.buffReminder.combat or {}) do
         if type(name)~="string" or #name>80 or on~=true then return nil,"Invalid combat reminder." end
     end

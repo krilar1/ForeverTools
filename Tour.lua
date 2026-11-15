@@ -66,7 +66,7 @@ local function stops()
             find="Rare alerts",quick=true,target=function() local r=mod("RareAlert"); return r and r.notice end,
             preview=function() local r=mod("RareAlert"); if r and r.Show then pcall(r.Show,r,"Rare example",true) end end,
             get=field("RareAlert","enabled").get,set=field("RareAlert","enabled").set},
-        {key="interrupts",chapter="Combat",page="Interrupts",title="Interrupt bar",text="Your group's interrupts and when each is ready.",
+        {key="interrupts",chapter="Combat",page="Interrupts",title="Interrupt bar",text="Your group's interrupts and when each is ready. Only works with other ForeverTools users in your group. Its page can also say your interrupts in chat.",
             find="Interrupt bar",target=function() local i=mod("Interrupts"); return i and i.bar end,
             preview=function() local i=mod("Interrupts"); if i and i.Peek then pcall(i.Peek,i) end end,
             get=field("Interrupts","enabled").get,set=field("Interrupts","enabled").set},
@@ -79,6 +79,8 @@ local function stops()
             find="Stealth alerts",quick=true,target=function() return FT.Enemies and FT.Enemies.notice end,
             preview=function() if FT.Enemies then FT.Enemies:Preview("stealth") end end,
             get=field("Enemies","stealth").get,set=field("Enemies","stealth").set},
+        {key="killDeath",chapter="PvP",page="EnemyAlerts",title="Kill and death tracker",text="Your wins and losses against each enemy player, on their tooltip.",
+            find="Kill and death tracker",get=field("Enemies","kd").get,set=field("Enemies","kd").set},
         {key="nearby",chapter="PvP",page="EnemyNearby",title="Nearby enemies",text="Enemy players you saw recently.",
             find="Nearby enemies",target=function() return FT.Enemies and FT.Enemies.strip end,
             preview=function() if FT.Enemies then FT.Enemies:PreviewStrip() end end,
@@ -135,6 +137,8 @@ local function stops()
             find="Bank and other characters",quick=true,get=bags("view").get,set=bags("view").set},
         {key="bagRows",chapter="Bags",page="BagsGeneral",title="Quivers and soul bags on their own row",text="In the all-in-one bag, special bags get their own row. Click the bag on your bag bar to hide its row.",
             find="Quivers and soul bags on their own row",get=bags("rows").get,set=bags("rows").set},
+        {key="skipBank",chapter="Bags",page="BagsGeneral",title="Skip the banker's dialog",text="Clicking a banker opens your bank right away. Hold Shift to see the dialog.",
+            find="Skip the banker's dialog",quick=true,get=bags("skipBank").get,set=bags("skipBank").set},
     }
     return list
 end
@@ -472,7 +476,7 @@ local EVERYDAY={
     {"rareAlert.enabled",true},{"rareAlert.sound",true},
     {"totems.range",true},{"totems.leftBehind",true},
     {"fps.enabled",true},{"flightTimer.enabled",true},{"queueTimer.enabled",true},{"moveWindows.enabled",true},{"lootRoll.custom",true},
-    {"system.hideErrors",true},{"system.fastLoot",true},{"system.autoRepair",true},{"system.autoSell",true},{"system.quietLogin",true},{"system.minimapIcons",true},{"system.chatLinks",true},{"system.mailAlts",true},
+    {"system.hideErrors",true},{"system.fastLoot",true},{"system.autoRepair",true},{"system.autoSell",true},{"system.minimapIcons",true},{"system.chatLinks",true},{"system.mailAlts",true},
 }
 local PVP={
     {"enemies.nearby",true},{"enemies.stealth",true},{"enemies.marks",true},

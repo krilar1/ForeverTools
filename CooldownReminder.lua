@@ -285,14 +285,36 @@ function CD:Notice()
     for i=1,3 do local t=f:CreateTexture(nil,"ARTWORK"); t:SetSize(22,22); t:SetPoint("LEFT",8+(i-1)*26,0); t:SetTexCoord(.07,.93,.07,.93); FT:RoundIcon(t); f.icons[i]=t end
     f.text=FT:Label(f,"",13); f.text:SetJustifyH("LEFT")
     if f.text.SetWordWrap then f.text:SetWordWrap(false) end
-    f:EnableMouse(false); f:Hide()
+    -- Click (left or right) closes it, in a fight too.
+    f:EnableMouse(true); f:Hide()
+    f:SetScript("OnMouseUp",function(owner) self.token=(self.token or 0)+1; owner:Hide() end)
+    FT:Tooltip(f,"Cooldown reminder","Click to close.")
     self.notice=f
     return f
 end
 function CD:Place()
     local f=self:Notice(); f:ClearAllPoints()
-    local badge=FT.modules.BuffReminder.badge
-    if badge then f:SetPoint("TOP",badge,"BOTTOM",0,-6) else f:SetPoint("TOP",UIParent,"TOP",0,-155) end
+    -- Under the lowest buff notice showing (the shared list, the group
+    -- notice, or a buff with its own look stacked under them), so it never
+    -- covers one of them.
+    local R=FT.modules.BuffReminder
+    local badge=R.badge
+    local lowest,low
+    local function consider(frame)
+        if frame and frame:IsShown() then
+            local b=frame:GetBottom()
+            if b and (not low or b*frame:GetEffectiveScale()<low) then low=b*frame:GetEffectiveScale(); lowest=frame end
+        end
+    end
+    consider(badge); consider(R.groupBadge)
+    for _,notice in pairs(R.custom or {}) do
+        local st=R.Style and R:Style(notice.key or "")
+        if not (st and st.x and st.y) then consider(notice) end
+    end
+    if lowest and badge then
+        f:SetPoint("TOP",UIParent,"BOTTOMLEFT",badge:GetCenter()*badge:GetEffectiveScale()/UIParent:GetEffectiveScale(),low/UIParent:GetEffectiveScale()-6)
+    elseif badge then f:SetPoint("TOP",badge,"BOTTOM",0,-6)
+    else f:SetPoint("TOP",UIParent,"TOP",0,-155) end
 end
 function CD:Show(list,reason,preview)
     if not preview and FT:NoControl() then return end

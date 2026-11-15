@@ -27,7 +27,7 @@ end
 function Bags:Settings()
     if type(FT.db.bags)~="table" then FT.db.bags={} end
     local s=FT.db.bags
-    for _,key in ipairs({"gold","view","counts","locked","buttons","rows"}) do if type(s[key])~="boolean" then s[key]=false end end
+    for _,key in ipairs({"gold","view","counts","locked","buttons","rows","skipBank"}) do if type(s[key])~="boolean" then s[key]=false end end
     for key,default in pairs({countSplit=true,countSelf=true,countGuild=true,countShift=false,countSpacer=true,countFullNames=true}) do
         if type(s[key])~="boolean" then s[key]=default end
     end
@@ -458,12 +458,17 @@ end
 -- won an auction for ..." it goes into your mail in the counts, until you
 -- open the mailbox and take it out.
 local function linkName(link) return type(link)=="string" and link:match("%[(.-)%]") or nil end
-function Bags:AuctionBid(link,count)
-    link=text(link); if not link then return end
+-- /ft ahdebug: for two minutes, what the auction house tells ForeverTools.
+function Bags:AHDebug() self.ahDebugUntil=now()+120; print("|cffffd100FT auction|r watching for 2 minutes: buy something now.") end
+function Bags:AHSay(...) if self.ahDebugUntil and now()<self.ahDebugUntil then print("|cffffd100FT auction|r",...) end end
+function Bags:AuctionBid(link,count,auctionID,commodity)
+    self:AHSay("bid",tostring(link),"x"..tostring(count),"auction "..tostring(auctionID),commodity and "commodity" or "")
+    link=text(link)
+    if not link then return end
     local name=linkName(link)
     if not name and GetItemInfo then local id=itemID(link); local ok,n=pcall(GetItemInfo,id); if ok then name=text(n) end end
     self.auctionBids=self.auctionBids or {}
-    table.insert(self.auctionBids,1,{link,number(count) or 1,name,now()})
+    table.insert(self.auctionBids,1,{link,number(count) or 1,name,now(),auctionID=number(auctionID),commodity=commodity})
     while #self.auctionBids>50 do table.remove(self.auctionBids) end
 end
 function Bags:AuctionWonPattern()
@@ -476,6 +481,7 @@ end
 function Bags:AuctionWon(msg)
     if not self:Recording() or type(msg)~="string" or not plain(msg) then return end
     local name=msg:match(self:AuctionWonPattern()); if not name then return end
+    self:AHSay("won",name)
     -- Already counted from the purchase itself.
     local bought=self.purchased and self.purchased[name]
     if bought and now()-bought<30 then self.purchased[name]=nil; return end
@@ -497,17 +503,24 @@ end
 -- count (COMMODITY_PURCHASED, ITEM_PURCHASED) and mails it. It counts as
 -- in your mail until you open the mailbox. "You won an auction" for the
 -- same item a moment later is not counted again.
-function Bags:AuctionPurchased(id,quantity)
+function Bags:AuctionPurchased(id,quantity,bidIndex)
+    self:AHSay("bought",tostring(id),"x"..tostring(quantity))
     if not self:Recording() then return end
     id=number(id); if not id then return end
     local c,guid=self:Record(true); if not c then return end
     local link,count="item:"..id,number(quantity)
+    local matched=false
     for i,bid in ipairs(self.auctionBids or {}) do
-        if itemID(bid[1])==id then
-            link=bid[1]; count=count or bid[2]; table.remove(self.auctionBids,i)
+        if (bidIndex and i==bidIndex) or (not bidIndex and itemID(bid[1])==id) then
+            link=bid[1]; count=count or bid[2]; table.remove(self.auctionBids,i); matched=true
             break
         end
     end
+    -- The game can report one purchase twice (the auction and the item):
+    -- without a bid left for it, a second report a moment later is the same.
+    self.boughtAt=self.boughtAt or {}
+    if not matched and self.boughtAt[id] and now()-self.boughtAt[id]<5 then return end
+    self.boughtAt[id]=now()
     count=count or 1
     c.mailSent=type(c.mailSent)=="table" and c.mailSent or {}
     c.mailSent[#c.mailSent+1]={link,count,now()}
@@ -515,6 +528,17 @@ function Bags:AuctionPurchased(id,quantity)
     if not name and GetItemInfo then local ok,n=pcall(GetItemInfo,id); if ok then name=text(n) end end
     if name then self.purchased=self.purchased or {}; self.purchased[name]=now() end
     self:Changed(guid,true)
+end
+-- A buyout finished (AUCTION_HOUSE_PURCHASE_COMPLETED) or a commodity
+-- purchase went through (COMMODITY_PURCHASE_SUCCEEDED): the bid it was.
+function Bags:AuctionDone(auctionID,commodity)
+    self:AHSay(commodity and "commodity purchase done" or "purchase done","auction "..tostring(auctionID))
+    for i,bid in ipairs(self.auctionBids or {}) do
+        if (commodity and bid.commodity) or (not commodity and auctionID and bid.auctionID==number(auctionID)) then
+            local id=itemID(bid[1])
+            if id then return self:AuctionPurchased(id,bid[2],i) end
+        end
+    end
 end
 function Bags:HookAuctions()
     if self.auctionHooked or not hooksecurefunc then return end
@@ -531,10 +555,10 @@ function Bags:HookAuctions()
     if AH then
         if AH.PlaceBid then hooksecurefunc(AH,"PlaceBid",function(auctionID)
             local ok,info=pcall(AH.GetAuctionInfoByID,auctionID)
-            if ok and type(info)=="table" then pcall(self.AuctionBid,self,info.itemLink,info.quantity) end
+            if ok and type(info)=="table" then pcall(self.AuctionBid,self,info.itemLink or (info.itemKey and number(info.itemKey.itemID) and "item:"..info.itemKey.itemID),info.quantity,auctionID) else self:AHSay("bid on auction "..tostring(auctionID)..": no info") end
         end); self.auctionHooked=true end
         if AH.ConfirmCommoditiesPurchase then hooksecurefunc(AH,"ConfirmCommoditiesPurchase",function(id,quantity)
-            if number(id) then pcall(self.AuctionBid,self,"item:"..id,quantity) end
+            if number(id) then pcall(self.AuctionBid,self,"item:"..id,quantity,nil,true) end
         end); self.auctionHooked=true end
     end
 end
@@ -894,9 +918,7 @@ function Bags:Select(value)
     local bagView=self.views and self.views.bags
     if value==me then
         if bagView and bagView:IsShown() then
-            local reopen=bagView.replaced
             bagView:Hide()
-            if reopen and not self:GameBagShown() and OpenAllBags then pcall(OpenAllBags) end
         end
     elseif self:GameBagShown() or (bagView and bagView:IsShown()) or not (self.views and self.views.bank and self.views.bank:IsShown()) then
         self:ShowView("bags")
@@ -1006,25 +1028,22 @@ function Bags:MakeView(kind)
     view:SetScript("OnHide",function()
         if kind=="bank" then self.bankWho=nil; return end
         -- Closed with its X or Escape: your own bag comes back where it was.
-        if view.replaced and not self.switching then
-            view.replaced=nil; self.viewing=nil
-            if not self:GameBagShown() and OpenAllBags and not InCombatLockdown() then pcall(OpenAllBags) end
-        end
+        if view.replaced and not self.switching then view.replaced=nil; self.viewing=nil end
     end)
     view:Hide()
     return view
 end
 function Bags:PlaceView(view)
     local s=self:Settings(); local kind=view.kind
-    -- In place of the game's bag: exactly where it is, which then closes.
+    -- Next to the game's bag, which stays open: closing (and later opening)
+    -- the game's bags from an addon gets the game's own item use blocked.
     local bag=kind=="bags" and self:GameBagShown()
     if bag then
-        local right,top=bag:GetRight(),bag:GetTop()
-        if number(right) and number(top) then
+        local left,top=bag:GetLeft(),bag:GetTop()
+        if number(left) and number(top) then
             local ratio=bag:GetEffectiveScale()/view:GetEffectiveScale()
-            view:ClearAllPoints(); view:SetPoint("TOPRIGHT",UIParent,"BOTTOMLEFT",right*ratio,top*ratio)
-            view.replaced=true
-            if CloseAllBags then pcall(CloseAllBags) end
+            view:ClearAllPoints(); view:SetPoint("TOPRIGHT",UIParent,"BOTTOMLEFT",left*ratio-8,top*ratio)
+            view.replaced=nil
             return
         end
     end
@@ -1376,7 +1395,7 @@ function Bags:KeyringIcon() end
 local events=CreateFrame("Frame")
 for _,event in ipairs({"PLAYER_LOGIN","PLAYER_MONEY","BAG_UPDATE_DELAYED","PLAYER_EQUIPMENT_CHANGED","PLAYER_REGEN_ENABLED",
     "PLAYER_INTERACTION_MANAGER_FRAME_SHOW","PLAYER_INTERACTION_MANAGER_FRAME_HIDE","BANKFRAME_OPENED","BANKFRAME_CLOSED",
-    "CHAT_MSG_SYSTEM","AUCTION_HOUSE_SHOW","COMMODITY_PURCHASED","ITEM_PURCHASED","MAIL_SEND_SUCCESS","MAIL_FAILED","MAIL_INBOX_UPDATE","MAIL_SHOW","MAIL_SEND_INFO_UPDATE",
+    "CHAT_MSG_SYSTEM","AUCTION_HOUSE_SHOW","COMMODITY_PURCHASED","ITEM_PURCHASED","AUCTION_HOUSE_PURCHASE_COMPLETED","COMMODITY_PURCHASE_SUCCEEDED","COMMODITY_PURCHASE_FAILED","MAIL_SEND_SUCCESS","MAIL_FAILED","MAIL_INBOX_UPDATE","MAIL_SHOW","MAIL_SEND_INFO_UPDATE",
     "PLAYERBANKSLOTS_CHANGED","PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED","BANK_TABS_CHANGED","GUILDBANKBAGSLOTS_CHANGED","PLAYER_GUILD_UPDATE","PLAYER_LOGOUT"}) do
     pcall(events.RegisterEvent,events,event)
 end
@@ -1396,6 +1415,11 @@ events:SetScript("OnEvent",function(_,event,kind,extra)
     if not Bags:Recording() then return end
     if event=="CHAT_MSG_SYSTEM" then Bags:AuctionWon(kind); return
     elseif event=="COMMODITY_PURCHASED" or event=="ITEM_PURCHASED" then Bags:AuctionPurchased(kind,event=="COMMODITY_PURCHASED" and extra or nil); return
+    elseif event=="AUCTION_HOUSE_PURCHASE_COMPLETED" then Bags:AuctionDone(kind,false); return
+    elseif event=="COMMODITY_PURCHASE_SUCCEEDED" then Bags:AuctionDone(nil,true); return
+    elseif event=="COMMODITY_PURCHASE_FAILED" then
+        for i,bid in ipairs(Bags.auctionBids or {}) do if bid.commodity then table.remove(Bags.auctionBids,i); break end end
+        return
     elseif event=="AUCTION_HOUSE_SHOW" then Bags:HookAuctions(); return
     elseif event=="MAIL_SEND_SUCCESS" then Bags:MailSent(); return
     elseif event=="MAIL_FAILED" then Bags.outgoing=nil; return
@@ -1430,6 +1454,38 @@ events:SetScript("OnEvent",function(_,event,kind,extra)
     end
 end)
 FT.Bags=Bags
+-- Skip the banker's dialog: some bankers show a dialog with "I would like to
+-- check my deposit box" first. The bank option is known by the game's own
+-- banker icon (works in every language). Only when it is the one bank option,
+-- the banker has no quests, and Shift is not held.
+local BANKER_ICON=132050 -- Interface\GossipFrame\BankerGossipIcon
+function Bags:BankOption()
+    local G=C_GossipInfo
+    if not (G and G.GetOptions and G.SelectOption) then return nil end
+    local function count(fn) if not fn then return 0 end local ok,n=pcall(fn); return ok and type(n)=="number" and not (issecretvalue and issecretvalue(n)) and n or 0 end
+    if count(G.GetNumAvailableQuests)>0 or count(G.GetNumActiveQuests)>0 then return nil end
+    local ok,options=pcall(G.GetOptions)
+    if not ok or type(options)~="table" then return nil end
+    local found
+    for _,o in ipairs(options) do
+        local icon=type(o)=="table" and (o.overrideIconID or o.icon)
+        if icon~=nil and not (issecretvalue and issecretvalue(icon)) and icon==BANKER_ICON then
+            if found then return nil end
+            found=o
+        end
+    end
+    local id=found and found.gossipOptionID
+    if type(id)~="number" or (issecretvalue and issecretvalue(id)) then return nil end
+    return id
+end
+local gossip=CreateFrame("Frame")
+gossip:RegisterEvent("GOSSIP_SHOW")
+gossip:SetScript("OnEvent",function()
+    if not FT.dbReady or Bags:Settings().skipBank~=true then return end
+    if IsShiftKeyDown and IsShiftKeyDown() then return end
+    local id=Bags:BankOption()
+    if id then pcall(C_GossipInfo.SelectOption,id) end
+end)
 -- Settings pages: Bags (switches) and Characters (who is remembered) ---------
 local switches={
     {"gold","Gold tooltip","INV_Misc_Coin_02","Hover your bag's gold to see every character's gold and the total."},
@@ -1437,6 +1493,7 @@ local switches={
     {"view","Bank and other characters","INV_Misc_Bag_08","Right-click your bag's portrait to see your bank from anywhere (view only). Left-click it for other characters' bags."},
     {"buttons","Extra buttons on the bag","INV_Misc_Bag_10","Bank and character buttons next to the sort button."},
     {"locked","Lock bag and bank views","INV_Misc_Key_03","Keep the view windows in place."},
+    {"skipBank","Skip the banker's dialog","INV_Misc_Coin_05","Some bankers ask what you want first. This opens your bank right away. Hold Shift while clicking the banker to see the dialog. Never skips while the banker has a quest."},
     {"counts","Item counts in tooltips","INV_Misc_Note_04","Item counts on tooltips. Look: Appearance > Item counts."},
 }
 function Bags:Refresh()

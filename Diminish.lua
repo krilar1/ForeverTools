@@ -25,10 +25,12 @@ local function now() return GetTime and GetTime() or 0 end
 local FALLBACK={[0]="Spell_Frost_FrostNova",[1]="Spell_Nature_Reincarnation",[2]="Ability_Rogue_KidneyShot",[3]="Spell_Nature_Thorns",
     [4]="Ability_Sap",[5]="Spell_Shadow_Possession",[6]="Spell_Holy_Silence",[7]="Ability_Warrior_Disarm"}
 local NAMES={[0]="Roots",[1]="Taunts",[2]="Stuns",[3]="Knockbacks",[4]="Incapacitates",[5]="Fears and disorients",[6]="Silences",[7]="Disarms"}
-local UNITS={target="TargetFrame",focus="FocusFrame",player="PlayerFrame"}
+local UNITS={target="TargetFrame",focus="FocusFrame",player="PlayerFrame",targettarget="TargetFrameToT"}
 local SIDES={right=true,left=true,above=true,below=true,free=true}
-local SIDE_NAMES={right="Right of the frame",left="Left of the frame",above="Above the frame",below="Below the frame",free="Custom"}
-local UNIT_NAMES={target="Target",focus="Focus",player="Yourself"}
+local SIDE_NAMES={right="Right",left="Left",above="Above",below="Below",free="Custom"}
+local GROWS={auto=true,right=true,left=true,up=true,down=true}
+local GROW_NAMES={auto="Away",right="Right",left="Left",up="Up",down="Down"}
+local UNIT_NAMES={target="Target",focus="Focus",player="Yourself",targettarget="Target of target"}
 function DR:Settings()
     if type(FT.db.diminish)~="table" then FT.db.diminish={} end
     local s=FT.db.diminish
@@ -36,6 +38,7 @@ function DR:Settings()
     if type(s.target)~="boolean" then s.target=true end
     if type(s.focus)~="boolean" then s.focus=true end
     if type(s.self)~="boolean" then s.self=false end
+    if type(s.tot)~="boolean" then s.tot=false end
     s.side=nil
     -- Where each row sits: a side of its frame, or where you dragged it.
     if type(s.places)~="table" then s.places={} end
@@ -49,16 +52,21 @@ function DR:Settings()
     s.size=math.max(.7,math.min(1.6,tonumber(s.size) or 1))
     s.fontSize=math.max(6,math.min(16,math.floor(tonumber(s.fontSize) or 9)))
     if s.text~="on" and s.text~="below" and s.text~="none" then s.text="on" end
-    -- Which way the icons line up: away from the frame (auto), or a set way.
-    if s.grow~="right" and s.grow~="left" and s.grow~="up" and s.grow~="down" then s.grow="auto" end
+    -- Which way each row's icons line up: away from the frame (auto), or a
+    -- set way. One choice for all rows before; it becomes each row's own.
+    local old=(s.grow=="right" or s.grow=="left" or s.grow=="up" or s.grow=="down") and s.grow or "auto"
+    for unit in pairs(UNITS) do
+        local p=s.places[unit]
+        if not GROWS[p.grow] then p.grow=old end
+    end
+    s.grow=nil
     return s
 end
-local GROW_NAMES={auto="Away from the frame",right="Right",left="Left",up="Up",down="Down"}
 -- The way a unit's row grows: "auto" is right, except left of the frame.
 function DR:Grow(unit)
-    local s=self:Settings()
-    if s.grow~="auto" then return s.grow end
-    return s.places[unit].side=="left" and "left" or "right"
+    local p=self:Settings().places[unit]
+    if p.grow~="auto" then return p.grow end
+    return p.side=="left" and "left" or "right"
 end
 -- Does the game send DR data right now?
 function DR:Supported()
@@ -252,7 +260,7 @@ function DR:StyleText(b)
 end
 local function unitShown(unit)
     local s=DR:Settings()
-    if unit=="target" then return s.target elseif unit=="focus" then return s.focus elseif unit=="player" then return s.self end
+    if unit=="target" then return s.target elseif unit=="focus" then return s.focus elseif unit=="player" then return s.self elseif unit=="targettarget" then return s.tot end
 end
 -- Which saved states belong to a unit: by player id when readable,
 -- otherwise by the unit itself.
@@ -514,7 +522,7 @@ function DR:ScanAuras(unit)
     if not C_UnitAuras or not C_UnitAuras.GetAuraDataByIndex then return end
     if not enemyPlayer(unit) then return end
     local key=self:Key(unit)
-    if key==unit and unit~="target" and unit~="focus" then return end -- no id: only target/focus by token
+    if key==unit and unit~="target" and unit~="focus" and unit~="targettarget" then return end -- no id: only target/focus by token
     local byName=self:Lists()
     self.auraSeen=self.auraSeen or {}
     local seen=self.auraSeen[key] or EMPTY
@@ -591,9 +599,10 @@ function DR:Refresh()
     self.targetRow.label:SetText("Target: "..(s.target and "On" or "Off")); FT:SetSelected(self.targetRow,s.target)
     self.focusRow.label:SetText("Focus: "..(s.focus and "On" or "Off")); FT:SetSelected(self.focusRow,s.focus)
     self.selfRow.label:SetText("Yourself: "..(s.self and "On" or "Off")); FT:SetSelected(self.selfRow,s.self)
+    self.totRow.label:SetText("Target of target: "..(s.tot and "On" or "Off")); FT:SetSelected(self.totRow,s.tot)
     for unit,b in pairs(self.placeRows) do b.label:SetText(UNIT_NAMES[unit]..": "..SIDE_NAMES[s.places[unit].side]) end
+    for unit,b in pairs(self.growRows) do b.label:SetText("Grow: "..GROW_NAMES[s.places[unit].grow]) end
     self.textRow.label:SetText("Timer: "..({on="On the icon",below="Below the icon",none="Hidden"})[s.text])
-    self.growRow.label:SetText("Grow: "..GROW_NAMES[s.grow])
     self.sizeLabel:SetText(string.format("Icon size: %d%%",math.floor(s.size*100+.5)))
     self.fontLabel:SetText(string.format("Timer size: %d",s.fontSize))
     self.settingSize=true; self.sizeSlider:SetValue(s.size); self.fontSlider:SetValue(s.fontSize); self.settingSize=false
@@ -603,7 +612,7 @@ function DR:Refresh()
 end
 function DR:Open()
     if not self.frame then
-        local frame=FT:Window("ForeverToolsDiminish","Diminishing returns",540,560); self.frame=frame
+        local frame=FT:Window("ForeverToolsDiminish","Diminishing returns",540,640); self.frame=frame
         FT:PageInfo(frame,"Diminishing returns","Crowd control of one kind lasts shorter each time it hits the same player, then they are immune for a while.\n\nAn icon per kind shows next to the frame. The timer counts down to the reset. Gold: the next one still lands, shorter. Red: immune.\n\nUses only the game's own DR data, so it is exact.")
         local hint=FT:Label(frame,"Shows when crowd control will be shorter or won't land.",12); hint:SetPoint("TOPLEFT",24,-64); hint:SetWidth(492); hint:SetTextColor(.66,.59,.48)
         self.toggle=FT:AccentButton(frame,"",492,34,"Spell_Frost_FrostNova"); self.toggle:SetPoint("TOPLEFT",24,-90)
@@ -620,16 +629,23 @@ function DR:Open()
         self.targetRow=switch("target",24,-136,"Target","Icons by your target's frame.")
         self.focusRow=switch("focus",276,-136,"Focus","Icons by your focus's frame.")
         self.selfRow=switch("self",24,-176,"Yourself","Your own DR, by your frame.")
-        -- Place: each row on its own side, or dragged anywhere.
-        self.placeRows={}
-        local sides={{"right","Right of the frame"},{"left","Left of the frame"},{"above","Above the frame"},{"below","Below the frame"}}
-        for i,unit in ipairs({"target","focus","player"}) do
-            local b=FT:QuietButton(frame,"",240,32,"move"); b:SetPoint("TOPLEFT",i==2 and 276 or 24,i==3 and -256 or -216)
+        self.totRow=switch("tot",276,-176,"Target of target","Icons by the frame of your target's target (shown when the game's target of target frame is on).")
+        -- Place: each row on its own side (or dragged anywhere), growing its own way.
+        self.placeRows,self.growRows={},{}
+        local sides={{"right","Right","Right of the frame."},{"left","Left","Left of the frame."},{"above","Above","Above the frame."},{"below","Below","Below the frame."}}
+        local grows={{"auto","Away","Away from the frame: right, or left when the row sits left of its frame."},{"right","Right"},{"left","Left"},{"up","Up"},{"down","Down"}}
+        for i,unit in ipairs({"target","focus","player","targettarget"}) do
+            local y=-216-(i-1)*40
+            local b=FT:QuietButton(frame,"",240,32,"move"); b:SetPoint("TOPLEFT",24,y)
             FT:MakeChoice(b,sides,function() return self:Settings().places[unit].side end,function(v) local p=self:Settings().places[unit]; p.side=v; p.x,p.y=nil,nil; self:Peek(); self:PaintAll(); self:Refresh() end)
             FT:Tooltip(b,UNIT_NAMES[unit],"Where these icons sit. Or turn on Preview and drag them anywhere.")
             self.placeRows[unit]=b
+            local g=FT:QuietButton(frame,"",240,32,"move"); g:SetPoint("TOPLEFT",276,y)
+            FT:MakeChoice(g,grows,function() return self:Settings().places[unit].grow end,function(v) self:Settings().places[unit].grow=v; for _,row in pairs(self.rows or {}) do row.place=nil end; self:Peek(); self:PaintAll(); self:Refresh() end)
+            FT:Tooltip(g,UNIT_NAMES[unit].." grows","Which way this row's icons line up from the first one.")
+            self.growRows[unit]=g
         end
-        local reset=FT:QuietButton(frame,"Reset positions",240,32,"reset"); reset:SetPoint("TOPLEFT",276,-256)
+        local reset=FT:QuietButton(frame,"Reset positions",240,32,"reset"); reset:SetPoint("TOPLEFT",24,-376)
         reset:SetScript("OnClick",function() self:ResetPlaces() end)
         FT:Tooltip(reset,"Reset positions","All rows back to the right of their frame.")
         local function slider(y,label,lo,hi,step,tip,set)
@@ -640,15 +656,12 @@ function DR:Open()
             FT:Tooltip(sl,label,tip)
             return l,sl
         end
-        self.sizeLabel,self.sizeSlider=slider(-302,"Icon size",.7,1.6,.05,"70% to 160%.",function(v) self:Settings().size=math.floor(v*20+.5)/20 end)
-        self.fontLabel,self.fontSlider=slider(-336,"Timer size",6,16,1,"Size of the countdown numbers.",function(v) self:Settings().fontSize=math.floor(v+.5); for _,row in pairs(self.rows or {}) do for _,b in ipairs(row.icons) do b.look=nil end end end)
-        self.textRow=FT:QuietButton(frame,"",240,32,"fonts"); self.textRow:SetPoint("TOPLEFT",24,-366)
+        self.sizeLabel,self.sizeSlider=slider(-424,"Icon size",.7,1.6,.05,"70% to 160%.",function(v) self:Settings().size=math.floor(v*20+.5)/20 end)
+        self.fontLabel,self.fontSlider=slider(-458,"Timer size",6,16,1,"Size of the countdown numbers.",function(v) self:Settings().fontSize=math.floor(v+.5); for _,row in pairs(self.rows or {}) do for _,b in ipairs(row.icons) do b.look=nil end end end)
+        self.textRow=FT:QuietButton(frame,"",240,32,"fonts"); self.textRow:SetPoint("TOPLEFT",24,-488)
         FT:MakeChoice(self.textRow,{{"on","On the icon"},{"below","Below the icon"},{"none","Hidden"}},function() return self:Settings().text end,function(v) self:Settings().text=v; for _,row in pairs(self.rows or {}) do row.place=nil; for _,b in ipairs(row.icons) do b.look=nil end end; self:Peek(); self:PaintAll(); self:Refresh() end)
         FT:Tooltip(self.textRow,"Timer","Where the countdown to the reset shows.")
-        self.growRow=FT:QuietButton(frame,"",240,32,"move"); self.growRow:SetPoint("TOPLEFT",276,-366)
-        FT:MakeChoice(self.growRow,{{"auto","Away from the frame","Right, or left when the row sits left of its frame."},{"right","Right"},{"left","Left"},{"up","Up"},{"down","Down"}},function() return self:Settings().grow end,function(v) self:Settings().grow=v; for _,row in pairs(self.rows or {}) do row.place=nil end; self:Peek(); self:PaintAll(); self:Refresh() end)
-        FT:Tooltip(self.growRow,"Grow","Which way the icons line up from the first one.")
-        self.status=FT:Label(frame,"",12); self.status:SetPoint("TOPLEFT",24,-408); self.status:SetWidth(492)
+        self.status=FT:Label(frame,"",12); self.status:SetPoint("TOPLEFT",24,-530); self.status:SetWidth(492)
         if self.status.SetWordWrap then self.status:SetWordWrap(true) end
         FT:Sections(frame,{{"Show on",self.targetRow},{"Place",self.placeRows.target},{"Look",self.sizeLabel}})
     end
@@ -657,7 +670,7 @@ end
 FT:RegisterModule("Diminish",DR)
 FT.Diminish=DR
 local events=CreateFrame("Frame")
-for _,event in ipairs({"PLAYER_LOGIN","PLAYER_TARGET_CHANGED","PLAYER_FOCUS_CHANGED","PLAYER_REGEN_ENABLED","PLAYER_ENTERING_WORLD","UNIT_SPELL_DIMINISH_CATEGORY_STATE_UPDATED"}) do pcall(events.RegisterEvent,events,event) end
+for _,event in ipairs({"PLAYER_LOGIN","PLAYER_TARGET_CHANGED","PLAYER_FOCUS_CHANGED","UNIT_TARGET","PLAYER_REGEN_ENABLED","PLAYER_ENTERING_WORLD","UNIT_SPELL_DIMINISH_CATEGORY_STATE_UPDATED"}) do pcall(events.RegisterEvent,events,event) end
 -- Our own tracking listens only while the feature is on.
 local tracking=CreateFrame("Frame")
 function DR:Listen()
@@ -704,8 +717,10 @@ events:SetScript("OnEvent",function(_,event,unit,info)
     if not FT.dbReady then return end
     if event=="UNIT_SPELL_DIMINISH_CATEGORY_STATE_UPDATED" then
         if DR:Settings().enabled then DR:Update(unit,info) end
-    elseif event=="PLAYER_TARGET_CHANGED" then if DR.listening then DR:ScanAuras("target") end; DR:Paint("target")
+    elseif event=="PLAYER_TARGET_CHANGED" then if DR.listening then DR:ScanAuras("target"); DR:ScanAuras("targettarget") end; DR:Paint("target"); DR:Paint("targettarget")
     elseif event=="PLAYER_FOCUS_CHANGED" then if DR.listening then DR:ScanAuras("focus") end; DR:Paint("focus")
+    elseif event=="UNIT_TARGET" then
+        if unit=="target" or unit=="player" then if DR.listening then DR:ScanAuras("targettarget") end; DR:Paint("targettarget") end
     elseif event=="PLAYER_REGEN_ENABLED" then if DR.syncLater then DR:SyncGameSettings() end
     elseif event=="PLAYER_LOGIN" then
         local saved=type(FT.db.diminishCVars)=="table" and next(FT.db.diminishCVars)

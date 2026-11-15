@@ -50,6 +50,9 @@ function Reminder:Settings()
     if s.ignoreRankOne==nil then s.ignoreRankOne=false end
     if s.rankMarker==nil then s.rankMarker=false end
     s.size=math.max(.7,math.min(1.5,tonumber(s.size) or 1))
+    -- The shared notices: "list" = every missing buff on its own row,
+    -- "line" = one at a time with "+2" behind it (the look before 1.6.0).
+    if s.noticeLayout~="line" then s.noticeLayout="list" end
     -- Seconds a notice stays before hiding by itself; 0 = until the buff is back.
     s.hideAfter=tonumber(s.hideAfter) or 30
     if s.hideAfter~=0 and s.hideAfter~=10 and s.hideAfter~=30 and s.hideAfter~=60 and s.hideAfter~=120 then s.hideAfter=30 end
@@ -200,7 +203,8 @@ function Reminder:FoodBuffs()
     return xp,stat
 end
 -- Camping (WoW: Forever): a tent gives Boosted Rest (rested XP worth 5% of
--- a level, only if you have less; then an hour before it works again) and
+-- a level, only if you have less; then an hour before it works again; the
+-- reminder waits until you have no rested XP at all) and
 -- the Cozy Sleeping Bag gives Well-Rested (+1% XP a minute on it, up to 3).
 -- A reminder shows only when such an item is in your bags and ready, its
 -- buff is not on you, you are not resting (inn, city: the bag can't be used
@@ -264,11 +268,67 @@ local function myAura(id)
     return true,left
 end
 Reminder.MyAura=myAura
+-- By ID, and if that finds nothing, by the buff's name: the game can give a
+-- buff another ID than the one known here (Well-Rested from the sleeping bag
+-- showed the reminder while you had all 3 stacks).
+local function myAuraByName(id,fallback)
+    local has,left=myAura(id)
+    if has~=false then return has,left end
+    if not (C_UnitAuras and C_UnitAuras.GetAuraDataBySpellName) then return has end
+    local name
+    if C_Spell and C_Spell.GetSpellName then local ok,n=pcall(C_Spell.GetSpellName,id); if ok and safe(n) and type(n)=="string" then name=n end end
+    local found
+    for _,n in ipairs({name or fallback,fallback}) do
+        local ok,aura=pcall(C_UnitAuras.GetAuraDataBySpellName,"player",n,"HELPFUL")
+        if ok and aura~=nil then found=aura; break end
+    end
+    if not found then return false end
+    if not safe(found) then return nil end
+    local l
+    if safe(found.expirationTime) and type(found.expirationTime)=="number" and found.expirationTime>0 then l=found.expirationTime-GetTime() end
+    return true,l
+end
+Reminder.MyAuraByName=myAuraByName
+-- Somewhere a tent or sleeping bag can't be put down: an instance (by any
+-- of the game's answers) or indoors.
+function Reminder:CampBlocked()
+    local why
+    if IsInInstance then
+        local ok,inside,kind=pcall(IsInInstance)
+        if ok and safe(inside) and inside then why="instance" end
+        if ok and safe(kind) and type(kind)=="string" and kind~="none" and kind~="" then why="instance ("..kind..")" end
+    end
+    if not why and GetInstanceInfo then
+        local ok,_,kind,difficulty=pcall(GetInstanceInfo)
+        if ok and safe(kind) and type(kind)=="string" and kind~="none" and kind~="" then why="instance info ("..kind..")" end
+        if not why and ok and safe(difficulty) and type(difficulty)=="number" and difficulty>0 then why="difficulty "..difficulty end
+    end
+    if not why and IsIndoors then local ok,indoors=pcall(IsIndoors); if ok and safe(indoors) and indoors then why="indoors" end end
+    return why~=nil,why
+end
+-- /ft campdebug: why the tent and sleeping bag reminders show or not.
+function Reminder:CampDebug()
+    local s=self:Settings()
+    local blocked,why=self:CampBlocked()
+    local okI,inside,kind=pcall(IsInInstance)
+    local okG,name,ikind,difficulty,_,_,_,_,mapID=pcall(GetInstanceInfo)
+    print("|cffffd100FT camp|r on: "..tostring(s.camp).." leveling: "..tostring(self:Leveling()).." resting: "..tostring(IsResting and IsResting()))
+    print("|cffffd100FT camp|r IsInInstance: "..tostring(okI and inside).." / "..tostring(okI and kind).."  instance: "..tostring(okG and name).." / "..tostring(okG and ikind).." / difficulty "..tostring(okG and difficulty).." / map "..tostring(okG and mapID))
+    print("|cffffd100FT camp|r indoors: "..tostring(IsIndoors and IsIndoors()).."  blocked: "..tostring(blocked).." ("..tostring(why)..")")
+    self.campItems=nil
+    local items=self:CampItems()
+    print("|cffffd100FT camp|r tent: "..tostring(items.tent and items.tent.name).."  bag: "..tostring(items.bag~=nil).."  rested: "..tostring(GetXPExhaustion and GetXPExhaustion()))
+    local list=self:CampNotices()
+    print("|cffffd100FT camp|r notices now: "..#list)
+end
 -- The camp notices wanted now, and when to look again.
 function Reminder:CampNotices()
     local s=self:Settings()
     if not s.camp or not self:Leveling() then return {} end
     if IsResting and IsResting() then return {} end
+    -- Dungeons, raids, battlegrounds and arenas, and indoors: tents and
+    -- sleeping bags can't be put down there.
+    if self:CampBlocked() then return {} end
     local items=self:CampItems()
     if not items.tent and not items.bag then return {} end
     if myAura(CAMP_BENEFITS)==true then return {} end
@@ -277,8 +337,8 @@ function Reminder:CampNotices()
     if items.tent then
         local boosted=myAura(BOOSTED_REST)
         local rested=GetXPExhaustion and GetXPExhaustion() or 0
-        local max=UnitXPMax and UnitXPMax("player") or 0
-        local enough=safe(rested) and safe(max) and type(rested)=="number" and type(max)=="number" and max>0 and rested>=max*.05
+        -- Only with no rested XP at all (below 5% it kept nagging). Unknown: quiet.
+        local enough=not safe(rested) or type(rested)~="number" or rested>0
         local wait=self:ItemWait(items.tent)
         if boosted==false and not enough and wait==0 then
             out[#out+1]={name=items.tent.name,message="Use your "..items.tent.name.." (+5% rested XP)",spell={icon=items.tent.icon}}
@@ -286,7 +346,7 @@ function Reminder:CampNotices()
         recheck(wait)
     end
     if items.bag then
-        local has,left=myAura(WELL_RESTED)
+        local has,left=myAuraByName(WELL_RESTED,"Well-Rested")
         local wait=self:ItemWait(items.bag)
         local soon=(s.campRefresh or 5)*60
         if wait==0 then
@@ -628,13 +688,18 @@ function Reminder:GroupUnits()
     end
     return units
 end
+local selfRowText,groupRowText -- set with ListRows below
 function Reminder:ApplyPosition()
     if not self.badge then return end
     local s=self:Settings();local w,h=UIParent:GetWidth(),UIParent:GetHeight()
     local x=s.x and s.x*(s.screenWidth and w/s.screenWidth or 1) or w*.5
     local y=s.y and s.y*(s.screenHeight and h/s.screenHeight or 1) or h-115
     local halfWidth=285*s.size/2
-    local bottom=(self.badge:IsShown() and self.groupBadge:IsShown() and 59 or 17)*s.size
+    -- s.y is the middle of the first row; a list grows down from there.
+    local selfH=self.badge:IsShown() and (self.badge.listHeight or 34) or 0
+    local groupH=self.groupBadge:IsShown() and (self.groupBadge.listHeight or 34) or 0
+    local total=selfH+groupH+((selfH>0 and groupH>0) and 8 or 0)
+    local bottom=math.max(17,total-17)*s.size
     x=math.max(halfWidth+10,math.min(w-halfWidth-10,x))
     y=math.max(bottom+10,math.min(h-17*s.size-10,y))
     if s.x or s.y then s.x=x;s.y=y;s.screenWidth=w;s.screenHeight=h end
@@ -643,15 +708,18 @@ function Reminder:ApplyPosition()
         badge:ClearAllPoints()
         -- Offsets count in the notice's own (scaled) units, so divide by its size;
         -- otherwise a bigger size pushes the notices up and off the screen.
-        badge:SetPoint("CENTER",UIParent,"BOTTOMLEFT",x/s.size,(y-(badge==self.groupBadge and (self.badge:IsShown() and 42*s.size or 0) or 0))/s.size)
+        badge:SetPoint("TOP",UIParent,"BOTTOMLEFT",x/s.size,y/s.size+17-((badge==self.groupBadge and selfH>0) and (selfH+8) or 0))
         badge.text:SetTextColor(unpack(badge==self.groupBadge and s.groupTextColor or s.textColor))
     end
 end
 function Reminder:DragStart(badge)
     if not self.moving then return end
     local x,y=GetCursorPosition();local scale=UIParent:GetEffectiveScale()
-    local cx,cy=badge:GetCenter();if not cx then return end
-    local size=badge:GetScale() or 1; cx,cy=cx*size,cy*size
+    local cx=badge:GetCenter();if not cx then return end
+    -- The place saved is the middle of the first row of the self notice.
+    local first=self.badge:IsShown() and self.badge or badge
+    local cy=first.GetTop and first:GetTop(); if not cy then return end
+    local size=badge:GetScale() or 1; cx,cy=cx*size,(cy-17)*size
     self.dragX,self.dragY=cx-x/scale,cy-y/scale;self.dragging=true
 end
 function Reminder:DragUpdate()
@@ -899,7 +967,7 @@ function Reminder:NoteRemoved(info)
     end
     return gone
 end
-function Reminder:Fighting() return self.fighting==true or InCombatLockdown() end
+function Reminder:Fighting() return self.fighting==true or InCombatLockdown() or FT:InEncounter() end
 function Reminder:CombatAny()
     local s=self:Settings()
     return s.enabled and (s.combatAll or next(s.combat)~=nil)
@@ -1047,6 +1115,19 @@ function Reminder:PoisonDebug()
     local s=self:Settings(); local now=GetTime and GetTime() or 0
     print("class="..tostring(self:Class()).." kind="..tostring(self:WeaponKind()).." known="..tostring(self:PoisonsKnown(self.learnedCache or {})).." combat="..tostring(InCombatLockdown and InCombatLockdown()))
     print("settings: mainPoison="..tostring(s.mainPoison).." offPoison="..tostring(s.offPoison).." hideAfter="..tostring(s.hideAfter).." clickQuiet="..tostring(s.clickQuiet))
+    -- What is on screen: the shared list (its rows and size) and each own notice.
+    local list={}
+    for _,entry in ipairs(self.missing or {}) do list[#list+1]=entry.message or entry.name end
+    print("layout="..tostring(s.noticeLayout).." shared list ("..#list.."): "..table.concat(list," | "))
+    local b=self.badge
+    if b then
+        local rows={}
+        for i=2,6 do local r=b.listRows and b.listRows[i]; if r and r.text:IsShown() then rows[#rows+1]=i..":"..show(r.text:GetText()) end end
+        print("shared notice: shown="..tostring(b:IsShown()).." first="..show(b.text:GetText()).." rows="..(#rows>0 and table.concat(rows," ") or "none").." height="..show(b:GetHeight()).." listHeight="..show(b.listHeight))
+    end
+    for key,notice in pairs(self.custom or {}) do
+        if notice:IsShown() then print("own notice "..key..": "..show(notice.text:GetText())) end
+    end
     for _,slot in ipairs({"main","off"}) do
         local state=FT.BuffRanks:WeaponState(slot)
         print(slot..": eligible="..tostring(FT.BuffRanks:WeaponEligible(slot)).." state="..show(state).." missing="..tostring(self:WeaponMissing(slot)))
@@ -1261,7 +1342,7 @@ function Reminder:Refresh(cachedSpells)
         self.badge:SetShown(self:NoticeVisible("self",self.missing) or showing)
         -- While its look is open, the shared notice shows the buff being
         -- edited (missing or not), never the next missing one.
-        local edited
+        local edited,listed
         if sampleName then for _,entry in ipairs(self.missing) do if styleKeys[entry]==self.styleKey then edited=entry; break end end end
         if edited then
             self.badge.icon:SetTexture(edited.spell.icon or 134400)
@@ -1269,14 +1350,19 @@ function Reminder:Refresh(cachedSpells)
         elseif sampleName then
             self.badge.icon:SetTexture(sampleIcon or 134400);self.badge.text:SetText(sampleName.." missing — preview")
         elseif #self.missing>0 then
+            if s.noticeLayout=="list" then self.cycle=1 end
             self.cycle=math.max(1,math.min(self.cycle,#self.missing))
             local entry=self.missing[self.cycle]
             self.badge.icon:SetTexture(entry.spell.icon or 134400)
-            self.badge.text:SetText((entry.message or entry.name.." missing")..(#self.missing>1 and "  +"..(#self.missing-1) or ""))
+            self.badge.text:SetText((entry.message or entry.name.." missing")..((#self.missing>1 and s.noticeLayout~="list") and "  +"..(#self.missing-1) or ""))
+            listed=self.missing
         elseif movingSelf or self.previewSelf then self.badge.icon:SetTexture("Interface\\Icons\\Spell_Holy_WordFortitude");self.badge.text:SetText(next(s.styles) and "Shared notice (buffs without their own look) — preview" or "Self buff missing — preview")
         end
+        self:ListRows(self.badge,s.noticeLayout=="list" and listed or nil,selfRowText,s.textColor)
         self.groupBadge:SetShown(self:NoticeVisible("group",self.groupMissing) or (not fighting and (self.previewGroup or movingGroup)))
+        self:ListRows(self.groupBadge,(s.noticeLayout=="list" and #self.groupMissing>0) and self.groupMissing or nil,groupRowText,s.groupTextColor)
         if #self.groupMissing>0 then
+            if s.noticeLayout=="list" then self.groupCycle=1 end
             self.groupCycle=math.max(1,math.min(self.groupCycle or 1,#self.groupMissing))
             local entry=self.groupMissing[self.groupCycle]
             self.groupBadge.icon:SetTexture(entry.spell.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
@@ -1290,6 +1376,43 @@ function Reminder:Refresh(cachedSpells)
         self:ShowCustom(custom,fighting)
     end
     if self.frame then self:RefreshMenu(learned) end
+end
+-- List layout: the notice's first row is its own icon and text; the other
+-- missing buffs get a row each below it (at most LIST_ROWS, then "+N more"),
+-- and the notice grows down. entries nil: one row.
+local LIST_ROWS,ROW_H=6,26
+selfRowText=function(entry) return entry.message or (entry.name.." missing") end
+groupRowText=function(entry) return entry.name end
+function Reminder:ListRows(badge,entries,textOf,color)
+    local n=entries and math.min(#entries,LIST_ROWS) or 1
+    for i=2,n do
+        local row=badge.listRows[i]
+        if not row then
+            row={icon=badge:CreateTexture(nil,"ARTWORK"),text=FT:Label(badge,"",13)}
+            row.icon:SetSize(20,20); row.icon:SetPoint("TOPLEFT",8,-7-(i-1)*ROW_H); row.icon:SetTexCoord(.08,.92,.08,.92); FT:RoundIcon(row.icon)
+            row.text:SetPoint("LEFT",row.icon,"RIGHT",8,0); row.text:SetWidth(242)
+            if row.text.SetWordWrap then row.text:SetWordWrap(false) end
+            badge.listRows[i]=row
+        end
+        local entry=entries[i]
+        local more=(i==LIST_ROWS and #entries>LIST_ROWS) and (#entries-LIST_ROWS+1) or nil
+        row.icon:SetTexture(more and 134400 or (entry.spell and entry.spell.icon) or 134400)
+        row.text:SetText(more and ("+"..more.." more") or textOf(entry))
+        if color then row.text:SetTextColor(unpack(color)) end
+        row.icon:Show(); row.text:Show()
+    end
+    -- Rows start at 2 (the first is the notice's own), so the table has a
+    -- hole at 1 and # can say 0: go by the most rows there can be instead.
+    -- (Rows from an earlier, longer list stayed up: the same buff twice.)
+    for i=n+1,LIST_ROWS do local row=badge.listRows[i]; if row then row.icon:Hide(); row.text:Hide() end end
+    -- A row never wraps into the one below it.
+    if badge.text.SetWordWrap and badge~=self.groupBadge then badge.text:SetWordWrap(entries==nil) end
+    local height=34+(n-1)*ROW_H
+    if badge.listHeight~=height then
+        badge.listHeight=height; badge:SetHeight(height)
+        -- The first row stays at the top.
+        badge.icon:ClearAllPoints(); badge.icon:SetPoint("TOPLEFT",8,-7)
+    end
 end
 -- While moving, the same outline box the other elements get, drawn just
 -- behind each notice (self buffs and group buffs).
@@ -1314,6 +1437,9 @@ local refresh=Reminder.Refresh
 function Reminder:Refresh(...)
     refresh(self,...)
     if self.badge then self:MoverBoxes() end
+    -- The cooldown reminder sits under these notices: follow when they change size.
+    local cd=FT.modules.CooldownReminder
+    if cd and cd.notice and cd.notice:IsShown() and cd.Place then cd:Place() end
 end
 function Reminder:Apply()
     if self.AuraScope then self:AuraScope() end
@@ -1322,7 +1448,7 @@ function Reminder:Apply()
     end
     if not self.badge then
         local badge=CreateFrame("Button","ForeverToolsBuffReminder",UIParent)
-        self.badge=badge;badge:SetSize(285,34);badge:SetPoint("TOP",UIParent,"TOP",0,-115)
+        self.badge=badge;badge:SetSize(285,34);badge.listRows={};badge.listHeight=34;badge:SetPoint("TOP",UIParent,"TOP",0,-115)
         badge:SetFrameStrata("LOW");FT:Panel(badge);FT:MeterSkin(badge)
         local skins=FT.modules.IconStyles; if skins and skins.SkinPanel then skins:SkinPanel(badge,"notices",{0.075,0.058,0.04,1},{.61,.51,.31,1}) end
         badge.icon=badge:CreateTexture(nil,"ARTWORK");badge.icon:SetSize(20,20);badge.icon:SetPoint("LEFT",8,0);badge.icon:SetTexCoord(.08,.92,.08,.92);FT:RoundIcon(badge.icon)
@@ -1339,10 +1465,10 @@ function Reminder:Apply()
         badge:SetScript("OnUpdate",function(_,dt)
             if self.dragging then self:DragUpdate() end
             self.elapsed=self.elapsed+dt
-            if self.elapsed>=5 then self.elapsed=0;self.cycle=self.cycle%math.max(1,#self.missing)+1;self.groupCycle=(self.groupCycle or 1)%math.max(1,#(self.groupMissing or {}))+1;self:Refresh() end
+            if self.elapsed>=5 then self.elapsed=0;if self:Settings().noticeLayout=="list" then return end;self.cycle=self.cycle%math.max(1,#self.missing)+1;self.groupCycle=(self.groupCycle or 1)%math.max(1,#(self.groupMissing or {}))+1;self:Refresh() end
         end)
         local group=CreateFrame("Button","ForeverToolsGroupBuffReminder",UIParent);self.groupBadge=group
-        group:SetSize(285,34);group:SetFrameStrata("LOW");FT:Panel(group);FT:MeterSkin(group)
+        group:SetSize(285,34);group.listRows={};group.listHeight=34;group:SetFrameStrata("LOW");FT:Panel(group);FT:MeterSkin(group)
         local skins=FT.modules.IconStyles; if skins and skins.SkinPanel then skins:SkinPanel(group,"notices",{0.075,0.058,0.04,1},{.61,.51,.31,1}) end
         group.icon=group:CreateTexture(nil,"ARTWORK");group.icon:SetSize(20,20);group.icon:SetPoint("LEFT",8,0);group.icon:SetTexCoord(.08,.92,.08,.92);FT:RoundIcon(group.icon)
         group.text=FT:Label(group,"",13);group.text:SetPoint("LEFT",group.icon,"RIGHT",8,0);group.text:SetWidth(242)
@@ -1569,8 +1695,8 @@ function Reminder:ShowCustom(custom,fighting)
     local baseX=s.x and s.x*(s.screenWidth and w/s.screenWidth or 1) or w*.5
     local top=(s.y and s.y*(s.screenHeight and h/s.screenHeight or 1) or h-115)+17*s.size
     local used=0
-    if self.badge:IsShown() then used=used+42*s.size end
-    if self.groupBadge:IsShown() then used=used+42*s.size end
+    if self.badge:IsShown() then used=used+((self.badge.listHeight or 34)+8)*s.size end
+    if self.groupBadge:IsShown() then used=used+((self.groupBadge.listHeight or 34)+8)*s.size end
     for _,key in ipairs(keys) do
         local entry=want[key]
         local st=self:Style(key)
@@ -1861,6 +1987,7 @@ function Reminder:RefreshMenu(learned)
     self.groupPreview.label:SetText("Preview: "..(self.previewGroup and "On" or "Off")); FT:SetSelected(self.groupPreview,self.previewGroup and true or false)
     self.sizeValue:SetText("Size: "..math.floor(s.size*100+.5).."%")
     self.settingSize=true;self.sizeSlider:SetValue(s.size);self.settingSize=false
+    self.layoutChoice.label:SetText("Layout: "..(s.noticeLayout=="list" and "List" or "One line"))
     self.hideChoice.value=s.hideAfter;self.hideChoice.label:SetText(self:HideAfterText())
     self.quietChoice.label:SetText("Clicked away: "..(s.clickQuiet==0 and "Until it changes" or s.clickQuiet==60 and "1 hour" or (s.clickQuiet.." minutes")))
     self.colorSwatch:SetVertexColor(unpack(s.textColor))
@@ -2024,7 +2151,7 @@ function Reminder:RefreshMenu(learned)
         place(self.moveButton,X+COL,y);y=y+46
         head(1,"Look")
         place(self.sizeValue,X,y+3);place(self.sizeSlider,X+124,y);y=y+36
-        place(self.selfColorButton,X,y);y=y+46
+        place(self.selfColorButton,X,y);place(self.layoutChoice,X+COL,y);y=y+46
         head(2,"Timing")
         place(self.hideChoice,X,y);y=y+40
         place(self.quietChoice,X,y);y=y+46
@@ -2161,7 +2288,7 @@ function Reminder:Build()
         local camp=pane(FT:QuietButton(detail,"",232,32,"welcome")); self.campToggle=camp
         camp.icon:SetTexture("Interface\\Icons\\INV_Misc_Bag_08")
         camp:SetScript("OnClick",function() local s=self:Settings(); s.camp=not s.camp; if s.camp then s.enabled=true end; self.campItems=nil; self:Apply() end)
-        FT:Tooltip(camp,"Tent & sleeping bag","While leveling: a notice to use your tent (rested XP worth 5% of a level, when you have less) or your Cozy Sleeping Bag (Well-Rested, up to +3% XP). Only when the item is in your bags and ready, you don't have its buff, you are not in an inn or city, and not at a campfire (Camp Benefits).")
+        FT:Tooltip(camp,"Tent & sleeping bag","While leveling: a notice to use your tent (rested XP worth 5% of a level) when you have no rested XP left, or your Cozy Sleeping Bag (Well-Rested, up to +3% XP). Only when the item is in your bags and ready, you don't have its buff, you are not in an inn or city, a dungeon, raid, battleground or indoors, and not at a campfire (Camp Benefits).")
         camp.gear=FT:QuietButton(camp,"",24,24); camp.gear:SetPoint("RIGHT",-4,0); FT:GearIcon(camp.gear)
         camp.gear:SetScript("OnClick",function() self:OpenStyle("camp","Camp items") end)
         FT:Tooltip(camp.gear,"Notice look","Its own look. Lit when set.")
@@ -2241,6 +2368,10 @@ function Reminder:Build()
         end,function(value) self:Settings().hideAfter=value;self.notices=nil;self:Apply() end,"fps"))
         self.hideChoice:SetHeight(32); self.hideChoice.menuWidth=W
         FT:Tooltip(self.hideChoice,"Hide notice after","How long a notice stays. Never: until the buff is back or you click it.")
+        self.layoutChoice=pane(FT:QuietButton(detail,"",232,32,"INV_Misc_Note_05"))
+        FT:MakeChoice(self.layoutChoice,{{"list","List","Every missing buff on its own row."},{"line","One line","One buff at a time, with +2 behind it when more are missing."}},
+            function() return self:Settings().noticeLayout end,function(v) self:Settings().noticeLayout=v; self:Apply(); self:Peek() end)
+        FT:Tooltip(self.layoutChoice,"Notice layout","How the self and group notices show several missing buffs: a list with a row for each, or one line.")
         self.quietChoice=pane(FT:QuietButton(detail,"",W,32,"fps"))
         FT:MakeChoice(self.quietChoice,{{5,"5 minutes"},{10,"10 minutes"},{30,"30 minutes"},{60,"1 hour"},{0,"Until it changes","Quiet until another buff goes missing."}},
             function() return self:Settings().clickQuiet end,function(v) self:Settings().clickQuiet=v; self:Apply() end)
@@ -2331,7 +2462,7 @@ function Reminder:QueueApply(delay)
     C_Timer.After(delay or 0,function() self.applyQueued=false; if FT.dbReady then self:Apply() end end)
 end
 local events=CreateFrame("Frame")
-for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","PLAYER_DEAD","PLAYER_ALIVE","PLAYER_UNGHOST","PLAYER_CONTROL_LOST","PLAYER_CONTROL_GAINED","UNIT_ENTERED_VEHICLE","UNIT_EXITED_VEHICLE","ZONE_CHANGED_NEW_AREA","GROUP_ROSTER_UPDATE","UNIT_AURA","SPELLS_CHANGED","PLAYER_TALENT_UPDATE","UPDATE_SHAPESHIFT_FORM","UPDATE_SHAPESHIFT_FORMS","PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","WEAPON_ENCHANT_CHANGED","WEAPON_SLOT_CHANGED","UNIT_SPELLCAST_START","UNIT_SPELLCAST_SUCCEEDED","PLAYER_LEVEL_UP","TRAINER_SHOW","TRAINER_UPDATE","PLAYER_UPDATE_RESTING"}) do pcall(events.RegisterEvent,events,event) end
+for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","PLAYER_DEAD","PLAYER_ALIVE","PLAYER_UNGHOST","PLAYER_CONTROL_LOST","PLAYER_CONTROL_GAINED","UNIT_ENTERED_VEHICLE","UNIT_EXITED_VEHICLE","ZONE_CHANGED_NEW_AREA","GROUP_ROSTER_UPDATE","UNIT_AURA","SPELLS_CHANGED","PLAYER_TALENT_UPDATE","UPDATE_SHAPESHIFT_FORM","UPDATE_SHAPESHIFT_FORMS","PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","WEAPON_ENCHANT_CHANGED","WEAPON_SLOT_CHANGED","UNIT_SPELLCAST_START","UNIT_SPELLCAST_SUCCEEDED","PLAYER_LEVEL_UP","TRAINER_SHOW","TRAINER_UPDATE","PLAYER_UPDATE_RESTING","ADDON_RESTRICTION_STATE_CHANGED","ENCOUNTER_START","ENCOUNTER_END","ZONE_CHANGED_INDOORS","ZONE_CHANGED"}) do pcall(events.RegisterEvent,events,event) end
 -- Group buffs off: only your own auras matter, so the game stops sending
 -- every nameplate's aura changes here.
 Reminder.events=events
@@ -2362,6 +2493,9 @@ events:SetScript("OnEvent",function(_,event,unit,castGUID,spellID)
         if Reminder.debugUntil then Reminder:DebugAura(castGUID) end
         if gone and Reminder.badge and InCombatLockdown() then Reminder.preFight=Reminder.preFight or Reminder.notices or {}; Reminder.notices=nil end
     end
+    -- A boss pull: the game hides your buffs from addons, so everything would
+    -- look missing. Only fight reminders are looked at, as in combat.
+    if (event=="ENCOUNTER_START" or event=="ADDON_RESTRICTION_STATE_CHANGED") and FT:InEncounter() and not InCombatLockdown() then event="PLAYER_REGEN_DISABLED" end
     if event=="PLAYER_REGEN_DISABLED" then
         if Reminder.badge and Reminder:CombatAny() then
             -- Buffs that also remind in a fight start a fresh timer at the pull.

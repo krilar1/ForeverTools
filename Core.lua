@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "1.5.0"
+FT.version = "1.6.0"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -1465,7 +1465,14 @@ function FT:CloseCombatControls()
     end
     if StaticPopup_Hide then
         for key in pairs(StaticPopupDialogs or {}) do
-            if type(key)=="string" and key:match("^FOREVERTOOLS_") then StaticPopup_Hide(key) end
+            if type(key)=="string" and key:match("^FOREVERTOOLS_") then
+                -- A text question open when the fight starts may still want its answer (Enemies: mark now, reason later).
+                if key=="FOREVERTOOLS_ASK_TEXT" and self.askFight then
+                    local fn=self.askFight; self.askFight=nil
+                    if StaticPopup_Visible and StaticPopup_Visible(key) then pcall(fn) end
+                end
+                StaticPopup_Hide(key)
+            end
         end
     end
     if ColorPickerFrame and self.colorPickerOpen then ColorPickerFrame:Hide();self.colorPickerOpen=nil end
@@ -1492,6 +1499,44 @@ local function yes(fn, ...)
     if type(fn) ~= "function" then return false end
     local ok, value = pcall(fn, ...)
     return ok and not (issecretvalue and issecretvalue(value)) and value == true
+end
+-- A thin progress bar: a dark track, a fill in one color (darker where it
+-- started) and a soft spark at its edge. bar:SetColor(r,g,b) and
+-- bar:SetFraction(0..1) drive it (flight timer, world refresh notice).
+function FT:ProgressBar(parent,height)
+    local W="Interface\\Buttons\\WHITE8X8"
+    local bar=CreateFrame("StatusBar",nil,parent)
+    bar:SetHeight(height or 4); bar:SetStatusBarTexture(W); bar:SetMinMaxValues(0,1); bar:SetValue(0)
+    bar.track=bar:CreateTexture(nil,"BACKGROUND"); bar.track:SetTexture(W); bar.track:SetAllPoints(); bar.track:SetVertexColor(0,0,0,.55)
+    bar.edge=bar:CreateTexture(nil,"BORDER"); bar.edge:SetTexture(W); bar.edge:SetPoint("TOPLEFT",-1,1); bar.edge:SetPoint("BOTTOMRIGHT",1,-1); bar.edge:SetVertexColor(0,0,0,.35)
+    bar.spark=bar:CreateTexture(nil,"OVERLAY"); bar.spark:SetTexture("Interface\\CastingBar\\UI-CastingBar-Spark"); bar.spark:SetBlendMode("ADD")
+    bar.spark:SetSize(12,(height or 4)*3.5)
+    function bar:SetColor(r,g,b)
+        self:SetStatusBarColor(r,g,b)
+        local fill=self:GetStatusBarTexture()
+        if fill and fill.SetGradient and CreateColor then pcall(fill.SetGradient,fill,"HORIZONTAL",CreateColor(r*.55,g*.55,b*.55,1),CreateColor(r,g,b,1)) end
+        self.spark:SetVertexColor(math.min(1,r+.3),math.min(1,g+.3),math.min(1,b+.3),.9)
+    end
+    function bar:SetFraction(f)
+        f=math.max(0,math.min(1,tonumber(f) or 0))
+        self:SetValue(f)
+        self.spark:ClearAllPoints(); self.spark:SetPoint("CENTER",self,"LEFT",(self:GetWidth() or 0)*f,0)
+        self.spark:SetShown(f>0 and f<1)
+    end
+    return bar
+end
+-- A boss fight, keystone or PvP match: the game hides buffs and more from
+-- addons then, even before you are in combat yourself.
+function FT:InEncounter()
+    local R,T=C_RestrictedActions,Enum and Enum.AddOnRestrictionType
+    if not (R and T and R.GetAddOnRestrictionState) then return false end
+    for _,k in ipairs({"Encounter","ChallengeMode","PvPMatch"}) do
+        if T[k] then
+            local ok,state=pcall(R.GetAddOnRestrictionState,T[k])
+            if ok and type(state)=="number" and state>0 then return true end
+        end
+    end
+    return false
 end
 function FT:NoControl()
     if self.db and type(self.db.system) == "table" and self.db.system.quietNoControl == false then return false end
@@ -1528,6 +1573,7 @@ SlashCmdList.FOREVERTOOLS = function(message)
     elseif command == "bags" or command == "bag" or command == "bank" then FT:OpenModule("BagsHub")
     elseif command == "counts" then FT:OpenModule("ItemCounts")
     elseif command == "mark" then if FT.Enemies then FT.Enemies:MarkUnit("target") end
+    elseif command == "kd" then if FT.Enemies then FT.Enemies:KDPrint() end
     elseif command == "enemies" or command == "stealth" then FT:OpenModule("EnemyAlerts")
     elseif command == "screen" or command == "info" then FT:OpenModule("SystemDisplay")
     elseif command == "threat" then FT:OpenModule("Threat")
@@ -1544,6 +1590,25 @@ SlashCmdList.FOREVERTOOLS = function(message)
     elseif command == "trackdebug" then if FT.modules.System then FT:DebugBox("Minimap tracking debug", function() FT.modules.System:TrackingDebug() end) end
     elseif command == "weaponswap" or command == "weaponswaps" then if FT.MacroWatch then FT.MacroWatch:Open() end
     elseif command == "iconaudit" then if FT.modules.MacroForge then FT:DebugBox("Icon audit", function() FT.modules.MacroForge:IconAudit() end) end
+    elseif command == "ahdebug" then if FT.Bags then FT.Bags:AHDebug() end
+    elseif command == "campdebug" then if FT.modules.BuffReminder then FT.modules.BuffReminder:CampDebug() end
+    elseif command == "blocked clear" then
+        if FT.db then FT.db.blockedActions = {} end
+        print("|cffffd100ForeverTools:|r the list of blocked actions is empty now.")
+    elseif command == "chatdebug" then if FT.modules.System then FT:DebugBox("Chat debug", function() FT.modules.System:ChatDebug() end) end
+    elseif command == "blocked" then
+        FT:DebugBox("Blocked by the game", function()
+            local list = FT.db and FT.db.blockedActions or {}
+            if #list == 0 then print("The game has not blocked anything of ForeverTools.") end
+            if #list > 0 then print("Kept across reloads, newest first (/ft blocked clear empties it).") end
+            for _, b in ipairs(list) do
+                print(tostring(b.day and (b.day .. " ") or "") .. tostring(b.when) .. (b.version and (" v" .. tostring(b.version)) or "") .. " " .. tostring(b.func) .. (b.fight and " (in a fight)" or "") .. (b.doing and (" while: " .. b.doing) or ""))
+                if b.stack then print(b.stack); print("") end
+            end
+        end)
+    elseif command == "itemdebug" then if FT.modules.System then FT.modules.System:ItemDebug() end
+    elseif command == "interruptdebug" then if FT.modules.Interrupts then FT.modules.Interrupts:Debug() end
+    elseif command == "rowdebug" then if FT.BagRows then FT:DebugBox("Bag rows debug", function() FT.BagRows:Debug() end) end
     elseif command == "reagentdebug" then if FT.Reagents then FT:DebugBox("Reagents debug", function() FT.Reagents:Debug() end) end
     elseif command == "recipesdebug" then if FT.Recipes then FT:DebugBox("Recipes debug", function() FT.Recipes:Debug() end) end
     elseif command == "sr" or command == "softres" then FT:OpenModule("SoftRes")
@@ -2380,4 +2445,36 @@ function FT:RefreshPreview(frame)
     local on = b.ftPreview.get() and true or false
     b.label:SetText("Preview: " .. (on and "On" or "Off"))
     self:SetSelected(b, on)
+end
+
+-- When the game blocks something of ForeverTools ("ForeverTools has been
+-- blocked from an action"), what it was is kept (the last 10) and said in
+-- chat, so it can be fixed: /ft blocked lists them.
+do
+    local watch = CreateFrame("Frame")
+    watch:RegisterEvent("ADDON_ACTION_BLOCKED"); watch:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+    watch:SetScript("OnEvent", function(_, event, addon, func)
+        if addon ~= FT.name then return end
+        local entry = {func = tostring(func), when = date and date("%H:%M:%S") or "", day = date and date("%Y-%m-%d") or nil, version = FT.version, fight = InCombatLockdown() and true or nil, kind = event}
+        -- The game says this the moment it blocks the call, so the calls
+        -- that led to it are still here: keep ForeverTools' own lines.
+        if debugstack then
+            local ok, stack = pcall(debugstack, 2, 40, 0)
+            if ok and type(stack) == "string" then
+                local keep = {}
+                for line in stack:gmatch("[^\n]+") do
+                    if line:find("ForeverTools", 1, true) and not line:find("Core.lua", 1, true) or (#keep < 6 and line:find("ForeverTools", 1, true)) then keep[#keep + 1] = (line:gsub("^.-AddOns[/\\]ForeverTools[/\\]", "")) end
+                    if #keep >= 8 then break end
+                end
+                entry.doing = #keep > 0 and table.concat(keep, " | ") or nil
+                entry.stack = stack:sub(1, 1500)
+            end
+        end
+        if FT.db then
+            FT.db.blockedActions = type(FT.db.blockedActions) == "table" and FT.db.blockedActions or {}
+            table.insert(FT.db.blockedActions, 1, entry)
+            while #FT.db.blockedActions > 10 do table.remove(FT.db.blockedActions) end
+        end
+        print("|cffffd100ForeverTools|r: the game blocked |cffff8080" .. entry.func .. "|r" .. (entry.fight and " in a fight" or "") .. ". Please send this line to the author (/ft blocked lists them).")
+    end)
 end

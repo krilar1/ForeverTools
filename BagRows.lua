@@ -80,13 +80,21 @@ function Rows:Plan(frame)
     end
     -- The reagent bag, from its own window.
     if self:Special(REAGENT) then
-        plan.all[#plan.all+1]=REAGENT
+        if special[REAGENT]==nil then plan.all[#plan.all+1]=REAGENT end
         local rf=self:ReagentFrame()
         plan.reagent=rf
         if rf then
             local t={}
             for _,b in rf:EnumerateValidItems() do t[#t+1]=b end
-            if #t>0 then byBag[REAGENT]=t; plan.bags[#plan.bags+1]=REAGENT end
+            if #t>0 then
+                -- The bag's own copies of the reagent slots (the game can add
+                -- them after a click): hidden, the reagent window's are used.
+                if byBag[REAGENT] then for _,b in ipairs(byBag[REAGENT]) do plan.hidden[#plan.hidden+1]=b end end
+                local seen=false
+                for _,bag in ipairs(plan.bags) do if bag==REAGENT then seen=true end end
+                byBag[REAGENT]=t
+                if not seen then plan.bags[#plan.bags+1]=REAGENT end
+            end
         end
     end
     table.sort(plan.bags); table.sort(plan.all)
@@ -135,7 +143,15 @@ function Rows:Layout(frame)
     local w,h=size(frame)
     local p,rel,rp,x,y=anchorParts(frame)
     if plan.reagent then self:Park(plan.reagent,frame) end
-    for _,b in ipairs(plan.hidden) do b:Hide() end
+    -- Hidden rows: see-through and not clickable, not hidden (hiding one of
+    -- the game's slots runs the game's own code from here; see Rows:Unpark).
+    Rows.faded=Rows.faded or setmetatable({},{__mode="k"})
+    local fadeNow={}
+    for _,b in ipairs(plan.hidden) do fadeNow[b]=true end
+    for b in pairs(Rows.faded) do if not fadeNow[b] then Rows:Unfade(b) end end
+    for b in pairs(fadeNow) do
+        if not Rows.faded[b] then Rows.faded[b]=true; b:SetAlpha(0); b:EnableMouse(false) end
+    end
     -- Special rows from the bottom up: the first bag's first row on top, each
     -- row starting on the left.
     local total=0
@@ -184,38 +200,179 @@ function Rows:Park(rf,host)
         rf.ftRowsParked=true
         rf.ftRowsLevel=rf:GetFrameLevel()
         rf.ftRowsClamped=rf.IsClampedToScreen and rf:IsClampedToScreen() or false
+        -- Where the window and its slots were, to put them back later
+        -- ourselves: asking the game to lay its bag windows out again from
+        -- here gets the game's own item use blocked (see Rows:Unpark).
+        Rows.places=Rows.places or setmetatable({},{__mode="k"})
+        local function points(f)
+            local list={}
+            for i=1,(f:GetNumPoints() or 0) do
+                local pt,rel,rp,x,y=f:GetPoint(i)
+                if pt then list[#list+1]={pt,rel,rp,x,y} end
+            end
+            return list
+        end
+        Rows.places[rf]=points(rf)
+        for _,b in rf:EnumerateValidItems() do Rows.places[b]=points(b) end
     end
     if rf.SetClampedToScreen then rf:SetClampedToScreen(false) end
     if rf.ftMoveHandle then rf.ftMoveHandle:EnableMouse(false) end
     rf:SetAlpha(0)
     if rf.EnableMouse then rf:EnableMouse(false) end
     rf:ClearAllPoints(); rf:SetPoint("TOPRIGHT",UIParent,"BOTTOMLEFT",-4000,-4000)
-    local level=(host:GetFrameLevel() or 1)+4
+    -- The slots move into the bag's own window: a slot whose window is
+    -- hidden and see-through was drawn faded and let clicks through after
+    -- a click in the bag. They go into a holder inside the bag that carries
+    -- the reagent bag's number, which the game reads as the slot's bag.
+    -- Nothing is written into the game's slots themselves: a value set by
+    -- an addon there gets the game's own item use blocked.
+    local holder=self:Holder(host)
+    Rows.moved=Rows.moved or {}
+    local now={}
+    for _,b in rf:EnumerateValidItems() do now[b]=true end
+    -- Slots the window no longer uses (it reuses them for other bags):
+    -- theirs again, as the game made them.
+    for b in pairs(Rows.moved) do if not now[b] then Rows:Release(b,rf) end end
     for _,b in rf:EnumerateValidItems() do
-        if b.SetIgnoreParentAlpha then b:SetIgnoreParentAlpha(true) end
-        if b.SetFrameStrata and host.GetFrameStrata then b:SetFrameStrata(host:GetFrameStrata()) end
-        b:SetFrameLevel(level)
+        Rows.moved[b]=true
+        if b:GetParent()~=holder then b:SetParent(holder) end
+        if b.SetIgnoreParentAlpha then b:SetIgnoreParentAlpha(false) end
     end
+    self:Lift(rf,host)
+    self:Watch(rf,host)
+end
+-- The tucked-away slots are not the bag's children, so they don't rise with
+-- it: clicking in the bag (or the bank beside it) raises the bag's window
+-- above them, and they turned grey and could not be clicked. Keep them just
+-- above the bag.
+function Rows:Lift(rf,host)
+    -- In the bag's window, a few levels above it (so above its background
+    -- and its own slots' level), in its strata: when the game raises the
+    -- bag, its children rise with it.
+    local level=(host:GetFrameLevel() or 1)+3
+    local strata=host.GetFrameStrata and host:GetFrameStrata()
+    local first
+    for _,b in rf:EnumerateValidItems() do
+        first=first or b
+        if b.SetFixedFrameStrata then b:SetFixedFrameStrata(false) end
+        if b.SetFixedFrameLevel then b:SetFixedFrameLevel(false) end
+        if strata and b.SetFrameStrata and b:GetFrameStrata()~=strata then b:SetFrameStrata(strata) end
+        if b:GetFrameLevel()~=level then b:SetFrameLevel(level) end
+    end
+    host.ftRowsFirst=first
+end
+-- The game can mark the tucked-away slots as "locked extra slots" (grey,
+-- clicks go through) or leave them greyed after an item was picked up and
+-- put back. Undo that for every slot the reagent bag really has.
+function Rows:Heal(rf)
+    if not (C_Container and C_Container.GetContainerNumSlots) then return 0 end
+    local okN,count=pcall(C_Container.GetContainerNumSlots,REAGENT)
+    count=okN and type(count)=="number" and count or 0
+    local fixed=0
+    for _,b in rf:EnumerateValidItems() do
+        local slot=b:GetID()
+        if slot and slot<=count then
+            local extended=(b.IsExtended and b:IsExtended()) or (b.extendedFrame and b.extendedFrame:IsShown())
+            if extended then
+                if b.extendedFrame then b.extendedFrame:Hide() end
+                fixed=fixed+1
+            end
+            local locked=InCombatLockdown() and b.IsProtected and b:IsProtected()
+            if not locked and b.IsMouseEnabled and not b:IsMouseEnabled() then b:EnableMouse(true); fixed=fixed+1 end
+            local icon=b.icon or b.Icon or (b.GetName and b:GetName() and _G[b:GetName().."IconTexture"])
+            if icon and icon.IsDesaturated and icon:IsDesaturated() then
+                local okI,info=pcall(C_Container.GetContainerItemInfo or function() end,REAGENT,slot)
+                if okI and not (info and info.isLocked) then icon:SetDesaturated(false); fixed=fixed+1 end
+            end
+        end
+    end
+    self.healed=(self.healed or 0)+fixed
+    return fixed
+end
+-- Is a slot inside the bag's window (on screen where the rows are)?
+function Rows:Inside(b,host)
+    local l,bt,r,t=b:GetLeft(),b:GetBottom(),b:GetRight(),b:GetTop()
+    local hl,hb,hr,ht=host:GetLeft(),host:GetBottom(),host:GetRight(),host:GetTop()
+    if not (l and bt and hl and hb and r and t and hr and ht) then return true end
+    local bs,hs=b:GetEffectiveScale(),host:GetEffectiveScale()
+    local cx,cy=(l+r)/2*bs/hs,(bt+t)/2*bs/hs
+    return cx>=hl-2 and cx<=hr+2 and cy>=hb-2 and cy<=ht+2
+end
+-- Runs only while the bag is open with the reagent bag in it: one level
+-- check per frame, work only when the bag's level really changed.
+function Rows:Watch(rf,host)
+    local w=host.ftRowsWatch
+    if not w then
+        w=CreateFrame("Frame",nil,host); host.ftRowsWatch=w
+        w:SetScript("OnUpdate",function(self,elapsed)
+            local owner,parked=self.host,self.parked
+            if not (parked and parked.ftRowsParked and parked:IsShown()) then self:Hide(); return end
+            -- One slot tells: not just above the bag any more (either moved).
+            local b=owner.ftRowsFirst
+            if b and (b:GetParent()~=owner.ftRowsHolder or b:GetFrameLevel()<owner:GetFrameLevel()+3 or (owner.GetFrameStrata and b:GetFrameStrata()~=owner:GetFrameStrata())) then
+                if b:GetParent()~=owner.ftRowsHolder then Rows:Park(parked,owner) end
+                Rows:Lift(parked,owner)
+            end
+            -- Five times a second: slots the game greyed out by mistake, or
+            -- moved out of the bag (back into their hidden window).
+            self.heal=(self.heal or 0)+elapsed
+            if self.heal>=.2 then
+                self.heal=0; Rows:Heal(parked)
+                if b and not InCombatLockdown() and GetTime()-(Rows.relaidAt or 0)>1 and not Rows:Inside(b,owner) then Rows.relaid=(Rows.relaid or 0)+1; Rows.relaidAt=GetTime(); Rows:Layout(owner) end
+            end
+        end)
+    end
+    w.host=host; w.parked=rf; w:Show()
+end
+-- One slot back to the reagent window, as the game made it.
+function Rows:Release(b,rf)
+    if self.moved then self.moved[b]=nil end
+    if rf and b:GetParent()~=rf then b:SetParent(rf) end
+end
+-- The holder: fills the bag's window and has the reagent bag's number.
+function Rows:Holder(host)
+    local h=host.ftRowsHolder
+    if not h then
+        h=CreateFrame("Frame",nil,host); host.ftRowsHolder=h
+        h:SetAllPoints(host); h:EnableMouse(false)
+    end
+    if h:GetID()~=REAGENT then h:SetID(REAGENT) end
+    h:SetFrameLevel((host:GetFrameLevel() or 1)+1)
+    return h
 end
 -- Back to its own window (switched off, or the window closed).
 function Rows:Unpark(rf,relayout)
     if not (rf and rf.ftRowsParked) then return end
     rf.ftRowsParked=nil
+    for b in pairs(self.moved or {}) do self:Release(b,rf) end
+    local host=combined(); if host and host.ftRowsWatch then host.ftRowsWatch:Hide() end
     rf:SetAlpha(1)
     if rf.SetClampedToScreen then rf:SetClampedToScreen(rf.ftRowsClamped and true or false) end
     local mover=FT.modules.MoveWindows
     if rf.ftMoveHandle and mover and mover.Unlocked then rf.ftMoveHandle:EnableMouse(mover:Unlocked()) end
     if rf.EnableMouse then rf:EnableMouse(true) end
     for _,b in rf:EnumerateValidItems() do
+        if b.SetFixedFrameStrata then b:SetFixedFrameStrata(false) end
+        if b.SetFixedFrameLevel then b:SetFixedFrameLevel(false) end
         if b.SetIgnoreParentAlpha then b:SetIgnoreParentAlpha(false) end
+        self:Release(b,rf)
         if b.SetFrameStrata and rf.GetFrameStrata then b:SetFrameStrata(rf:GetFrameStrata()) end
         b:SetFrameLevel((rf.ftRowsLevel or rf:GetFrameLevel() or 1)+1)
         if not b:IsShown() then b:Show() end
     end
-    if relayout and rf:IsShown() then
-        if UpdateContainerFrameAnchors then pcall(UpdateContainerFrameAnchors) end
-        if rf.UpdateItemLayout then pcall(rf.UpdateItemLayout,rf) end
+    -- Back where they were, set by us. Never by calling the game's own bag
+    -- functions (UpdateContainerFrameAnchors, UpdateItemLayout, OpenBag,
+    -- CloseBag, Hide on its windows): run from an addon, they leave the
+    -- bags marked as touched by an addon, and the game then blocks using
+    -- items from them ("ForeverTools has been blocked from an action").
+    local function put(f)
+        local list=Rows.places and Rows.places[f]
+        if not list or #list==0 then return end
+        f:ClearAllPoints()
+        for _,pt in ipairs(list) do pcall(f.SetPoint,f,pt[1],pt[2],pt[3],pt[4],pt[5]) end
     end
+    put(rf)
+    for _,b in rf:EnumerateValidItems() do put(b) end
 end
 -- The window's height: the game's, plus what the rows add.
 function Rows:Size(frame,plan)
@@ -240,10 +397,15 @@ function Rows:GrowUp(frame,extra)
         if ok and type(s)=="table" and s.enabled and type(s.frames)=="table" and name and s.frames[name] then pcall(mover.Place,mover,frame,name) end
     end
 end
+function Rows:Unfade(b)
+    if self.faded then self.faded[b]=nil end
+    b:SetAlpha(1); b:EnableMouse(true)
+end
 -- Back to the game's own layout (switched off).
 function Rows:Restore(frame)
     if not (frame and frame.EnumerateValidItems and frame.GetInitialItemAnchor) then return end
     for _,t in pairs(frame.ftRowToggles or {}) do t:Hide() end
+    for b in pairs(self.faded or {}) do self:Unfade(b) end
     for _,b in frame:EnumerateValidItems() do if not b:IsShown() then b:Show() end end
     local ok,base=pcall(frame.CalculateHeight,frame)
     self:GrowUp(frame,0)
@@ -265,13 +427,9 @@ function Rows:Redraw()
 end
 -- Hide or show a special bag's row. The reagent bag: open or close it.
 function Rows:Flip(bag)
-    if bag==REAGENT then
-        if InCombatLockdown() then UIErrorsFrame:AddMessage("Leave combat to open the reagent bag.",1,.3,.3); return end
-        if self:ReagentFrame() then if CloseBag then pcall(CloseBag,REAGENT) end
-        elseif OpenBag then pcall(OpenBag,REAGENT) end
-        C_Timer.After(0,function() Rows:Redraw() end)
-        return
-    end
+    -- The reagent bag opens and closes through its own icon (a click on the
+    -- game's reagent bag button), never from here.
+    if bag==REAGENT then return end
     local set=self:HiddenSet()
     set[bag]=not set[bag] or nil
     self:Redraw()
@@ -285,17 +443,23 @@ end
 function Rows:Toggle(frame,bag)
     local t=frame.ftRowToggles[bag]
     if not t then
-        t=CreateFrame("Button",nil,frame); frame.ftRowToggles[bag]=t
+        -- The reagent bag's icon only shows whether it is open: an addon
+        -- can't open or close a bag without getting the game's own item use
+        -- blocked, and a protected button in the bag would lock the bag's
+        -- window in fights. The game's reagent bag button does it.
+        t=CreateFrame("Button",nil,frame)
+        if bag~=REAGENT then t:SetScript("OnClick",function() Rows:Flip(bag); if t:IsMouseOver() then t:GetScript("OnEnter")(t) end end) end
+        frame.ftRowToggles[bag]=t
         t:SetSize(16,16); t:SetFrameLevel((frame:GetFrameLevel() or 1)+20)
         t.icon=t:CreateTexture(nil,"ARTWORK"); t.icon:SetAllPoints()
         if FT.RoundIcon then FT:RoundIcon(t.icon) end
         t:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square","ADD")
-        t:SetScript("OnClick",function() Rows:Flip(bag); if t:IsMouseOver() then t:GetScript("OnEnter")(t) end end)
         t:SetScript("OnEnter",function()
             GameTooltip:SetOwner(t,"ANCHOR_RIGHT")
             if bag==REAGENT then
                 GameTooltip:SetText("Reagent bag",1,.82,0)
-                GameTooltip:AddLine(Rows:ReagentFrame() and "Click to close it." or "Click to open it here.",.96,.93,.86,true)
+                GameTooltip:AddLine(Rows:ReagentFrame() and "Open: its row is in your bag." or "Closed.",.96,.93,.86,true)
+                GameTooltip:AddLine("Open or close it with the reagent bag on your bag bar.",.66,.59,.48,true)
             else
                 local name=C_Container and C_Container.GetBagName and select(2,pcall(C_Container.GetBagName,bag))
                 GameTooltip:SetText(type(name)=="string" and name or "Bag",1,.82,0)
@@ -360,6 +524,62 @@ function Rows:Overlays()
         end
     end
 end
+-- /ft rowdebug: what the reagent row looks like to the game right now.
+function Rows:Debug()
+    local function say(...) print(...) end
+    local function q(f,m,...) if f and f[m] then local ok,v=pcall(f[m],f,...); if ok then return tostring(v) end end return "?" end
+    local host=combined()
+    say("ForeverTools bag rows ("..tostring(FT.version)..") on: "..tostring(self:On()).." cursor: "..tostring(GetCursorInfo and GetCursorInfo() or "none").." fight: "..tostring(InCombatLockdown()))
+    if host then say("Bag: shown "..q(host,"IsShown").." level "..q(host,"GetFrameLevel").." strata "..q(host,"GetFrameStrata").." toplevel "..q(host,"IsToplevel").." alpha "..q(host,"GetAlpha").." watch "..tostring(host.ftRowsWatch and host.ftRowsWatch:IsShown() or false)) end
+    local rf=self:ReagentFrame()
+    if not rf then say("Reagent bag: its window is not open"); return end
+    say("Reagent window: "..q(rf,"GetName").." parked "..tostring(rf.ftRowsParked==true).." shown "..q(rf,"IsShown").." alpha "..q(rf,"GetAlpha").." level "..q(rf,"GetFrameLevel").." strata "..q(rf,"GetFrameStrata"))
+    local n=0
+    for _,b in rf:EnumerateValidItems() do
+        n=n+1
+        if n<=2 then
+            local over=b.ItemContextOverlay
+            say("Slot "..n.." bag "..q(b,"GetBagID").." id "..q(b,"GetID").." of "..tostring(C_Container and select(2,pcall(C_Container.GetContainerNumSlots,REAGENT))).." window id "..q(rf,"GetID").." extended "..q(b,"IsExtended").." grey "..q(b.icon or b.Icon,"IsDesaturated").." fixed so far "..tostring(self.healed or 0))
+            say("Slot "..n..": shown "..q(b,"IsShown").." visible "..q(b,"IsVisible").." level "..q(b,"GetFrameLevel").." strata "..q(b,"GetFrameStrata").." alpha "..q(b,"GetAlpha").."/"..q(b,"GetEffectiveAlpha").." ignoreParentAlpha "..q(b,"IsIgnoringParentAlpha").." mouse "..q(b,"IsMouseEnabled").." enabled "..q(b,"IsEnabled").." over "..q(b,"IsMouseOver").." overlay "..q(over,"IsShown").." search "..tostring(b.matchesSearch).." context "..tostring(b.itemContextMatchResult).." extended "..tostring(b.extendedFrame and b.extendedFrame:IsShown() or false))
+        end
+    end
+    say("Slots: "..n.."  inside the bag: "..tostring(host and (function() for _,b in rf:EnumerateValidItems() do return self:Inside(b,host) end end)()).."  put back: "..tostring(self.relaid or 0))
+    -- Where the reagent slots are, and anything of the bag's own that sits on bag 5.
+    for _,b in rf:EnumerateValidItems() do say("Reagent slot "..q(b,"GetID").." at "..q(b,"GetLeft").."/"..q(b,"GetBottom").." size "..q(b,"GetWidth")); break end
+    if host and host.EnumerateValidItems then
+        local mine,count=0,0
+        for _,b in host:EnumerateValidItems() do count=count+1; local okB,bag=pcall(b.GetBagID,b); if okB and bag==REAGENT then mine=mine+1 end end
+        say("Bag's own slots: "..count..", of them on the reagent bag: "..mine)
+    end
+    local x,y=GetCursorPosition(); local scale=UIParent:GetEffectiveScale()
+    say("Mouse at "..string.format("%.0f/%.0f",x/scale,y/scale))
+    -- The reagent slot drawn under the mouse, in full.
+    local mx,my=x/scale,y/scale
+    for _,b in rf:EnumerateValidItems() do
+        local l,bt,r,t=b:GetLeft(),b:GetBottom(),b:GetRight(),b:GetTop()
+        if l and r and bt and t then
+            local k=b:GetEffectiveScale()/UIParent:GetEffectiveScale()
+            if mx>=l*k and mx<=r*k and my>=bt*k and my<=t*k then
+                local icon=b.icon or b.Icon
+                local vr,vg,vb=icon and icon.GetVertexColor and icon:GetVertexColor()
+                local hl,hr,ht,hb=0,0,0,0; if b.GetHitRectInsets then hl,hr,ht,hb=b:GetHitRectInsets() end
+                say("Slot under the mouse: id "..q(b,"GetID").." level "..q(b,"GetFrameLevel").." strata "..q(b,"GetFrameStrata").." shown "..q(b,"IsShown").." visible "..q(b,"IsVisible").." alpha "..q(b,"GetEffectiveAlpha").." clicks "..q(b,"IsMouseClickEnabled").." motion "..q(b,"IsMouseMotionEnabled").." over "..q(b,"IsMouseOver").." insets "..tostring(hl)..","..tostring(hr)..","..tostring(ht)..","..tostring(hb).." protected "..q(b,"IsProtected").." forbidden "..q(b,"IsForbidden"))
+                say("  icon alpha "..q(icon,"GetAlpha").." grey "..q(icon,"IsDesaturated").." colour "..string.format("%.2f %.2f %.2f",vr or -1,vg or -1,vb or -1).." parent "..tostring(b:GetParent() and b:GetParent():GetName()).." parent shown "..q(b:GetParent(),"IsShown").." parent alpha "..q(b:GetParent(),"GetAlpha"))
+                local kids={}
+                for _,c in ipairs({b:GetChildren()}) do if c:IsShown() then kids[#kids+1]=(c:GetDebugName() or "?"):gsub("^.*%.","").."("..c:GetFrameLevel()..","..tostring(c:IsMouseEnabled())..")" end end
+                say("  shown children: "..(#kids>0 and table.concat(kids," ") or "none"))
+            end
+        end
+    end
+    local foci=GetMouseFoci and GetMouseFoci() or {}
+    for i,f in ipairs(foci) do
+        if i<=3 then
+            local chain,x={},f
+            for _=1,5 do if not x then break end chain[#chain+1]=(x.GetName and x:GetName()) or (x.GetDebugName and x:GetDebugName()) or "?"; x=x.GetParent and x:GetParent() end
+            say("Under the mouse "..i..": "..table.concat(chain," < ").." level "..q(f,"GetFrameLevel").." strata "..q(f,"GetFrameStrata").." type "..q(f,"GetObjectType").." bag "..q(f,"GetBagID").." slot "..q(f,"GetID").." at "..q(f,"GetLeft").."/"..q(f,"GetBottom").." size "..q(f,"GetWidth").."x"..q(f,"GetHeight").." shown "..q(f,"IsShown").." alpha "..q(f,"GetEffectiveAlpha"))
+        end
+    end
+end
 local hooked
 function Rows:Hook()
     local frame=combined()
@@ -367,16 +587,11 @@ function Rows:Hook()
     hooked=true
     hooksecurefunc(frame,"UpdateItemLayout",function(owner) if Rows:Active(owner) then Rows:Layout(owner) end end)
     if frame.UpdateFrameSize then hooksecurefunc(frame,"UpdateFrameSize",function(owner) if Rows:Active(owner) then Rows:Size(owner) end end) end
+    -- The reagent bag stays open while you close and open your bags: its
+    -- slots sit in the bag's window and hide and show with it, and its own
+    -- (tucked away) window is left open. Nothing is opened or closed here.
     frame:HookScript("OnShow",function() Rows:Overlays() end)
-    frame:HookScript("OnHide",function()
-        -- The reagent bag closes with it (its window is tucked away).
-        local rf=Rows:ReagentFrame()
-        if rf and rf.ftRowsParked then
-            if CloseBag then pcall(CloseBag,REAGENT) end
-            if rf:IsShown() then rf:Hide() end
-        end
-        Rows:Overlays()
-    end)
+    frame:HookScript("OnHide",function() Rows:Overlays() end)
     -- The reagent bag's window: whenever the game opens, moves or redraws
     -- it, its slots go back into the all-in-one bag.
     for i=1,(NUM_CONTAINER_FRAMES or 13) do
@@ -392,6 +607,7 @@ function Rows:Hook()
             end)
             f:HookScript("OnHide",function(owner)
                 if owner.ftRowsParked then
+                    -- Closed (its icon, the bag bar, or all bags at once).
                     Rows:Unpark(owner,false)
                     local host=combined()
                     if host and host:IsShown() and Rows:Active(host) then Rows:Layout(host) end
@@ -411,7 +627,7 @@ function Rows:Apply()
     if hooked or self:On() then self.touched=true; self:Redraw() end
 end
 local events=CreateFrame("Frame")
-events:RegisterEvent("PLAYER_LOGIN"); events:RegisterEvent("CURSOR_CHANGED"); events:RegisterEvent("BAG_CONTAINER_UPDATE")
+events:RegisterEvent("PLAYER_LOGIN"); events:RegisterEvent("CURSOR_CHANGED"); events:RegisterEvent("BAG_CONTAINER_UPDATE"); events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:SetScript("OnEvent",function(_,event)
     if not FT.dbReady then return end
     if event=="PLAYER_LOGIN" then C_Timer.After(1,function() Rows:Apply() end)

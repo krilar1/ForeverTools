@@ -4,6 +4,16 @@ local _,FT=...
 FT.quietReleases={["1.0.0"]=true,["1.0.1"]=true}
 FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
+    {version="1.6.0",notes={
+        {icon="INV_Shirt_GuildTabard_01",title="Guild kill-list",text="Mark a guild: every member is marked."},
+        {icon="Ability_DualWield",title="Kill/death tracker",text="Wins and losses per enemy player."},
+        {icon="INV_Drink_14",title="Cure macros",text="One key for anti-venoms, cures, potions."},
+        {icon="Ability_Warrior_Challange",title="PvP macros",text="Macros: a PvP list for your class."},
+        {icon="INV_Misc_Note_04",title="Mark by name",text="Write a name to mark a player."},
+        {icon="Spell_Holy_WordFortitude",title="Reminders as a list",text="Each missing buff on its own row."},
+        {icon="INV_Misc_Coin_05",title="Skip banker dialog",text="Bags: open the bank right away."},
+        {icon="INV_Misc_Note_02",title="Guilds in tooltips",text="Player tooltips show the guild again."},
+    }},
     {version="1.5.0",notes={
         {icon="Ability_Poisons",title="Macros keep up",text="New poison or weapon? Update in one click."},
         {icon="INV_Misc_Bag_10",title="Reagent reminder",text="Low on reagents? A notice while in town."},

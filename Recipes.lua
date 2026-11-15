@@ -247,8 +247,7 @@ function R:AfterScan(name)
         local T=C_TradeSkillUI
         C_Timer.After(.3,function()
             if T and T.CloseTradeSkill then pcall(T.CloseTradeSkill) end
-            local pf=_G.ProfessionsFrame or _G.TradeSkillFrame
-            if pf and pf.IsShown and pf:IsShown() and not InCombatLockdown() then pcall(HideUIPanel,pf) end
+            -- Closing the trade skill closes its window too (the game does it).
             FT:Toast(name.." recipes read",2)
         end)
     end

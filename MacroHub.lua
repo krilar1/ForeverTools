@@ -17,7 +17,7 @@ local GREEN, MUTED = {.45, .86, .55}, {.72, .66, .55}
 -- showHidden) follow, so the rest of the macro code works as before.
 M.views = {
     class = {page = "MacroForge"}, race = {page = "MacroRace"}, generic = {page = "MacroGeneric"},
-    own = {page = "MacroOwn"}, other = {page = "MacroOther"}, hidden = {page = "MacroHidden"},
+    own = {page = "MacroOwn"}, pvp = {page = "MacroPvP"}, other = {page = "MacroOther"}, hidden = {page = "MacroHidden"},
 }
 function M:OtherClasses()
     local list = {}
@@ -42,6 +42,7 @@ function M:ViewEntries(view)
         D.addEntries(list, D.classMacros[classKey()], classKey(), nil, "class")
         self:AddLearnedEntries(list, classKey())
     elseif view == "race" then D.addEntries(list, D.racials[raceKey()], nil, raceKey(), "racial")
+    elseif view == "pvp" then D.addEntries(list, D.pvpMacros[classKey()], classKey(), nil, "pvp")
     elseif view == "generic" then D.addEntries(list, D.genericMacros, nil, nil, "generic")
     elseif view == "own" then
         local customs = type(KT.db.customMacros) == "table" and KT.db.customMacros or {}
@@ -64,7 +65,7 @@ function M:DefaultBody(entry)
     return ok and body or "#showtooltip"
 end
 -- Already in your WoW macros (its normal text, or the text you edited here)?
-local followers = {["Eat & Drink"] = "FoodWater", Bandage = "Bandage"}
+local followers = {["Eat & Drink"] = "FoodWater", Bandage = "Bandage", ["Cure poison"] = "Cures", ["Cure all"] = "Cures", ["Break free"] = "Cures"}
 -- The text shown in the editor. Macros that follow your bags (Bandage, Eat &
 -- Drink) show what is in your bags now, unless you wrote your own text.
 function M:PreviewBody(entry)
@@ -79,7 +80,7 @@ function M:IsAdded(entry)
     if not GetNumMacros or not GetMacroInfo then return false end
     -- Macros kept up to date are found under any name (renamed to blank, say).
     local follow = followers[entry.name] and KT.modules[followers[entry.name]]
-    if follow and follow.Installed then return follow:Installed() end
+    if follow and follow.Installed then return follow:Installed(entry.name) end
     local body = self:DefaultBody(entry)
     if self:EntryExists(entry, body) then return true end
     local own = KT:MacroBody(entry, body)
@@ -115,7 +116,8 @@ end
 -- The list ---------------------------------------------------------------------------
 local titles = {class = function() return classKey() .. " macros" end, race = function() return raceKey() .. " macros" end,
     generic = function() return "Generic macros" end, own = function() return "My own macros" end,
-    other = function() return (M.otherClass or "Other class") .. " macros" end, hidden = function() return "Hidden macros" end}
+    other = function() return (M.otherClass or "Other class") .. " macros" end, hidden = function() return "Hidden macros" end,
+    pvp = function() return classKey() .. " PvP macros" end}
 local function stateOf(self, entry)
     if self.view == "hidden" then
         return self:HiddenState(entry) == "deleted" and "Deleted" or "Hidden", MUTED

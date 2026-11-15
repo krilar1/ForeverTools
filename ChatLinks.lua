@@ -47,8 +47,22 @@ function Links:Open(index)
     FT:CopyBox("Copy link",url,"Ctrl+C to copy, then paste in your browser. Esc closes.")
 end
 FT:RegisterModule("ChatLinks",Links)
-local register=(ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter) or ChatFrame_AddMessageEventFilter
-if register then for _,event in ipairs(events) do pcall(register,event,filter) end end
+-- The filter sits on chat only while links are on, so chat with it off is
+-- the game's own, untouched.
+function Links:Apply()
+    local on=self:Enabled()
+    if on==self.registered then return end
+    local add=(ChatFrameUtil and ChatFrameUtil.AddMessageEventFilter) or ChatFrame_AddMessageEventFilter
+    local remove=(ChatFrameUtil and ChatFrameUtil.RemoveMessageEventFilter) or ChatFrame_RemoveMessageEventFilter
+    local fn=on and add or remove
+    if not fn then return end
+    self.registered=on
+    for _,event in ipairs(events) do pcall(fn,event,filter) end
+end
+do
+    local f=CreateFrame("Frame"); f:RegisterEvent("PLAYER_LOGIN")
+    f:SetScript("OnEvent",function() Links:Apply() end)
+end
 if EventRegistry and EventRegistry.RegisterCallback then
     EventRegistry:RegisterCallback("SetItemRef",function(_,link)
         if type(link)~="string" then return end

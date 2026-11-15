@@ -9,8 +9,9 @@ local _,FT=...
 --   * Nearby enemies: a small row of class icons of the enemy players seen
 --     in the last half minute.
 -- The game keeps the combat log from addons, so all of this works from what
--- the game shows you: nameplates, your target and mouseover, and spells
--- enemies cast in front of you. Enemy nameplates must be on to see players
+-- the game shows you: nameplates, your target, focus and mouseover, who
+-- your group and your target are targeting, and spells enemies cast in
+-- front of you. Enemy nameplates must be on to see players
 -- that are not targeted. Nothing is ever sent to anyone.
 local E={plates={},seen={},alerted={}}
 local function plain(v) return not (issecretvalue and issecretvalue(v)) end
@@ -31,7 +32,7 @@ local function spellIcon(id)
     if tex and plain(tex) and (type(tex)=="number" or type(tex)=="string") then return tex end
 end
 -- Settings() runs on every aura change and sighting: its lists are made once.
-local OFF_KEYS={"stealth","fade","marks","nearby","instances"}
+local OFF_KEYS={"stealth","fade","marks","nearby","instances","kd"}
 local ON_KEYS={"sound","flash","markTooltip"}
 local NEAR_TIMES={[15]=15,[30]=30,[60]=60,[120]=120}
 local PLACE_PAIRS={{"x","y"},{"nearX","nearY"}}
@@ -58,7 +59,7 @@ function E:Settings()
     end
     return s
 end
-function E:AnyOn() local s=self:Settings(); return s.stealth or s.marks or s.nearby end
+function E:AnyOn() local s=self:Settings(); return s.stealth or s.marks or s.nearby or s.kd end
 -- Marks are kept for the whole account (never in profiles or exports).
 function E:Marks()
     if type(FT.db.enemyMarks)~="table" then FT.db.enemyMarks={} end
@@ -104,14 +105,54 @@ function E:Read(unit,duelToo)
     if UnitRace then local _,file=UnitRace(unit); race=text(file) end
     local guild=GetGuildInfo and text((GetGuildInfo(unit)))
     local dead=UnitIsDeadOrGhost and UnitIsDeadOrGhost(unit); dead=plain(dead) and dead==true
-    return {guid=guid,name=name,realm=realm,class=class,level=level,race=race,guild=guild,dead=dead,duel=duelToo=="duel" or nil}
+    -- The game targets by the real name ("Name Surname"), which a display
+    -- setting may shorten in UnitName: kept apart for the list's click.
+    local tname,tsur
+    if UnitNameUnmodified then
+        local okU,a,b=pcall(UnitNameUnmodified,unit)
+        if okU then tname=text(a); tsur=text(b) end
+    end
+    return {guid=guid,name=name,realm=realm,tname=tname,tsur=tsur,class=class,level=level,race=race,guild=guild,dead=dead,duel=duelToo=="duel" or nil}
 end
+-- In WoW Forever the second value of UnitName is the player's surname
+-- ("Regulator", "Plissken"), kept here as realm. The game targets and shows
+-- "Name Surname".
+local SEP=Constants and Constants.CharacterNameSeparatorConsts and type(Constants.CharacterNameSeparatorConsts.CHARACTERNAME_SURNAME_SEPARATOR)=="string" and Constants.CharacterNameSeparatorConsts.CHARACTERNAME_SURNAME_SEPARATOR or " "
+function E:FullName(info)
+    local realm=info and type(info.realm)=="string" and info.realm or ""
+    return (info and info.name or "?")..(realm~="" and (SEP..realm) or "")
+end
+-- A name you wrote without a surname matches every player with that name.
+local function looseKey(name) return "~"..name:lower() end
 function E:Key(info)
+    if info.typed and not info.realm then return looseKey(info.name) end
     local realm=info.realm
     if not realm then local B=FT.Bags; realm=B and B:Ruleset() or (GetRealmName and text(GetRealmName())) or "?" end
     return info.name.."-"..realm
 end
-function E:IsMarked(info) return info and self:Marks()[self:Key(info)] or nil end
+-- Guild kill-list: every member of a guild you marked counts as marked.
+-- Account data like the marks: {[guild name, lower case]={name,added,seen,note}}.
+function E:Guilds()
+    if type(FT.db.enemyGuilds)~="table" then FT.db.enemyGuilds={} end
+    return FT.db.enemyGuilds
+end
+local function guildKey(g) if type(g)=="string" and g~="" and not (issecretvalue and issecretvalue(g)) then return g:lower() end end
+E.GuildKey=guildKey
+function E:GuildMark(guild) local k=guildKey(guild); return k and self:Guilds()[k] or nil end
+-- A player's mark: their own, else their guild's (isGuild=true).
+function E:IsMarked(info)
+    if not info then return nil end
+    local marks=self:Marks()
+    local m=info.name and (marks[self:Key(info)] or marks[looseKey(info.name)])
+    if m then return m end
+    if info.guild and next(self:Guilds()) then return self:GuildMark(info.guild) end
+end
+-- The reason shown on alerts and tooltips.
+function E:Reason(mark)
+    if not mark then return nil end
+    if mark.isGuild then return "<"..(mark.name or "?")..">"..(mark.note and (" · "..mark.note) or "") end
+    return mark.note
+end
 function E:ClassIcon(class)
     if not class then return "Interface\\Icons\\INV_Misc_QuestionMark" end
     return "Interface\\Icons\\ClassIcon_"..class:sub(1,1)..class:sub(2):lower()
@@ -139,7 +180,8 @@ function E:Saw(info,unit)
     local mark=self:IsMarked(info)
     if mark then
         -- Keep what we know about a marked player up to date.
-        mark.class=info.class or mark.class; mark.level=info.level or mark.level; mark.guild=info.guild or mark.guild; mark.seen=stamp()
+        if mark.isGuild then mark.seen=stamp(); if info.guild then mark.name=info.guild end
+        else mark.class=info.class or mark.class; mark.level=info.level or mark.level; mark.guild=info.guild or mark.guild; mark.seen=stamp() end
         -- Not for someone you just marked yourself: the alert waits until
         -- they have been out of view and come back.
         if self:Settings().marks and not entry.markedHere then self:Alert(info,"marked") end
@@ -212,18 +254,78 @@ function E:CheckSpotted(unit)
     self.inStealth[info.guid]=true
     self:Alert(info,"spotted")
 end
+-- A nameplate can appear before the game knows who it is (no name yet), or
+-- in a fight where the game hides it: such plates are looked at again, once
+-- a second for a few seconds, and when the fight ends. Nothing runs while
+-- no plate is waiting.
+E.waiting={}
+local WAIT_TRIES=8
+local waitTicker
+local function isPlayerOrUnknown(unit)
+    if not UnitIsPlayer then return false end
+    local ok,v=pcall(UnitIsPlayer,unit)
+    if not ok then return false end
+    if not plain(v) then return true end
+    return v==true
+end
+function E:Retry()
+    local left=false
+    for unit,tries in pairs(self.waiting) do
+        local info=self:Active() and self:Read(unit)
+        if info then
+            self.waiting[unit]=nil
+            self:CheckSpotted(unit); self.plates[unit]=info.guid; self:Saw(info,unit)
+        elseif tries>=WAIT_TRIES and not InCombatLockdown() then self.waiting[unit]=nil
+        else self.waiting[unit]=tries+1; left=true end
+    end
+    if not left and waitTicker then waitTicker:Cancel(); waitTicker=nil end
+end
 function E:PlateAdded(unit)
     if not self:Active() then return end
+    if not plain(unit) or type(unit)~="string" then return end
     self:CheckSpotted(unit)
-    local info=self:Read(unit); if not info then return end
+    local info=self:Read(unit)
+    if not info then
+        if isPlayerOrUnknown(unit) and (InCombatLockdown() or not text(select(2,pcall(UnitName,unit)))) then
+            self.waiting[unit]=0
+            if not waitTicker and C_Timer and C_Timer.NewTicker then waitTicker=C_Timer.NewTicker(1,function() E:Retry() end) end
+        end
+        return
+    end
+    self.waiting[unit]=nil
     self.plates[unit]=info.guid
     self:Saw(info,unit)
+end
+-- Every nameplate on screen now: after login, a reload, a loading screen,
+-- switching the feature on, and when a fight ends.
+function E:ScanPlates()
+    if not self:Active() or not (C_NamePlate and C_NamePlate.GetNamePlates) then return end
+    local ok,list=pcall(C_NamePlate.GetNamePlates)
+    if not ok or type(list)~="table" then return end
+    for _,plate in ipairs(list) do
+        local unit=type(plate)=="table" and (plate.namePlateUnitToken or (plate.UnitFrame and plate.UnitFrame.unit))
+        if plain(unit) and type(unit)=="string" and not self.plates[unit] then self:PlateAdded(unit) end
+    end
+end
+-- Who someone else is looking at: your group's targets, your target's
+-- target, a nameplate's target, your focus and the game's soft target.
+local targetOf=setmetatable({},{__index=function(t,unit) local v=unit.."target"; rawset(t,unit,v); return v end})
+function E:Look(unit)
+    if not self:Active() then return end
+    self:CheckSpotted(unit)
+    local info=self:Read(unit); if info then self:Saw(info,nil) end
+end
+function E:TargetChanged(unit)
+    if not plain(unit) or type(unit)~="string" or unit=="player" then return end
+    if not (unit=="target" or unit=="focus" or unit=="pet" or unit:find("^party") or unit:find("^raid") or unit:find("^nameplate")) then return end
+    self:Look(targetOf[unit])
 end
 -- A rogue or druid that drops from view without dying may have stealthed
 -- (or simply walked out of sight); that guess is its own switch.
 function E:PlateRemoved(unit)
     if not plain(unit) or type(unit)~="string" then return end
     local guid=self.plates[unit]; self.plates[unit]=nil
+    self.waiting[unit]=nil
     if not guid or not self:Active() then return end
     local entry=self.seen[guid]; if not entry then return end
     entry.unit=nil; entry.markedHere=nil
@@ -344,6 +446,7 @@ function E:Alert(info,kind,preview)
     local s=self:Settings()
     if not preview and FT:NoControl() then return end
     if not preview then
+        if kind=="marked" and InCombatLockdown() then return end
         if kind=="marked" and not s.marks then return end
         if kind~="marked" and not s.stealth then return end
         -- Once per player per minute (marked) or half minute (stealth).
@@ -375,9 +478,10 @@ function E:Alert(info,kind,preview)
     local r,g,b=self:ClassColor(info.class)
     f.name:SetText(string.format("|cff%02x%02x%02x%s|r  |cffb8ab8a%s%s|r",r*255,g*255,b*255,info.name or "?",self:Describe(info),info.spell and (" · "..info.spell) or ""))
     local mark=self:IsMarked(info)
-    local reason=mark and mark.note or (preview and kind=="marked" and "Camped me in Duskwood")
+    local reason=mark and self:Reason(mark) or (preview and kind=="marked" and "Camped me in Duskwood")
     f.reason:SetText(reason and ("Reason: "..reason) or ""); f.reason:SetShown(reason~=nil)
     f:SetHeight(reason and 62 or 48)
+    self.noticeKind=kind
     f:Show(); f.pulse:Stop(); f.pulse:Play()
     self.token=(self.token or 0)+1
     local token=self.token
@@ -483,8 +587,9 @@ local function rowTooltip(owner)
         if e.stealthAt and now()-e.stealthAt<STEALTH_TAG then GameTooltip:AddLine("Went into stealth "..math.floor(now()-e.stealthAt).." s ago",1,.82,0) end
     end
     local mark=E:IsMarked(e)
-    if mark then GameTooltip:AddLine("Marked"..(mark.note and (": "..mark.note) or " by you"),1,.3,.25,true) end
-    if owner.secure then GameTooltip:AddLine(owner.combatNew and "Seen in this fight. Click to target after it." or "Click to target.",.1,1,.1) end
+    if mark then local why=E:Reason(mark); GameTooltip:AddLine("Marked"..(why and (": "..why) or " by you"),1,.3,.25,true) end
+    local kd=E:KDText(e); if kd then GameTooltip:AddLine(kd,.96,.82,.45) end
+    if owner.secure then GameTooltip:AddLine(owner.combatNew and "Click to target after the fight." or "Click to target.",.1,1,.1) end
     GameTooltip:AddLine(mark and "Right-click: change reason or remove mark." or "Right-click: mark player.",.72,.66,.55)
     GameTooltip:Show()
 end
@@ -504,6 +609,7 @@ local function rowMenu(row)
                 E:AskMark(e)
             end)
         end
+        E:GuildMenu(root,e.guild)
     end)
 end
 local function makeRow(parent,secure)
@@ -750,6 +856,7 @@ function E:ToggleCollapsed(wasOpen)
         f.toggle.tex:SetTexture(s.nearCollapsed and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
         if s.nearCollapsed then f.extra:Hide() end
         self.pendingLayout=true; self:FitPanel()
+        if not s.nearCollapsed then self:UpdateStrip() end
         return
     end
     self:UpdateStrip(); self:Refresh()
@@ -767,15 +874,20 @@ function E:StripEntries()
     end)
     return list
 end
--- Targeting by name, tried a few ways: name with the realm written the way
--- the game wants it (no spaces), just the name, and the first word of a
--- name with a space in it. Nobody found: your old target comes back.
+-- Targeting by name, tried a few ways: "Name Surname" the way the game's own
+-- Target menu does it, name-realm written without spaces, just the name, and
+-- the first word of a name with a space in it. Nobody found: your old target
+-- comes back.
 local function targetText(e)
-    local name=e.name or ""
+    local name=e.tname or e.name or ""
     local lines={"/cleartarget"}
-    local realm=type(e.realm)=="string" and e.realm:gsub("[%s%-']","") or ""
+    local surname=e.tname and (e.tsur or "") or (type(e.realm)=="string" and e.realm or "")
+    local realm=surname:gsub("[%s%-']","")
     local myRealm=GetNormalizedRealmName and GetNormalizedRealmName() or ""
-    if realm~="" and realm~=myRealm then lines[#lines+1]="/targetexact "..name.."-"..realm end
+    if surname~="" and realm~=myRealm then
+        lines[#lines+1]="/targetexact "..name..SEP..surname
+        lines[#lines+1]="/targetexact [noexists] "..name.."-"..realm
+    end
     lines[#lines+1]=(#lines>1 and "/targetexact [noexists] " or "/targetexact ")..name
     local first=name:match("^(%S+)%s")
     if first then lines[#lines+1]="/targetexact [noexists] "..first end
@@ -828,6 +940,20 @@ function E:UpdateStrip()
     local active=self:Active() or self.movingStrip or self.previewStrip or log
     if not active then list={} end
     if busy() then return self:UpdateInFight(f,list,log) end
+    -- The mouse over a row: rows keep their players (the list sorts by
+    -- who was seen last, so a row could change under the cursor just as you
+    -- click it). New players show below; the order catches up when the mouse
+    -- leaves.
+    local overRow=false
+    if f:IsShown() and not (s.nearCollapsed) then
+        for i=1,(f.shownRows or 0) do local r=f.rows[i]; if r and r:IsShown() and r.IsMouseOver and r:IsMouseOver() then overRow=true; break end end
+    end
+    if overRow and not self.previewStrip and not self.movingStrip
+        and (self.view or "near")==(self.rowsView or "near") and (not log or (self.logOffset or 0)==(self.rowsOffset or 0)) then
+        self:UpdateInFight(f,list,log)
+        FT:Coalesce("enemiesHover",function() self:UpdateStrip() end,.3)
+        return
+    end
     self.pendingLayout=nil
     local count=#list
     local compact=s.nearCollapsed or count==0
@@ -860,6 +986,9 @@ function E:UpdateStrip()
     end
     -- While moving, the rows let the mouse through: drag the box anywhere.
     for i=1,MAXROWS do f.rows[i]:EnableMouse(not self.movingStrip) end
+    -- What the click-to-target rows hold now (a fight keeps them).
+    self.rowsView=self.view or "near"; self.rowsOffset=log and offset or 0
+    self:UncoverRows(f)
     f.extra:Hide()
     -- With "on mouseover" the bar stays in place (see-through) so the mouse
     -- can find it; it shows when someone is near, after an alert, or hovered.
@@ -937,23 +1066,65 @@ function E:MarkEntries()
     return list
 end
 function E:ToggleView()
-    if busy() then FT:Toast("Switch the list after the fight.",3); return end
     self.view=VIEW_NEXT[self.view or "near"]; self.logOffset=0
     self:UpdateStrip()
 end
 function E:ScrollLog(delta)
-    if (self.view or "near")=="near" or busy() then return end
+    if (self.view or "near")=="near" then return end
     self.logOffset=math.max(0,(self.logOffset or 0)-delta*3)
     self:UpdateStrip()
 end
 function E:ClearLog() FT.db.enemyLog={}; self.logOffset=0; self:UpdateStrip(); self:Refresh() end
 -- In a fight: the rows keep who they are (a click still targets them); their
 -- text and fading update. New players are listed below in plain rows.
+-- The list switched or scrolled in a fight: the click-to-target rows can't
+-- change then, so plain rows are laid over them and show the list as it is
+-- now (names to read and right-click; targeting by click comes back with
+-- the rows' own list, or after the fight).
+function E:CoverRows(f,list,log)
+    local s=self:Settings()
+    local extra=f.extra
+    local offset=log and math.max(0,math.min(self.logOffset or 0,#list-s.nearRows)) or 0
+    if log then self.logOffset=offset end
+    local n=math.max(0,math.min(s.nearRows,#list-offset))
+    local bottom=s.nearDock=="bottom"
+    for i=1,n do
+        local row=extra.rows[i]
+        if not row then row=makeRow(extra,false); row.secure=true; row.combatNew=true; extra.rows[i]=row end
+        fillRow(row,list[i+offset])
+        row:ClearAllPoints()
+        if bottom then row:SetPoint("BOTTOMLEFT",6,(i-1)*ROW) else row:SetPoint("TOPLEFT",6,-(i-1)*ROW) end
+        row:Show()
+    end
+    for i=n+1,#extra.rows do extra.rows[i]:Hide() end
+    if not extra.bg then extra.bg=extra:CreateTexture(nil,"BACKGROUND"); extra.bg:SetAllPoints(); extra.bg:SetColorTexture(.02,.02,.02,.97) end
+    extra.bg:Show(); extra:EnableMouse(true); extra.cover=true
+    extra:SetFrameLevel((f.holder and f.holder:GetFrameLevel() or 12)+6)
+    extra:ClearAllPoints()
+    if bottom then extra:SetPoint("BOTTOMLEFT",f,"BOTTOMLEFT",0,HEADER) else extra:SetPoint("TOPLEFT",f,"TOPLEFT",0,-HEADER) end
+    local rows=math.max(n,f.shownRows or 0)
+    extra:SetSize(WIDTH,math.max(1,rows*ROW+6))
+    if rows>0 and f:IsShown() and not s.nearCollapsed then extra:Show() else extra:Hide() end
+    self:FitPanel()
+end
+-- Back to rows under the list (new players in a fight), or hidden.
+function E:UncoverRows(f)
+    local extra=f.extra
+    if not extra.cover then return end
+    extra.cover=nil
+    if extra.bg then extra.bg:Hide() end
+    extra:EnableMouse(false); extra:SetFrameLevel(10); extra:Hide()
+    self:PlaceExtra()
+end
 function E:UpdateInFight(f,list,log)
     self.pendingLayout=true
     if #list>0 then self.fightCount=true end
     f.title:SetText(VIEW_TITLE[self.view or "near"].." ("..#list..")")
     self:FadeStrip(#list)
+    if (self.view or "near")~=(self.rowsView or "near") or (log and (self.logOffset or 0)~=(self.rowsOffset or 0)) then
+        return self:CoverRows(f,list,log)
+    end
+    self:UncoverRows(f)
     local byKey={}
     for _,e in ipairs(list) do byKey[e.guid or e.name]=e end
     local listed={}
@@ -1020,6 +1191,8 @@ end
 local fightEnd=CreateFrame("Frame"); fightEnd:RegisterEvent("PLAYER_REGEN_ENABLED")
 fightEnd:SetScript("OnEvent",function()
     if E.pendingLayout and FT.dbReady then E:PlaceStrip(); E:UpdateStrip() end
+    local key=E.reasonLater; E.reasonLater=nil
+    if key and FT.dbReady and E:Marks()[key] and not E:Marks()[key].note then E:AskReason(key) end
 end)
 -- Marking players -----------------------------------------------------------------
 function E:Mark(info,note)
@@ -1028,7 +1201,9 @@ function E:Mark(info,note)
     local marks=self:Marks()
     marks[key]=marks[key] or {added=stamp()}
     local m=marks[key]
-    m.name=info.name; m.realm=info.realm; m.class=info.class or m.class; m.level=info.level or m.level; m.guild=info.guild or m.guild; m.seen=stamp()
+    m.name=info.name; m.realm=info.realm; m.class=info.class or m.class; m.level=info.level or m.level; m.guild=info.guild or m.guild
+    -- A name you wrote yourself: not seen yet.
+    if info.guid or info.class then m.seen=stamp() end
     if note then m.note=note end
     -- You are looking at them: no "Marked player nearby" for this sighting.
     local seen=info.guid and self.seen[info.guid]
@@ -1037,6 +1212,73 @@ function E:Mark(info,note)
     return key
 end
 function E:Unmark(key) self:Marks()[key]=nil; self:RefreshMarks(); self:UpdateStrip() end
+-- Mark a whole guild (kill-list). Returns its key.
+function E:MarkGuild(guild,note)
+    local k=guildKey(guild); if not k then return end
+    local g=self:Guilds()[k] or {added=stamp()}
+    self:Guilds()[k]=g
+    g.isGuild=true; g.name=guild; if note then g.note=note end
+    self:RefreshMarks(); self:UpdateStrip()
+    return k
+end
+function E:UnmarkGuild(k) self:Guilds()[k]=nil; self:RefreshMarks(); self:UpdateStrip() end
+function E:AskGuildReason(k)
+    local g=k and self:Guilds()[k]; if not g then return end
+    FT:AskText("Why are you marking <"..(g.name or "?")..">? (optional)",g.note or "",function(value)
+        value=type(value)=="string" and value:gsub("^%s+",""):gsub("%s+$","") or ""
+        g.note=value~="" and value:sub(1,60) or nil; self:RefreshMarks()
+    end,60)
+end
+-- "Mark guild" / "Remove guild mark" in a right-click menu.
+function E:GuildMenu(root,guild,suffix)
+    local k=guildKey(guild); if not k then return end
+    local g=self:Guilds()[k]
+    root:CreateButton((g and "Remove guild mark: <" or "Mark guild: <")..guild..">"..(suffix or ""),function()
+        if g then self:UnmarkGuild(k) else self:MarkGuild(guild); FT:Toast("Marked the guild <"..guild..">.",3) end
+    end)
+end
+function E:MarkTargetGuild()
+    local info=self:Read("target")
+    if not info then FT:Toast("Target an enemy player to mark their guild.",3); return end
+    if not info.guild then FT:Toast(info.name.." is not in a guild.",3); return end
+    if self:GuildMark(info.guild) then FT:Toast("<"..info.guild.."> is already marked.",3); return end
+    self:MarkGuild(info.guild)
+    FT:Toast("Marked the guild <"..info.guild..">."..(self:Settings().marks and "" or " Turn on Marked player alerts to be warned."),4)
+end
+-- Typed names: "Name" or "Name-Realm"; the first letter upper case like the game's names.
+local function typedName(value)
+    value=type(value)=="string" and value:match("^%s*(.-)%s*$") or ""
+    if value=="" or value:find("[|<>]") then return end
+    local function cap(w) return w:sub(1,1):upper()..w:sub(2):lower() end
+    local name,realm=value:match("^([^%-]+)%-(.+)$")
+    if not name then
+        -- "Name Surname", the way Forever shows players.
+        local first,last=value:match("^(%S+)%s+(%S+)$")
+        if first then name,realm=first,cap(last) end
+    end
+    name=name or value
+    if name:find("%s") then return end
+    return cap(name),realm
+end
+E.TypedName=typedName
+function E:AskMarkName()
+    FT:AskText("Mark a player by name (Name, or Name Surname):","",function(value)
+        local name,realm=typedName(value)
+        if not name then FT:Toast("Write one player name.",3); return end
+        local info={name=name,realm=realm,typed=true}
+        if self:Marks()[self:Key(info)] then FT:Toast(self:FullName(info).." is already marked.",3); return end
+        self:AskMark(info)
+    end,60)
+end
+function E:AskMarkGuildName()
+    FT:AskText("Mark a guild by name (every member shows as marked):","",function(value)
+        value=type(value)=="string" and value:match("^%s*(.-)%s*$") or ""
+        if value=="" or value:find("[|<>]") then FT:Toast("Write the guild's name.",3); return end
+        if self:GuildMark(value) then FT:Toast("<"..value.."> is already marked.",3); return end
+        self:MarkGuild(value)
+        FT:Toast("Marked the guild <"..value..">.",3)
+    end,60)
+end
 -- Why you marked someone: asked right after marking (you may leave it
 -- empty), changed later on the Marked players page.
 function E:AskReason(key)
@@ -1055,12 +1297,37 @@ function E:AskMark(info,done)
         local key=self:Mark(info,note)
         if done then done(key) else FT:Toast("Marked "..info.name..".",3) end
     end
-    if InCombatLockdown() then mark(nil); return end
-    FT:AskText("Mark "..info.name.."? Why (optional):","",function(value)
+    -- In a fight: marked at once, the reason is asked when the fight ends.
+    if InCombatLockdown() then
+        local info2=info
+        mark(nil)
+        E.reasonLater=self:Marks()[self:Key(info2)] and self:Key(info2) or nil
+        return
+    end
+    local title="Mark "..info.name.."? Why (optional):"
+    -- A fight starts while the question is open: ForeverTools closes its
+    -- questions then (they are in the way). They are marked anyway, and the
+    -- reason is asked after the fight.
+    FT.askFight=function()
+        local d=StaticPopupDialogs and StaticPopupDialogs.FOREVERTOOLS_ASK_TEXT
+        if not (d and d.text==title) then return end
+        mark(nil)
+        local key=E:Key(info)
+        E.reasonLater=E:Marks()[key] and key or nil
+    end
+    FT:AskText(title,"",function(value)
+        FT.askFight=nil
         value=type(value)=="string" and value or ""
         mark(value~="" and value:sub(1,60) or nil)
     end,60)
 end
+-- A marked player's alert is in the way in a fight: it goes away when one
+-- starts and stays away until it ends (the list still shows them in red).
+local fightStart=CreateFrame("Frame"); fightStart:RegisterEvent("PLAYER_REGEN_DISABLED")
+fightStart:SetScript("OnEvent",function()
+    local f=E.notice
+    if f and E.noticeKind=="marked" and not E.moving and not E.previewKind and f:IsShown() then f:Hide() end
+end)
 function E:MarkUnit(unit)
     local info=self:Read(unit)
     if not info then FT:Toast("Target an enemy player to mark them.",3); return end
@@ -1086,29 +1353,148 @@ function E:HookMenus()
             root:CreateButton(marked and "Remove mark (ForeverTools)" or "Mark player (ForeverTools)",function()
                 if marked then self:Unmark(key) else self:AskMark(info) end
             end)
+            self:GuildMenu(root,info.guild," (ForeverTools)")
         end)
     end
 end
 -- "Marked by you" on their tooltip.
 function E:TooltipLine(tip)
     local s=self:Settings()
-    if not s.marks or not s.markTooltip or tip~=GameTooltip then return end
+    local marks=s.marks and s.markTooltip
+    if not (marks or s.kd) or tip~=GameTooltip then return end
     local ok,_,unit=pcall(tip.GetUnit,tip)
     if not ok or not plain(unit) or type(unit)~="string" then return end
     local info=self:Read(unit); if not info then return end
-    local mark=self:IsMarked(info); if not mark then return end
-    tip:AddLine(mark.note and ("Marked: "..mark.note) or "Marked by you",1,.3,.25,true)
+    local mark=marks and self:IsMarked(info)
+    local kd=self:KDText(info)
+    if not mark and not kd then return end
+    if mark then
+        local why=self:Reason(mark)
+        tip:AddLine(why and ("Marked: "..why) or "Marked by you",1,.3,.25,true)
+    end
+    if kd then tip:AddLine(kd,.96,.82,.45) end
     tip:Show()
 end
+-- Kill and death tracker ----------------------------------------------------------
+-- Wins and losses against each enemy player, for the whole account:
+-- {[name-surname]={name,realm,class,k,d,last}}. The game gives addons no
+-- combat log: a kill is the game's own kill event (you or your group, on a
+-- player the list has seen), a death is read from the game's death recap.
+function E:KD()
+    if type(FT.db.enemyKD)~="table" then FT.db.enemyKD={} end
+    return FT.db.enemyKD
+end
+function E:KDText(info)
+    if not self:Settings().kd or not info or not info.name then return nil end
+    local r=self:KD()[self:Key(info)]
+    if not r then return nil end
+    return "Kills "..(r.k or 0).." · Deaths "..(r.d or 0)
+end
+function E:KDTotals()
+    local k,d,n=0,0,0
+    for _,r in pairs(self:KD()) do if type(r)=="table" then k=k+(r.k or 0); d=d+(r.d or 0); n=n+1 end end
+    return k,d,n
+end
+function E:KDCount(entry,field)
+    local key=self:Key(entry)
+    local all=self:KD()
+    local r=all[key]
+    if not r then r={k=0,d=0}; all[key]=r end
+    r.name=entry.name; r.realm=entry.realm; r.class=entry.class or r.class
+    r[field]=(r[field] or 0)+1; r.last=stamp()
+    return r
+end
+local function mine(guid)
+    if not UnitGUID then return false end
+    local function is(unit) local ok,g=pcall(UnitGUID,unit); return ok and plain(g) and g==guid end
+    if is("player") or is("pet") then return true end
+    local raid=IsInRaid and IsInRaid()
+    local n=GetNumGroupMembers and GetNumGroupMembers() or 0
+    if not plain(n) or type(n)~="number" then return false end
+    for i=1,math.min(n,40) do
+        local unit=(raid and "raid" or "party")..i
+        if is(unit) or is(unit.."pet") then return true end
+    end
+    return false
+end
+E.kdLast={}
+function E:Killed(attacker,target)
+    if not self:Settings().kd or not self:Active() then return end
+    if not text(attacker) or not text(target) then return end
+    local entry=self.seen[target]; if not entry or not entry.name then return end
+    if not mine(attacker) then return end
+    -- One kill per death (the event can come more than once).
+    local t=now(); if self.kdLast[target] and t-self.kdLast[target]<10 then return end
+    self.kdLast[target]=t
+    local r=self:KDCount(entry,"k")
+    FT:Toast("Killed "..self:FullName(entry).." ("..r.k.." - "..(r.d or 0)..")",3)
+end
+-- You died: the last enemy player in the game's death recap who the list
+-- has seen in the last two minutes.
+function E:Died()
+    if not self:Settings().kd or not self:Active() then return end
+    if not (C_DeathRecap and C_DeathRecap.GetRecapEvents) then return end
+    local ok,list=pcall(C_DeathRecap.GetRecapEvents)
+    if not ok or not plain(list) or type(list)~="table" then return end
+    local byName
+    local t=now()
+    for _,e in pairs(self.seen) do
+        if e.name and e.last and t-e.last<120 then
+            byName=byName or {}
+            byName[e.name]=e; byName[self:FullName(e)]=e
+            if e.tname then byName[e.tname]=e; if e.tsur then byName[e.tname..SEP..e.tsur]=e end end
+        end
+    end
+    if not byName then return end
+    local best,bestTime
+    for _,ev in ipairs(list) do
+        if plain(ev) and type(ev)=="table" then
+            local who=text(ev.sourceName)
+            local entry=who and byName[who]
+            if entry then
+                local at=number(ev.timestamp) or 0
+                if not best or at>=bestTime then best,bestTime=entry,at end
+            end
+        end
+    end
+    if not best then return end
+    local r=self:KDCount(best,"d")
+    FT:Toast("Killed by "..self:FullName(best).." ("..(r.k or 0).." - "..r.d..")",4)
+end
+-- /ft kd: totals and the players you met most.
+function E:KDPrint()
+    local k,d,n=self:KDTotals()
+    print("ForeverTools kills and deaths"..(self:Settings().kd and "" or " (the tracker is off: PvP > Enemy alerts)")..": "..k.." kills, "..d.." deaths, "..n.." players")
+    local list={}
+    for _,r in pairs(self:KD()) do if type(r)=="table" and r.name then list[#list+1]=r end end
+    table.sort(list,function(a,b) local x,y=(a.k or 0)+(a.d or 0),(b.k or 0)+(b.d or 0); if x~=y then return x>y end return (a.last or 0)>(b.last or 0) end)
+    for i=1,math.min(10,#list) do local r=list[i]; print("  "..self:FullName(r)..": "..(r.k or 0).." kills, "..(r.d or 0).." deaths") end
+end
+local kdEvents=CreateFrame("Frame")
+function E:KDApply()
+    for _,event in ipairs({"PARTY_KILL","PLAYER_DEAD"}) do
+        if self:Settings().kd then pcall(kdEvents.RegisterEvent,kdEvents,event) else pcall(kdEvents.UnregisterEvent,kdEvents,event) end
+    end
+end
+kdEvents:SetScript("OnEvent",function(_,event,a,b)
+    if not FT.dbReady then return end
+    if event=="PARTY_KILL" then E:Killed(a,b)
+    elseif event=="PLAYER_DEAD" then
+        -- The recap is filled in a moment after you die.
+        if C_Timer and C_Timer.After then C_Timer.After(1,function() E:Died() end) else E:Died() end
+    end
+end)
 -- Events -----------------------------------------------------------------------------
 local events=CreateFrame("Frame")
-local listening={"NAME_PLATE_UNIT_ADDED","NAME_PLATE_UNIT_REMOVED","UNIT_SPELLCAST_SUCCEEDED","PLAYER_TARGET_CHANGED","UPDATE_MOUSEOVER_UNIT","PLAYER_ENTERING_WORLD","UNIT_AURA"}
+local listening={"NAME_PLATE_UNIT_ADDED","NAME_PLATE_UNIT_REMOVED","UNIT_SPELLCAST_SUCCEEDED","PLAYER_TARGET_CHANGED","UPDATE_MOUSEOVER_UNIT","PLAYER_ENTERING_WORLD","UNIT_AURA",
+    "PLAYER_FOCUS_CHANGED","UNIT_TARGET","PLAYER_SOFT_ENEMY_CHANGED","UNIT_FACTION","UNIT_NAME_UPDATE","PLAYER_REGEN_ENABLED"}
 function E:Apply()
     local on=self:AnyOn()
     for _,event in ipairs(listening) do
         if on then pcall(events.RegisterEvent,events,event) else pcall(events.UnregisterEvent,events,event) end
     end
-    if not on then self.plates={}; self.seen={} end
+    if not on then self.plates={}; self.seen={}; self.waiting={} else self:ScanPlates() end
+    self:KDApply()
     if not self:Settings().nearby and self.strip and not self.movingStrip and not InCombatLockdown() then self.strip:Hide(); self.strip.extra:Hide() end
     if self:Settings().nearby then self:UpdateStrip() end
     if not self:Settings().stealth and not self:Settings().marks and self.notice and not self.moving then self.notice:Hide() end
@@ -1122,7 +1508,17 @@ events:SetScript("OnEvent",function(_,event,unit,arg2,spellID)
     elseif event=="UNIT_AURA" then E:AuraChanged(unit,arg2)
     elseif event=="PLAYER_TARGET_CHANGED" then if E:Active() then E:CheckSpotted("target"); E:Saw(E:Read("target"),nil) end
     elseif event=="UPDATE_MOUSEOVER_UNIT" then if E:Active() then E:CheckSpotted("mouseover"); E:Saw(E:Read("mouseover"),nil) end
-    elseif event=="PLAYER_ENTERING_WORLD" then E.plates={}; E.seen={}; E:UpdateStrip() end
+    elseif event=="PLAYER_FOCUS_CHANGED" then E:Look("focus")
+    elseif event=="PLAYER_SOFT_ENEMY_CHANGED" then E:Look("softenemy")
+    elseif event=="UNIT_TARGET" then E:TargetChanged(unit)
+    elseif event=="UNIT_FACTION" or event=="UNIT_NAME_UPDATE" then
+        -- A plate that was not an enemy (or had no name) when it appeared.
+        if plain(unit) and type(unit)=="string" and unit:find("^nameplate") and not E.plates[unit] then E:PlateAdded(unit) end
+    elseif event=="PLAYER_REGEN_ENABLED" then E:Retry(); E:ScanPlates()
+    elseif event=="PLAYER_ENTERING_WORLD" then
+        E.plates={}; E.seen={}; E.waiting={}; E:UpdateStrip()
+        if C_Timer and C_Timer.After then C_Timer.After(1,function() E:ScanPlates() end) end
+    end
 end)
 local boot=CreateFrame("Frame"); boot:RegisterEvent("PLAYER_LOGIN")
 boot:SetScript("OnEvent",function()
@@ -1143,6 +1539,7 @@ local alertSwitches={
     {"flash","Screen-edge flash","Spell_Holy_SearingLight","The screen edges glow briefly with every alert."},
     {"sound","Sound","INV_Misc_Bell_01","Play the raid warning sound with every alert."},
     {"instances","Also in battlegrounds and arenas","INV_BannerPVP_01","Keep alerts and the list on in battlegrounds and arenas."},
+    {"kd","Kill and death tracker","Ability_DualWield","Counts your wins and losses against each enemy player (kills by you or your group, and who killed you). Shown on their tooltip and in the enemy list. /ft kd lists them."},
 }
 function E:Refresh()
     local page=self.alertPage
@@ -1182,7 +1579,7 @@ function E:NameplateNote()
     local get=(C_CVar and C_CVar.GetCVar) or GetCVar
     local ok,value=pcall(function() return get and get("nameplateShowEnemies") end)
     if ok and value=="0" then return "|cffff9f5aEnemy nameplates are off|r, so only players you target or hover are seen." end
-    return "Players are seen through nameplates, target and mouseover."
+    return "Players are seen through nameplates, your target, focus and mouseover, and who your group targets."
 end
 local function slider(frame,y,onChange)
     local s=CreateFrame("Slider",nil,frame,"OptionsSliderTemplate"); s:SetSize(300,18); s:SetPoint("TOPLEFT",216,y)
@@ -1236,12 +1633,19 @@ function E:RefreshMarks()
     page.alerts.label:SetText("Marked player alerts: "..(s.marks and "On" or "Off")); FT:SetSelected(page.alerts,s.marks)
     page.tip.label:SetText("Show the mark in tooltips: "..(s.markTooltip and "On" or "Off")); FT:SetSelected(page.tip,s.markTooltip)
     page.tip:SetAlpha(s.marks and 1 or .45)
-    local keys={}
-    for key in pairs(self:Marks()) do keys[#keys+1]=key end
-    table.sort(keys,function(a,b) return (self:Marks()[a].seen or 0)>(self:Marks()[b].seen or 0) end)
+    local keys,src={},{}
+    local guilds=self:Guilds()
+    local gk={}
+    for key,g in pairs(guilds) do if type(g)=="table" then gk[#gk+1]=key end end
+    table.sort(gk,function(a,b) return a<b end)
+    for _,key in ipairs(gk) do keys[#keys+1]=key; src[#keys]=guilds[key] end
+    local pk={}
+    for key in pairs(self:Marks()) do pk[#pk+1]=key end
+    table.sort(pk,function(a,b) return (self:Marks()[a].seen or self:Marks()[a].added or 0)>(self:Marks()[b].seen or self:Marks()[b].added or 0) end)
+    for _,key in ipairs(pk) do keys[#keys+1]=key; src[#keys]=self:Marks()[key] end
     local w=page.content:GetWidth()
     for i,key in ipairs(keys) do
-        local m=self:Marks()[key]
+        local m=src[i]
         local r=page.rows[i]
         if not r then
             r=CreateFrame("Frame",nil,page.content); r:SetSize(w,ROW-4); page.rows[i]=r
@@ -1250,18 +1654,27 @@ function E:RefreshMarks()
             r.meta=FT:Label(r,"",11); r.meta:SetPoint("TOPLEFT",40,-21); r.meta:SetWidth(w-250); r.meta:SetJustifyH("LEFT"); r.meta:SetTextColor(.72,.66,.55)
             if r.meta.SetWordWrap then r.meta:SetWordWrap(false); r.name:SetWordWrap(false) end
             r.remove=FT:QuietButton(r,"Remove",108,28,"delete"); r.remove:SetPoint("RIGHT",-2,0)
-            FT:Tooltip(r.remove,"Remove mark","Stop alerting for this player.")
+            FT:Tooltip(r.remove,"Remove mark","Stop alerting for this player or guild.")
             r.note=FT:QuietButton(r,"Reason",96,28,"INV_Misc_Note_01"); r.note:SetPoint("RIGHT",r.remove,"LEFT",-6,0)
             FT:Tooltip(r.note,"Reason","A few words, shown on the alert and their tooltip.")
         end
         r:ClearAllPoints(); r:SetPoint("TOPLEFT",0,-(i-1)*ROW)
-        r.icon:SetTexture(self:ClassIcon(m.class))
-        local cr,cg,cb=self:ClassColor(m.class)
-        r.name:SetText(string.format("|cff%02x%02x%02x%s|r",cr*255,cg*255,cb*255,m.name or "?")..(m.note and ("  |cffff8c73"..m.note.."|r") or "  |cff6f6656(no reason)|r"))
         local B=FT.Bags
-        r.meta:SetText(self:Describe(m)..(m.guild and ("  <"..m.guild..">") or "").." · seen "..(B and B:Ago(m.seen) or "?"))
-        r.remove:SetScript("OnClick",function() self:Unmark(key) end)
-        r.note:SetScript("OnClick",function() self:AskReason(key) end)
+        local reason=m.note and ("  |cffff8c73"..m.note.."|r") or "  |cff6f6656(no reason)|r"
+        if m.isGuild then
+            r.icon:SetTexture("Interface\\Icons\\INV_Shirt_GuildTabard_01")
+            r.name:SetText("|cffffd100<"..(m.name or "?")..">|r"..reason)
+            r.meta:SetText("Guild · every member is marked"..(m.seen and (" · seen "..(B and B:Ago(m.seen) or "?")) or ""))
+            r.remove:SetScript("OnClick",function() self:UnmarkGuild(key) end)
+            r.note:SetScript("OnClick",function() self:AskGuildReason(key) end)
+        else
+            r.icon:SetTexture(self:ClassIcon(m.class))
+            local cr,cg,cb=self:ClassColor(m.class)
+            r.name:SetText(string.format("|cff%02x%02x%02x%s|r",cr*255,cg*255,cb*255,self:FullName(m))..reason)
+            local d=self:Describe(m)..(m.guild and ("  <"..m.guild..">") or ""); r.meta:SetText((d~="" and (d.." · ") or "")..(m.seen and ("seen "..(B and B:Ago(m.seen) or "?")) or "not seen yet"))
+            r.remove:SetScript("OnClick",function() self:Unmark(key) end)
+            r.note:SetScript("OnClick",function() self:AskReason(key) end)
+        end
         r:Show()
     end
     for i=#keys+1,#page.rows do page.rows[i]:Hide() end
@@ -1273,7 +1686,7 @@ function markPage:Open()
     if not self.frame then
         local w=width("EnemyMarks")
         local frame=FT:Window("ForeverToolsEnemyMarks","Marked players",w,520); self.frame=frame
-        FT:PageInfo(frame,"Marked players","Players you want to know about. When one shows up you get a red alert, on all your characters.\n\nMark: target them and click Mark my target, right-click their portrait or their row in the enemy list, or /ft mark.")
+        FT:PageInfo(frame,"Marked players","Players you want to know about. When one shows up you get a red alert, on all your characters.\n\nMark: target them and click Mark my target, write their name (Mark by name), right-click their portrait or their row in the enemy list, or /ft mark.\n\nGuild kill-list: mark a guild (your target's, by name or from a right-click menu) and every member counts as marked.")
         self.alerts=FT:AccentButton(frame,"",w-48,32,"Ability_Hunter_SniperShot"); self.alerts:SetPoint("TOPLEFT",24,-66)
         self.alerts:SetScript("OnClick",function() local s=E:Settings(); s.marks=not s.marks; E:Apply() end)
         FT:Tooltip(self.alerts,"Marked player alerts","Red alert when a player you marked shows up.")
@@ -1281,15 +1694,26 @@ function markPage:Open()
         if self.tip.SetMotionScriptsWhileDisabled then self.tip:SetMotionScriptsWhileDisabled(true) end
         self.tip:SetScript("OnClick",function() local s=E:Settings(); s.markTooltip=not s.markTooltip; if s.markTooltip then s.marks=true; E:Apply() end; E:Refresh() end)
         FT:Tooltip(self.tip,"Show the mark in tooltips","Show \"Marked\" and your reason on their tooltip.")
-        local mark=FT:QuietButton(frame,"Mark my target",w-48,32,"add"); mark:SetPoint("TOPLEFT",24,-142)
+        local half=(w-54)/2
+        local mark=FT:QuietButton(frame,"Mark my target",half,32,"add"); mark:SetPoint("TOPLEFT",24,-142)
         mark:SetScript("OnClick",function() E:MarkUnit("target") end)
         FT:Tooltip(mark,"Mark my target","Mark the enemy player you are targeting.")
+        local guild=FT:QuietButton(frame,"Mark target's guild",half,32,"INV_Shirt_GuildTabard_01"); guild:SetPoint("LEFT",mark,"RIGHT",6,0)
+        guild:SetScript("OnClick",function() E:MarkTargetGuild() end)
+        FT:Tooltip(guild,"Mark target's guild","Kill-list: every member of the guild of the enemy you are targeting shows as marked.")
+        local byName=FT:QuietButton(frame,"Mark by name",half,32,"INV_Misc_Note_04"); byName:SetPoint("TOPLEFT",24,-180)
+        byName:SetScript("OnClick",function() E:AskMarkName() end)
+        FT:Tooltip(byName,"Mark by name","Write a player's name to mark them, also when they are not here.")
+        local guildName=FT:QuietButton(frame,"Mark guild by name",half,32,"INV_BannerPVP_01"); guildName:SetPoint("LEFT",byName,"RIGHT",6,0)
+        guildName:SetScript("OnClick",function() E:AskMarkGuildName() end)
+        FT:Tooltip(guildName,"Mark guild by name","Write a guild's name: every member shows as marked.")
+        self.buttonsTop={mark,guild,byName,guildName}
         local scroll=CreateFrame("ScrollFrame","ForeverToolsEnemyMarksScroll",frame,"UIPanelScrollFrameTemplate")
-        scroll:SetPoint("TOPLEFT",24,-186); scroll:SetPoint("BOTTOMRIGHT",-40,20)
+        scroll:SetPoint("TOPLEFT",24,-224); scroll:SetPoint("BOTTOMRIGHT",-40,20)
         self.content=CreateFrame("Frame",nil,scroll); self.content:SetSize(w-72,1); scroll:SetScrollChild(self.content)
         FT:AutoHideScrollBar(scroll)
         self.rows={}
-        self.none=FT:Label(frame,"No marked players yet.",12); self.none:SetPoint("TOPLEFT",24,-192); self.none:SetTextColor(.66,.59,.48)
+        self.none=FT:Label(frame,"No marked players or guilds yet.",12); self.none:SetPoint("TOPLEFT",24,-230); self.none:SetTextColor(.66,.59,.48)
     end
     E:Refresh(); self.frame:Show()
 end

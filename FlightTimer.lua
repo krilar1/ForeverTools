@@ -19,6 +19,8 @@ function Flight:Settings()
     if type(s.font)~="string" then s.font="arial" end
     if s.outline~="" and s.outline~="OUTLINE" and s.outline~="THICKOUTLINE" then s.outline="OUTLINE" end
     if type(s.color)~="table" then s.color={211/255,1,126/255} end
+    -- A thin bar under the text that fills as the flight goes on.
+    if type(s.bar)~="boolean" then s.bar=true end
     for i=1,3 do s.color[i]=number(s.color[i],1,0,1) end
     return s
 end
@@ -46,6 +48,12 @@ function Flight:CreateDisplay()
     display.timer=FT:Label(display,"",20);display.timer:SetPoint("LEFT",display,"LEFT",10,0);display.timer:SetJustifyH("RIGHT");display.timer:SetWordWrap(false)
     display.dash=FT:Label(display,"-",20);display.dash:SetPoint("LEFT",display.timer,"RIGHT",10,0);display.dash:SetWordWrap(false)
     display.text=FT:Label(display,"",16);display.text:SetPoint("LEFT",display.dash,"RIGHT",10,0);display.text:SetJustifyH("LEFT");display.text:SetWordWrap(false)
+    -- The progress bar: a dark track, a fill in the timer's color (darker
+    -- where it started), and a soft spark at its edge. It moves smoothly on
+    -- its own while shown; the rest of the display updates five times a second.
+    local bar=FT:ProgressBar(display,4);display.bar=bar
+    bar:SetScript("OnUpdate",function(b) local f=self:Progress(); if f then b:SetFraction(f) end end)
+    bar:Hide()
     -- The same outline and hint as the FPS counter and leveling stats while moving.
     FT:MoverBox(display,0)
     display.hint=FT:Label(display,"Drag to move",12);FT:Caption(display.hint,display,"below",0)
@@ -72,7 +80,30 @@ function Flight:Layout(timer,place,known)
     local maxName=math.max(120,math.min(360,UIParent:GetWidth()-(d.timerWidth or 0)-80))
     d.text:SetWidth(0);local nameWidth=math.min(maxName,math.ceil(d.text:GetStringWidth()+2));d.text:SetWidth(nameWidth)
     d:SetWidth(10+(d.timerWidth or 0)+10+d.dash:GetStringWidth()+10+nameWidth+10)
-    d:SetHeight(s.size+16)
+    local withBar=s.bar and known
+    d:SetHeight(s.size+16+(withBar and 6 or 0))
+    -- The text sits a little higher over the bar.
+    d.timer:ClearAllPoints();d.timer:SetPoint("LEFT",d,"LEFT",10,withBar and 3 or 0)
+    -- Under the text itself: from the first digit (the timer is right-aligned
+    -- in its fixed box) to the end of the place name, whatever the font,
+    -- size and timer length.
+    if withBar then
+        local digits=math.ceil(d.timer:GetStringWidth() or 0)
+        local width=digits+10+(d.dash:GetStringWidth() or 0)+10+math.max(0,nameWidth-2)
+        d.bar:ClearAllPoints()
+        d.bar:SetPoint("TOPLEFT",d.timer,"BOTTOMRIGHT",-digits,-2)
+        d.bar:SetWidth(math.max(20,width))
+    end
+    d.bar:SetShown(withBar and true or false)
+end
+-- How far along the flight is (0 to 1), or nil when the time isn't known.
+function Flight:Progress()
+    if self.preview then
+        local t=(GetTime() or 0)%30
+        return t/30
+    end
+    if not (self.duration and self.duration>0 and self.started) then return end
+    return math.max(0,math.min(1,((GetTime() or 0)-self.started)/self.duration))
 end
 local function read(fn,...)
     if not fn then return end
@@ -217,6 +248,7 @@ function Flight:Apply()
     d.timer:SetFont(path,s.size,s.outline);d.timer:SetTextColor(unpack(s.color))
     d.dash:SetFont(path,small,s.outline);d.dash:SetTextColor(.62,.62,.62)
     d.text:SetFont(path,small,s.outline);d.text:SetTextColor(.92,.92,.92)
+    d.bar:SetColor(unpack(s.color))
     d.measuredFor=nil
     -- Behind game windows; on top only while you preview and move it.
     self.display:SetFrameStrata(self.preview and "HIGH" or "LOW")
@@ -232,11 +264,12 @@ function Flight:Apply()
         self.sizeLabel:SetText("Font size: "..s.size.." px")
         self.settingSize=true;self.slider:SetValue(s.size);self.settingSize=false
         self.swatch:SetVertexColor(unpack(s.color))
+        self.barToggle.label:SetText("Progress bar: "..(s.bar and "On" or "Off"));FT:SetSelected(self.barToggle,s.bar)
     end
 end
 function Flight:Open()
     if not self.frame then
-        local frame=FT:Window("ForeverToolsFlightSettings","Flight timer",540,328);self.frame=frame
+        local frame=FT:Window("ForeverToolsFlightSettings","Flight timer",540,420);self.frame=frame
         -- Opens centered like every other page; Back returns to System > On-screen info.
         FT:BackTo(frame,"SystemDisplay")
         self.toggle=FT:AccentButton(frame,"",492,34,FT:FlightIcon());self.toggle:SetPoint("TOPLEFT",24,-62)
@@ -266,7 +299,10 @@ function Flight:Open()
         end)
         FT:Tooltip(color,"Text color","The color of the flight timer's text.")
         FT:Tooltip(self.slider,"Font size","Text size of the flight timer (10 to 48).")
-        local reset=FT:QuietButton(frame,"Reset position to center",492,34,"reset");reset:SetPoint("TOPLEFT",24,-268)
+        self.barToggle=FT:QuietButton(frame,"",492,34,FT:FlightIcon());self.barToggle:SetPoint("TOPLEFT",24,-268)
+        self.barToggle:SetScript("OnClick",function() local s=self:Settings();s.bar=not s.bar;self:Apply() end)
+        FT:Tooltip(self.barToggle,"Progress bar","A thin bar under the timer that fills as the flight goes on, in the text color. Shows when the flight time is known.")
+        local reset=FT:QuietButton(frame,"Reset position to center",492,34,"reset");reset:SetPoint("TOPLEFT",24,-316)
         FT:Tooltip(reset,"Reset position","Back to the middle of the screen. Asks first.")
         reset:SetScript("OnClick",function() FT:Confirm("Return the flight timer to the screen center?",function() local s=self:Settings();s.x=.5;s.y=.5;self:Apply() end) end)
         FT:Sections(frame,{{"Look",self.fontChoice},{"Position",reset}})

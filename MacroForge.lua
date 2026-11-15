@@ -213,6 +213,81 @@ do
 end
 local POISON_NOTE = "Left-click puts it on your main hand, right-click on your off hand (a key bind counts as a left-click). It uses the newest version in your bags. When you get a better one, ForeverTools asks to update your macros (Macro settings > Update macros), or pick an earlier one. If the weapon already has a poison, the game asks first, unless Auto-replace poison is on."
 
+-- PvP macros per class (Macros > PvP): the ones PvP guides for Classic
+-- agree on, written for Forever's spells. Names fit the game's 16 letters.
+-- Focus first, then mouseover, then your target, so crowd control and
+-- interrupts can hit a second enemy while you keep your target.
+local function pvp(name, icon, body, note) return {name, 1, nil, icon, body, nil, note} end
+local FOCUS = "[@focus,harm,nodead]"
+local FOCUS_MO = "[@focus,harm,nodead][@mouseover,harm,nodead][]"
+local pvpMacros = {
+    Rogue = {
+        pvp("Sap player", "ability_sap", "#showtooltip Sap\n/cleartarget\n/targetenemyplayer\n/cast Sap", "Targets the nearest enemy player and saps them. Press while stealthed near a stealthed or unaware enemy."),
+        pvp("Opener", "ability_stealth", "#showtooltip\n/cast [stealth] Cheap Shot; Stealth", "Stealth, then Cheap Shot on the same key."),
+        pvp("Kick focus", "ability_kick", "#showtooltip Kick\n/cast " .. FOCUS .. "[] Kick", "Kicks your focus, or your target without a focus."),
+        pvp("Blind focus", "spell_shadow_mindsteal", "#showtooltip Blind\n/stopattack\n/cast " .. FOCUS_MO .. " Blind", "Blinds your focus, the enemy under the mouse, or your target."),
+        pvp("Gouge", "ability_gouge", "#showtooltip Gouge\n/cast Gouge\n/stopattack", "Gouge and stop attacking, so your swings don't break it."),
+        pvp("Vanish", "ability_vanish", "#showtooltip Vanish\n/stopattack\n/cast Vanish", "Stops attacking first, so you stay in stealth."),
+    },
+    Warrior = {
+        pvp("Charge", "ability_warrior_charge", "#showtooltip Charge\n/cast [stance:1] Charge; Battle Stance", "In Battle Stance: Charge. In another stance: switches to Battle Stance (press again)."),
+        pvp("Intercept", "ability_rogue_sprint", "#showtooltip Intercept\n/cast [stance:3] Intercept; Berserker Stance", "In Berserker Stance: Intercept. Otherwise switches to it (press again)."),
+        pvp("Pummel focus", "inv_gauntlets_04", "#showtooltip Pummel\n/cast [stance:3," .. "@focus,harm,nodead][stance:3] Pummel; Berserker Stance", "Pummels your focus or target; switches to Berserker Stance first if needed."),
+        pvp("Hamstring", "ability_shockwave", "#showtooltip Hamstring\n/startattack\n/cast Hamstring", "Slows your target and keeps you swinging."),
+        pvp("Disarm", "ability_warrior_disarm", "#showtooltip Disarm\n/cast [stance:2] Disarm; Defensive Stance", "In Defensive Stance: Disarm. Otherwise switches to it (press again)."),
+        pvp("Fear", "ability_golemthunderclap", "#showtooltip Intimidating Shout\n/cast Intimidating Shout", "Intimidating Shout."),
+    },
+    Mage = {
+        pvp("Poly focus", "spell_nature_polymorph", "#showtooltip Polymorph\n/stopcasting\n/cast " .. FOCUS_MO .. " Polymorph", "Polymorphs your focus, the enemy under the mouse, or your target."),
+        pvp("Counterspell", "spell_frost_iceshock", "#showtooltip Counterspell\n/stopcasting\n/cast " .. FOCUS .. "[] Counterspell", "Stops your own cast and counters your focus or target."),
+        pvp("Frost Nova", "spell_frost_frostnova", "#showtooltip Frost Nova\n/stopcasting\n/cast Frost Nova", "Stops your cast and roots everyone near you."),
+        pvp("Blink", "spell_arcane_blink", "#showtooltip Blink\n/stopcasting\n/cast Blink", "Stops your cast and blinks."),
+        pvp("Ice Block", "spell_frost_frost", "#showtooltip Ice Block\n/stopcasting\n/cancelaura Ice Block\n/cast Ice Block", "Press: Ice Block. Press again: ends it early."),
+    },
+    Priest = {
+        pvp("Scream", "spell_shadow_psychicscream", "#showtooltip Psychic Scream\n/stopcasting\n/cast Psychic Scream", "Stops your cast and fears everyone near you."),
+        pvp("Silence focus", "spell_shadow_impphaseshift", "#showtooltip Silence\n/stopcasting\n/cast " .. FOCUS .. "[] Silence", "Silences your focus or target."),
+        pvp("Dispel enemy", "spell_holy_dispelmagic", "#showtooltip Dispel Magic\n/cast [@mouseover,harm,nodead][harm,nodead] Dispel Magic", "Takes a buff off the enemy under the mouse, or your target."),
+        pvp("Shield me", "spell_holy_powerwordshield", "#showtooltip Power Word: Shield\n/cast [@player] Power Word: Shield", "Shields yourself without losing your target."),
+        pvp("Mana Burn", "spell_shadow_manaburn", "#showtooltip Mana Burn\n/cast " .. FOCUS .. "[] Mana Burn", "Burns your focus's mana, or your target's."),
+    },
+    Warlock = {
+        pvp("Fear focus", "spell_shadow_possession", "#showtooltip Fear\n/stopcasting\n/cast " .. FOCUS_MO .. " Fear", "Fears your focus, the enemy under the mouse, or your target."),
+        pvp("Death Coil", "spell_shadow_deathcoil", "#showtooltip Death Coil\n/stopcasting\n/cast " .. FOCUS .. "[] Death Coil", "Stops your cast and coils your focus or target."),
+        pvp("Howl", "spell_shadow_deathscream", "#showtooltip Howl of Terror\n/stopcasting\n/cast Howl of Terror", "Stops your cast and fears everyone near you."),
+        pvp("Spell Lock", "spell_shadow_mindrot", "#showtooltip Spell Lock\n/cast " .. FOCUS .. "[] Spell Lock", "Felhunter: interrupts your focus or target."),
+        pvp("Devour Magic", "spell_nature_purge", "#showtooltip Devour Magic\n/cast [@mouseover,help,nodead][@player] Devour Magic", "Felhunter: removes a debuff from the friend under the mouse, or you."),
+        pvp("Seduce focus", "spell_shadow_mindsteal", "#showtooltip Seduction\n/cast " .. FOCUS_MO .. " Seduction", "Succubus: seduces your focus, the enemy under the mouse, or your target."),
+    },
+    Druid = {
+        pvp("Roots focus", "spell_nature_stranglevines", "#showtooltip Entangling Roots\n/cast " .. FOCUS_MO .. " Entangling Roots", "Roots your focus, the enemy under the mouse, or your target."),
+        pvp("Powershift", "ability_druid_catform", "#showtooltip\n/cancelform\n/cast Cat Form", "Leaves and enters Cat Form again: breaks roots and slows."),
+        pvp("Bash focus", "ability_druid_bash", "#showtooltip Bash\n/cast " .. FOCUS .. "[] Bash", "Bashes your focus or target (Bear Form)."),
+        pvp("Hibernate", "spell_nature_sleep", "#showtooltip Hibernate\n/cast " .. FOCUS_MO .. " Hibernate", "Puts a druid in an animal form or a hunter pet to sleep: focus, mouseover or target."),
+        pvp("Pounce", "ability_druid_supriseattack", "#showtooltip\n/cast [stealth] Pounce; Prowl", "Prowl, then Pounce on the same key (Cat Form)."),
+        pvp("Innervate me", "spell_nature_lightning", "#showtooltip Innervate\n/cast [@player] Innervate", "Innervates yourself without losing your target."),
+    },
+    Hunter = {
+        pvp("Scatter focus", "ability_golemstormbolt", "#showtooltip Scatter Shot\n/cast " .. FOCUS .. "[] Scatter Shot", "Scatters your focus or target."),
+        pvp("Wyvern focus", "inv_spear_02", "#showtooltip Wyvern Sting\n/cast " .. FOCUS .. "[] Wyvern Sting", "Puts your focus or target to sleep."),
+        pvp("Feign Death", "ability_rogue_feigndeath", "#showtooltip Feign Death\n/stopattack\n/petfollow\n/cast Feign Death", "Stops attacking, calls your pet back and feigns: drops you out of a fight for a trap."),
+        pvp("Viper Sting", "ability_hunter_aimedshot", "#showtooltip Viper Sting\n/cast [@mouseover,harm,nodead][] Viper Sting", "Drains the mana of the enemy under the mouse, or your target."),
+        pvp("Pet focus", "ability_hunter_snipershot", "#showtooltip\n/petattack " .. FOCUS .. "[]", "Sends your pet at your focus, or your target."),
+    },
+    Paladin = {
+        pvp("HoJ focus", "spell_holy_sealofmight", "#showtooltip Hammer of Justice\n/cast " .. FOCUS .. "[] Hammer of Justice", "Stuns your focus or target."),
+        pvp("Freedom", "spell_holy_sealofvalor", "#showtooltip Blessing of Freedom\n/cast [@mouseover,help,nodead][@player] Blessing of Freedom", "Frees the friend under the mouse, or you."),
+        pvp("BoP", "spell_holy_sealofprotection", "#showtooltip Blessing of Protection\n/cast [@mouseover,help,nodead][@player] Blessing of Protection", "Protects the friend under the mouse, or you."),
+        pvp("Bubble", "spell_holy_divineintervention", "#showtooltip Divine Shield\n/stopcasting\n/cast Divine Shield", "Stops your cast and shields you."),
+        pvp("Cleanse me", "spell_holy_renew", "#showtooltip Cleanse\n/cast [@player] Cleanse", "Cleanses yourself without losing your target."),
+    },
+    Shaman = {
+        pvp("Shock focus", "spell_nature_earthshock", "#showtooltip Earth Shock\n/stopcasting\n/cast " .. FOCUS .. "[] Earth Shock(Rank 1)", "Rank 1 Earth Shock: a cheap interrupt on your focus or target."),
+        pvp("Purge", "spell_nature_purge", "#showtooltip Purge\n/cast [@mouseover,harm,nodead][] Purge", "Purges the enemy under the mouse, or your target."),
+        pvp("Grounding", "spell_nature_groundingtotem", "#showtooltip Grounding Totem\n/stopcasting\n/cast Grounding Totem", "Stops your cast and drops Grounding Totem."),
+        pvp("Tremor", "spell_nature_tremortotem", "#showtooltip Tremor Totem\n/cast Tremor Totem", "Tremor Totem against fears."),
+    },
+}
 local genericMacros = {
     {"1-shot combo", 1, "generic", "spell_nature_bloodlust", "#showtooltip"},
     {"Start attack", 1, "generic", "inv_sword_04", "#showtooltip\n/startattack"},
@@ -229,7 +304,14 @@ local genericMacros = {
         "One button for Throw, Shoot Bow, Shoot Gun, Shoot Crossbow and wands: uses the one for the ranged weapon you have equipped, so a weapon swap needs no new button."},
     -- Text and note from Bandage.lua: it follows the bandages in your bags.
     {"Bandage", 1, "generic", "inv_misc_bandage_12", function() return KT.modules.Bandage and KT.modules.Bandage:Body() or "#showtooltip\n/stopattack" end, nil,
-        "Stops your attack and uses your best bandage. Kept up to date as your bags change. Edit it yourself and it is left alone."},
+        "Stops your attack and bandages the friend under your mouse, your friendly target, or you, with your best bandage. Kept up to date as your bags change. Edit it yourself and it is left alone."},
+    -- Cures.lua: one key per kind of cure (poison, curse/disease/magic, stuns and slows).
+    {"Cure poison", 1, "generic", "inv_drink_14", function() return KT.modules.Cures and KT.modules.Cures:Body("poison") or "#showtooltip" end, nil,
+        "Uses your best item that cures poison (Anti-Venom, Strong and Powerful Anti-Venom...) on the friend under your mouse, your friendly target, or you. Kept up to date as your bags change."},
+    {"Cure all", 1, "generic", "inv_potion_26", function() return KT.modules.Cures and KT.modules.Cures:Body("all") or "#showtooltip" end, nil,
+        "Uses your best item that removes curses, diseases or magic (Purification Potion, Restorative Potion...). Kept up to date as your bags change."},
+    {"Break free", 1, "generic", "inv_potion_04", function() return KT.modules.Cures and KT.modules.Cures:Body("free") or "#showtooltip" end, nil,
+        "Uses your best item that frees you from stuns and slows (Living Action Potion, Free Action Potion). Kept up to date as your bags change."},
 }
 
 local function raceKey()
@@ -531,6 +613,12 @@ function MacroForge:IconForEntry(entry)
         local live = self:BodyIcon(body)
         if live then return live end
     end
+    -- PvP macros: the icon of the spell they show, once you know it.
+    if entry.category == "pvp" then
+        local live = self:BodyIcon(entry.code or "")
+        if live then return live end
+        return "Interface\\Icons\\" .. (entry.icon or "INV_MISC_QUESTIONMARK")
+    end
     if entry.category == "classPicker" or entry.category == "generic" then return "Interface\\Icons\\" .. (entry.icon or "INV_MISC_QUESTIONMARK") end
     if entry.fixedIcon and iconFile(entry.icon) then return iconFile(entry.icon) end
     local texture
@@ -751,7 +839,7 @@ function MacroForge:CreateEntry(entry, confirmed)
         self:Status("Added " .. entry.name .. " to " .. destination .. " macros.")
         if not self.bulkAdding then KT:Toast("Added to " .. string.lower(destination) .. " macros") end
         -- Macros that follow the game (Bandage, Eat & Drink) catch up at once.
-        for _,key in ipairs({"Bandage","FoodWater"}) do
+        for _,key in ipairs({"Bandage","FoodWater","Cures"}) do
             local follow=KT.modules[key]; if follow and follow.Update then C_Timer.After(0,function() follow.best=nil; pcall(follow.Update,follow) end) end
         end
         return true
@@ -1496,7 +1584,7 @@ function MacroForge:ConfirmBulk()
     KT:ShowPopup("FOREVERTOOLS_BULK")
 end
 -- The window and its pages are built in MacroHub.lua from these.
-MacroForge.data = {classMacros = classMacros, racials = racials, genericMacros = genericMacros, addEntries = addEntries,
+MacroForge.data = {classMacros = classMacros, pvpMacros = pvpMacros, racials = racials, genericMacros = genericMacros, addEntries = addEntries,
     classKey = classKey, raceKey = raceKey, classIcons = classIcons, nameList = nameList, sameEntry = sameEntry, normalizeBody = normalizeBody}
 KT:RegisterModule("MacroForge", MacroForge)
 
