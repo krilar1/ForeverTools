@@ -1029,21 +1029,25 @@ function Bags:MakeView(kind)
         if kind=="bank" then self.bankWho=nil; return end
         -- Closed with its X or Escape: your own bag comes back where it was.
         if view.replaced and not self.switching then view.replaced=nil; self.viewing=nil end
+        self:ShowGameBag()
     end)
     view:Hide()
     return view
 end
 function Bags:PlaceView(view)
     local s=self:Settings(); local kind=view.kind
-    -- Next to the game's bag, which stays open: closing (and later opening)
-    -- the game's bags from an addon gets the game's own item use blocked.
+    -- In the game's bag's place. The game's bag stays open (closing and
+    -- later opening it from an addon gets the game's own item use blocked):
+    -- it is only made see-through under the view, and a cover takes the
+    -- clicks there. It comes back when you pick yourself or close the view.
     local bag=kind=="bags" and self:GameBagShown()
     if bag then
-        local left,top=bag:GetLeft(),bag:GetTop()
-        if number(left) and number(top) then
+        local right,bottom=bag:GetRight(),bag:GetBottom()
+        if number(right) and number(bottom) then
             local ratio=bag:GetEffectiveScale()/view:GetEffectiveScale()
-            view:ClearAllPoints(); view:SetPoint("TOPRIGHT",UIParent,"BOTTOMLEFT",left*ratio-8,top*ratio)
-            view.replaced=nil
+            view:ClearAllPoints(); view:SetPoint("BOTTOMRIGHT",UIParent,"BOTTOMLEFT",right*ratio,bottom*ratio)
+            view.replaced=true
+            self:HideGameBag(view,bag)
             return
         end
     end
@@ -1055,6 +1059,33 @@ function Bags:PlaceView(view)
     -- the left like the game's own bank.
     if kind=="bags" then view:SetPoint("BOTTOMRIGHT",UIParent,"BOTTOMRIGHT",-480,120)
     else view:SetPoint("TOPLEFT",UIParent,"TOPLEFT",16,-116) end
+end
+-- The game's bag under the view: see-through, its clicks taken by a cover.
+function Bags:HideGameBag(view,bag)
+    self.hiddenBag=bag
+    bag:SetAlpha(0)
+    local cover=view.cover
+    if not cover then
+        cover=CreateFrame("Frame",nil,view); view.cover=cover
+        cover:EnableMouse(true)
+    end
+    cover:SetFrameStrata(view:GetFrameStrata()); cover:SetFrameLevel(math.max(1,view:GetFrameLevel()-1))
+    cover:ClearAllPoints(); cover:SetAllPoints(bag); cover:Show()
+    if not bag.ftViewHooked then
+        bag.ftViewHooked=true
+        -- You closed your bags (B): the view goes with them.
+        bag:HookScript("OnHide",function(owner)
+            if self.hiddenBag~=owner then return end
+            local v=self.views and self.views.bags
+            if v and v:IsShown() and v.replaced then v:Hide() else self:ShowGameBag() end
+        end)
+    end
+end
+function Bags:ShowGameBag()
+    local bag=self.hiddenBag; self.hiddenBag=nil
+    if bag then bag:SetAlpha(1) end
+    local v=self.views and self.views.bags
+    if v and v.cover then v.cover:Hide(); v.cover:ClearAllPoints() end
 end
 function Bags:ShowView(kind)
     if not self:Settings().view then return end

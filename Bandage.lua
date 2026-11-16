@@ -107,7 +107,7 @@ function Bandage:Carried()
             if ok and type(info)=="table" then return info.itemID end
         end
     end
-    for bag=0,(NUM_BAG_SLOTS or 4) do
+    for bag=0,(tonumber(NUM_TOTAL_EQUIPPED_BAG_SLOTS) or tonumber(NUM_BAG_SLOTS) or 4) do
         local okCount,count=pcall(C_Container.GetContainerNumSlots,bag)
         if okCount and plain(count) and type(count)=="number" then
             for slot=1,count do

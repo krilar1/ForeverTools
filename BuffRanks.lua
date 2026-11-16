@@ -172,7 +172,9 @@ function R:BeginCast(id)
     local name=call(C_Spell and C_Spell.GetSpellName,id)
     if not name and GetSpellInfo then name=call(GetSpellInfo,id) end
     local base,rank=self:NameRank(name,self:SpellRank(id))
-    if not base or not rank or not (base:match(" Weapon$") or base:match(" Poison$")) then self.cast=nil;return end
+    -- Without a rank (a poison item's own spell) it is still watched, for its icon.
+    if not base then base=readable(name) and type(name)=="string" and name or nil end
+    if not base or not (base:match(" Weapon$") or base:match(" Poison$") or base:match(" Poison [IVX]+$")) then self.cast=nil;return end
     self.cast={id=id,name=base,rank=rank,main=self:WeaponState("main"),off=self:WeaponState("off")}
 end
 function R:FinishCast(id)
@@ -189,10 +191,58 @@ function R:FinishCast(id)
             if before and after and before.item==after.item and after.present and readable(after.id) and after.id and readable(before.id) and readable(after.remaining) and readable(before.remaining) then
                 local changed=not before.present or before.id~=after.id or
                     (type(after.remaining)=="number" and type(before.remaining)=="number" and after.remaining>before.remaining+500)
-                if changed then self:Knowledge().enchants[after.id]={name=cast.name,rank=cast.rank} end
+                if changed then
+                    if cast.rank then self:Knowledge().enchants[after.id]={name=cast.name,rank=cast.rank} end
+                    self:RememberWeaponIcon(slot,cast.id,after.item)
+                end
             end
         end
     end)
+end
+-- The icon of what you last put on a weapon (a poison, a sharpening stone):
+-- the bag item whose use is that spell, else the spell's own icon. Kept per
+-- character and hand, with the weapon it went on.
+function R:RememberWeaponIcon(slot,spellID,weapon)
+    local icon
+    local getSpell=C_Item and C_Item.GetItemSpell or GetItemSpell
+    if getSpell and C_Container and C_Container.GetContainerNumSlots then
+        for bag=0,(tonumber(NUM_TOTAL_EQUIPPED_BAG_SLOTS) or tonumber(NUM_BAG_SLOTS) or 4) do
+            local n=call(C_Container.GetContainerNumSlots,bag) or 0
+            for i=1,(readable(n) and type(n)=="number" and n or 0) do
+                local item=call(C_Container.GetContainerItemID,bag,i)
+                if readable(item) and type(item)=="number" then
+                    local _,id=call(getSpell,item)
+                    if readable(id) and id==spellID then
+                        local tex=call(C_Item and C_Item.GetItemIconByID or GetItemIcon,item)
+                        if readable(tex) and tex then icon=tex end
+                    end
+                end
+                if icon then break end
+            end
+            if icon then break end
+        end
+    end
+    if not icon then
+        local tex=call(C_Spell and C_Spell.GetSpellTexture,spellID)
+        if readable(tex) and tex then icon=tex end
+    end
+    local guid=call(UnitGUID,"player")
+    if not icon or not readable(guid) or type(guid)~="string" then return end
+    FT.db.weaponIcons=type(FT.db.weaponIcons)=="table" and FT.db.weaponIcons or {}
+    local mine=FT.db.weaponIcons[guid]
+    if type(mine)~="table" then mine={}; FT.db.weaponIcons[guid]=mine end
+    mine[slot]={icon=icon,weapon=readable(weapon) and weapon or nil}
+end
+-- That icon, while the same weapon is equipped in that hand.
+function R:WeaponIcon(slot)
+    local guid=call(UnitGUID,"player")
+    local all=FT.db and FT.db.weaponIcons
+    local mine=readable(guid) and type(all)=="table" and all[guid]
+    local saved=type(mine)=="table" and mine[slot]
+    if type(saved)~="table" then return end
+    local weapon=call(GetInventoryItemID,"player",slot=="main" and 16 or 17)
+    if not readable(weapon) or weapon~=saved.weapon then return end
+    return saved.icon
 end
 function R:ObserveWeapons()
     self.weaponSnapshot={main=self:WeaponState("main"),off=self:WeaponState("off")}

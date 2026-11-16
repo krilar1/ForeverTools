@@ -18,13 +18,43 @@ local function default(name)
     if not fn then return nil end
     local ok,v=pcall(fn,name); if ok and plain(v) then return v end
 end
+-- Hidden options the game doesn't let addons read (showInGameNavigation):
+-- set through the console like /console does, and the last value set is
+-- remembered (account-wide) so the switch can show it.
+local hiddenOptions={showInGameNavigation=true}
 local function set(name,value)
     if InCombatLockdown() then FT:Toast("Leave combat to change game options.",3); return false end
     local fn=(C_CVar and C_CVar.SetCVar) or SetCVar
-    if not fn then return false end
-    return pcall(fn,name,tostring(value))
+    local ok=fn and pcall(fn,name,tostring(value))
+    if hiddenOptions[name] then
+        if ConsoleExec then pcall(ConsoleExec,name.." "..tostring(value)) end
+        FT.db.hiddenCVars=type(FT.db.hiddenCVars)=="table" and FT.db.hiddenCVars or {}
+        FT.db.hiddenCVars[name]=tostring(value)
+        return true
+    end
+    return ok
+end
+local rawGet=get
+get=function(name)
+    local v=rawGet(name)
+    if v==nil and hiddenOptions[name] then
+        local saved=type(FT.db)=="table" and type(FT.db.hiddenCVars)=="table" and FT.db.hiddenCVars[name]
+        return saved or "0"
+    end
+    return v
 end
 G.Get,G.Set,G.Default=get,set,default
+-- A hidden option you turned on is set again at login (the game may not keep it).
+do
+    local f=CreateFrame("Frame"); f:RegisterEvent("PLAYER_LOGIN")
+    f:SetScript("OnEvent",function()
+        C_Timer.After(2,function()
+            local saved=FT.dbReady and type(FT.db.hiddenCVars)=="table" and FT.db.hiddenCVars
+            if not saved or InCombatLockdown() then return end
+            for name,value in pairs(saved) do if hiddenOptions[name] and value~="0" then set(name,value) end end
+        end)
+    end)
+end
 -- kind "switch": 0/1. kind "slider": min, max, step; reverse shows max-value
 -- (the game's own sharpness slider works that way: 0 is the sharpest).
 G.sections={{"graphics","Graphics","INV_Misc_Spyglass_03"},{"distance","Distance","INV_Misc_Map_01"},{"camera","Camera","INV_Misc_Spyglass_02"},{"combat","Combat","Ability_Hunter_SniperShot"}}
@@ -59,6 +89,8 @@ G.options={
         tip="Objects smaller than this are not drawn in the distance. Lower draws more small things (rocks, plants)."},
     {cvar="entityLodDist",kind="slider",section="distance",min=0,max=100,step=5,title="Character detail distance",
         tip="How far characters and creatures keep their full detail."},
+    {cvar="showInGameNavigation",kind="switch",section="camera",title="Quest navigation",icon="INV_Misc_Map_02",
+        tip="The game's hidden quest navigation: shows where your tracked quest is and how far, on screen, while you level. Once on, click a quest in your quest tracker to navigate to it."},
     {cvar="cameraIndirectVisibility",kind="switch",section="camera",title="Camera ignores small objects",icon="INV_Misc_Spyglass_02",
         tip="On: trees, lamp posts and other small things no longer push the camera in close; it looks past them. Size of what still counts: Camera ignores up to."},
     {cvar="cameraIndirectOffset",kind="slider",section="camera",min=1,max=10,step=1,title="Camera ignores up to",

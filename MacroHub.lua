@@ -42,7 +42,7 @@ function M:ViewEntries(view)
         D.addEntries(list, D.classMacros[classKey()], classKey(), nil, "class")
         self:AddLearnedEntries(list, classKey())
     elseif view == "race" then D.addEntries(list, D.racials[raceKey()], nil, raceKey(), "racial")
-    elseif view == "pvp" then D.addEntries(list, D.pvpMacros[classKey()], classKey(), nil, "pvp")
+    elseif view == "pvp" then D.addEntries(list, D.pvpMacros[classKey()], classKey(), nil, "pvp"); D.addEntries(list, D.pvpShared, classKey(), nil, "pvp")
     elseif view == "generic" then D.addEntries(list, D.genericMacros, nil, nil, "generic")
     elseif view == "own" then
         local customs = type(KT.db.customMacros) == "table" and KT.db.customMacros or {}
@@ -65,7 +65,7 @@ function M:DefaultBody(entry)
     return ok and body or "#showtooltip"
 end
 -- Already in your WoW macros (its normal text, or the text you edited here)?
-local followers = {["Eat & Drink"] = "FoodWater", Bandage = "Bandage", ["Cure poison"] = "Cures", ["Cure all"] = "Cures", ["Break free"] = "Cures"}
+local followers = {["Eat & Drink"] = "FoodWater", Bandage = "Bandage", ["Cure poison"] = "Cures", ["Cure all"] = "Cures", ["Break free"] = "Cures", ["Cure bleed"] = "Cures"}
 -- The text shown in the editor. Macros that follow your bags (Bandage, Eat &
 -- Drink) show what is in your bags now, unless you wrote your own text.
 function M:PreviewBody(entry)
@@ -122,7 +122,10 @@ local function stateOf(self, entry)
     if self.view == "hidden" then
         return self:HiddenState(entry) == "deleted" and "Deleted" or "Hidden", MUTED
     end
-    if self:IsAdded(entry) then return "\226\156\147 Added", GREEN end
+    if self:IsAdded(entry) then
+        local tab = self:AddedTab(entry)
+        return "\226\156\147 Added" .. (tab and (" · " .. tab) or ""), GREEN
+    end
     if entry.category == "custom" then return "Your macro · not added yet", MUTED end
     return "Not added", MUTED
 end
@@ -146,6 +149,15 @@ function M:RowMenu(owner, entry)
             icon = other == "account" and "Interface\\Icons\\" .. KT.icons.general or self:ClassIcon(classKey()),
             tooltip = other == "account" and "Shared by all your characters." or "Only this character."}
     end
+    -- Added to your Character tab: move it to General to free a slot.
+    local charIndex = not hidden and self:CharacterIndex(entry)
+    if charIndex then
+        list[#list + 1] = {value = "move", label = "Move to General macros", icon = "Interface\\Icons\\" .. KT.icons.general,
+            tooltip = "Frees a Character slot. It stays on your action bars. General macros show on all your characters."}
+    elseif not hidden and self:GeneralIndex(entry) then
+        list[#list + 1] = {value = "moveChar", label = "Move to Character macros", icon = self:ClassIcon(classKey()),
+            tooltip = "Only this character gets it. It stays on your action bars."}
+    end
     local body = self:DefaultBody(entry)
     if KT:MacroBody(entry, body) ~= body then
         list[#list + 1] = {value = "default", label = "Restore its original text", icon = "Interface\\Icons\\" .. KT.icons.reset, tooltip = "Forget your edits. Asks first."}
@@ -162,6 +174,8 @@ function M:RowMenu(owner, entry)
                 self:QuickAdd(entry); entry.saveTo = saved
             end
             if self.selectedMacro == entry then self:UpdateAddButton() end
+        elseif value == "move" then self:MoveTab(entry, "General")
+        elseif value == "moveChar" then self:MoveTab(entry, "Character")
         elseif value == "hide" then self:SetHidden(entry, true)
         elseif value == "delete" then self:DeleteEntry(entry)
         elseif value == "default" then
@@ -174,6 +188,103 @@ function M:RowMenu(owner, entry)
     end
     KT:ShowChoices(owner)
 end
+-- Which tab it was added to: "General", "Character", "both" (nil: can't tell).
+function M:AddedTab(entry)
+    if followers[entry.name] or not (GetNumMacros and GetMacroInfo) then return nil end
+    local body = self:DefaultBody(entry)
+    local own = KT:MacroBody(entry, body)
+    local tabs = {}
+    local function note(index) local tab = self:TabOf(index); if tab then tabs[tab] = true end end
+    local ok, exists, index = pcall(self.EntryExists, self, entry, own)
+    if ok and exists then note(index or (GetMacroIndexByName and GetMacroIndexByName(self:MacroName(entry)))) end
+    if not next(tabs) then local okS, same = pcall(self.SameAction, self, entry, body); if okS then note(same) end end
+    -- In both tabs: a copy you may not want.
+    if tabs.Character and self:GeneralIndex(entry) then tabs.General = true end
+    if tabs.General and tabs.Character then return "General and Character" end
+    return (next(tabs))
+end
+-- The same text in your General tab (nil: not there).
+function M:GeneralIndex(entry)
+    local body = self:DefaultBody(entry)
+    local wanted = {[D.normalizeBody(body)] = true, [D.normalizeBody(KT:MacroBody(entry, body))] = true}
+    local account = GetNumMacros()
+    for i = 1, account or 0 do
+        local _, _, b = GetMacroInfo(i)
+        if b and wanted[D.normalizeBody(b)] then return i end
+    end
+end
+-- Where this macro is in your Character tab (nil: not there).
+function M:CharacterIndex(entry)
+    if not (GetNumMacros and GetMacroInfo) then return end
+    local first = (MAX_ACCOUNT_MACROS or 120) + 1
+    local body = self:DefaultBody(entry)
+    local ok, exists, index = pcall(self.EntryExists, self, entry, KT:MacroBody(entry, body))
+    if not (ok and exists and index) then ok, exists, index = pcall(self.EntryExists, self, entry, body) end
+    if not (ok and exists) then return end
+    if not index and GetMacroIndexByName then index = GetMacroIndexByName(self:MacroName(entry)) end
+    if type(index) == "number" and index >= first then return index end
+    -- Found in General first: look for a copy in Character too.
+    local _, count = GetNumMacros()
+    local wanted = {[D.normalizeBody(body)] = true, [D.normalizeBody(KT:MacroBody(entry, body))] = true}
+    for i = first, first + (count or 0) - 1 do
+        local _, _, b = GetMacroInfo(i)
+        if b and wanted[D.normalizeBody(b)] then return i end
+    end
+end
+-- To the other tab (General or Character): the same name, icon and text,
+-- put back on every action button it was on. Already there: asks whether
+-- to drop the copy you are moving instead.
+function M:MoveTab(entry, to)
+    if InCombatLockdown() then self:Status("Leave combat before moving macros.", true); return end
+    local toGeneral = to == "General"
+    local from = toGeneral and "Character" or "General"
+    local index, already
+    if toGeneral then index, already = self:CharacterIndex(entry), self:GeneralIndex(entry)
+    else index, already = self:GeneralIndex(entry), self:CharacterIndex(entry) end
+    if not index then return end
+    if already and not self.moveConfirmed then
+        KT:Confirm(entry.name .. " is already in your " .. to .. " macros.\n\nRemove the " .. from .. " copy? Its action buttons get the " .. to .. " one.", function()
+            self.moveConfirmed = true; self:MoveTab(entry, to); self.moveConfirmed = nil
+        end)
+        return
+    end
+    local account, character = GetNumMacros()
+    if not already then
+        if toGeneral and (account or 0) >= (MAX_ACCOUNT_MACROS or 120) then self:Status("General macros are full.", true); return end
+        if not toGeneral and (character or 0) >= (MAX_CHARACTER_MACROS or 30) then self:Status("Character macros are full.", true); return end
+    end
+    local name, icon, body = GetMacroInfo(index)
+    if not body then return end
+    local slots = {}
+    if GetActionInfo then
+        for slot = 1, 180 do
+            local okA, kind, id = pcall(GetActionInfo, slot)
+            if okA and kind == "macro" and id == index then slots[#slots + 1] = slot end
+        end
+    end
+    if already then name, _, body = GetMacroInfo(already)
+    else
+        local okC, made = pcall(CreateMacro, name, icon, body, not toGeneral)
+        if not (okC and type(made) == "number" and made > 0) then self:Status("WoW couldn't make the " .. to .. " macro.", true); return end
+    end
+    DeleteMacro(index)
+    -- Find it again by its text (each tab is kept in name order).
+    local first = toGeneral and 1 or (MAX_ACCOUNT_MACROS or 120) + 1
+    local count = toGeneral and (MAX_ACCOUNT_MACROS or 120) or (MAX_CHARACTER_MACROS or 30)
+    local newIndex
+    for i = first, first + count - 1 do
+        local n, _, b = GetMacroInfo(i)
+        if n == name and b == body then newIndex = i; break end
+    end
+    if newIndex and PickupMacro and PlaceAction and ClearCursor then
+        for _, slot in ipairs(slots) do ClearCursor(); PickupMacro(newIndex); PlaceAction(slot); ClearCursor() end
+    end
+    self:Status((already and "Removed the " .. from .. " copy of " or "Moved ") .. entry.name .. (already and "." or (" to " .. to .. " macros.")))
+    KT:Toast(already and ("Removed the " .. string.lower(from) .. " copy") or ("Moved to " .. string.lower(to) .. " macros"))
+    self:Changed()
+    if self.UpdateBulkInfo then self:UpdateBulkInfo() end
+end
+function M:MoveToGeneral(entry) return self:MoveTab(entry, "General") end
 -- Add one macro from its row (the text you see in its editor, if open).
 function M:QuickAdd(entry)
     if InCombatLockdown() then self:Status("Leave combat before adding macros.", true); return end

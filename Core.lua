@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "1.6.0"
+FT.version = "1.7.0"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -658,7 +658,7 @@ function FT:FocusSetting(root, text)
     if found then self:FlashFocus(found) end
     return found
 end
-function FT:SectionHeading(label, icon, lineWidth, iconSize)
+function FT:SectionHeading(label, icon, lineWidth, iconSize, total)
     if not label or label.ftHeading then return label end
     -- Section headings stand out from the rows under them (1.3.0): gold
     -- text a size up, the section's icon in front, a faint gold band behind
@@ -730,6 +730,8 @@ function FT:SectionHeading(label, icon, lineWidth, iconSize)
         rim:SetHeight(lineH + 6)
         -- "full": across the window to its right margin.
         if lineWidth == "full" then rim:SetPoint("RIGHT", parent, "RIGHT", -14, 0)
+        -- total: the bar is exactly that wide (the width of the rows under it).
+        elseif total then rim:SetWidth(math.max(width + 28, total))
         else rim:SetWidth(math.max(width + 28, width + 20 + (lineWidth or 180))) end
         rim:SetShown(shown); band:SetShown(shown); accent:SetShown(shown)
     end

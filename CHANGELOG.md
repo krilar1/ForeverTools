@@ -1,3 +1,28 @@
+# ForeverTools 1.7.0 (2026-11-16)
+
+## Changes
+- **Alt bags in your bag's place again:** picking another character in your bags shows their bags where yours are, instead of in a window beside it. Your own bag stays open underneath (see-through), so using items is never blocked. Pick yourself, close the view or press B to get yours back.
+- **Poison and weapon buff reminders show the weapon:** the weapon's icon is shown beside the reminder's own icon, so you see which hand it is. The poison reminder's own icon is the poison you last put on that weapon (while it is still equipped); until then the usual poison icon.
+- **Move between General and Character macros** (Macros, the "..." button on a macro): moves a macro to the other tab, for example to free a Character slot. It stays on your action bars. If it is already in the other tab, you are asked whether to remove the copy instead.
+- **Macro list shows the tab:** "Added · General", "Added · Character", or "General and Character" when you have it twice. Adding a class macro that is already in General says so instead of adding a copy. Trinket macros you wrote yourself (/use 13) count as added.
+- **Cure bleed** (Macros → Generic): uses your best tourniquet (Woolen Tourniquet...) on the friend under your mouse, your friendly target, or you. Kept up to date as your bags change.
+- **Bag-following macros read the reagent bag too:** Bandage, Cure macros, Eat & Drink and the reminders now also look in the reagent bag.
+- **Trinket macros** (Macros → PvP, every class): Trinket 1 and Trinket 2 use your top and bottom trinket.
+- **Rogue openers pick pockets:** the Ambush, Garrote, Cheap Shot and Sap macros (and the PvP Opener) use Pick Pocket first on the same target, in one press. Add them again (or Add all) to update macros you already have.
+- **Talent point reminder** (Buff reminders → Your buffs → Leveling, off at first): a notice while you have talent points to spend. The Camping heading there is now Leveling.
+- **Quest navigation** (Extra game options → Camera): turns on the game's hidden quest navigation (distance to your tracked quest on screen). Then click a quest in your quest tracker to navigate to it. Set again at login while on.
+- **Poised glow** (Combat → Poised, rogues and druids, off at first): while Poised is up, your energy bar on the player frame gets running sparks and twinkling stars while you target an enemy (the bar itself stays as it is; an option shows it always), so you don't have to look at your buffs. Preview at the top of the page.
+- **Search finds more:** every menu page, every Extra game option and the ready-made macros by name ("poised", "navigation", "bleed"...). Clear the search with the X in the box, Escape, a right-click on the box, or a click anywhere else in the window.
+- **What's new: Try it.** New settings have a Try it button that turns them on right there; click again to turn them off. New macros have Show me.
+- **Automatic role always picks one:** rogues, mages, warlocks and hunters get Damage right away, talents or not. Other classes without a clear talent tree yet get their usual role (priests Healer, the rest Damage). Also set after a login or reload while in a group with no role.
+
+## Fixes
+- **Macros: "Add to General" did nothing for class macros.** With a full Character tab (30 of 30), saying yes to "Add to General macros instead?" kept the macro out and asked again. Class and race macros now go to General when you say yes.
+- **Spell IDs in a fight:** with Show tooltip IDs on, spell tooltips on your action bars and in your spellbook now show the ID in a fight too. The IDs are read out of a fight and kept; a macro's spell only shows when the tooltip names that spell.
+- **XP food reminder sometimes missing:** your bags were read before the game had loaded your food's text, and the reminder then thought you had no XP food until your bags changed. It now reads them again a moment later.
+- **Reagent bag icon in the bag opens it again.** A click on the small reagent bag icon in the bag's bottom bar now opens and closes the reagent bag (the game's own bag button does the work). Works in a fight too.
+- **Chat page headings:** the section bars (Chat text, History, Links, Thanks) are as wide as the rows under them instead of running past them.
+
 # ForeverTools 1.6.0 (2026-11-16)
 
 ## New

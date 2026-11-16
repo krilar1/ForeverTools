@@ -443,10 +443,9 @@ end
 function Rows:Toggle(frame,bag)
     local t=frame.ftRowToggles[bag]
     if not t then
-        -- The reagent bag's icon only shows whether it is open: an addon
-        -- can't open or close a bag without getting the game's own item use
-        -- blocked, and a protected button in the bag would lock the bag's
-        -- window in fights. The game's reagent bag button does it.
+        -- The reagent bag's icon: an addon can't open or close a bag without
+        -- getting the game's own item use blocked, so a click on it goes to
+        -- the game's reagent bag button (Rows:Forward), out of fights.
         t=CreateFrame("Button",nil,frame)
         if bag~=REAGENT then t:SetScript("OnClick",function() Rows:Flip(bag); if t:IsMouseOver() then t:GetScript("OnEnter")(t) end end) end
         frame.ftRowToggles[bag]=t
@@ -459,7 +458,7 @@ function Rows:Toggle(frame,bag)
             if bag==REAGENT then
                 GameTooltip:SetText("Reagent bag",1,.82,0)
                 GameTooltip:AddLine(Rows:ReagentFrame() and "Open: its row is in your bag." or "Closed.",.96,.93,.86,true)
-                GameTooltip:AddLine("Open or close it with the reagent bag on your bag bar.",.66,.59,.48,true)
+                GameTooltip:AddLine("Click to open or close it.",.66,.59,.48,true)
             else
                 local name=C_Container and C_Container.GetBagName and select(2,pcall(C_Container.GetBagName,bag))
                 GameTooltip:SetText(type(name)=="string" and name or "Bag",1,.82,0)
@@ -468,6 +467,10 @@ function Rows:Toggle(frame,bag)
             GameTooltip:Show()
         end)
         t:SetScript("OnLeave",function() GameTooltip:Hide() end)
+        if bag==REAGENT then
+            t:HookScript("OnShow",function() Rows:Forward(t) end)
+            t:HookScript("OnHide",function() Rows:Forward(nil) end)
+        end
     end
     t.icon:SetTexture(bagIcon(bag))
     local hidden
@@ -476,6 +479,62 @@ function Rows:Toggle(frame,bag)
     t.icon:SetDesaturated(hidden); t:SetAlpha(hidden and .5 or 1)
     return t
 end
+-- The reagent bag's icon: a click is passed to the game's own reagent bag
+-- button by a secure "click" button, so the game opens the bag itself (an
+-- addon opening a bag gets the game's item use blocked). The secure button
+-- sits on UIParent over the icon and only out of a fight: at the start of
+-- one it lets go of the icon, so nothing in the bag gets locked in combat.
+local forward
+function Rows:Forward(t)
+    -- In a fight it can't move, show or hide: it stays where it was and is
+    -- only made see-through while the bag is closed.
+    if InCombatLockdown() then
+        if forward and forward.placed then forward:SetAlpha((t and t:IsVisible()) and 1 or 0) end
+        return
+    end
+    local target=_G.CharacterReagentBag0Slot
+    if not forward then
+        if not t or not target then return end
+        forward=CreateFrame("Button","ForeverToolsReagentToggle",UIParent,"SecureActionButtonTemplate")
+        -- Down and up: the secure template acts on the one the game's
+        -- "cast on key down" setting picks (up only, it did nothing).
+        forward:RegisterForClicks("LeftButtonDown","LeftButtonUp")
+        forward:SetAttribute("type","click"); forward:SetAttribute("clickbutton",target)
+        forward:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square","ADD")
+        forward:SetScript("OnEnter",function(self) local o=self.owner; if o and o:IsVisible() and o:GetScript("OnEnter") then o:GetScript("OnEnter")(o) end end)
+        forward:SetScript("OnLeave",function() GameTooltip:Hide() end)
+        forward:HookScript("PostClick",function() C_Timer.After(0,function() Rows:Redraw() end) end)
+    end
+    forward:ClearAllPoints()
+    if t and t:IsVisible() then
+        forward.owner=t
+        -- Placed on the screen, not on the icon, so nothing in the bag is
+        -- tied to it in a fight (the bag stays free to change then).
+        local x,y=t:GetCenter()
+        local ratio=t:GetEffectiveScale()/forward:GetEffectiveScale()
+        if not (x and y) then forward:Hide(); return end
+        forward:SetSize(t:GetWidth()*ratio,t:GetHeight()*ratio)
+        forward.at={"CENTER",UIParent,"BOTTOMLEFT",x*ratio,y*ratio}
+        forward:SetPoint(unpack(forward.at))
+        forward.placed=true; forward:SetAlpha(1)
+        -- One strata above the bag: the game raises the bag's window when you
+        -- click in it, which put the icon itself above this button.
+        local host=t:GetParent()
+        local strata=host and host.GetFrameStrata and host:GetFrameStrata() or "MEDIUM"
+        local above={BACKGROUND="LOW",LOW="MEDIUM",MEDIUM="HIGH",HIGH="DIALOG",DIALOG="FULLSCREEN"}
+        forward:SetFrameStrata(above[strata] or "HIGH")
+        forward:SetFrameLevel(10)
+        forward:Show()
+    else
+        -- Bag closed: hidden, but it keeps its spot for a fight (see below).
+        forward:Hide()
+        if forward.placed and forward.at then forward:SetPoint(unpack(forward.at)) end
+    end
+end
+function Rows:ForwardOff()
+    if forward and not InCombatLockdown() then forward:ClearAllPoints(); forward.placed=nil; forward:Hide() end
+end
+function Rows:ForwardButton() return forward end
 -- Bag bar: a click on a special bag (bag open, nothing on the cursor)
 -- hides or shows its row. A cover on the button takes that click, so the
 -- game's own click never runs from here; it goes away while you carry an
@@ -531,6 +590,8 @@ function Rows:Debug()
     local host=combined()
     say("ForeverTools bag rows ("..tostring(FT.version)..") on: "..tostring(self:On()).." cursor: "..tostring(GetCursorInfo and GetCursorInfo() or "none").." fight: "..tostring(InCombatLockdown()))
     if host then say("Bag: shown "..q(host,"IsShown").." level "..q(host,"GetFrameLevel").." strata "..q(host,"GetFrameStrata").." toplevel "..q(host,"IsToplevel").." alpha "..q(host,"GetAlpha").." watch "..tostring(host.ftRowsWatch and host.ftRowsWatch:IsShown() or false)) end
+    local fw=forward
+    say("Reagent icon button: "..(fw and ("shown "..q(fw,"IsVisible").." strata "..q(fw,"GetFrameStrata").." level "..q(fw,"GetFrameLevel").." clicks to "..tostring(fw:GetAttribute("clickbutton") and fw:GetAttribute("clickbutton"):GetName())) or "not made"))
     local rf=self:ReagentFrame()
     if not rf then say("Reagent bag: its window is not open"); return end
     say("Reagent window: "..q(rf,"GetName").." parked "..tostring(rf.ftRowsParked==true).." shown "..q(rf,"IsShown").." alpha "..q(rf,"GetAlpha").." level "..q(rf,"GetFrameLevel").." strata "..q(rf,"GetFrameStrata"))
@@ -627,9 +688,17 @@ function Rows:Apply()
     if hooked or self:On() then self.touched=true; self:Redraw() end
 end
 local events=CreateFrame("Frame")
-events:RegisterEvent("PLAYER_LOGIN"); events:RegisterEvent("CURSOR_CHANGED"); events:RegisterEvent("BAG_CONTAINER_UPDATE"); events:RegisterEvent("PLAYER_REGEN_ENABLED")
+events:RegisterEvent("PLAYER_LOGIN"); events:RegisterEvent("CURSOR_CHANGED"); events:RegisterEvent("BAG_CONTAINER_UPDATE"); events:RegisterEvent("PLAYER_REGEN_ENABLED"); events:RegisterEvent("PLAYER_REGEN_DISABLED")
 events:SetScript("OnEvent",function(_,event)
     if not FT.dbReady then return end
+    -- A fight starts with the bag closed: the button is made ready (unseen)
+    -- where the icon was, so opening the bag in the fight still works.
+    if event=="PLAYER_REGEN_DISABLED" then
+        local fw=forward
+        if fw and fw.placed and not fw:IsShown() then fw:SetAlpha(0); fw:Show() end
+        return
+    end
+    if event=="PLAYER_REGEN_ENABLED" and forward and forward:IsShown() and not (forward.owner and forward.owner:IsVisible()) then forward:Hide() end
     if event=="PLAYER_LOGIN" then C_Timer.After(1,function() Rows:Apply() end)
     elseif event=="CURSOR_CHANGED" then if Rows:On() then Rows:Overlays() end
     elseif Rows:On() then FT:Coalesce("ftBagRows",function() Rows:Redraw() end,.2) end

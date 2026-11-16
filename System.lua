@@ -72,6 +72,7 @@ end
 function System:Apply()
     local s=self:Settings()
     if FT.modules.ChatLinks and FT.modules.ChatLinks.Apply then FT.modules.ChatLinks:Apply() end
+    if FT.PowerGlow then FT.PowerGlow:Apply() end
     -- Forever's own option, rather than hiding an unrelated minimap region.
     if s.coordinates~=nil and C_CVar and C_CVar.GetCVar and C_CVar.SetCVar then
         if C_CVar.GetCVar("minimapShowPlayerCoords")~=nil then C_CVar.SetCVar("minimapShowPlayerCoords",s.coordinates and "1" or "0") end
@@ -152,6 +153,11 @@ local pages={
     {key="SystemGameplay",title="Group role",hint="Your group role, set from your talents.",items={
         {"autoRole","Set role when joining a group","Ability_Warrior_DefensiveStance","Set your role from your talents when you join a group."},
     }},
+    {key="SystemPoised",title="Poised",hint="See on your energy bar when Poised is ready.",items={
+        {"poisedPreview","Preview","Spell_Lightning_LightningBolt01","Shows the glow now, without Poised, until you turn it off."},
+        {"poisedGlow","Poised glow on energy bar","Spell_Nature_LightningShield","While Poised is up (your next Energy ability costs less), sparks and twinkling stars run over your energy bar. No need to look at your buffs. Only while you target an enemy, unless you turn on the option below."},
+        {"poisedAlways","Also without an enemy target","Ability_Stealth","Shows the glow whenever Poised is up, not only while you target an enemy."},
+    }},
     {key="SystemDeath",title="Death glow",hint="How the screen looks while you are dead or a ghost.",items={
         {"deathGlow","Death glow","Spell_Holy_Resurrection","The washed-out screen while dead. The game's own setting, for all characters."},
     }},
@@ -184,7 +190,7 @@ local pages={
     }},
 }
 System.pages=pages
-local toggles={gameMenuButton=true,versionCheck=true,minimapTarget=true,hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,shortKeys=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,mailAlts=true,mailGold=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietNoControl=true}
+local toggles={poisedGlow=true,poisedAlways=true,poisedPreview=true,gameMenuButton=true,versionCheck=true,minimapTarget=true,hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,shortKeys=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,mailAlts=true,mailGold=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietNoControl=true}
 -- Switches that are the game's own settings: read and written directly,
 -- never stored by ForeverTools. "Unavailable" when the game has no such setting.
 local gameOptions={scriptErrors="scriptErrors",deathGlow="ffxDeath"}
@@ -237,7 +243,7 @@ function System:Values()
     if coords==nil then coords=not getter or getter("minimapShowPlayerCoords")=="1" end
     return {welcome=FT.db.welcome==true,whatsNew=s.hideWhatsNew~=true,minimap=FT.db.minimapEnabled~=false,coordinates=coords,
         minimapTarget=select(2,self:TargetTracking())==true,minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=gameOption("scriptErrors")=="1",deathGlow=gameOption("ffxDeath")~="0",
-        hiddenUIHint=s.hiddenUIHint==true,autoRole=s.autoRole==true,shortKeys=s.shortKeys==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true,mailAlts=s.mailAlts==true,mailGold=s.mailGold==true,
+        hiddenUIHint=s.hiddenUIHint==true,poisedGlow=s.poisedGlow==true,poisedAlways=s.poisedAlways==true,poisedPreview=FT.PowerGlow and FT.PowerGlow.preview==true,autoRole=s.autoRole==true,shortKeys=s.shortKeys==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true,mailAlts=s.mailAlts==true,mailGold=s.mailGold==true,
         hideErrors=s.hideErrors==true,errorsInCombat=s.errorsInCombat==true,quietNoControl=s.quietNoControl~=false,versionCheck=s.versionCheck~=false,gameMenuButton=s.gameMenuButton~=false}
 end
 function System:Refresh()
@@ -428,6 +434,10 @@ function System:Click(key)
         self:Refresh();return
     end
     local s=self:Settings()
+    if key=="poisedPreview" then
+        local G=FT.PowerGlow; if G then G.preview=not G.preview; G:Check() end
+        self:Refresh(); return
+    end
     if key=="welcome" then FT.db.welcome=FT.db.welcome~=true
     elseif key=="minimap" then FT.db.minimapEnabled=FT.db.minimapEnabled==false
     elseif key=="whatsNew" then s.hideWhatsNew=not (s.hideWhatsNew==true)
@@ -647,6 +657,9 @@ function System:SpellIDFromTip(tip)
             local okA,kind,id=pcall(GetActionInfo,action)
             say("action",action,tostring(okA and usable(kind) and kind),tostring(okA and usable(id) and id or "hidden"))
             if okA and usable(kind) and kind=="spell" and ok(id) then return id end
+            local saved=self.actionSpells and self.actionSpells[action]
+            say("saved action",tostring(saved and saved.id))
+            if saved and not saved.name then return saved.id end
         end
     end
     if tip.GetSpell then
@@ -666,6 +679,81 @@ function System:SpellIDFromTip(tip)
     id=id or self.spellNames[name]
     say("name",name,tipRank(tip),"saved:",tostring(id))
     return id
+end
+-- Spells on your action bars and in your spellbook, read out of a fight,
+-- so a fight's hidden tooltip can still show the ID. A slot that changes in
+-- a fight is forgotten until the fight ends.
+System.actionSpells,System.bookSpells={},{}
+local function plainNumber(v) return usable(v) and type(v)=="number" and v>0 and v or nil end
+local function spellName(id)
+    local okN,name=pcall(function() return C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(id) or (GetSpellInfo and GetSpellInfo(id)) end)
+    return okN and usable(name) and type(name)=="string" and name or nil
+end
+function System:ScanSpells()
+    if InCombatLockdown() or not GetActionInfo then return end
+    local actions={}
+    for slot=1,180 do
+        local okA,kind,id=pcall(GetActionInfo,slot)
+        if okA and usable(kind) then
+            if kind=="spell" and plainNumber(id) then actions[slot]={id=id}
+            elseif kind=="macro" and GetMacroSpell and usable(id) then
+                local okM,spell=pcall(GetMacroSpell,id)
+                spell=okM and plainNumber(spell)
+                -- A macro's spell can change with its conditions: kept with
+                -- its name, used only when the tooltip shows that name.
+                if spell then actions[slot]={id=spell,name=spellName(spell)} end
+            end
+        end
+    end
+    self.actionSpells=actions
+    local book={}
+    if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines and C_SpellBook.GetSpellBookSkillLineInfo and C_SpellBook.GetSpellBookItemInfo then
+        local okL,lines=pcall(C_SpellBook.GetNumSpellBookSkillLines)
+        local total=0
+        for i=1,(okL and plainNumber(lines) or 0) do
+            local okI,info=pcall(C_SpellBook.GetSpellBookSkillLineInfo,i)
+            if okI and type(info)=="table" and plainNumber(info.numSpellBookItems) then total=math.max(total,(info.itemIndexOffset or 0)+info.numSpellBookItems) end
+        end
+        for slot=1,total do
+            local okS,info=pcall(C_SpellBook.GetSpellBookItemInfo,slot,0)
+            if okS and type(info)=="table" and plainNumber(info.spellID) then book["0:"..slot]=info.spellID end
+        end
+    end
+    self.bookSpells=book
+end
+do
+    local f=CreateFrame("Frame")
+    for _,e in ipairs({"PLAYER_ENTERING_WORLD","ACTIONBAR_SLOT_CHANGED","ACTIONBAR_PAGE_CHANGED","UPDATE_MACROS","SPELLS_CHANGED","PLAYER_REGEN_ENABLED"}) do pcall(f.RegisterEvent,f,e) end
+    f:SetScript("OnEvent",function(_,event,slot)
+        if not (FT.dbReady and System:Settings().spellID) then return end
+        if InCombatLockdown() then
+            if event=="ACTIONBAR_SLOT_CHANGED" then if plainNumber(slot) then System.actionSpells[slot]=nil else System.actionSpells={} end end
+            return
+        end
+        FT:Coalesce("spellScan",function() System:ScanSpells() end,.5)
+    end)
+    -- After the game fills the tooltip: if it hid the ID, add the saved one.
+    local function late(tip,id)
+        if tip.ftSpellID or not FT.dbReady or not System:Settings().spellID then return end
+        if plainNumber(id) then System:SpellID(tip,id) end
+    end
+    if GameTooltip and hooksecurefunc then
+        if GameTooltip.SetAction then hooksecurefunc(GameTooltip,"SetAction",function(tip,slot)
+            local saved=plainNumber(slot) and System.actionSpells[slot]
+            if not saved or tip.ftSpellID then return end
+            if saved.name then
+                local name=tipName(tip)
+                if name~=saved.name then return end
+            end
+            late(tip,saved.id)
+        end) end
+        if GameTooltip.SetSpellBookItem then hooksecurefunc(GameTooltip,"SetSpellBookItem",function(tip,slot,bank)
+            if not plainNumber(slot) then return end
+            local key=(bank==1 or bank=="pet") and nil or "0:"..slot
+            late(tip,key and System.bookSpells[key])
+        end) end
+        if GameTooltip.SetSpellByID then hooksecurefunc(GameTooltip,"SetSpellByID",function(tip,id) late(tip,id) end) end
+    end
 end
 function System:AuraSpellID(tip,id)
     if usable(id) then self:RememberSpell(tip,id) else id=self:SpellIDFromTip(tip) end
@@ -1158,9 +1246,18 @@ function System:SuggestedRole()
     end
     -- A tree you picked yourself (Buff reminders > Your buffs) decides.
     local manual=reminder.ManualSpec and reminder:ManualSpec()
-    if manual then chosen=manual
-    elseif best==0 or tied then return end
     local class=reminder:Class()
+    local token=UnitClass and select(2,UnitClass("player"))
+    if type(token)~="string" or (issecretvalue and issecretvalue(token)) then token=class and class:upper() end
+    -- Rogues, mages, warlocks and hunters only deal damage: no talents needed.
+    if token=="ROGUE" or token=="MAGE" or token=="WARLOCK" or token=="HUNTER" then return "DAMAGER",nil,"class" end
+    if manual then chosen=manual
+    elseif best==0 or tied then
+        -- No tree stands out yet (low level, or even points): the usual role
+        -- for the class. Priests heal; the others deal damage.
+        if token=="PRIEST" then return "HEALER",nil,"class" end
+        return "DAMAGER",nil,"class"
+    end
     if class=="Druid" and chosen=="Feral Combat" then return nil,"FERAL" end
     if (class=="Paladin" or class=="Warrior") and chosen=="Protection" then return "TANK" end
     if (class=="Paladin" and chosen=="Holy") or (class=="Priest" and (chosen=="Holy" or chosen=="Discipline")) or
@@ -1169,7 +1266,12 @@ function System:SuggestedRole()
 end
 function System:ObserveGroupRole(event)
     local grouped=IsInGroup and IsInGroup() or (GetNumGroupMembers and GetNumGroupMembers()>0) or false
-    if event=="PLAYER_LOGIN" or self.wasGrouped==nil then self.wasGrouped=grouped;return end
+    if event=="PLAYER_LOGIN" or self.wasGrouped==nil then
+        self.wasGrouped=grouped
+        -- Logged in or reloaded while in a group with no role yet: set it too.
+        if grouped and C_Timer then C_Timer.After(3,function() System:FillEmptyRole() end) end
+        return
+    end
     if not grouped then
         self.feralPending=nil
         if self.rolePrompt then self.rolePrompt:Hide() end
@@ -1177,7 +1279,7 @@ function System:ObserveGroupRole(event)
     local joined=grouped and not self.wasGrouped
     self.wasGrouped=grouped -- consume before invoking any role API
     if not joined or not FT.dbReady or not self:Settings().autoRole or InCombatLockdown() or not UnitSetRole then return end
-    local role,reason=self:SuggestedRole()
+    local role,reason,from=self:SuggestedRole()
     -- A line in chat says what happened, so it is easy to see it worked.
     local names={TANK="Tank",HEALER="Healer",DAMAGER="Damage"}
     if reason=="FERAL" then
@@ -1185,10 +1287,23 @@ function System:ObserveGroupRole(event)
         print("|cff4fc3f7ForeverTools|r: Feral can tank or deal damage. You'll be asked in the dungeon.")
         self:CheckFeralPrompt()
     elseif role then
-        if self:SetOwnRole(role) then print("|cff4fc3f7ForeverTools|r: role set to "..names[role].." (from your talents).")
+        if self:SetOwnRole(role) then print("|cff4fc3f7ForeverTools|r: role set to "..names[role]..(from=="class" and " (from your class)." or " (from your talents)."))
         else print("|cff4fc3f7ForeverTools|r: role not set (the game didn't allow it). Set it from your portrait's menu.") end
     else
-        print("|cff4fc3f7ForeverTools|r: role not set: no talent tree stands out yet. Pick one in Buff reminders > Your buffs, or set it from your portrait's menu.")
+        print("|cff4fc3f7ForeverTools|r: role not set. Set it from your portrait's menu.")
+    end
+end
+-- In a group with no role picked: set the one your class or talents suggest
+-- (Feral is asked in the dungeon, as on joining).
+function System:FillEmptyRole()
+    if not FT.dbReady or not self:Settings().autoRole or InCombatLockdown() or not UnitSetRole then return end
+    if not (IsInGroup and IsInGroup()) then return end
+    local current=UnitGroupRolesAssigned and UnitGroupRolesAssigned("player")
+    if not usable(current) or (current~=nil and current~="NONE") then return end
+    local role,reason,from=self:SuggestedRole()
+    if reason=="FERAL" then self.feralPending=true; self:CheckFeralPrompt(); return end
+    if role and self:SetOwnRole(role) then
+        print("|cff4fc3f7ForeverTools|r: role set to "..(({TANK="Tank",HEALER="Healer",DAMAGER="Damage"})[role])..(from=="class" and " (from your class)." or " (from your talents)."))
     end
 end
 -- Never attempt a protected role setter: pcall alone cannot prevent a
@@ -1267,10 +1382,10 @@ function System:RoleOnEntering()
     self.roleVisit=true
     local current=UnitGroupRolesAssigned and UnitGroupRolesAssigned("player")
     if usable(current) and current~=nil and current~="NONE" then return end
-    local role,reason=self:SuggestedRole()
+    local role,reason,from=self:SuggestedRole()
     if reason=="FERAL" then self.feralPending=true
     elseif role and self:SetOwnRole(role) then
-        print("|cff4fc3f7ForeverTools|r: role set to "..(({TANK="Tank",HEALER="Healer",DAMAGER="Damage"})[role]).." (from your talents).")
+        print("|cff4fc3f7ForeverTools|r: role set to "..(({TANK="Tank",HEALER="Healer",DAMAGER="Damage"})[role])..(from=="class" and " (from your class)." or " (from your talents)."))
     end
 end
 

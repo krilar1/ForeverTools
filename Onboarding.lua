@@ -36,6 +36,17 @@ local function newsCard(parent)
     card.title:SetTextColor(1, 0.84, 0.45)
     card.text = FT:Label(card, "", 11); card.text:SetPoint("TOPLEFT", card.title, "BOTTOMLEFT", 0, -2); card.text:SetWidth(NEWS_WIDTH - 92)
     card.text:SetTextColor(.88,.83,.74)
+    -- "Try it": turns the new setting on (and off again) or opens its page.
+    card.try = FT:QuietButton(card, "Try it", 66, 22)
+    card.try:SetPoint("RIGHT", -6, 0); card.try.rowStyle = false
+    if card.try.icon then card.try.icon:Hide() end
+    card.try.label:ClearAllPoints(); card.try.label:SetPoint("CENTER"); card.try.label:SetJustifyH("CENTER")
+    FT:Tooltip(card.try,function() return card.note and card.note.title or "" end,function()
+        local note=card.note; if not note then return "" end
+        if not note.try then return "Opens its page." end
+        if note.try.get and note.try.get() then return "On now. Click to turn it off again." end
+        return "Turns it on now. Click again to turn it off."..(note.where and (" Settings: "..note.where..".") or "")
+    end)
     return card
 end
 function Onboarding:ShowWhatsNew()
@@ -44,6 +55,9 @@ function Onboarding:ShowWhatsNew()
     if not self.news then
         local frame=FT:Window("ForeverToolsWhatsNew","What's new",NEWS_WIDTH,300); self.news=frame; frame.ignorePlacement=true
         frame.noSavePrompt=true; frame.keepAfterCombat=true
+        -- Above the addon's pages (they use FULLSCREEN), so a page opened
+        -- with Show me never shows through it.
+        frame:SetFrameStrata("DIALOG")
         frame.homeButton:Hide()
         frame.logo=frame:CreateTexture(nil,"ARTWORK"); frame.logo:SetSize(32,32); frame.logo:SetPoint("TOPLEFT",18,-13)
         frame.logo:SetTexture("Interface\\AddOns\\ForeverTools\\Media\\MinimapIcon.tga")
@@ -65,20 +79,91 @@ function Onboarding:ShowWhatsNew()
     frame.sub:SetText("ForeverTools v"..entry.version)
     for _,card in ipairs(frame.cards) do card:Hide() end
     local y=-62
-    for index,note in ipairs(entry.notes) do
+    local _,myClass=UnitClass("player")
+    local index=0
+    for _,note in ipairs(entry.notes) do
+      -- A note for some classes only (Poised: energy users).
+      if not (type(note)=="table" and note.classes and myClass and not note.classes[myClass]) then
+        index=index+1
         local card=frame.cards[index] or newsCard(frame); frame.cards[index]=card
         local icon,title,text
         if type(note)=="table" then icon,title,text=note.icon,note.title,note.text
         else text=tostring(note) end
-        card.icon:SetTexture("Interface\\Icons\\"..(icon or "INV_Misc_Note_01"))
+        -- A card can use one of the game's own pictures (atlas), else an icon.
+        local atlas=type(note)=="table" and note.atlas
+        local okAtlas=false
+        if atlas and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas) and card.icon.SetAtlas then
+            okAtlas=pcall(card.icon.SetAtlas,card.icon,atlas)
+        end
+        if not okAtlas then
+            card.icon:SetTexture("Interface\\Icons\\"..(icon or "INV_Misc_Note_01"))
+            card.icon:SetTexCoord(0.07,0.93,0.07,0.93)
+        end
         card.title:SetText(title or ""); card.title:SetShown(title~=nil)
         card.text:ClearAllPoints()
         if title then card.text:SetPoint("TOPLEFT",card.title,"BOTTOMLEFT",0,-2) else card.text:SetPoint("LEFT",42,0) end
         card.text:SetText(text or "")
+        -- A note with try={get,set} switches its setting; open="Module" shows the page.
+        local try=type(note)=="table" and (note.try or note.open) and note
+        card.title:SetWidth(NEWS_WIDTH - (try and 164 or 92)); card.text:SetWidth(NEWS_WIDTH - (try and 164 or 92))
+        card.try:SetShown(try~=nil and try~=false); card.note=try or nil
+        if try then
+            local function refresh()
+                local on=try.try and try.try.get and try.try.get()
+                card.try.label:SetText(try.try and (on and "On" or "Try it") or "Show me")
+                FT:SetSelected(card.try,on==true)
+            end
+            card.try:SetScript("OnClick",function()
+                if InCombatLockdown() then FT:Toast("Leave combat first.",3); return end
+                if try.try then
+                    local on=not (try.try.get and try.try.get())
+                    try.try.set(on)
+                    FT:Toast(on and (try.title.." is on. Click again to turn it off.") or (try.title.." is off."),3)
+                    refresh()
+                else
+                    -- What's new stays where it is, open and on top. The page
+                    -- opens beside it when it would sit under it, so you can
+                    -- look at one card after another.
+                    FT:OpenModule(try.open)
+                    local page=FT.modules[try.open] and FT.modules[try.open].frame
+                    -- Edges in screen units (windows can have their own scale).
+                    local ui=UIParent:GetEffectiveScale()
+                    local function edges(f)
+                        local l,r,t=f:GetLeft(),f:GetRight(),f:GetTop(); if not (l and r and t) then return end
+                        local k=f:GetEffectiveScale()/ui
+                        return l*k,r*k,t*k
+                    end
+                    local nl,nr=edges(frame)
+                    local pl,pr,pt
+                    if page and page:IsShown() then pl,pr,pt=edges(page) end
+                    -- The group sidebar beside the page moves with it.
+                    local side=page and page.ftSidebar
+                    if pl and side and side.IsShown and side:IsShown() then
+                        local sl,sr=edges(side)
+                        if sl then pl,pr=math.min(pl,sl),math.max(pr,sr) end
+                    end
+                    if nl and pl and pl<nr and pr>nl then
+                        local w=pr-pl
+                        local screen=UIParent:GetRight() or 0
+                        local x
+                        if nl-8-w>=0 then x=nl-8-w elseif nr+8+w<=screen then x=nr+8 end
+                        if x then
+                            local pageLeft=edges(page)
+                            local k=page:GetEffectiveScale()/ui
+                            local shift=x-pl
+                            page:ClearAllPoints(); page:SetPoint("TOPLEFT",UIParent,"BOTTOMLEFT",(pageLeft+shift)/k,pt/k)
+                        end
+                    end
+                    frame:Show(); frame:Raise()
+                end
+            end)
+            refresh()
+        end
         local height=math.max(CARD_HEIGHT,(title and 25 or 14)+(card.text:GetStringHeight() or 12))
         card:SetHeight(height)
         card:ClearAllPoints(); card:SetPoint("TOPLEFT",20,y); card:Show()
         y=y-height-CARD_GAP
+      end
     end
     frame:SetHeight(-y+50)
     -- Near the top right, below the minimap and clear of the screen corner.

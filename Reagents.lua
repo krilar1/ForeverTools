@@ -120,7 +120,7 @@ end
 function R:Bags()
     local byName,byID={},{}
     if not (C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemInfo) then return byName,byID end
-    for bag=0,(NUM_BAG_SLOTS or 4) do
+    for bag=0,(tonumber(NUM_TOTAL_EQUIPPED_BAG_SLOTS) or tonumber(NUM_BAG_SLOTS) or 4) do
         local n=call(C_Container.GetContainerNumSlots,bag)
         for slot=1,(safe(n) and type(n)=="number" and n or 0) do
             local info=call(C_Container.GetContainerItemInfo,bag,slot)

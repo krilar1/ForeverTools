@@ -297,7 +297,7 @@ function Chat:Open()
     if not self.frame then
         self.frame=FT:Window("ForeverToolsChat","Chat",620,560); self.buttons={}
         -- Two columns: what shows around the chat on the left, its text on the right.
-        local buttonsHead=FT:Label(self.frame,"Buttons and tabs",15,true);buttonsHead:SetPoint("TOPLEFT",24,-66);FT:SectionHeading(buttonsHead,"INV_Misc_Note_03",200)
+        local buttonsHead=FT:Label(self.frame,"Buttons and tabs",15,true);buttonsHead:SetPoint("TOPLEFT",24,-66);FT:SectionHeading(buttonsHead,"INV_Misc_Note_03",200,nil,276)
         FT:AppearanceBack(self.frame)
         FT:PageInfo(self.frame,"Chat","What shows around the chat, the chat font, and clickable links.")
         for i,entry in ipairs(options) do
@@ -307,7 +307,7 @@ function Chat:Open()
             FT:Tooltip(b,entry[2],key=="copy" and "A button to copy the chat's text." or "Shown, Hidden, or on mouseover.")
             self.buttons[key]=b
         end
-        local heading=FT:Label(self.frame,"Chat text",15,true);heading:SetPoint("TOPLEFT",320,-66);FT:SectionHeading(heading,"INV_Inscription_Tradeskill01",200)
+        local heading=FT:Label(self.frame,"Chat text",15,true);heading:SetPoint("TOPLEFT",320,-66);FT:SectionHeading(heading,"INV_Inscription_Tradeskill01",200,nil,276)
         local fonts=FT.modules.FontManager
         self.fontChoice=FT:Dropdown(self.frame,276,function() return fonts:Catalogue() end,function(value)
             local pref=fonts:Settings("chat");local path=fonts:Resolve({font=value})
@@ -335,10 +335,10 @@ function Chat:Open()
         FT:Tooltip(self.fontChoice,"Chat font","Chat font (same as Fonts > Chat).")
         FT:Tooltip(self.fontSize,"Chat font size","+ and - change the size. Click the number for the game's size.")
         FT:Tooltip(self.outline,"Chat outline","Shadow or outline on chat text.")
-        local linksHead=FT:Label(self.frame,"Links",15,true);linksHead:SetPoint("TOPLEFT",24,-310);FT:SectionHeading(linksHead,"INV_Misc_Note_02",200)
+        local linksHead=FT:Label(self.frame,"Links",15,true);linksHead:SetPoint("TOPLEFT",24,-310);FT:SectionHeading(linksHead,"INV_Misc_Note_02",200,nil,276)
         self.links=FT:QuietButton(self.frame,"",276,32,"chat");self.links:SetPoint("TOPLEFT",24,-338)
         self.links:SetScript("OnClick",function() local s=FT.modules.System:Settings();s.chatLinks=not s.chatLinks;FT.modules.ChatLinks:Apply();self:Refresh() end)
-        local thanksHead=FT:Label(self.frame,"Thanks",15,true);thanksHead:SetPoint("TOPLEFT",24,-390);FT:SectionHeading(thanksHead,"Spell_Holy_PrayerOfHealing",200)
+        local thanksHead=FT:Label(self.frame,"Thanks",15,true);thanksHead:SetPoint("TOPLEFT",24,-390);FT:SectionHeading(thanksHead,"Spell_Holy_PrayerOfHealing",200,nil,276)
         self.thanks=FT:QuietButton(self.frame,"",276,32,"Spell_Holy_PowerWordShield");self.thanks:SetPoint("TOPLEFT",24,-418)
         self.thanks:SetScript("OnClick",function() local th=self:Thanks(); th.enabled=not th.enabled; self:ApplyThanks(); self:Refresh() end)
         FT:Tooltip(self.thanks,"Thank for buffs","A /thank to players who buff you in the open world, after a short pause. Only buffs of 5 minutes or longer (not heals, shields or paladin auras). Once per player every few minutes. Never in fights, dungeons or PvP.")
@@ -346,7 +346,7 @@ function Chat:Open()
         self.thanksGroup:SetScript("OnClick",function() local th=self:Thanks(); th.group=not th.group; if th.group then th.enabled=true end; self:Refresh() end)
         FT:Tooltip(self.thanksGroup,"Also my group","Also thank group members.")
         FT:Tooltip(self.links,"Clickable links","Web addresses in chat become clickable, to copy.")
-        local historyHead=FT:Label(self.frame,"History",15,true);historyHead:SetPoint("TOPLEFT",320,-230);FT:SectionHeading(historyHead,"INV_Misc_Book_09",150)
+        local historyHead=FT:Label(self.frame,"History",15,true);historyHead:SetPoint("TOPLEFT",320,-230);FT:SectionHeading(historyHead,"INV_Misc_Book_09",150,nil,276)
         self.history=FT:QuietButton(self.frame,"",276,32,"chat");self.history:SetPoint("TOPLEFT",320,-258)
         self.history:SetScript("OnClick",function()
             local st=self:Settings(); st.history=not st.history

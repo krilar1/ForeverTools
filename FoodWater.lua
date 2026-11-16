@@ -56,7 +56,7 @@ function Meal:Carried()
     if not C_Container or not C_Container.GetContainerNumSlots then return best end
     local level=UnitLevel and number(UnitLevel("player")) or 1
     local seen={}
-    for bag=0,(NUM_BAG_SLOTS or 4) do
+    for bag=0,(tonumber(NUM_TOTAL_EQUIPPED_BAG_SLOTS) or tonumber(NUM_BAG_SLOTS) or 4) do
         local okCount,count=pcall(C_Container.GetContainerNumSlots,bag)
         if okCount and number(count) then
             for slot=1,count do

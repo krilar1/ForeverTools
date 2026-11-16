@@ -89,6 +89,8 @@ function Reminder:Settings()
     if type(s.foodStat)~="boolean" then s.foodStat=false end
     -- Camp items (tent, Cozy Sleeping Bag): off by default, only while leveling.
     if type(s.camp)~="boolean" then s.camp=false end
+    -- Unspent talent points: off by default.
+    if type(s.talents)~="boolean" then s.talents=false end
     -- Minutes before Well-Rested runs out to remind about the sleeping bag (0 = only when gone).
     if s.campRefresh~=0 and s.campRefresh~=10 then s.campRefresh=5 end
     -- Reagents (Reagents.lua): off by default; low amounts per reagent.
@@ -126,14 +128,16 @@ end
 -- from kills) and stat food (Well Fed with stats). A reminder only shows
 -- for a kind you carry food for; which kind is read from the item's own
 -- tooltip ("experience", or "well fed" without it).
+-- Second value: true when some of the text could not be read (not loaded
+-- yet, or hidden by the game for a moment).
 local function tooltipText(data)
-    if type(data)~="table" or type(data.lines)~="table" then return nil end
-    local parts={}
+    if type(data)~="table" or type(data.lines)~="table" then return nil,true end
+    local parts,hidden={},#data.lines==0
     for _,line in ipairs(data.lines) do
         local left=line.leftText
-        if safe(left) and type(left)=="string" then parts[#parts+1]=left end
+        if safe(left) then if type(left)=="string" then parts[#parts+1]=left end else hidden=true end
     end
-    return table.concat(parts," "):lower()
+    return table.concat(parts," "):lower(),hidden
 end
 -- Only consumables count (food and drink); a tent or a toy whose text talks
 -- about experience is not food. Unknown item info: let the text decide.
@@ -146,7 +150,11 @@ local function isFood(id)
 end
 Reminder.IsFood=isFood
 function Reminder:FoodKinds()
-    if self.foodKinds then return self.foodKinds end
+    -- A bag read with an item text missing is tried again a few seconds later
+    -- (before, it was kept until the bags changed: no XP food reminder).
+    local last=self.foodKinds
+    if last and not (last.unsure and (self.foodTries or 0)<3 and GetTime()-(self.foodKindsAt or 0)>3) then return last end
+    self.foodTries=last and last.unsure and (self.foodTries or 0)+1 or 0
     local kinds={xp=false,stat=false}
     if not (C_TooltipInfo and C_TooltipInfo.GetBagItem and C_Container and C_Container.GetContainerNumSlots) then
         -- Can't read item text: remind as before (any food counts).
@@ -154,15 +162,21 @@ function Reminder:FoodKinds()
         return kinds
     end
     local seen={}
-    for bag=0,(NUM_BAG_SLOTS or 4) do
+    for bag=0,(tonumber(NUM_TOTAL_EQUIPPED_BAG_SLOTS) or tonumber(NUM_BAG_SLOTS) or 4) do
         local okCount,count=pcall(C_Container.GetContainerNumSlots,bag)
         if okCount and safe(count) and type(count)=="number" then
             for slot=1,count do
                 local okID,id=pcall(C_Container.GetContainerItemID,bag,slot)
                 if okID and safe(id) and type(id)=="number" and not seen[id] then
                     seen[id]=true
-                    local okTip,data=pcall(C_TooltipInfo.GetBagItem,bag,slot)
-                    local text=okTip and isFood(id) and tooltipText(data)
+                    local food=isFood(id)
+                    local okTip,data=false,nil
+                    if food then okTip,data=pcall(C_TooltipInfo.GetBagItem,bag,slot) end
+                    local text,hidden
+                    if food then
+                        if okTip then text,hidden=tooltipText(data) else hidden=true end
+                        if hidden and not (text and text:find("experience",1,true)) then kinds.unsure=true end
+                    end
                     if text then
                         -- "eat" as a word: a tent ("create ... rested experience") is not food.
                         if text:find("experience",1,true) and (text:find("well fed",1,true) or text:find("%f[%a]eat")) then kinds.xp=true
@@ -172,7 +186,8 @@ function Reminder:FoodKinds()
             end
         end
     end
-    self.foodKinds=kinds
+    self.foodKinds=kinds; self.foodKindsAt=GetTime()
+    if kinds.unsure and not kinds.xp and self.foodTries<3 then C_Timer.After(3.5,function() if FT.dbReady and self.Refresh then self:Refresh() end end) end
     return kinds
 end
 -- Which food buffs you have now: xp, stat (nil when the game hides it).
@@ -218,7 +233,7 @@ function Reminder:CampItems()
     if C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemID then
         local spellOf=(C_Item and C_Item.GetItemSpell) or GetItemSpell
         local nameOf=(C_Item and C_Item.GetItemNameByID) or function(id) return (GetItemInfo(id)) end
-        for bag=0,(NUM_BAG_SLOTS or 4) do
+        for bag=0,(tonumber(NUM_TOTAL_EQUIPPED_BAG_SLOTS) or tonumber(NUM_BAG_SLOTS) or 4) do
             local okN,count=pcall(C_Container.GetContainerNumSlots,bag)
             for slot=1,(okN and safe(count) and type(count)=="number" and count or 0) do
                 local okI,id=pcall(C_Container.GetContainerItemID,bag,slot)
@@ -760,6 +775,22 @@ local function poisonName(name)
     if not safe(name) or type(name)~="string" then return false end
     return name=="Poisons" or name:match(" Poison$")~=nil or name:match(" Poison [IVX]+$")~=nil
 end
+-- A poison in your bags (its icon), until you have put one on that weapon.
+-- Read again after the bags change.
+function Reminder:BagPoisonIcon()
+    if self.bagPoison~=nil then return self.bagPoison or nil end
+    self.bagPoison=false
+    if not (C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemInfo) then return end
+    for bag=0,(tonumber(NUM_TOTAL_EQUIPPED_BAG_SLOTS) or tonumber(NUM_BAG_SLOTS) or 4) do
+        local okN,n=pcall(C_Container.GetContainerNumSlots,bag)
+        for slot=1,(okN and safe(n) and type(n)=="number" and n or 0) do
+            local okI,info=pcall(C_Container.GetContainerItemInfo,bag,slot)
+            local link=okI and type(info)=="table" and safe(info.hyperlink) and info.hyperlink
+            local name=type(link)=="string" and link:match("%[(.-)%]")
+            if name and poisonName(name) and safe(info.iconFileID) and info.iconFileID then self.bagPoison=info.iconFileID; return info.iconFileID end
+        end
+    end
+end
 function Reminder:PoisonsKnown(learned)
     if self.poisonsKnown then return true end
     local guid
@@ -790,7 +821,7 @@ function Reminder:PoisonsKnown(learned)
         end
     end
     if C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemInfo then
-        for bag=0,(NUM_BAG_SLOTS or 4) do
+        for bag=0,(tonumber(NUM_TOTAL_EQUIPPED_BAG_SLOTS) or tonumber(NUM_BAG_SLOTS) or 4) do
             local ok,count=pcall(C_Container.GetContainerNumSlots,bag)
             if ok and safe(count) and type(count)=="number" then
                 for slot=1,count do
@@ -820,7 +851,7 @@ function Reminder:WeaponWatch(slot,learned)
         end
         if name and learned[name] then return name,learned[name].icon end
     elseif kind=="poison" then
-        if s[slot.."Poison"]==true and self:PoisonsKnown(learned) then return "Poison",POISON_ICON end
+        if s[slot.."Poison"]==true and self:PoisonsKnown(learned) then return "Poison",FT.BuffRanks:WeaponIcon(slot) or POISON_ICON end
     end
 end
 function Reminder:WeaponMissing(slot)
@@ -975,7 +1006,7 @@ end
 -- Does this buff (or "weapon:main"/"weapon:off") also remind in a fight?
 -- You can't eat in a fight, so food never does.
 function Reminder:CombatFor(key)
-    if key=="food" or key=="camp" or key=="reagents" then return false end
+    if key=="food" or key=="camp" or key=="reagents" or key=="talents" then return false end
     local s=self:Settings()
     return s.combatAll==true or s.combat[key]==true
 end
@@ -1194,6 +1225,24 @@ function Reminder:Suppressed(fightOK)
     if IsPlayerInWorld then local ok,value=pcall(IsPlayerInWorld);if ok and safe(value) and not value then return true end end
     return false
 end
+-- A second icon (the weapon) beside a notice's icon, the same size and
+-- shape; the text moves right to make room. tex nil: none.
+local function gearIcon(holder,icon,text,tex)
+    local g=holder.gear
+    if tex then
+        if not g then g=holder:CreateTexture(nil,"ARTWORK"); g:SetTexCoord(.08,.92,.08,.92); FT:RoundIcon(g); holder.gear=g end
+        g:SetSize(icon:GetWidth(),icon:GetHeight()); g:ClearAllPoints(); g:SetPoint("LEFT",icon,"RIGHT",4,0); g:SetTexture(tex); g:Show()
+        text:ClearAllPoints(); text:SetPoint("LEFT",g,"RIGHT",8,0)
+        if not holder.gearWidth then holder.gearWidth=text:GetWidth() end
+        text:SetWidth(math.max(60,holder.gearWidth-icon:GetWidth()-4))
+    else
+        if holder.gearWidth then text:SetWidth(holder.gearWidth); holder.gearWidth=nil end
+        if g then g:Hide() end
+        if holder.gearShown~=false then text:ClearAllPoints(); text:SetPoint("LEFT",icon,"RIGHT",8,0) end
+    end
+    holder.gearShown=tex~=nil
+end
+Reminder.GearIcon=gearIcon
 function Reminder:Refresh(cachedSpells)
     local s=self:Settings()
     -- In a fight only buffs with "Also remind in combat" are looked at.
@@ -1274,6 +1323,14 @@ function Reminder:Refresh(cachedSpells)
                 self.missing[#self.missing+1]=food; styleKeys[food]="food"
             end
         end
+        -- Talent points you have not spent yet.
+        if selfHere and not fighting and s.talents and UnitCharacterPoints then
+            local okP,points=pcall(UnitCharacterPoints,"player")
+            if okP and safe(points) and type(points)=="number" and points>0 then
+                local talent={name="Talent points",message=points==1 and "1 talent point to spend" or (points.." talent points to spend"),spell={icon="Interface\\Icons\\INV_Misc_Book_09"}}
+                self.missing[#self.missing+1]=talent; styleKeys[talent]="talents"
+            end
+        end
         if (selfHere or self.previewSelf) and not fighting and s.camp then
             local camp,later
             if selfHere then camp,later=self:CampNotices() else camp={} end
@@ -1310,7 +1367,9 @@ function Reminder:Refresh(cachedSpells)
                 if name and not ready and self:WeaponMissing(slot) then waiting=true end
                 if name and ready and (not fighting or self:CombatFor("weapon:"..slot)) and self:WeaponMissing(slot) then
                     local hand=slot=="main" and "main hand" or "off hand"
-                    local weapon={name=word.." ("..hand..")",message=word.." missing ("..hand..")",spell=weaponKind=="poison" and {icon=icon} or learned[name]}
+                    -- The weapon's own icon in the text, so you see which one.
+                    local okW,tex=pcall(GetInventoryItemTexture,"player",slot=="main" and 16 or 17)
+                    local weapon={name=word.." ("..hand..")",message=word.." missing ("..hand..")",spell=weaponKind=="poison" and {icon=icon} or learned[name],gear=okW and safe(tex) and tex or nil}
                     self.missing[#self.missing+1]=weapon; styleKeys[weapon]="weapon:"..slot
                 end
             end
@@ -1344,6 +1403,7 @@ function Reminder:Refresh(cachedSpells)
         -- edited (missing or not), never the next missing one.
         local edited,listed
         if sampleName then for _,entry in ipairs(self.missing) do if styleKeys[entry]==self.styleKey then edited=entry; break end end end
+        gearIcon(self.badge,self.badge.icon,self.badge.text,edited and edited.gear or nil)
         if edited then
             self.badge.icon:SetTexture(edited.spell.icon or 134400)
             self.badge.text:SetText(edited.message or edited.name.." missing")
@@ -1354,6 +1414,7 @@ function Reminder:Refresh(cachedSpells)
             self.cycle=math.max(1,math.min(self.cycle,#self.missing))
             local entry=self.missing[self.cycle]
             self.badge.icon:SetTexture(entry.spell.icon or 134400)
+            gearIcon(self.badge,self.badge.icon,self.badge.text,entry.gear)
             self.badge.text:SetText((entry.message or entry.name.." missing")..((#self.missing>1 and s.noticeLayout~="list") and "  +"..(#self.missing-1) or ""))
             listed=self.missing
         elseif movingSelf or self.previewSelf then self.badge.icon:SetTexture("Interface\\Icons\\Spell_Holy_WordFortitude");self.badge.text:SetText(next(s.styles) and "Shared notice (buffs without their own look) — preview" or "Self buff missing — preview")
@@ -1389,6 +1450,7 @@ function Reminder:ListRows(badge,entries,textOf,color)
         local row=badge.listRows[i]
         if not row then
             row={icon=badge:CreateTexture(nil,"ARTWORK"),text=FT:Label(badge,"",13)}
+            row.CreateTexture=function(_,...) return badge:CreateTexture(...) end
             row.icon:SetSize(20,20); row.icon:SetPoint("TOPLEFT",8,-7-(i-1)*ROW_H); row.icon:SetTexCoord(.08,.92,.08,.92); FT:RoundIcon(row.icon)
             row.text:SetPoint("LEFT",row.icon,"RIGHT",8,0); row.text:SetWidth(242)
             if row.text.SetWordWrap then row.text:SetWordWrap(false) end
@@ -1398,13 +1460,14 @@ function Reminder:ListRows(badge,entries,textOf,color)
         local more=(i==LIST_ROWS and #entries>LIST_ROWS) and (#entries-LIST_ROWS+1) or nil
         row.icon:SetTexture(more and 134400 or (entry.spell and entry.spell.icon) or 134400)
         row.text:SetText(more and ("+"..more.." more") or textOf(entry))
+        gearIcon(row,row.icon,row.text,not more and entry.gear or nil)
         if color then row.text:SetTextColor(unpack(color)) end
         row.icon:Show(); row.text:Show()
     end
     -- Rows start at 2 (the first is the notice's own), so the table has a
     -- hole at 1 and # can say 0: go by the most rows there can be instead.
     -- (Rows from an earlier, longer list stayed up: the same buff twice.)
-    for i=n+1,LIST_ROWS do local row=badge.listRows[i]; if row then row.icon:Hide(); row.text:Hide() end end
+    for i=n+1,LIST_ROWS do local row=badge.listRows[i]; if row then row.icon:Hide(); row.text:Hide(); if row.gear then row.gear:Hide() end end end
     -- A row never wraps into the one below it.
     if badge.text.SetWordWrap and badge~=self.groupBadge then badge.text:SetWordWrap(entries==nil) end
     local height=34+(n-1)*ROW_H
@@ -1537,6 +1600,7 @@ function Reminder:StyleInfo(key)
     if key=="food" then local _,icon=self:FoodInfo(); return "Food buff",icon end
     if key=="camp" then return "Camp items","Interface\\Icons\\INV_Misc_Bag_08" end
     if key=="reagents" then return "Reagents","Interface\\Icons\\INV_Misc_Candle_01" end
+    if key=="talents" then return "Talent points","Interface\\Icons\\INV_Misc_Book_09" end
     if learned[key] then return key,learned[key].icon end
 end
 function Reminder:StyleChanged()
@@ -1651,6 +1715,8 @@ function Reminder:FitCustom(notice,st)
     end
     w=math.min(600,math.ceil(w)+2)
     text:SetWidth(w)
+    -- The weapon's icon beside the notice's own takes room too.
+    if notice.gear and notice.gear:IsShown() then w=w+(notice.gear:GetWidth() or 20)+4 end
     if st.mode=="text" then notice:SetWidth(math.max(80,w+16))
     elseif st.mode=="both" then notice:SetWidth(36+8+w+8)
     else notice:SetWidth(math.max(160,8+20+8+w+12)) end
@@ -1709,6 +1775,8 @@ function Reminder:ShowCustom(custom,fighting)
             notice.icon:SetTexture(icon or 134400)
             local relayout=notice.styleRef~=st or notice.styleStamp~=self.styleStamp
             if relayout then notice.styleRef=st; notice.styleStamp=self.styleStamp; self:LayoutCustom(notice,st) end
+            local gear=entry and entry.gear and (st.mode=="bar" or st.mode=="both") and entry.gear or nil
+            if relayout or notice.gearTex~=gear then notice.gearTex=gear; if st.mode=="bar" or st.mode=="both" then gearIcon(notice,notice.icon,notice.text,gear) elseif notice.gear then notice.gear:Hide() end; relayout=true end
             if relayout or notice.shownText~=message then notice.shownText=message; notice.text:SetText(message); self:FitCustom(notice,st) end
             local height=(st.mode=="icon" and 40 or st.mode=="both" and 36 or st.mode=="text" and 26 or 34)*st.size
             if st.x and st.y then self:PlaceCustom(notice,st)
@@ -1917,7 +1985,7 @@ function Reminder:RefreshStyle()
     panel.combat.label:SetText(all and "Remind in combat: On (all buffs)" or ("Also remind in combat: "..(also and "On" or "Off"))); FT:SetSelected(panel.combat,also)
     panel.combat:SetAlpha(all and .5 or 1)
     -- You can't eat in a fight.
-    panel.combat:SetShown(self.styleKey~="food" and self.styleKey~="camp" and self.styleKey~="reagents")
+    panel.combat:SetShown(self.styleKey~="food" and self.styleKey~="camp" and self.styleKey~="reagents" and self.styleKey~="talents")
     -- Everything below belongs to a look of its own.
     for _,control in ipairs(panel.styled) do
         control:SetAlpha(st and 1 or .4)
@@ -2047,6 +2115,8 @@ function Reminder:RefreshMenu(learned)
     FT:SetSelected(self.campToggle.gear,self:Style("camp")~=nil)
     self.campRefresh.label:SetText("Bag refresh: "..(s.campRefresh==0 and "When it's gone" or (s.campRefresh.." min before")))
     self.campRefresh:SetAlpha(s.camp and 1 or .5)
+    self.talentToggle.label:SetText("Talent points: "..(s.talents and "On" or "Off")); FT:SetSelected(self.talentToggle,s.talents)
+    FT:SetSelected(self.talentToggle.gear,self:Style("talents")~=nil)
     self.reagentToggle.label:SetText("Reagents: "..(s.reagents and "On" or "Off")); FT:SetSelected(self.reagentToggle,s.reagents)
     FT:SetSelected(self.reagentToggle.gear,self:Style("reagents")~=nil)
     self.reagentAmounts:SetAlpha(s.reagents and 1 or .5)
@@ -2125,8 +2195,9 @@ function Reminder:RefreshMenu(learned)
         place(self.foodToggle,X,y); place(self.foodWhen,X+COL,y); y=y+ROW
         place(self.foodStatToggle,X,y); y=y+ROW+GAP
         headUsed=headUsed+1
-        local ch=self.kindHeads[headUsed]; ch.ftHeading.icon="INV_Misc_Bag_08"; ch:SetText("Camping"); place(ch,X,y); y=y+HEAD
-        place(self.campToggle,X,y); place(self.campRefresh,X+COL,y); y=y+ROW+GAP
+        local ch=self.kindHeads[headUsed]; ch.ftHeading.icon="INV_Misc_Bag_08"; ch:SetText("Leveling"); place(ch,X,y); y=y+HEAD
+        place(self.campToggle,X,y); place(self.campRefresh,X+COL,y); y=y+ROW
+        place(self.talentToggle,X,y); y=y+ROW+GAP
         headUsed=headUsed+1
         local rh=self.kindHeads[headUsed]; rh.ftHeading.icon="INV_Misc_Candle_01"; rh:SetText("Reagents"); place(rh,X,y); y=y+HEAD
         place(self.reagentToggle,X,y); place(self.reagentAmounts,X+COL,y); y=y+ROW+GAP
@@ -2292,6 +2363,14 @@ function Reminder:Build()
         camp.gear=FT:QuietButton(camp,"",24,24); camp.gear:SetPoint("RIGHT",-4,0); FT:GearIcon(camp.gear)
         camp.gear:SetScript("OnClick",function() self:OpenStyle("camp","Camp items") end)
         FT:Tooltip(camp.gear,"Notice look","Its own look. Lit when set.")
+        -- Unspent talent points.
+        local talent=pane(FT:QuietButton(detail,"",232,32,"welcome")); self.talentToggle=talent
+        talent.icon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
+        talent:SetScript("OnClick",function() local s=self:Settings(); s.talents=not s.talents; if s.talents then s.enabled=true end; self:Apply() end)
+        FT:Tooltip(talent,"Talent point reminder","A notice while you have talent points you have not spent yet. Not in a fight.")
+        talent.gear=FT:QuietButton(talent,"",24,24); talent.gear:SetPoint("RIGHT",-4,0); FT:GearIcon(talent.gear)
+        talent.gear:SetScript("OnClick",function() self:OpenStyle("talents","Talent points") end)
+        FT:Tooltip(talent.gear,"Notice look","Its own look. Lit when set.")
         -- Reagents (Reagents.lua): low on vendor reagents, in cities and inns.
         local reagent=pane(FT:QuietButton(detail,"",232,32,"welcome")); self.reagentToggle=reagent
         reagent.icon:SetTexture("Interface\\Icons\\INV_Misc_Candle_01")
@@ -2449,9 +2528,17 @@ for _,event in ipairs({"PLAYER_ENTERING_WORLD","SPELLS_CHANGED","PLAYER_TALENT_U
 talentEvents:SetScript("OnEvent",function() Reminder.specCache=nil end)
 -- Food in the bags is read again after the bags change (only when the food
 -- reminders are on, and a moment after the last change).
-local bagEvents=CreateFrame("Frame"); bagEvents:RegisterEvent("BAG_UPDATE_DELAYED")
-bagEvents:SetScript("OnEvent",function()
-    Reminder.foodKinds=nil; Reminder.campItems=nil
+local bagEvents=CreateFrame("Frame"); bagEvents:RegisterEvent("BAG_UPDATE_DELAYED"); pcall(bagEvents.RegisterEvent,bagEvents,"GET_ITEM_INFO_RECEIVED")
+bagEvents:SetScript("OnEvent",function(_,event)
+    -- An item's text arrived: read the bags again only if the last read missed some.
+    if event=="GET_ITEM_INFO_RECEIVED" then
+        local k=Reminder.foodKinds
+        if not (k and k.unsure) or (Reminder.foodTries or 0)>=3 then return end
+        Reminder.foodKindsAt=0
+        if FT.dbReady then FT:Coalesce("ftFoodBags",function() if Reminder.Refresh then Reminder:Refresh() end end,.5) end
+        return
+    end
+    Reminder.foodKinds=nil; Reminder.campItems=nil; Reminder.bagPoison=nil
     if FT.Reagents then FT.Reagents:Changed(); if FT.Reagents.frame and FT.Reagents.frame:IsShown() then FT.Reagents:RefreshAmounts() end end
     if FT.dbReady then local s=Reminder:Settings(); if s.enabled and (s.food or s.foodStat or s.camp or s.reagents) then FT:Coalesce("ftFoodBags",function() if Reminder.Refresh then Reminder:Refresh() end end,.5) end end
 end)
@@ -2462,7 +2549,7 @@ function Reminder:QueueApply(delay)
     C_Timer.After(delay or 0,function() self.applyQueued=false; if FT.dbReady then self:Apply() end end)
 end
 local events=CreateFrame("Frame")
-for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","PLAYER_DEAD","PLAYER_ALIVE","PLAYER_UNGHOST","PLAYER_CONTROL_LOST","PLAYER_CONTROL_GAINED","UNIT_ENTERED_VEHICLE","UNIT_EXITED_VEHICLE","ZONE_CHANGED_NEW_AREA","GROUP_ROSTER_UPDATE","UNIT_AURA","SPELLS_CHANGED","PLAYER_TALENT_UPDATE","UPDATE_SHAPESHIFT_FORM","UPDATE_SHAPESHIFT_FORMS","PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","WEAPON_ENCHANT_CHANGED","WEAPON_SLOT_CHANGED","UNIT_SPELLCAST_START","UNIT_SPELLCAST_SUCCEEDED","PLAYER_LEVEL_UP","TRAINER_SHOW","TRAINER_UPDATE","PLAYER_UPDATE_RESTING","ADDON_RESTRICTION_STATE_CHANGED","ENCOUNTER_START","ENCOUNTER_END","ZONE_CHANGED_INDOORS","ZONE_CHANGED"}) do pcall(events.RegisterEvent,events,event) end
+for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","PLAYER_DEAD","PLAYER_ALIVE","PLAYER_UNGHOST","PLAYER_CONTROL_LOST","PLAYER_CONTROL_GAINED","UNIT_ENTERED_VEHICLE","UNIT_EXITED_VEHICLE","ZONE_CHANGED_NEW_AREA","GROUP_ROSTER_UPDATE","UNIT_AURA","SPELLS_CHANGED","PLAYER_TALENT_UPDATE","UPDATE_SHAPESHIFT_FORM","UPDATE_SHAPESHIFT_FORMS","PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","WEAPON_ENCHANT_CHANGED","WEAPON_SLOT_CHANGED","UNIT_SPELLCAST_START","UNIT_SPELLCAST_SUCCEEDED","PLAYER_LEVEL_UP","TRAINER_SHOW","TRAINER_UPDATE","PLAYER_UPDATE_RESTING","ADDON_RESTRICTION_STATE_CHANGED","ENCOUNTER_START","ENCOUNTER_END","ZONE_CHANGED_INDOORS","ZONE_CHANGED","CHARACTER_POINTS_CHANGED"}) do pcall(events.RegisterEvent,events,event) end
 -- Group buffs off: only your own auras matter, so the game stops sending
 -- every nameplate's aura changes here.
 Reminder.events=events

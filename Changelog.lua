@@ -4,6 +4,21 @@ local _,FT=...
 FT.quietReleases={["1.0.0"]=true,["1.0.1"]=true}
 FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
+    -- try={get,set}: a "Try it" button that switches the new setting on and off
+    -- again; open="Module": a "Show me" button. classes: only those classes see it.
+    {version="1.7.0",notes={
+        {icon="Spell_Nature_LightningShield",title="Poised glow",text="Your energy bar lights up when Poised is ready.",classes={ROGUE=true,DRUID=true},where="Combat > Poised",
+            try={get=function() return FT.modules.System:Settings().poisedGlow==true end,set=function(on) FT.modules.System:Settings().poisedGlow=on; FT.modules.System:Apply() end}},
+        {icon="INV_Misc_Book_09",title="Talent point reminder",text="A notice while you have points to spend.",where="Buff reminders > Your buffs",
+            try={get=function() return FT.modules.BuffReminder:Settings().talents==true end,set=function(on) local s=FT.modules.BuffReminder:Settings(); s.talents=on; if on then s.enabled=true end; FT.modules.BuffReminder:Apply() end}},
+        {icon="INV_Misc_Map_02",atlas="Navigation-Tracked-Icon",title="Quest navigation",text="The game's hidden quest guide. Click a quest to go.",where="Extra game options > Camera",
+            try={get=function() local G=FT.modules.GameTweaks; return G and G.Get("showInGameNavigation")=="1" end,set=function(on) local G=FT.modules.GameTweaks; if G then G.Set("showInGameNavigation",on and 1 or 0) end end}},
+        {icon="INV_Jewelry_TrinketPVP_01",title="Trinket macros",text="Trinket 1 and 2 in every PvP macro list.",open="MacroPvP"},
+        {icon="INV_Misc_Bandage_15",title="Cure bleed macro",text="Uses your best tourniquet.",open="MacroForge"},
+        {icon="INV_Misc_Note_01",title="Move macros",text="Between General and Character, from the ... menu.",open="MacroForge"},
+        {icon="INV_Misc_Bag_08",title="Alt bags in place",text="Other characters' bags show where yours are."},
+        {icon="Trade_BlackSmithing",title="Fixes",text="Reagent bag icon, spell IDs, XP food, macros."},
+    }},
     {version="1.6.0",notes={
         {icon="INV_Shirt_GuildTabard_01",title="Guild kill-list",text="Mark a guild: every member is marked."},
         {icon="Ability_DualWield",title="Kill/death tracker",text="Wins and losses per enemy player."},

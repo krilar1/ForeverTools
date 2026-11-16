@@ -47,6 +47,8 @@ local index={
     {"ForeverTools minimap button","minimap icon button","SystemMinimap","map"},
     {"Minimap coordinates","coordinates coords position","SystemMinimap","map"},
     {"Reagent reminder (low on candles, Ankh, runes)","reagent reagents candle candles ankh rune runes teleport portal seed seeds powder poison poisons vendor buy low city inn","BuffReminder","buffs"},
+    {"Poised glow on energy bar","poised energy bar glow ready rogue druid cat cost cheaper opener electric spark","SystemPoised","Spell_Nature_LightningShield"},
+    {"Talent point reminder","talent talents points unspent spend level leveling","BuffReminder","buffs"},
     {"Camp items reminder (tent, sleeping bag)","tent sleeping bag cozy camp camping campfire rested well-rested boosted rest bonus xp experience leveling","BuffReminder","buffs"},
     {"Move elements in the game menu","game menu escape esc button move elements","SystemGeneral","general"},
     {"Rings of addon minimap buttons","minimap ring rings gold dark addon button border","SystemMinimap","map"},
@@ -122,13 +124,41 @@ local index={
 }
 -- Every setting on the System pages too, by its own name: opens its page
 -- and points at it. Added once, the first time you search.
+local function known(label)
+    label=label:lower()
+    for _,e in ipairs(index) do if e[1]:lower()==label then return true end end
+end
 function Search:AddPageSettings()
     if self.pagesAdded then return end
     self.pagesAdded=true
+    -- Every page in the menu groups, by its own title.
+    for _,hub in ipairs(FT.hubs or {}) do
+        for _,page in ipairs(hub.pages or {}) do
+            local module,title,icon=page[1],page[2],page[3]
+            if type(title)=="string" and type(module)=="string" and not known(title) then
+                index[#index+1]={title,(hub.title or ""):lower(),module,type(icon)=="string" and icon or "generic",sub=hub.title}
+            end
+        end
+    end
+    -- Each game option on Extra game options, by its name and help text.
+    local G=FT.modules.GameTweaks
+    for _,o in ipairs(G and G.options or {}) do
+        if type(o.title)=="string" and not known(o.title) then
+            index[#index+1]={o.title,((o.tip or "").." "..(o.cvar or "").." game option"):lower(),"GameTweaks",o.icon or "INV_Misc_Spyglass_03",find=o.title,sub="Extra game options"}
+        end
+    end
+    -- Ready-made macros (Generic), by name: opens Macros.
+    local M=FT.modules.MacroForge
+    local okG,generic=pcall(function() return M and M:GenericEntries() end)
+    for _,e in ipairs(okG and type(generic)=="table" and generic or {}) do
+        if type(e.name)=="string" and not known(e.name.." macro") then
+            index[#index+1]={e.name.." macro",("macro generic "..(e.note or "")):lower(),"MacroForge","macros",sub="Macros"}
+        end
+    end
     local sys=FT.modules.System
     for _,page in ipairs(sys and sys.pages or {}) do
         for _,item in ipairs(page.items or {}) do
-            local label=type(item[2])=="string" and item[2]
+            local label=type(item[2])=="string" and item[2]~="Preview" and item[2]
             if label then
                 local known=false
                 for _,e in ipairs(index) do if e[1]:lower()==label:lower() then known=true end end
@@ -187,7 +217,7 @@ function Search:Attach(home)
     local box=CreateFrame("EditBox",nil,home)
     self.box=box; box.alwaysIcons=true -- every result shows its page icon, also when they share one
     box:SetSize(220,26); box:SetPoint("TOPLEFT",24,-54)
-    box:SetFont(FT.bodyFont,13,""); box:SetAutoFocus(false); box:SetTextInsets(26,8,0,0)
+    box:SetFont(FT.bodyFont,13,""); box:SetAutoFocus(false); box:SetTextInsets(26,24,0,0)
     FT:Panel(box); FT:Paint(box,{0.05,0.04,0.03,1},{0.29,0.24,0.15,1})
     local icon=box:CreateTexture(nil,"ARTWORK"); icon:SetSize(14,14); icon:SetPoint("LEFT",8,0)
     icon:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
@@ -196,13 +226,29 @@ function Search:Attach(home)
     box.options=function() return self.results or {} end
     box.onSelect=function(value) self:Open(value) end
     box.menuWidth=300
+    -- Ways out: the X in the box, Escape, a right-click on the box, or a
+    -- click anywhere else in the window.
+    local clear=CreateFrame("Button",nil,box); clear:SetSize(18,18); clear:SetPoint("RIGHT",-4,0)
+    clear.tex=clear:CreateTexture(nil,"ARTWORK"); clear.tex:SetAllPoints(); clear.tex:SetTexture("Interface\\Buttons\\UI-StopButton")
+    clear:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight","ADD")
+    clear:Hide()
+    function self:Clear()
+        local menu=FT.choiceMenu
+        if menu and menu:IsShown() and menu.owner==box then menu:Hide() end
+        box:SetText(""); box:ClearFocus(); self.none:Hide()
+    end
+    clear:SetScript("OnClick",function() self:Clear() end)
+    FT:Tooltip(clear,"Clear search","Or press Escape, right-click the box, or click anywhere else in the window.")
+    box:SetScript("OnMouseUp",function(_,button) if button=="RightButton" then self:Clear() end end)
+    home:HookScript("OnMouseDown",function() if box:GetText()~="" then self:Clear() end end)
     box:SetScript("OnTextChanged",function(owner)
-        placeholder:SetShown(owner:GetText()=="")
+        local empty=owner:GetText()==""
+        placeholder:SetShown(empty); clear:SetShown(not empty)
         self:Show()
     end)
     box:SetScript("OnEnterPressed",function() if self.results and self.results[1] then if FT.choiceMenu then FT.choiceMenu:Hide() end; self:Open(self.results[1].value) end end)
-    box:SetScript("OnEscapePressed",function(owner) owner:SetText(""); owner:ClearFocus() end)
+    box:SetScript("OnEscapePressed",function() self:Clear() end)
     home:HookScript("OnHide",function() box:SetText(""); box:ClearFocus() end)
-    FT:Tooltip(box,"Search settings","Type a feature or setting, for example \"dark mode\", \"repair\" or \"xp\". Press Enter to open the first result.")
+    FT:Tooltip(box,"Search settings","Type a feature or setting, for example \"dark mode\", \"repair\" or \"xp\". Press Enter to open the first result. Clear it with the X, Escape or a right-click.")
 end
 FT:RegisterModule("Search",Search)

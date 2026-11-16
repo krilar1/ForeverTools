@@ -223,7 +223,7 @@ local FOCUS_MO = "[@focus,harm,nodead][@mouseover,harm,nodead][]"
 local pvpMacros = {
     Rogue = {
         pvp("Sap player", "ability_sap", "#showtooltip Sap\n/cleartarget\n/targetenemyplayer\n/cast Sap", "Targets the nearest enemy player and saps them. Press while stealthed near a stealthed or unaware enemy."),
-        pvp("Opener", "ability_stealth", "#showtooltip\n/cast [stealth] Cheap Shot; Stealth", "Stealth, then Cheap Shot on the same key."),
+        {"Opener", 1, nil, "ability_stealth", "#showtooltip\n/cast [stealth] Pick Pocket\n/cast [stealth] Cheap Shot; Stealth", "#showtooltip\n/cast [stealth] Cheap Shot; Stealth", "Stealth, then Pick Pocket and Cheap Shot on the same key."},
         pvp("Kick focus", "ability_kick", "#showtooltip Kick\n/cast " .. FOCUS .. "[] Kick", "Kicks your focus, or your target without a focus."),
         pvp("Blind focus", "spell_shadow_mindsteal", "#showtooltip Blind\n/stopattack\n/cast " .. FOCUS_MO .. " Blind", "Blinds your focus, the enemy under the mouse, or your target."),
         pvp("Gouge", "ability_gouge", "#showtooltip Gouge\n/cast Gouge\n/stopattack", "Gouge and stop attacking, so your swings don't break it."),
@@ -288,6 +288,11 @@ local pvpMacros = {
         pvp("Tremor", "spell_nature_tremortotem", "#showtooltip Tremor Totem\n/cast Tremor Totem", "Tremor Totem against fears."),
     },
 }
+-- In every class's PvP list: your two trinket slots.
+local pvpShared = {
+    pvp("Trinket 1", "inv_jewelry_trinketpvp_01", "#showtooltip 13\n/use 13", "Uses your top trinket (slot 13)."),
+    pvp("Trinket 2", "inv_jewelry_trinketpvp_02", "#showtooltip 14\n/use 14", "Uses your bottom trinket (slot 14)."),
+}
 local genericMacros = {
     {"1-shot combo", 1, "generic", "spell_nature_bloodlust", "#showtooltip"},
     {"Start attack", 1, "generic", "inv_sword_04", "#showtooltip\n/startattack"},
@@ -310,6 +315,8 @@ local genericMacros = {
         "Uses your best item that cures poison (Anti-Venom, Strong and Powerful Anti-Venom...) on the friend under your mouse, your friendly target, or you. Kept up to date as your bags change."},
     {"Cure all", 1, "generic", "inv_potion_26", function() return KT.modules.Cures and KT.modules.Cures:Body("all") or "#showtooltip" end, nil,
         "Uses your best item that removes curses, diseases or magic (Purification Potion, Restorative Potion...). Kept up to date as your bags change."},
+    {"Cure bleed", 1, "generic", "inv_misc_bandage_15", function() return KT.modules.Cures and KT.modules.Cures:Body("bleed") or "#showtooltip" end, nil,
+        "Uses your best item that stops bleeding (Woolen Tourniquet...) on the friend under your mouse, your friendly target, or you. Kept up to date as your bags change."},
     {"Break free", 1, "generic", "inv_potion_04", function() return KT.modules.Cures and KT.modules.Cures:Body("free") or "#showtooltip" end, nil,
         "Uses your best item that frees you from stuns and slows (Living Action Potion, Free Action Potion). Kept up to date as your bags change."},
 }
@@ -364,6 +371,9 @@ local learnedMelee = {
 -- Pressing these again while stealthed would drop stealth; the macro only
 -- enters stealth, it never leaves it by accident.
 local stealthOnly = { ["Stealth"] = true, ["Prowl"] = true }
+-- Rogue openers used from stealth: Pick Pocket first, on the same target
+-- (it has no global cooldown, so one press does both).
+local pickFirst = { ["Ambush"] = true, ["Garrote"] = true, ["Cheap Shot"] = true, ["Sap"] = true }
 -- Mouseover audit (see SPELL_AUDIT.md). Every spell you cast at a unit can
 -- use mouseover: hit an enemy beside you while keeping your target, heal or
 -- dispel a party member, dot or crowd-control an add. Left out: melee strikes
@@ -410,6 +420,7 @@ function MacroForge:BuildMacro(entry)
         lines[#lines + 1] = "/cast " .. target .. " " .. spell
     else
         local target = self.mouseover and self:CanMouseover(entry) and "[@mouseover,harm,nodead][harm,nodead] " or ""
+        if pickFirst[entry.name] and entry.class == "Rogue" then lines[#lines + 1] = "/cast " .. target .. "Pick Pocket" end
         lines[#lines + 1] = "/cast " .. target .. spell
     end
     return table.concat(lines, "\n")
@@ -549,8 +560,9 @@ end
 -- Where a macro goes: class and race macros to Character; your own macros
 -- where you put them (General or Character); the rest by Settings > Save to.
 function MacroForge:ScopeFor(entry)
-    if entry.class or entry.characterOnly or entry.category == "racial" then return "character" end
+    -- Asked to go to General (Character tab full, you said yes): always.
     if entry.toGeneral then return "account" end
+    if entry.class or entry.characterOnly or entry.category == "racial" then return "character" end
     if entry.saveTo == "account" or entry.saveTo == "character" then return entry.saveTo end
     return self.scope == "account" and "account" or "character"
 end
@@ -666,6 +678,11 @@ function MacroForge:LegacyBodies(entry, body)
         local plain = body:gsub("\n/cast ", "\n/cast " .. oldHostile, 1)
         if plain ~= body then bases[#bases + 1] = plain end
     end
+    -- Before Pick Pocket was added to the openers.
+    for i = 1, #bases do
+        local without = bases[i]:gsub("\n/cast [^\n]*Pick Pocket\n", "\n", 1)
+        if without ~= bases[i] then bases[#bases + 1] = without end
+    end
     local list = {}
     for i = 2, #bases do list[#list + 1] = bases[i] end
     if changedTemplates[entry.name] then
@@ -713,8 +730,28 @@ MacroForge.CastSpells = castSpells
 function MacroForge:SameAction(entry, body)
     if not GetNumMacros or not GetMacroInfo or entry.name == "1-shot combo" then return nil end
     local wanted, count = castSpells(body)
-    if count == 0 then return nil end
     local account, character = GetNumMacros()
+    if count == 0 then
+        -- A slot macro (/use 13): any macro of yours that uses the same slots and nothing else.
+        local function slots(text)
+            local list = {}
+            for line in ((text or "") .. "\n"):gmatch("([^\n]*)\n") do
+                local n = line:match("^%s*/use%s+%b[]%s*(%d+)%s*$") or line:match("^%s*/use%s+(%d+)%s*$")
+                if n then list[#list + 1] = n end
+            end
+            table.sort(list); return table.concat(list, ",")
+        end
+        local want = slots(body)
+        if want == "" then return nil end
+        local first = (MAX_ACCOUNT_MACROS or 120) + 1
+        for _, range in ipairs({{1, account or 0}, {first, first + (character or 0) - 1}}) do
+            for index = range[1], range[2] do
+                local _, _, existing = GetMacroInfo(index)
+                if type(existing) == "string" and not (issecretvalue and issecretvalue(existing)) and slots(existing) == want and select(2, castSpells(existing)) == 0 then return index end
+            end
+        end
+        return nil
+    end
     local first = (MAX_ACCOUNT_MACROS or 120) + 1
     local ranges = {{1, account or 0}, {first, first + (character or 0) - 1}}
     for _, range in ipairs(ranges) do
@@ -759,7 +796,21 @@ function MacroForge:EntryExists(entry, body)
         end
     end
     if legacyIndex then return true, legacyIndex end
+    -- Moved to General (or put there yourself): it counts as added.
+    local account = GetNumMacros()
+    for index = 1, account or 0 do
+        local _, _, existing = GetMacroInfo(index)
+        if existing then
+            local text = normalizeBody(existing)
+            if text == wanted or legacy[text] then return true, index end
+        end
+    end
     return false
+end
+-- Which tab a macro is in: "General" or "Character" (nil: not found).
+function MacroForge:TabOf(index)
+    if type(index) ~= "number" or index < 1 then return nil end
+    return index > (MAX_ACCOUNT_MACROS or 120) and "Character" or "General"
 end
 
 function MacroForge:Status(message, isError)
@@ -804,6 +855,12 @@ function MacroForge:CreateEntry(entry, confirmed)
     if not exists and self.bulkAdding and self:SameAction(entry, body) then
         self.skipReason = "exists"
         self:Status(entry.name .. " is already in your macros (your own version).")
+        return false
+    end
+    if exists and existingIndex and self:TabOf(existingIndex) == "General" and (entry.class or entry.characterOnly) then
+        self.skipReason = "exists"
+        self:Status(entry.name .. " is already in your General macros.")
+        if not self.bulkAdding then KT:Toast(entry.name .. " is already in General macros") end
         return false
     end
     if exists then
@@ -1395,7 +1452,7 @@ function MacroForge:EquipChoices(slot)
         end
     end
     if C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemInfo then
-        for bag=0,(NUM_BAG_SLOTS or 4) do
+        for bag=0,(tonumber(NUM_TOTAL_EQUIPPED_BAG_SLOTS) or tonumber(NUM_BAG_SLOTS) or 4) do
             local okCount,count=pcall(C_Container.GetContainerNumSlots,bag)
             for index=1,(okCount and plain(count) and type(count)=="number" and count or 0) do
                 local ok,info=pcall(C_Container.GetContainerItemInfo,bag,index)
@@ -1456,7 +1513,7 @@ function MacroForge:WeaponChoices(slot)
         end
     end
     if C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemInfo then
-        for bag=0,(NUM_BAG_SLOTS or 4) do
+        for bag=0,(tonumber(NUM_TOTAL_EQUIPPED_BAG_SLOTS) or tonumber(NUM_BAG_SLOTS) or 4) do
             local okCount,count=pcall(C_Container.GetContainerNumSlots,bag)
             for index=1,(okCount and plain(count) and type(count)=="number" and count or 0) do
                 local ok,info=pcall(C_Container.GetContainerItemInfo,bag,index)
@@ -1584,7 +1641,7 @@ function MacroForge:ConfirmBulk()
     KT:ShowPopup("FOREVERTOOLS_BULK")
 end
 -- The window and its pages are built in MacroHub.lua from these.
-MacroForge.data = {classMacros = classMacros, pvpMacros = pvpMacros, racials = racials, genericMacros = genericMacros, addEntries = addEntries,
+MacroForge.data = {classMacros = classMacros, pvpMacros = pvpMacros, pvpShared = pvpShared, racials = racials, genericMacros = genericMacros, addEntries = addEntries,
     classKey = classKey, raceKey = raceKey, classIcons = classIcons, nameList = nameList, sameEntry = sameEntry, normalizeBody = normalizeBody}
 KT:RegisterModule("MacroForge", MacroForge)
 

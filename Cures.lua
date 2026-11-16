@@ -25,6 +25,9 @@ local KINDS={
         known={[13462]=50,[9030]=40}, words={"curse","disease","magic"}},
     {key="free",name="Break free",icon="inv_potion_04",note="Uses your best item that frees you from stuns and slows (Living Action Potion, Free Action Potion). Kept up to date as your bags change.",
         known={[20008]=60,[5634]=40}, words={"stun","movement"}},
+    -- Forever's First Aid tourniquets (Woolen Tourniquet...): found by their "Use:" text.
+    {key="bleed",name="Cure bleed",icon="inv_misc_bandage_15",note="Uses your best item that stops bleeding (Woolen Tourniquet...) on the friend under your mouse, your friendly target, or you. Kept up to date as your bags change.",
+        known={}, words={"bleed"}, fallback="Woolen Tourniquet"},
 }
 Cures.kinds=KINDS
 local byName={}
@@ -61,8 +64,11 @@ Cures.UseLine=useLine
 -- Which kind of cure an item is, and how good: kindKey, score (or nil).
 function Cures:Classify(id)
     for _,kind in ipairs(KINDS) do if kind.known[id] then return kind.key,kind.known[id] end end
+    local name,level=itemInfo(id); level=level or 1
+    -- Tourniquets (Woolen, Leather...): by name or by "bleed" in their Use: text.
+    if type(name)=="string" and name:lower():find("tourniquet",1,true) then return "bleed",level end
     local text=useLine(id); if not text then return nil end
-    local _,level=itemInfo(id); level=level or 1
+    if text:find("bleed",1,true) then return "bleed",level end
     local removes=text:find("cure") or text:find("remov")
     if text:find("stun") and (text:find("movement") or text:find("immun") or removes) then return "free",level end
     if not removes then return nil end
@@ -73,10 +79,10 @@ function Cures:Classify(id)
 end
 -- What you carry, per kind, best first: {poison={{id,name,score}},...}.
 function Cures:Carried()
-    local out={poison={},all={},free={}}
+    local out={poison={},all={},free={},bleed={}}
     if not C_Container or not C_Container.GetContainerNumSlots then return out end
     local seen={}
-    for bag=0,(NUM_BAG_SLOTS or 4) do
+    for bag=0,(tonumber(NUM_TOTAL_EQUIPPED_BAG_SLOTS) or tonumber(NUM_BAG_SLOTS) or 4) do
         local okCount,count=pcall(C_Container.GetContainerNumSlots,bag)
         if okCount and plain(count) and type(count)=="number" then
             for slot=1,count do
@@ -107,6 +113,7 @@ function Cures:Body(kindKey)
         table.sort(ids,function(a,b) return kind.known[a]>kind.known[b] end)
         lines={"#showtooltip"}
         for _,id in ipairs(ids) do lines[#lines+1]="/use "..TARGET.." item:"..id end
+        if kind.fallback then lines[#lines+1]="/use "..TARGET.." "..kind.fallback end
     end
     local body=table.concat(lines,"\n")
     while #body>LIMIT and #lines>2 do lines[#lines]=nil; body=table.concat(lines,"\n") end
