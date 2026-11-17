@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "1.7.0"
+FT.version = "1.8.0"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -680,7 +680,13 @@ function FT:SectionHeading(label, icon, lineWidth, iconSize, total)
             elseif type(c) == "number" then c = c + PAD
             elseif a == nil then a = PAD; b = 0 end
         end
-        return place(owner, point, a, b, c, d)
+        local r = place(owner, point, a, b, c, d)
+        local h = owner.ftHeading
+        if h and h.update and not h.queued and C_Timer then
+            h.queued = true
+            C_Timer.After(0, function() h.queued = false; h.update() end)
+        end
+        return r
     end
     -- Reading the place back gives it as it was set (without the 12), so
     -- code that moves the label down keeps it where it was across.
@@ -733,8 +739,24 @@ function FT:SectionHeading(label, icon, lineWidth, iconSize, total)
         -- total: the bar is exactly that wide (the width of the rows under it).
         elseif total then rim:SetWidth(math.max(width + 28, total))
         else rim:SetWidth(math.max(width + 28, width + 20 + (lineWidth or 180))) end
+        -- 1.8.0: never past the window. The bar ends at least 24 in from the
+        -- window's right edge (where the rows end), whatever its text.
+        if lineWidth ~= "full" and shown then
+            local win = parent
+            for _ = 1, 12 do
+                local up = win.GetParent and win:GetParent()
+                if not up or up == UIParent or (FT.controlWindows and FT.controlWindows[win]) then break end
+                win = up
+            end
+            local right, left = win.GetRight and win:GetRight(), label.GetLeft and label:GetLeft()
+            if type(right) == "number" and type(left) == "number" then
+                local room = right * (win:GetEffectiveScale() or 1) / (label:GetEffectiveScale() or 1) - 24 - (left - PAD)
+                if room > 40 and rim:GetWidth() > room then rim:SetWidth(room) end
+            end
+        end
         rim:SetShown(shown); band:SetShown(shown); accent:SetShown(shown)
     end
+    label.ftHeading.update = update
     local setText = label.SetText
     label.SetText = function(owner, text)
         owner.ftHeading.raw = text
@@ -1579,6 +1601,7 @@ SlashCmdList.FOREVERTOOLS = function(message)
     elseif command == "enemies" or command == "stealth" then FT:OpenModule("EnemyAlerts")
     elseif command == "screen" or command == "info" then FT:OpenModule("SystemDisplay")
     elseif command == "threat" then FT:OpenModule("Threat")
+    elseif command:match("^mappoint") then if FT.MapPins then FT.MapPins:Command((message or ""):match("^%s*%S+%s*(.-)%s*$")) end
     elseif command == "recipes" then if FT.Recipes then FT.Recipes:Open() end
     elseif command == "colordebug" then
         local c = FT.modules.UnitColors

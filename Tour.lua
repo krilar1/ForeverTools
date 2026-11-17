@@ -76,6 +76,10 @@ local function stops()
         {key="poised",chapter="Combat",page="SystemPoised",title="Poised glow",text="Your energy bar lights up when Poised is ready, so you don't have to look at your buffs.",
             find="Poised glow on energy bar",when=function() local c=playerClass(); return c=="ROGUE" or c=="DRUID" end,
             target=function() return FT.PowerGlow and FT.PowerGlow:Bar() end,get=sys("poisedGlow").get,set=sys("poisedGlow").set},
+        {key="stealthShade",chapter="Combat",page="SystemStealth",title="Stealth shadows",text="The edges of your screen darken while you are stealthed.",
+            find="Shadows while stealthed",when=function() local c=playerClass(); return c=="ROGUE" or c=="DRUID" end,
+            preview=function() if FT.StealthShade then FT.StealthShade:Peek(4) end end,
+            get=sys("stealthShade").get,set=sys("stealthShade").set},
         {key="autoRole",chapter="Combat",page="SystemGameplay",title="Group role",text="Your role is set from your talents when you join a group.",
             find="Set role when joining",get=sys("autoRole").get,set=sys("autoRole").set},
         {key="stealth",chapter="PvP",page="EnemyAlerts",title="Stealth alerts",text="A warning when an enemy near you goes into stealth.",
@@ -479,7 +483,7 @@ local EVERYDAY={
     {"rareAlert.enabled",true},{"rareAlert.sound",true},
     {"totems.range",true},{"totems.leftBehind",true},
     {"fps.enabled",true},{"flightTimer.enabled",true},{"queueTimer.enabled",true},{"moveWindows.enabled",true},{"lootRoll.custom",true},
-    {"system.hideErrors",true},{"system.fastLoot",true},{"system.autoRepair",true},{"system.autoSell",true},{"system.minimapIcons",true},{"system.chatLinks",true},{"system.mailAlts",true},
+    {"system.hideErrors",true},{"system.fastLoot",true},{"system.autoRepair",true},{"system.autoSell",true},{"system.minimapIcons",true},{"system.chatLinks",true},{"system.mailAlts",true},{"system.mapTransport",true},{"system.mapDungeons",true},
 }
 local PVP={
     {"enemies.nearby",true},{"enemies.stealth",true},{"enemies.marks",true},
@@ -487,7 +491,7 @@ local PVP={
     {"enemyCooldowns.enabled",true},{"enemyCooldowns.targetIcons",true},
     {"trinkets.enabled",true},
 }
-local EVERYDAY_TEXT="Dark look, class-colored health bars, buff reminders, item counts and gold in bags, rare alerts, flight timer, FPS, quieter chat, fast loot, auto repair, sell junk, alts first in the mailbox, grouped minimap buttons and more."
+local EVERYDAY_TEXT="Dark look, class-colored health bars, buff reminders, item counts and gold in bags, rare alerts, flight timer, FPS, quieter chat, fast loot, auto repair, sell junk, alts first in the mailbox, grouped minimap buttons, travel points on the map and more."
 local looks={
     {key="ready",label="Dark, all set",skin="dark",tweaks=true,sets={EVERYDAY},swatch={.08,.08,.08},border={0,0,0},
         tip=EVERYDAY_TEXT.." Recommended."},

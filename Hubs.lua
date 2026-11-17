@@ -65,6 +65,7 @@ local hubs = {
         {"Interrupts", "Interrupt bar", "Ability_Kick", function() return onOff(settings("Interrupts").enabled) end},
         {"SystemGameplay", "Group role", "Ability_Warrior_DefensiveStance", function() local s = settings("System"); return "Role " .. onOff(s.autoRole):lower() end},
         {"SystemPoised", "Poised", "Spell_Nature_LightningShield", function() return onOff(settings("System").poisedGlow) end},
+        {"SystemStealth", "Stealth shadows", "Spell_Shadow_Twilight", function() return onOff(settings("System").stealthShade) end},
         {"SystemDeath", "Death glow", "Spell_Holy_Resurrection", function()
             local get = (C_CVar and C_CVar.GetCVar) or GetCVar
             local ok, value = pcall(function() return get and get("ffxDeath") end)
@@ -198,6 +199,7 @@ local tips = {
     SystemGameplay = "Your group role, set from your talents.",
     SystemDeath = "The washed-out screen while dead.",
     SystemPoised = "Poised ready: a glow on your energy bar.",
+    SystemStealth = "Stealthed: the screen's edges darken.",
     EnemyAlerts = "Alerts for stealth and marked players.",
     EnemyMarks = "Players you marked.",
     EnemyNearby = "Enemy players you saw recently.",
@@ -277,7 +279,7 @@ end
 -- Older names of pages that moved.
 FT:RegisterModule("SystemTroubleshooting", {redirect = true, Open = function() FT:OpenModule("SystemGeneral") end})
 -- Pages for one class only: other classes never see them (menu or search).
-FT.classOnly = {Totems = "SHAMAN", DruidMana = "DRUID", SystemPoised = {ROGUE = true, DRUID = true}}
+FT.classOnly = {Totems = "SHAMAN", DruidMana = "DRUID", SystemPoised = {ROGUE = true, DRUID = true}, SystemStealth = {ROGUE = true, DRUID = true}}
 function FT:ForMyClass(name)
     local class = self.classOnly[name]
     if not class then return true end

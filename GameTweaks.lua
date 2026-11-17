@@ -8,12 +8,29 @@ local _,FT=...
 -- game version doesn't have is not listed. Nothing runs in the background.
 local G={}
 local function plain(v) return v~=nil and not (issecretvalue and issecretvalue(v)) end
-local function get(name)
+local get
+get=function(name)
     local fn=(C_CVar and C_CVar.GetCVar) or GetCVar
     if not fn then return nil end
     local ok,v=pcall(fn,name); if ok and plain(v) then return v end
 end
+-- 1.8.0: the distance options follow the game's graphics sliders (View
+-- distance, Environment detail, Ground clutter), so their "default" is what
+-- those sliders set, not the engine's GetCVarDefault. Known for the highest
+-- setting (checked in WoW: Forever); on lower settings the game works it out
+-- when the sliders are applied again (G:FromGraphics).
+local PRESET={groundEffectDensity="48",groundEffectDist="320",weatherDensity="3",terrainLodDist="650",
+    lodObjectFadeScale="150",horizonStart="4000",skyCloudLOD="0",lodObjectCullSize="14",entityLodDist="10"}
+local SLIDERS={"graphicsViewDistance","graphicsEnvironmentDetail","graphicsGroundClutter"}
+local function highest()
+    for _,cvar in ipairs(SLIDERS) do
+        local v=tonumber(get(cvar))
+        if v and v<10 then return false end
+    end
+    return true
+end
 local function default(name)
+    if PRESET[name] then return highest() and PRESET[name] or nil end
     local fn=(C_CVar and C_CVar.GetCVarDefault) or GetCVarDefault
     if not fn then return nil end
     local ok,v=pcall(fn,name); if ok and plain(v) then return v end
@@ -128,9 +145,11 @@ local function shown(o,v)
     end
     v=tonumber(v)
     if not v then return "?" end
+    -- 1.8.0: switches (Steady camera) have no range: On or Off.
+    if o.kind=="switch" then return v~=0 and "On" or "Off" end
     if o.reverse then v=o.max-v end
     if o.labels then return o.labels[math.floor(v+.5)] or tostring(v) end
-    if o.step<1 then return string.format("%.1f",v) end
+    if (o.step or 1)<1 then return string.format("%.1f",v) end
     return tostring(math.floor(v+.5))
 end
 G.Shown=shown
@@ -155,12 +174,44 @@ function G:Refresh()
             end
         end
         local d=default(o.cvar)
-        row.reset:SetAlpha((d~=nil and v~=nil and tonumber(d)~=tonumber(v)) and 1 or .45)
+        row.reset:SetAlpha(((d~=nil and v~=nil and tonumber(d)~=tonumber(v)) or (d==nil and PRESET[o.cvar])) and 1 or .45)
     end
 end
-function G:Reset(o)
+-- Apply the game's graphics sliders again (each moved one step and back), so
+-- the game sets every option under them to what your graphics setting uses.
+function G:ApplySliders()
+    for _,cvar in ipairs(SLIDERS) do
+        local v=get(cvar)
+        if v~=nil then set(cvar,v=="1" and "2" or "1"); set(cvar,v) end
+    end
+end
+-- One distance option back to what your graphics setting uses; the others
+-- stay as they are.
+function G:FromGraphics(o)
+    local before={}
+    for cvar in pairs(PRESET) do before[cvar]=get(cvar) end
+    self:ApplySliders()
+    if highest() then set(o.cvar,PRESET[o.cvar]) end
+    for cvar,v in pairs(before) do if cvar~=o.cvar and v~=nil and get(cvar)~=v then set(cvar,v) end end
+    self:Refresh()
+end
+function G:Reset(o,all)
+    if PRESET[o.cvar] then
+        if InCombatLockdown() then FT:Toast("Leave combat to change game options.",3); return end
+        if all then return end
+        return self:FromGraphics(o)
+    end
     local d=default(o.cvar); if d==nil then return end
     if set(o.cvar,d) then self:Refresh() end
+end
+-- Every option back: distance options from the graphics sliders, the rest
+-- to the game's defaults.
+function G:ResetAll()
+    if InCombatLockdown() then FT:Toast("Leave combat to change game options.",3); return end
+    for _,row in ipairs(self.rows) do row.pending=nil; self:Reset(row.option,true) end
+    self:ApplySliders()
+    if highest() then for cvar,v in pairs(PRESET) do if get(cvar)~=nil then set(cvar,v) end end end
+    self:Refresh()
 end
 -- A slider sets the game's option once you let go (or stop moving for a
 -- moment), never on every step of a drag: setting grass or terrain options
@@ -259,7 +310,9 @@ function G:Open()
             local r=FT:QuietButton(frame,"",36,32,"reset")
             r.icon:ClearAllPoints(); r.icon:SetPoint("CENTER")
             r:SetScript("OnClick",function() row.pending=nil; self:Reset(o) end)
-            FT:Tooltip(r,"Game default",function() local d=default(o.cvar); return "Back to the game's default"..(d and (" ("..shown(o,d)..")") or "").."." end)
+            FT:Tooltip(r,"Game default",function()
+                if PRESET[o.cvar] then local d=default(o.cvar); return "Back to what your graphics setting (System > Graphics) uses"..(d and (" ("..shown(o,d)..")") or "").."." end
+                local d=default(o.cvar); return "Back to the game's default"..(d and (" ("..shown(o,d)..")") or "").."." end)
             row.reset=r
             self.rows[#self.rows+1]=row
         end
@@ -267,7 +320,7 @@ function G:Open()
             local none=FT:Label(frame,"This game version has none of these settings.",13); none:SetPoint("TOPLEFT",24,-92)
         else
             local all=FT:QuietButton(frame,"All back to game defaults",W-48,32,"reset"); self.all=all
-            all:SetScript("OnClick",function() FT:Confirm("Put every option on this page (all tabs) back to the game's default?",function() for _,row in ipairs(self.rows) do row.pending=nil; self:Reset(row.option) end end) end)
+            all:SetScript("OnClick",function() FT:Confirm("Put every option on this page (all tabs) back to the game's default?",function() self:ResetAll() end) end)
             FT:Tooltip(all,"All back to game defaults","Every option on this page, in every tab, goes back to the game's own default. Asks first.")
         end
         local first=list[1] and list[1][1]

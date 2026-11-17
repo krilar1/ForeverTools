@@ -1082,3 +1082,24 @@ FT.flightDefaults = {
     },
   },
 }
+
+-- WoW Forever times on top of the Classic ones: InFlight's global_forever
+-- (revision 4b2b3ba, 2026-11-15, MIT). Rog'mar is a Forever flight point.
+do
+  local forever = {
+    ["Horde"] = {
+      [22] = { [80] = 217 },
+      [3203] = { ["name"] = "Rog'mar", [11] = 582 },
+    },
+    ["Alliance"] = {
+      [4] = { [2] = 82 },
+    },
+  }
+  for faction, nodes in pairs(forever) do
+    local into = FT.flightDefaults[faction]
+    for source, destinations in pairs(nodes) do
+      into[source] = into[source] or {}
+      for destination, seconds in pairs(destinations) do into[source][destination] = seconds end
+    end
+  end
+end

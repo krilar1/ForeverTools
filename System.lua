@@ -73,6 +73,7 @@ function System:Apply()
     local s=self:Settings()
     if FT.modules.ChatLinks and FT.modules.ChatLinks.Apply then FT.modules.ChatLinks:Apply() end
     if FT.PowerGlow then FT.PowerGlow:Apply() end
+    if FT.StealthShade then FT.StealthShade:Apply() end
     -- Forever's own option, rather than hiding an unrelated minimap region.
     if s.coordinates~=nil and C_CVar and C_CVar.GetCVar and C_CVar.SetCVar then
         if C_CVar.GetCVar("minimapShowPlayerCoords")~=nil then C_CVar.SetCVar("minimapShowPlayerCoords",s.coordinates and "1" or "0") end
@@ -140,7 +141,7 @@ local pages={
         {"scriptErrors","Show Lua errors","errors","Show the game's Lua error pop-ups."},
         {"bugReport","Copy bug report","INV_Misc_Note_04","Version, game build, features and recent errors, ready to copy. Nothing is sent."},
     }},
-    {key="SystemMinimap",sections={{"Buttons","minimap"},{"Grouping","minimapIcons"}},title="Minimap",hint="ForeverTools button, coordinates, button grouping.",items={
+    {key="SystemMinimap",sections={{"Buttons","minimap"},{"Grouping","minimapIcons"},{"World map","mapTransport"}},title="Minimap",hint="ForeverTools button, coordinates, button grouping, world map points.",items={
         {"minimap","ForeverTools minimap button","map","Show the ForeverTools button. /ft always works."},
         {"coordinates","Minimap coordinates","INV_Misc_Spyglass_02","Show coordinates below the minimap."},
         {"minimapTarget","Show your target on the minimap","Ability_Hunter_SniperShot","Turns on the game's own \"Target\" minimap tracking: what you target shows on the minimap. The game saves it."},
@@ -149,6 +150,9 @@ local pages={
         {"minimapRings","Rings on the minimap","map","Addon buttons that sit on the minimap (also the ones you keep there): gold like the game, or dark in your Skins border color. Needs Skins > Minimap on. The same choice as Skins > Minimap > Addon rings."},
         {"groupRings","Rings in the group","INV_Misc_Bag_08","Addon buttons inside the grouped buttons menu: gold or dark. Needs Skins > Minimap on."},
         {"minimapKeep","Keep on the minimap","INV_Misc_Map_01","Pick buttons that stay on the minimap, outside the group (for example one you use a lot)."},
+        {"mapTransport","Boats, zeppelins and tram","INV_Misc_Map_01","Show docks, zeppelin and airship towers and the tram on the world map, and where each goes. Also in the map's filter menu (the funnel, top right)."},
+        {"mapDungeons","Dungeon and raid entrances","INV_Misc_Key_10","Show dungeon and raid entrances on the world map, with their levels. Also in the map's filter menu (the funnel, top right)."},
+        {"mapFlights","Flight masters","Ability_Mount_Wyvern_01","Show flight masters on maps where the game doesn't. Also in the map's filter menu (the funnel, top right)."},
     }},
     {key="SystemGameplay",title="Group role",hint="Your group role, set from your talents.",items={
         {"autoRole","Set role when joining a group","Ability_Warrior_DefensiveStance","Set your role from your talents when you join a group."},
@@ -157,6 +161,12 @@ local pages={
         {"poisedPreview","Preview","Spell_Lightning_LightningBolt01","Shows the glow now, without Poised, until you turn it off."},
         {"poisedGlow","Poised glow on energy bar","Spell_Nature_LightningShield","While Poised is up (your next Energy ability costs less), sparks and twinkling stars run over your energy bar. No need to look at your buffs. Only while you target an enemy, unless you turn on the option below."},
         {"poisedAlways","Also without an enemy target","Ability_Stealth","Shows the glow whenever Poised is up, not only while you target an enemy."},
+    }},
+    {key="SystemStealth",title="Stealth shadows",hint="The edges of your screen darken while you are stealthed.",items={
+        {"stealthPreview","Preview","Ability_Stealth","Shows the shadows now, without stealth, until you turn it off."},
+        {"stealthShade","Shadows while stealthed","Ability_Stealth","While you are in Stealth, Prowl or Shadowmeld, the edges of your screen sink into a dark shadow, so you always know you are hidden. Behind your whole interface; works in combat."},
+        {"stealthStrength","Strength","Spell_Shadow_Twilight","How dark the shadow gets."},
+        {"stealthDrift","Drifting shadows","Spell_Shadow_ShadowWard","The shadow slowly creeps in and out at the edges. Off: it stays still."},
     }},
     {key="SystemDeath",title="Death glow",hint="How the screen looks while you are dead or a ghost.",items={
         {"deathGlow","Death glow","Spell_Holy_Resurrection","The washed-out screen while dead. The game's own setting, for all characters."},
@@ -190,7 +200,7 @@ local pages={
     }},
 }
 System.pages=pages
-local toggles={poisedGlow=true,poisedAlways=true,poisedPreview=true,gameMenuButton=true,versionCheck=true,minimapTarget=true,hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,shortKeys=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,mailAlts=true,mailGold=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietNoControl=true}
+local toggles={poisedGlow=true,poisedAlways=true,poisedPreview=true,gameMenuButton=true,versionCheck=true,minimapTarget=true,hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,shortKeys=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,mailAlts=true,mailGold=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietNoControl=true,mapTransport=true,mapDungeons=true,mapFlights=true,stealthShade=true,stealthDrift=true,stealthPreview=true}
 -- Switches that are the game's own settings: read and written directly,
 -- never stored by ForeverTools. "Unavailable" when the game has no such setting.
 local gameOptions={scriptErrors="scriptErrors",deathGlow="ffxDeath"}
@@ -244,7 +254,7 @@ function System:Values()
     return {welcome=FT.db.welcome==true,whatsNew=s.hideWhatsNew~=true,minimap=FT.db.minimapEnabled~=false,coordinates=coords,
         minimapTarget=select(2,self:TargetTracking())==true,minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=gameOption("scriptErrors")=="1",deathGlow=gameOption("ffxDeath")~="0",
         hiddenUIHint=s.hiddenUIHint==true,poisedGlow=s.poisedGlow==true,poisedAlways=s.poisedAlways==true,poisedPreview=FT.PowerGlow and FT.PowerGlow.preview==true,autoRole=s.autoRole==true,shortKeys=s.shortKeys==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true,mailAlts=s.mailAlts==true,mailGold=s.mailGold==true,
-        hideErrors=s.hideErrors==true,errorsInCombat=s.errorsInCombat==true,quietNoControl=s.quietNoControl~=false,versionCheck=s.versionCheck~=false,gameMenuButton=s.gameMenuButton~=false}
+        hideErrors=s.hideErrors==true,errorsInCombat=s.errorsInCombat==true,quietNoControl=s.quietNoControl~=false,versionCheck=s.versionCheck~=false,gameMenuButton=s.gameMenuButton~=false,mapTransport=s.mapTransport==true,mapDungeons=s.mapDungeons==true,mapFlights=s.mapFlights==true,stealthShade=s.stealthShade==true,stealthDrift=s.stealthDrift~=false,stealthPreview=FT.StealthShade and FT.StealthShade.preview==true}
 end
 function System:Refresh()
     if not self.buttons then return end
@@ -295,6 +305,10 @@ function System:Refresh()
             local v=tonumber(self:Settings()[key]) or 0
             local words=key=="keyX" and (v<0 and " left" or v>0 and " right" or "") or (v<0 and " down" or v>0 and " up" or "")
             button.label:SetText((key=="keyX" and "Key text left / right: " or "Key text up / down: ")..(v==0 and "Game's spot" or (math.abs(v)..words)))
+        end
+        if key=="stealthStrength" then
+            local v=FT.StealthShade and FT.StealthShade:Settings().stealthStrength or "medium"
+            button.label:SetText("Strength: "..({light="Light",medium="Medium",strong="Strong"})[v])
         end
         if key=="objectives" then
             local mode=FT.modules.QuestTracker and FT.modules.QuestTracker:Mode() or "default"
@@ -360,6 +374,7 @@ local SYSTEM_NEEDS={sellWhite="autoSell",guildRepair="autoRepair",errorsInCombat
 function System:Click(key)
     if key=="minimapIcons" then FT.modules.MinimapIcons:Toggle();return end
     if key=="minimapIconsVertical" then FT.modules.MinimapIcons:ToggleVertical();return end
+    if (key=="mapDungeons" or key=="mapTransport" or key=="mapFlights") and FT.MapPins then FT.MapPins:Toggle(key); self:Apply(); return end
     if key=="minimapKeep" then
         local button=self.buttons.minimapKeep; local I=FT.modules.MinimapIcons
         if I.active then I:Scan() end
@@ -434,6 +449,10 @@ function System:Click(key)
         self:Refresh();return
     end
     local s=self:Settings()
+    if key=="stealthPreview" then
+        if FT.StealthShade then FT.StealthShade:TogglePreview() end
+        self:Refresh(); return
+    end
     if key=="poisedPreview" then
         local G=FT.PowerGlow; if G then G.preview=not G.preview; G:Check() end
         self:Refresh(); return
@@ -470,7 +489,11 @@ local function buildPage(page)
                 b:SetScript("OnClick",function() System:Click(key) end)
                 FT:Tooltip(b,entry[2],entry[4])
                 -- Settings with a few choices open their list (no click-to-cycle).
-                if key=="objectives" then
+                if key=="stealthStrength" then
+                    FT:MakeChoice(b,FT.StealthShade.strengths,
+                        function() return FT.StealthShade:Settings().stealthStrength end,
+                        function(value) local st=System:Settings(); st.stealthStrength=value; st.stealthShade=true; System:Apply(); System:Refresh() end)
+                elseif key=="objectives" then
                     FT:MakeChoice(b,{{"default","Game's default","The game decides, as without ForeverTools."},{"collapsed","Collapsed","Collapsed after every login."},{"open","Open","Open after every login."},{"hidden","Always hidden","Keep the tracker off the screen."}},
                         function() return FT.modules.QuestTracker:Mode() end,
                         function(value) System:Settings().objectives=value~="default" and value or nil; FT.modules.QuestTracker:Apply(); System:Refresh() end)

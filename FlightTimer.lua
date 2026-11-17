@@ -22,7 +22,23 @@ function Flight:Settings()
     -- A thin bar under the text that fills as the flight goes on.
     if type(s.bar)~="boolean" then s.bar=true end
     for i=1,3 do s.color[i]=number(s.color[i],1,0,1) end
+    -- 1.8.0: class color by default. Players who kept the old default color
+    -- move to class color; a color someone picked stays.
+    if type(s.classColor)~="boolean" then
+        local c=s.color
+        s.classColor=math.abs(c[1]-211/255)<.01 and math.abs(c[2]-1)<.01 and math.abs(c[3]-126/255)<.01
+    end
     return s
+end
+-- The timer's color: your class color, or the color you picked.
+function Flight:Color()
+    local s=self:Settings()
+    if s.classColor then
+        local _,class=UnitClass("player")
+        local c=class and (C_ClassColor and C_ClassColor.GetClassColor and C_ClassColor.GetClassColor(class) or RAID_CLASS_COLORS and RAID_CLASS_COLORS[class])
+        if c and c.r then return c.r,c.g,c.b end
+    end
+    return unpack(s.color)
 end
 function Flight:Position()
     local s=self:Settings();local w,h=UIParent:GetWidth(),UIParent:GetHeight()
@@ -245,10 +261,10 @@ function Flight:Apply()
     local path,label=fonts:Resolve(s)
     if not path or not fonts:ValidFont(path) then path="Fonts\\FRIZQT__.TTF";label="Friz Quadrata (fallback)" end
     local d=self.display;local small=math.max(10,math.floor(s.size*.78+.5))
-    d.timer:SetFont(path,s.size,s.outline);d.timer:SetTextColor(unpack(s.color))
+    d.timer:SetFont(path,s.size,s.outline);d.timer:SetTextColor(self:Color())
     d.dash:SetFont(path,small,s.outline);d.dash:SetTextColor(.62,.62,.62)
     d.text:SetFont(path,small,s.outline);d.text:SetTextColor(.92,.92,.92)
-    d.bar:SetColor(unpack(s.color))
+    d.bar:SetColor(self:Color())
     d.measuredFor=nil
     -- Behind game windows; on top only while you preview and move it.
     self.display:SetFrameStrata(self.preview and "HIGH" or "LOW")
@@ -263,7 +279,7 @@ function Flight:Apply()
         self.outlineChoice.label:SetText("Outline: "..(s.outline=="" and "None" or s.outline=="OUTLINE" and "Outline" or "Thick outline"))
         self.sizeLabel:SetText("Font size: "..s.size.." px")
         self.settingSize=true;self.slider:SetValue(s.size);self.settingSize=false
-        self.swatch:SetVertexColor(unpack(s.color))
+        self.colorChoice.label:SetText("Text color: "..(s.classColor and "Class color" or "Your color"))
         self.barToggle.label:SetText("Progress bar: "..(s.bar and "On" or "Off"));FT:SetSelected(self.barToggle,s.bar)
     end
 end
@@ -287,17 +303,19 @@ function Flight:Open()
         self.slider=CreateFrame("Slider",nil,frame,"OptionsSliderTemplate");self.slider:SetSize(300,18);self.slider:SetPoint("TOPLEFT",216,-192)
         self.slider:SetMinMaxValues(10,48);self.slider:SetValueStep(1);self.slider:SetObeyStepOnDrag(true)
         self.slider:SetScript("OnValueChanged",function(_,value) if not self.settingSize then self:Settings().size=math.floor(value+.5);FT:Coalesce("flightSlider",function() self:Apply() end,.05) end end)
-        local color=FT:QuietButton(frame,"Text color",492,34,"fonts");color:SetPoint("TOPLEFT",24,-228)
-        self.swatch=color:CreateTexture(nil,"ARTWORK");self.swatch:SetTexture("Interface\\Buttons\\WHITE8X8");self.swatch:SetSize(18,18);self.swatch:SetPoint("RIGHT",-12,0)
-        color:SetScript("OnClick",function()
+        local color=FT:QuietButton(frame,"Text color: Class color",492,34,"fonts");color:SetPoint("TOPLEFT",24,-228);self.colorChoice=color
+        local function pick()
             if not ColorPickerFrame then return end
-            local s=self:Settings();local old={unpack(s.color)}
-            local function change() s.color={ColorPickerFrame:GetColorRGB()};FT:Coalesce("flightColor",function() self:Apply() end,.05) end
-            local function cancel() s.color=old;self:Apply() end
+            local s=self:Settings();local old={unpack(s.color)};local wasClass=s.classColor
+            local function change() s.color={ColorPickerFrame:GetColorRGB()};s.classColor=false;FT:Coalesce("flightColor",function() self:Apply() end,.05) end
+            local function cancel() s.color=old;s.classColor=wasClass;self:Apply() end
             if ColorPickerFrame.SetupColorPickerAndShow then FT:TrackColorPicker();ColorPickerFrame:SetupColorPickerAndShow({r=old[1],g=old[2],b=old[3],hasOpacity=false,swatchFunc=change,cancelFunc=cancel})
             else ColorPickerFrame:SetColorRGB(unpack(old));ColorPickerFrame.func=change;ColorPickerFrame.cancelFunc=cancel;ColorPickerFrame:Show() end
-        end)
-        FT:Tooltip(color,"Text color","The color of the flight timer's text.")
+        end
+        FT:MakeChoice(color,{{"class","Class color","Your class color."},{"own","Your color","Pick a color yourself."}},
+            function() return self:Settings().classColor and "class" or "own" end,
+            function(v) local s=self:Settings(); if v=="class" then s.classColor=true; self:Apply() else s.classColor=false; self:Apply(); pick() end end)
+        FT:Tooltip(color,"Text color","The color of the flight timer's text and bar: your class color, or a color you pick.")
         FT:Tooltip(self.slider,"Font size","Text size of the flight timer (10 to 48).")
         self.barToggle=FT:QuietButton(frame,"",492,34,FT:FlightIcon());self.barToggle:SetPoint("TOPLEFT",24,-268)
         self.barToggle:SetScript("OnClick",function() local s=self:Settings();s.bar=not s.bar;self:Apply() end)

@@ -1324,10 +1324,11 @@ function Reminder:Refresh(cachedSpells)
             end
         end
         -- Talent points you have not spent yet.
-        if selfHere and not fighting and s.talents and UnitCharacterPoints then
-            local okP,points=pcall(UnitCharacterPoints,"player")
-            if okP and safe(points) and type(points)=="number" and points>0 then
-                local talent={name="Talent points",message=points==1 and "1 talent point to spend" or (points.." talent points to spend"),spell={icon="Interface\\Icons\\INV_Misc_Book_09"}}
+        if selfHere and not fighting and s.talents then
+            local points=self:UnspentTalentPoints()
+            if points then
+                local message=points==true and "Talent points to spend" or points==1 and "1 talent point to spend" or (points.." talent points to spend")
+                local talent={name="Talent points",message=message,spell={icon="Interface\\Icons\\INV_Misc_Book_09"}}
                 self.missing[#self.missing+1]=talent; styleKeys[talent]="talents"
             end
         end
@@ -2312,7 +2313,7 @@ function Reminder:Build()
         self.rows={}
         self.kindHeads={}
         for i=1,12 do
-            local h=FT:Label(detail,"",14,true); FT:SectionHeading(h,nil,320,18); h:Hide(); self.kindHeads[i]=h
+            local h=FT:Label(detail,"",14,true); FT:SectionHeading(h,nil,nil,18,472); h:Hide(); self.kindHeads[i]=h
         end
         for i=1,12 do
             local b=pane(FT:QuietButton(detail,"",232,32,"welcome"))
@@ -2523,8 +2524,37 @@ for key,name in pairs(pages) do
     end
 end
 -- Talents changed: read the trees again on the next look.
+-- Unspent talent points: a number, true (some, count unknown) or nil.
+-- WoW: Forever's talents are a trait tree (C_ClassTalents / C_Traits, like
+-- retail): UnitCharacterPoints stays 0 there (1.8.0 fix: no reminder after a
+-- level up). The game's own talent button asks HasUnspentTalentPoints.
+function Reminder:UnspentTalentPoints()
+    local CT=C_ClassTalents
+    if CT and CT.HasUnspentTalentPoints then
+        local ok,has=pcall(CT.HasUnspentTalentPoints)
+        if ok and safe(has) and has~=nil then
+            if not has then return nil end
+            -- How many: the tree's talent currency, when the game tells.
+            local okC,configID=pcall(function() return CT.GetActiveConfigID and CT.GetActiveConfigID() end)
+            local okT,treeID=pcall(function() return C_Traits and C_Traits.GetConfigInfo and okC and configID and (C_Traits.GetConfigInfo(configID) or {}).treeIDs[1] end)
+            if okC and configID and okT and treeID and C_Traits.GetTreeCurrencyInfo then
+                local okI,infos=pcall(C_Traits.GetTreeCurrencyInfo,configID,treeID,false)
+                local total=0
+                if okI and type(infos)=="table" then
+                    for _,c in ipairs(infos) do if type(c)=="table" and safe(c.quantity) and type(c.quantity)=="number" and c.quantity>0 then total=total+c.quantity end end
+                end
+                if total>0 then return total end
+            end
+            return true
+        end
+    end
+    if UnitCharacterPoints then
+        local ok,points=pcall(UnitCharacterPoints,"player")
+        if ok and safe(points) and type(points)=="number" and points>0 then return points end
+    end
+end
 local talentEvents=CreateFrame("Frame")
-for _,event in ipairs({"PLAYER_ENTERING_WORLD","SPELLS_CHANGED","PLAYER_TALENT_UPDATE","CHARACTER_POINTS_CHANGED","ACTIVE_TALENT_GROUP_CHANGED","PLAYER_LEVEL_UP","PLAYER_SPECIALIZATION_CHANGED","TRAIT_CONFIG_UPDATED"}) do pcall(talentEvents.RegisterEvent,talentEvents,event) end
+for _,event in ipairs({"PLAYER_ENTERING_WORLD","SPELLS_CHANGED","PLAYER_TALENT_UPDATE","CHARACTER_POINTS_CHANGED","ACTIVE_TALENT_GROUP_CHANGED","PLAYER_LEVEL_UP","PLAYER_SPECIALIZATION_CHANGED","TRAIT_CONFIG_UPDATED","TRAIT_TREE_CURRENCY_INFO_UPDATED"}) do pcall(talentEvents.RegisterEvent,talentEvents,event) end
 talentEvents:SetScript("OnEvent",function() Reminder.specCache=nil end)
 -- Food in the bags is read again after the bags change (only when the food
 -- reminders are on, and a moment after the last change).

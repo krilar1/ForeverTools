@@ -6,11 +6,11 @@ local function profiles() FT:OpenModule("Profiles") end
 local index={
     {"Macros","macro builder templates ranks mouseover combo","MacroForge","macros"},
     {"Buff reminders","self buff reminder missing buffs weapon enchant rage mana energy power shout enough","BuffReminder","buffs"},
-    {"Group buff reminders","group party raid dungeon buffs missing","BuffReminder","party"},
-    {"Where reminders show","reminder show in open world city cities inn dungeon raid pvp battleground arena condition","BuffReminder","buffs"},
-    {"Low-rank alerts","rank downrank low rank buffs trainer","BuffReminder","buffs"},
-    {"Low-rank marker on action bars","rank downrank marker action bar outdated","BuffReminder","buffs"},
-    {"Ignore rank 1","rank one downrank","BuffReminder","buffs"},
+    {"Group buff reminders","group party raid dungeon buffs missing","BuffGroup","party",find="Group reminders"},
+    {"Where reminders show","reminder show in open world city cities inn dungeon raid pvp battleground arena condition","BuffReminder","buffs",find="Show in"},
+    {"Low-rank alerts","rank downrank low rank buffs trainer","BuffRanks","buffs",find="Low-rank alerts"},
+    {"Low-rank marker on action bars","rank downrank marker action bar outdated","BuffRanks","buffs",find="Marker on bars"},
+    {"Ignore rank 1","rank one downrank","BuffRanks","buffs",find="Ignore rank 1"},
     {"FPS counter","fps frames framerate counter performance","QualityOfLife","fps"},
     {"Appearance","appearance look fonts colors colours theme","Appearance","skins"},
     {"Fonts","font fonts manager size outline text inter","FontManager","fonts"},
@@ -22,13 +22,13 @@ local index={
     {"Skins","dark mode darkmode skin border outline action bars buttons buffs debuffs bags micro menu minimap gryphons totem stance xp reputation player target focus frame cast bar swing timer weapon tooltip tooltips dialog npc gossip quest merchant vendor trade mail trainer flight loot popup parchment pvp trinket nearby enemies enemy alert battleground timer unit frames groups","IconStyles","skins"},
     {"Chat","chat social tabs side buttons input box","Chat","chat"},
     {"Chat font","chat font size outline","Chat","chat"},
-    {"Clickable chat links","url link links copy web address","Chat","chat"},
+    {"Clickable chat links","url link links copy web address","Chat","chat",find="Clickable links"},
     {"Tooltip","tooltip target guild health bar position move font","Tooltip","tooltip"},
     {"Targeted by","targeted by who targets me targeting tooltip raid battleground enemies","Tooltip","tooltip"},
     {"Tooltip IDs","spell id item id quest achievement ids","Tooltip","spellID"},
-    {"Tooltip layout","tooltip layout order name race class level guild faction target line preview builder","Tooltip","tooltip"},
-    {"Faction icon or text","faction icon text horde alliance badge color tooltip","Tooltip","tooltip"},
-    {"Faction-colored guild name","guild color horde alliance faction tooltip","Tooltip","tooltip"},
+    {"Tooltip layout","tooltip layout order name race class level guild faction target line preview builder","Tooltip","tooltip",find="Layout"},
+    {"Faction icon or text","faction icon text horde alliance badge color tooltip","Tooltip","tooltip",find="Faction"},
+    {"Faction-colored guild name","guild color horde alliance faction tooltip","Tooltip","tooltip",find="Guild in faction color"},
     {"Guild rank","guild rank officer member tooltip","Tooltip","tooltip"},
     {"Mouse-wheel casting","mouse wheel scroll casting mouseover bindings keybind custom keybinds","CustomKeybinds","keybind"},
     {"System","system settings general merchant","System","generic"},
@@ -42,17 +42,19 @@ local index={
     {"Move elements","move elements movers unlock drag frames position anchors","Movers","move"},
     {"Macro guide","macro guide help conditions mouseover focus castsequence modifier shift stance stopcasting startattack examples syntax how to write macros","MacroGuide","INV_Misc_Book_03"},
     {"Move game windows","moveall move anything windows drag character frame spellbook talents calendar quest log social bank vendor mailbox trainer professions reset position blizzard frames world refresh notice shard progress bar","MoveWindows","INV_Misc_Map_01"},
-    {"First-time setup","setup wizard preset welcome start","SystemGeneral","INV_Misc_Book_09"},
+    {"First-time setup","setup wizard preset welcome start","SystemGeneral","INV_Misc_Book_09",find="First-time tour"},
     {"Reset all settings","reset defaults restore clear","SystemGeneral","reset"},
     {"ForeverTools minimap button","minimap icon button","SystemMinimap","map"},
     {"Minimap coordinates","coordinates coords position","SystemMinimap","map"},
-    {"Reagent reminder (low on candles, Ankh, runes)","reagent reagents candle candles ankh rune runes teleport portal seed seeds powder poison poisons vendor buy low city inn","BuffReminder","buffs"},
+    {"Reagent reminder (low on candles, Ankh, runes)","reagent reagents candle candles ankh rune runes teleport portal seed seeds powder poison poisons vendor buy low city inn","BuffReminder","buffs",find="Reagents"},
+    {"Stealth shadows","stealth prowl shadowmeld vignette shadow dark screen edges hidden rogue druid","SystemStealth","Spell_Shadow_Twilight",find="Shadows while stealthed"},
     {"Poised glow on energy bar","poised energy bar glow ready rogue druid cat cost cheaper opener electric spark","SystemPoised","Spell_Nature_LightningShield"},
-    {"Talent point reminder","talent talents points unspent spend level leveling","BuffReminder","buffs"},
-    {"Camp items reminder (tent, sleeping bag)","tent sleeping bag cozy camp camping campfire rested well-rested boosted rest bonus xp experience leveling","BuffReminder","buffs"},
+    {"Talent point reminder","talent talents points unspent spend level leveling","BuffReminder","buffs",find="Talent points"},
+    {"Camp items reminder (tent, sleeping bag)","tent sleeping bag cozy camp camping campfire rested well-rested boosted rest bonus xp experience leveling","BuffReminder","buffs",find="Camp items"},
     {"Move elements in the game menu","game menu escape esc button move elements","SystemGeneral","general"},
-    {"Rings of addon minimap buttons","minimap ring rings gold dark addon button border","SystemMinimap","map"},
-    {"Keep minimap buttons outside the group","minimap keep exclude outside group button journal single","SystemMinimap","map"},
+    {"Rings of addon minimap buttons","minimap ring rings gold dark addon button border","SystemMinimap","map",find="Rings in the group"},
+    {"Keep minimap buttons outside the group","minimap keep exclude outside group button journal single","SystemMinimap","map",find="Keep on the minimap"},
+    {"Travel points on the world map","map world zeppelin zeppelins boat boats ship tram deeprun portal travel dock dungeon dungeons raid raids entrance entrances instance pins airship flight master flight path taxi","SystemMinimap","map",find="Boats, zeppelins and tram"},
     {"Group minimap buttons","minimap icons collect gather addon buttons menu horizontal vertical row column","SystemMinimap","map"},
     {"Set role when joining a group","role tank healer damage group auto","SystemGameplay","Ability_Warrior_DefensiveStance"},
     {"Interrupt bar","interrupt kick pummel shield bash earth shock counterspell hammer of justice silence spell lock bash cooldown party raid group tracker announce say chat message kicked","Interrupts","Ability_Kick"},
@@ -63,9 +65,9 @@ local index={
     {"Flight timer","flight taxi flying countdown timer","FlightTimer","Ability_Mount_Wyvern_01"},
     {"Leveling stats","xp experience per hour time to level kills leveling rested background","Leveling","Spell_ChargePositive"},
     {"Faster looting","fast loot looting auto loot speed quick corpse","SystemMerchant","INV_Misc_Bag_10"},
-    {"Soft reserves (custom)","soft reserve sr softres reserves raid loot import guild website /ft sr","SoftRes","INV_Misc_Note_06"},
+    {"Soft reserves (custom)","soft reserve sr softres reserves raid loot import guild website /ft sr","SoftRes","INV_Misc_Note_06",find="Soft reserves"},
     {"Auto-sell grey items","vendor merchant sell junk grey gray","SystemMerchant","INV_Misc_Coin_05"},
-    {"Poison reminder","rogue poison weapon main hand off hand missing reminder","BuffReminder","Ability_Poisons"},
+    {"Poison reminder","rogue poison weapon main hand off hand missing reminder","BuffReminder","Ability_Poisons",find="Main hand"},
     {"Show key when interface is hidden","hide show interface ui alt-z key hint message screenshot","SystemGeneral","INV_Misc_Eye_01"},
     {"Auto-repair","vendor merchant repair durability guild funds","SystemMerchant","Trade_BlackSmithing"},
     {"Show Lua errors","lua errors script errors troubleshooting","SystemGeneral","errors"},
@@ -78,22 +80,22 @@ local index={
     {"Icons for unlearned spells","icon unlearned spell level 1 bars question mark macro","MacroSettings","macros"},
     {"Quest tracker at login","quest objectives tracker collapsed closed open hide hidden login reload","SystemQuests","INV_Misc_Note_01"},
     {"Death glow","death glow ghost dead grey gray screen effect ffxdeath bloom","SystemDeath","Spell_Holy_Resurrection"},
-    {"Buff notice look","buff reminder style look icon only icon text bar size color outline transparency pulse own position weakaura","BuffReminder","buffs"},
-    {"Food buff reminder","food well fed eat buff missing xp experience kills leveling reminder","BuffReminder","buffs"},
+    {"Buff notice look","buff reminder style look icon only icon text bar size color outline transparency pulse own position weakaura","BuffLook","buffs",find="Look"},
+    {"Food buff reminder","food well fed eat buff missing xp experience kills leveling reminder","BuffReminder","buffs",find="XP food"},
     {"Always-sell marks","mark item always sell autosell auto sell merchant vendor hotkey key coin junk list","SellMarks","INV_Misc_Coin_01"},
     {"Action bars on mouseover","mouseover fade hide action bar bars show hover hidden","ActionFade","Spell_Holy_Heal"},
     {"Item locks","lock item protect padlock keep safe delete mail trade sell merchant vendor hotkey key list","ItemLock","INV_Misc_Key_03"},
     {"Show your target on the minimap","minimap target tracking track arrow dot where is my target","SystemMinimap","Ability_Hunter_SniperShot"},
     {"Extra game options","sharpness sharpen sharp grass foliage ground clutter density distance weather rain snow terrain detail lod scenery glow bloom spell queue window cvar console graphics","GameTweaks","INV_Misc_Spyglass_03"},
-    {"Update macros (new poisons, mana gems, weapons)","update macros new poison rank mana gem weapon swap equipslot ask automatically sinister strike backstab ambush dagger sword","MacroSettings","macros"},
+    {"Update macros (new poisons, mana gems, weapons)","update macros new poison rank mana gem weapon swap equipslot ask automatically sinister strike backstab ambush dagger sword","MacroSettings","macros",find="Update macros"},
     {"Equip an item in a macro","equipslot equip weapon swap switch macro gear item slot","MacroForge","macros"},
-    {"Buff reminders in combat","combat fight battle shout remind in combat warrior rage buff notice during combat","BuffReminder","buffs"},
-    {"Buff notice timer","hide notice after seconds timer fade reminder","BuffReminder","buffs"},
-    {"Skin templates","skin template save look preset theme rename delete","IconStyles","skins"},
+    {"Buff reminders in combat","combat fight battle shout remind in combat warrior rage buff notice during combat","BuffReminder","buffs",find="In combat"},
+    {"Buff notice timer","hide notice after seconds timer fade reminder","BuffLook","buffs",find="Hide notice after"},
+    {"Skin templates","skin template save look preset theme rename delete","IconStyles","skins",find="Apply template to all areas"},
     {"Rare alerts","rare elite spawn alert notice sound vignette","RareAlert","Ability_Hunter_SniperShot"},
     {"Threat meter","threat aggro tank meter percent target portrait damage meter","Threat","Ability_Warrior_DefensiveStance"},
     {"Loot and merchant","merchant vendor sell repair loot","SystemMerchant","INV_Misc_Coin_02"},
-    {"Damage meter font","damage meter font text size outline dps","FontManager","fonts"},
+    {"Damage meter font","damage meter font text size outline dps","FontManager","fonts",find="Damage meter"},
     {"Combat","combat alerts threat rare totems role","SystemCombat","Ability_Warrior_DefensiveStance"},
     {"PvP","pvp battleground bg arena queue","PvP","INV_BannerPVP_01"},
     {"Bags","bags bag bank banker dialog gossip skip gold money alts characters baganator bank view inventory","BagsHub","INV_Misc_Bag_08"},
@@ -101,7 +103,7 @@ local index={
     {"Quivers and soul bags on their own row","quiver ammo pouch soul bag shard herb reagent special bag row line combined hide","BagsGeneral","INV_Misc_Quiver_02"},
     {"Bank view","bank banker view remote alts other characters bags","BagsGeneral","INV_Misc_Bag_08"},
     {"Item counts","item count counts how many alts bank guild bank warband tooltip inventory","ItemCounts","INV_Misc_Note_04"},
-    {"Characters (bags)","characters alts forget remember bags gold","BagsCharacters","character"},
+    {"Characters (bags)","characters alts forget remember bags gold","BagsCharacters","character",find="Remember my characters"},
     {"Bag order","bag order sort sorting layout reverse flip direction corner clean up cleanup new items loot backpack last bag","BagsOrder","INV_Misc_Bag_10"},
     {"Enemy alerts","stealth rogue druid prowl vanish shadowmeld invisible enemy alert warning pvp spy gank kill death tracker kd wins losses score","EnemyAlerts","Ability_Stealth"},
     {"Marked players","mark marked kos kill on sight kill-list killlist guild enemy player grudge rival pvp alert by name","EnemyMarks","Ability_Hunter_SniperShot"},
@@ -113,11 +115,11 @@ local index={
     {"Battleground timer","battleground bg queue pop enter timer countdown time left invitation pvp","QueueTimer","INV_Misc_PocketWatch_01"},
     {"Smart interact key","interact target key restedxp rxp quest item keybind one key","SmartKey","INV_Misc_Key_10"},
     {"Cooldown reminders","cooldown racial trinket reminder use elite rare pull blood fury berserking","CooldownReminder","buffs"},
-    {"Leveling stats line up","leveling xp align left right center edge move","Leveling","Spell_ChargePositive"},
-    {"Eat & Drink macro","food water eat drink mage conjured macro","MacroForge","macros"},
+    {"Leveling stats line up","leveling xp align left right center edge move","Leveling","Spell_ChargePositive",find="Line up"},
+    {"Eat & Drink macro","food water eat drink mage conjured macro","MacroForge","macros",find="Eat & Drink"},
     {"Hidden macros","hide macro hidden filter blacklist show again restore","MacroHidden","macros"},
     {"PvP macros","pvp macros focus mouseover sap blind polymorph fear kick interrupt counterspell pummel opener cheap shot stance charge intercept ice block powershift arena battleground","MacroPvP","Ability_Warrior_Challange"},
-    {"Make room for macros","make room full macro slots delete add all space","MacroSettings","macros"},
+    {"Make room for macros","make room full macro slots delete add all space","MacroSettings","macros",find="Delete Character macros"},
     {"Macro placements","macro action bar placement slots layout profile save","\001profiles","macros"},
     {"Profile for new characters","new character profile alt","\001profiles","profiles"},
     {"Default settings","default reset blizzard fresh start clean profile","\001profiles","reset"},
@@ -144,7 +146,7 @@ function Search:AddPageSettings()
     local G=FT.modules.GameTweaks
     for _,o in ipairs(G and G.options or {}) do
         if type(o.title)=="string" and not known(o.title) then
-            index[#index+1]={o.title,((o.tip or "").." "..(o.cvar or "").." game option"):lower(),"GameTweaks",o.icon or "INV_Misc_Spyglass_03",find=o.title,sub="Extra game options"}
+            index[#index+1]={o.title,((o.tip or "").." "..(o.cvar or "").." game option"):lower(),"GameTweaks",o.icon or "INV_Misc_Spyglass_03",find=o.title,tab=o.section,sub="Extra game options"}
         end
     end
     -- Ready-made macros (Generic), by name: opens Macros.
@@ -152,7 +154,7 @@ function Search:AddPageSettings()
     local okG,generic=pcall(function() return M and M:GenericEntries() end)
     for _,e in ipairs(okG and type(generic)=="table" and generic or {}) do
         if type(e.name)=="string" and not known(e.name.." macro") then
-            index[#index+1]={e.name.." macro",("macro generic "..(e.note or "")):lower(),"MacroForge","macros",sub="Macros"}
+            index[#index+1]={e.name.." macro",("macro generic "..(e.note or "")):lower(),"MacroGeneric","macros",find=e.name,sub="Macros"}
         end
     end
     local sys=FT.modules.System
@@ -198,6 +200,7 @@ function Search:Open(i)
     C_Timer.After(.15,function()
         local m=FT.modules[entry[3]]
         local root=(m and m.frame) or (entry[3]=="\001profiles" and FT.modules.Profiles and FT.modules.Profiles.frame)
+        if entry.tab and m and m.ShowSection then m:ShowSection(entry.tab) end
         if root and root:IsShown() then FT:FocusSetting(root,find) end
     end)
 end

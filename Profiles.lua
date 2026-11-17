@@ -60,7 +60,7 @@ end
 -- the character and are never rewritten by loading an appearance profile.
 local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","macroPoisonConfirm","macroUpdates","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish","enemyCooldowns","actionFade"}
 -- Every module that must redraw after settings change (load, login, reset).
-local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey","Totems","DruidMana","SellMarks","QueueTimer","Trinkets","AutoRelease","PersonalResource","Interrupts","Bags","Enemies","Diminish","EnemyCooldowns"}
+local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey","Totems","DruidMana","SellMarks","QueueTimer","Trinkets","AutoRelease","PersonalResource","Interrupts","Bags","Enemies","Diminish","EnemyCooldowns","MapPins"}
 local function copy(value)
     if type(value) ~= "table" then return value end
     local result={}; for k,v in pairs(value) do result[k]=copy(v) end; return result
@@ -1429,7 +1429,7 @@ function Profiles:StrictImport(data)
     if not check(result.trinkets,{enabled="boolean",vertical="boolean",numbers="boolean",mouseover="boolean",hideEmpty="boolean",size="number",x="number",y="number",locked="boolean"}) then return nil,"Invalid trinket menu settings." end
     if not check(result.bags,{skipBank="boolean",rows="boolean",gold="boolean",view="boolean",counts="boolean",locked="boolean",buttons="boolean",countSplit="boolean",countSelf="boolean",countGuild="boolean",countShift="boolean",countSpacer="boolean",countFullNames="boolean",fullNamesOn="boolean",countStyle="string",countPlace="string",bagX="number",bagY="number",bankX="number",bankY="number",order="string",insert="string",cleanup="string"}) then return nil,"Invalid bag settings." end
     if not check(result.enemies,{kd="boolean",stealth="boolean",fade="boolean",marks="boolean",nearby="boolean",instances="boolean",sound="boolean",flash="boolean",markTooltip="boolean",size="number",nearSize="number",nearTime="number",x="number",y="number",nearX="number",nearY="number",nearDock="string",nearCollapsed="boolean",nearShowEmpty="boolean",nearAlong="number",nearCorner="string",nearRows="number",nearFade="boolean"}) then return nil,"Invalid enemy alert settings." end
-    if not check(result.flightTimer,{enabled="boolean",font="string",size="number",outline="string",color="table",x="number",y="number",bar="boolean"}) then return nil,"Invalid flight timer settings." end
+    if not check(result.flightTimer,{enabled="boolean",font="string",size="number",outline="string",color="table",x="number",y="number",bar="boolean",classColor="boolean"}) then return nil,"Invalid flight timer settings." end
     if not check(result.lootRoll,{x="number",y="number",custom="boolean"}) then return nil,"Invalid loot-roll position." end
     if not check(result.leveling,{enabled="boolean",progress="boolean",rested="boolean",perHour="boolean",timeToLevel="boolean",kills="boolean",tooltip="boolean",fontSize="number",x="number",y="number",screenWidth="number",screenHeight="number",layout="string",order="table",background="boolean",backgroundColor="table",backgroundAlpha="number",align="string"}) then return nil,"Invalid leveling settings." end
     if result.leveling and result.leveling.backgroundColor then
@@ -1477,6 +1477,7 @@ function Profiles:StrictImport(data)
         end
     end
     local objectiveModes={collapsed=true,open=true,hidden=true}
+    local stealthStrengths={light=true,medium=true,strong=true}
     -- Key text nudge (System > Keybind tools): points left/right and up/down.
     local systemNumbers={keyX=true,keyY=true}
     for _,key in ipairs({"unitColors","system"}) do
@@ -1485,6 +1486,7 @@ function Profiles:StrictImport(data)
             for name,v in pairs(t) do
                 -- Quest objectives is the one choice (not a switch) stored with the system toggles.
                 if key=="system" and name=="objectives" then if not objectiveModes[v] then t[name]=nil end
+                elseif key=="system" and name=="stealthStrength" then if not stealthStrengths[v] then t[name]=nil end
                 elseif key=="system" and systemNumbers[name] then if type(v)~="number" or v~=v or math.abs(v)>12 then t[name]=nil end
                 elseif type(v)~="boolean" then t[name]=nil end
             end

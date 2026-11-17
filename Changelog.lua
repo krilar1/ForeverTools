@@ -6,6 +6,16 @@ FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
     -- try={get,set}: a "Try it" button that switches the new setting on and off
     -- again; open="Module": a "Show me" button. classes: only those classes see it.
+    {version="1.8.0",notes={
+        {icon="Spell_Shadow_Twilight",title="Stealth shadows",text="Dark edges while stealthed.",classes={ROGUE=true,DRUID=true},where="Combat > Stealth shadows",
+            try={get=function() return FT.modules.System:Settings().stealthShade==true end,set=function(on) FT.modules.System:Settings().stealthShade=on; FT.modules.System:Apply() end}},
+        {icon="INV_Misc_Map_01",title="Travel points on the map",text="Boats, zeppelins, dungeons.",where="World map filter, or System > Minimap",
+            try={get=function() return FT.modules.System:Settings().mapTransport==true end,set=function(on) local s=FT.modules.System:Settings(); s.mapTransport=on; s.mapDungeons=on; if FT.MapPins then FT.MapPins:Apply() end end}},
+        {icon="Ability_Mount_Wyvern_01",title="Class-colored flight timer",text="Your class color, or your own.",open="FlightTimer"},
+        {icon="INV_Misc_Book_09",title="Talent reminder fixed",text="Shows after a level up.",where="Buff reminders > Your buffs",
+            try={get=function() return FT.modules.BuffReminder:Settings().talents==true end,set=function(on) local s=FT.modules.BuffReminder:Settings(); s.talents=on; if on then s.enabled=true end; FT.modules.BuffReminder:Apply() end}},
+        {icon="Trade_BlackSmithing",title="Fixes",text="Search, section bars, game options."},
+    }},
     {version="1.7.0",notes={
         {icon="Spell_Nature_LightningShield",title="Poised glow",text="Your energy bar lights up when Poised is ready.",classes={ROGUE=true,DRUID=true},where="Combat > Poised",
             try={get=function() return FT.modules.System:Settings().poisedGlow==true end,set=function(on) FT.modules.System:Settings().poisedGlow=on; FT.modules.System:Apply() end}},

@@ -1,3 +1,18 @@
+# ForeverTools 1.8.0 (2026-11-17)
+
+## New
+- **Stealth shadows** (Combat → Stealth shadows, rogues and druids, off at first): while you are in Stealth, Prowl or Shadowmeld, the edges of your screen sink into a dark shadow, so you always know you are hidden. Light, Medium or Strong; with Drifting shadows the edges slowly breathe in and out. Behind your whole interface, works in combat. Preview at the top of the page.
+- **Travel points on the world map** (the map's filter menu, or System → Minimap → World map; off at first): boats, zeppelins, airships and the Deeprun Tram, each saying where it goes, including Forever's new routes (Stormwind Harbor, the Menethil–Southshore–Auberdine loop, Steamwheedle Port–Powderfuse Port, Zephras Isle). Dungeon and raid entrances with their level ranges, the new dungeons included. Flight masters on maps where the game doesn't show them. Only your own faction's.
+- **Flight timer in your class color:** the timer and its bar use your class color by default. Text color: Class color or Your color. If you kept the old default color you are moved to class color; a color you picked stays.
+- **More flight times:** WoW: Forever's own times added (Rog'mar and more), so more flights show a countdown on the first trip.
+
+## Fixes
+- **Talent point reminder never showed.** WoW: Forever's talents work like the newer trees, and the reminder asked the old way. It now asks like the game's own talent button and shows after a level up.
+- **Section bars ran past the window** (Your buffs → Weapon poisons, the welcome window). Every section bar now stops where the rows end. A new check covers every page for every class.
+- **Search now points at the right setting:** 27 results (Talent point reminder, Low-rank alerts, Food buff reminder...) opened the page without highlighting anything, some on the wrong page. Extra game options also switch to the right tab, and ready-made macros open the Generic page.
+- **Extra game options: Lua error** when hovering the reset button of an on/off option (Steady camera).
+- **Extra game options: distance defaults** (grass, terrain, horizon, weather...) now follow your graphics setting instead of the engine's numbers.
+
 # ForeverTools 1.7.0 (2026-11-16)
 
 ## Changes
