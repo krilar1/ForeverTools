@@ -1,9 +1,94 @@
 local _,FT=...
 local System={}
--- "Hide other addons' login messages" is gone: hiding a chat line means
--- standing in for the chat window's AddMessage, and the game then counts its
--- chat as touched by ForeverTools until /reload (whispers you sent could be
--- blocked). Putting the game's own back does not undo that.
+-- Quiet login (System > General): other addons' print() lines are left out
+-- of chat from load until 10 s after you enter the world. The chat windows
+-- are never touched (standing in for AddMessage once got whispers blocked,
+-- 1.6.0): only the game's print handler is swapped for that time, then put
+-- back. Which addon printed is read from the call stack; addons you pick
+-- still show. Lines an addon writes straight into a chat window still show.
+local quiet={held={},hidden={}}
+local function quietOn()
+    if not FT.dbReady or type(FT.db)~="table" then return nil end
+    local s=type(FT.db.system)=="table" and FT.db.system or {}
+    return s.quietLogin~=false, type(s.quietShow)=="table" and s.quietShow or {}
+end
+local function printer()
+    if not debugstack then return end
+    local ok,stack=pcall(debugstack,3,20,0)
+    if not ok or type(stack)~="string" then return end
+    for name in stack:gmatch("[Aa]dd[Oo]ns[/\\]([^/\\]+)[/\\]") do
+        if name~=(FT.name or "ForeverTools") and not name:find("^Blizzard_") then return name end
+    end
+end
+local function quietHandler(...)
+    local original=quiet.original
+    if quiet.done or not original then if original then return original(...) end return end
+    local name=printer()
+    if not name then return original(...) end
+    local on,show=quietOn()
+    if on==nil then
+        -- Settings not loaded yet: keep the line until they are.
+        quiet.held[#quiet.held+1]={name=name,n=select("#",...),...}; return
+    end
+    if not on or show[name] then return original(...) end
+    quiet.hidden[name]=(quiet.hidden[name] or 0)+1
+end
+function System:QuietStart()
+    if quiet.original or not setprinthandler or not getprinthandler then return end
+    local ok,current=pcall(getprinthandler)
+    if not ok or type(current)~="function" then return end
+    quiet.original=current
+    pcall(setprinthandler,quietHandler)
+end
+-- Settings loaded: lines kept until now go out, unless hidden.
+function System:QuietReady()
+    local held=quiet.held; quiet.held={}
+    local on,show=quietOn()
+    for _,line in ipairs(held) do
+        if (not on or show[line.name]) and quiet.original then pcall(quiet.original,unpack(line,1,line.n))
+        else quiet.hidden[line.name]=(quiet.hidden[line.name] or 0)+1 end
+    end
+    if on==false then self:QuietStop() end
+end
+function System:QuietStop()
+    if quiet.done then return end
+    quiet.done=true
+    if #quiet.held>0 then self:QuietReady() end
+    -- Only put the game's own back if nothing replaced ours since; else ours passes lines on.
+    if quiet.original and getprinthandler and getprinthandler()==quietHandler then pcall(setprinthandler,quiet.original) end
+    if FT.db then FT.db.quietHidden=quiet.hidden end
+end
+-- Addons for the "still show" list: every loaded one, the hidden first.
+function System:QuietChoices()
+    local show=self:Settings().quietShow or {}
+    local last=FT.db.quietHidden or {}
+    local list={}
+    local count=C_AddOns and C_AddOns.GetNumAddOns and C_AddOns.GetNumAddOns() or 0
+    for i=1,count do
+        local name,title=C_AddOns.GetAddOnInfo(i)
+        if name and name~=(FT.name or "ForeverTools") and C_AddOns.IsAddOnLoaded(i) then
+            local nice=(type(title)=="string" and title~="" and title:gsub("|c%x%x%x%x%x%x%x%x",""):gsub("|r","")) or name
+            local n=last[name]
+            list[#list+1]={value=name,sortHidden=n and 0 or 1,label=nice..(show[name] and "  |cff7fd98a(shown)|r" or (n and ("  |cffb4aa96(hid "..n..(n==1 and " line" or " lines")..")|r") or "")),
+                tooltipTitle=nice,tooltip=show[name] and "Its login lines show. Click to hide them." or "Its login lines are hidden. Click to show them."}
+        end
+    end
+    table.sort(list,function(a,b) if a.sortHidden~=b.sortHidden then return a.sortHidden<b.sortHidden end return a.label<b.label end)
+    if #list==0 then list[1]={value="",label="No other addons loaded",disabled=true} end
+    return list
+end
+System:QuietStart()
+do
+    local f=CreateFrame("Frame"); f:RegisterEvent("ADDON_LOADED"); f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:SetScript("OnEvent",function(owner,event,name)
+        if event=="ADDON_LOADED" then
+            if name==(FT.name or "ForeverTools") then C_Timer.After(0,function() System:QuietReady() end) end
+            return
+        end
+        owner:UnregisterAllEvents()
+        C_Timer.After(10,function() System:QuietStop() end)
+    end)
+end
 -- /ft chatdebug: is the game's chat still its own? Run it when whispers
 -- stop going out, before /reload: "tainted by" names who touched it.
 function System:ChatDebug()
@@ -64,6 +149,7 @@ function System:Settings()
     -- Forever shows coordinates under the minimap by default; match that.
     if s.coordinates==nil then s.coordinates=true end
     if type(s.quietNoControl)~="boolean" then s.quietNoControl=true end
+    if type(s.quietLogin)~="boolean" then s.quietLogin=true end
     -- New version notice: on at first (Lars, 2026-11-09).
     if type(s.versionCheck)~="boolean" then s.versionCheck=true end
     if type(s.gameMenuButton)~="boolean" then s.gameMenuButton=true end
@@ -82,11 +168,92 @@ function System:Apply()
     end
     FT:UpdateMinimap(); if FT.modules.MinimapIcons then FT.modules.MinimapIcons:Apply() end
     self:ApplyErrors()
+    self:ApplyCombatLog()
     if FT.modules.KeyText then FT.modules.KeyText:Apply() end
     if FT.modules.SoftRes then FT.modules.SoftRes:Apply() end
     if FT.modules.MailAlts then FT.modules.MailAlts:Apply() end
     if FT.modules.ItemLock then FT.modules.ItemLock:Apply() end
     self:Refresh()
+end
+-- Combat logging (System > Combat logging). The game's own combat log
+-- (LoggingCombat, the same as /combatlog) with advanced logging on, which
+-- Warcraft Logs needs. Automatic: on when you enter a raid (or a dungeon),
+-- off when you leave, but only a log we started ourselves is stopped; one you
+-- started by hand keeps running. Checked on zone changes only: no cost in a fight.
+function System:CanLog() return type(LoggingCombat)=="function" end
+function System:Logging()
+    if not self:CanLog() then return false end
+    local ok,on=pcall(LoggingCombat)
+    return ok and usable(on) and on==true
+end
+local function say(msg) print("|cffffd100ForeverTools:|r "..msg) end
+function System:SetLogging(on,why)
+    if not self:CanLog() then return end
+    if on then
+        -- Warcraft Logs needs advanced combat logging.
+        local set=(C_CVar and C_CVar.SetCVar) or SetCVar
+        if set and gameOption("advancedCombatLogging")~=nil and gameOption("advancedCombatLogging")~="1" then pcall(set,"advancedCombatLogging","1") end
+    end
+    if self:Logging()==on then
+        if not on then FT.db.combatLogAuto=nil end
+        return
+    end
+    pcall(LoggingCombat,on)
+    FT.db.combatLogAuto=(on and why=="auto") or nil
+    if on then say("combat logging on"..(why=="auto" and " (entered an instance)" or "")..". Saved in your game folder: _forever_\\Logs\\WoWCombatLog.")
+    else say("combat logging off"..(why=="auto" and " (left the instance)" or "")..".") end
+end
+function System:ApplyCombatLog()
+    local s=self:Settings()
+    if not self:CanLog() then return end
+    if (s.combatLog or FT.db.combatLogAuto) and not self.logEvents then
+        self.logEvents=CreateFrame("Frame")
+        for _,e in ipairs({"PLAYER_ENTERING_WORLD","ZONE_CHANGED_NEW_AREA"}) do self.logEvents:RegisterEvent(e) end
+        self.logEvents:SetScript("OnEvent",function()
+            -- The instance type settles a moment after loading.
+            FT:Coalesce("combatLogZone",function() System:CheckCombatLog() end,1)
+        end)
+    end
+    self:CheckCombatLog()
+end
+function System:CheckCombatLog()
+    local s=self:Settings()
+    local _,kind=IsInInstance()
+    local want=s.combatLog==true and (kind=="raid" or (kind=="party" and s.combatLogDungeons==true))
+    if want then
+        if not self:Logging() then self:SetLogging(true,"auto") end
+    elseif FT.db.combatLogAuto then
+        -- Only stop a log we started. "Left the instance" only when you did.
+        if self:Logging() then self:SetLogging(false,(kind==nil or kind=="none") and "auto" or "setting") else FT.db.combatLogAuto=nil end
+    end
+    self:Refresh()
+end
+-- LayerSwap (another addon) turns its hosting on at every login. On a real
+-- login (not a /reload) we switch it off through its own command, /ls off,
+-- a few seconds after it has done that. Nothing else of it is touched.
+function System:HasLayerSwap()
+    local loaded=C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("LayerSwap")
+    return loaded==true and type(SlashCmdList)=="table" and type(SlashCmdList.LAYERSWAP)=="function"
+end
+function System:LayerSwapLogin()
+    if not self:Settings().layerSwapOff or not self:HasLayerSwap() then return end
+    local db=rawget(_G,"LayerSwapDB")
+    if type(db)~="table" or db.hosting~=true then return end
+    -- Its own Host switch (Options > AddOns > LayerSwap) turns it off without
+    -- a status report in chat; /ls off is the fallback (it prints a few lines).
+    local box=rawget(_G,"LayerSwapOptionHost")
+    local click=box and box.GetScript and box:GetScript("OnClick")
+    if click and box.SetChecked then box:SetChecked(false); pcall(click,box) end
+    if db.hosting==true then pcall(SlashCmdList.LAYERSWAP,"off") end
+end
+do
+    local f=CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:SetScript("OnEvent",function(owner,_,isLogin)
+        owner:UnregisterEvent("PLAYER_ENTERING_WORLD")
+        if isLogin~=true then return end
+        C_Timer.After(5,function() if FT.dbReady then System:LayerSwapLogin() end end)
+    end)
 end
 -- Error messages (On-screen info > Error messages). With the switch on, the
 -- game's error text frame stops listening for errors and we listen instead:
@@ -131,6 +298,8 @@ end
 local pages={
     {key="SystemGeneral",sections={{"Messages","welcome"},{"Setup","setup"},{"Help","scriptErrors"}},title="General",hint="Messages, setup, reset and help.",items={
         {"welcome","Welcome message","welcome","A short \"ForeverTools loaded\" line at login."},
+        {"quietLogin","Quiet login","Spell_Holy_Silence","Other addons' \"loaded\" and version lines are left out of chat when you log in or reload. Player and game chat always shows."},
+        {"quietShow","Still show","INV_Misc_Note_01","Pick addons whose login lines you still want in chat. The list shows how many lines each one had hidden last time."},
         {"quietNoControl","Hide notices while you can't play","Ability_Mount_Wyvern_01","Notices wait on flight paths, in vehicles and cutscenes."},
         {"hiddenUIHint","Show key when interface is hidden","INV_Misc_Eye_01","Show which key brings the interface back after hiding it (Alt+Z)."},
         {"whatsNew","What's new after updates","INV_Misc_Note_05","Show what changed after an update."},
@@ -157,18 +326,17 @@ local pages={
     {key="SystemGameplay",title="Group role",hint="Your group role, set from your talents.",items={
         {"autoRole","Set role when joining a group","Ability_Warrior_DefensiveStance","Set your role from your talents when you join a group."},
     }},
-    {key="SystemPoised",title="Poised",hint="See on your energy bar when Poised is ready.",items={
-        {"poisedPreview","Preview","Spell_Lightning_LightningBolt01","Shows the glow now, without Poised, until you turn it off."},
-        {"poisedGlow","Poised glow on energy bar","Spell_Nature_LightningShield","While Poised is up (your next Energy ability costs less), sparks and twinkling stars run over your energy bar. No need to look at your buffs. Only while you target an enemy, unless you turn on the option below."},
-        {"poisedAlways","Also without an enemy target","Ability_Stealth","Shows the glow whenever Poised is up, not only while you target an enemy."},
-    }},
-    {key="SystemStealth",title="Stealth shadows",hint="The edges of your screen darken while you are stealthed.",items={
-        {"stealthPreview","Preview","Ability_Stealth","Shows the shadows now, without stealth, until you turn it off."},
-        {"stealthShade","Shadows while stealthed","Ability_Stealth","While you are in Stealth, Prowl or Shadowmeld, the edges of your screen sink into a dark shadow, so you always know you are hidden. Behind your whole interface; works in combat."},
-        {"stealthStrength","Strength","Spell_Shadow_Twilight","How dark the shadow gets."},
-        {"stealthDrift","Drifting shadows","Spell_Shadow_ShadowWard","The shadow slowly creeps in and out at the edges. Off: it stays still."},
-    }},
-    {key="SystemDeath",title="Death glow",hint="How the screen looks while you are dead or a ghost.",items={
+    {key="SystemEffects",title="Screen effects",hint="Glows and shadows on your screen.",
+        bigSections={{"Poised","poisedPreview","Your energy bar lights up when Poised is ready.","Spell_Nature_LightningShield"},
+            {"Stealth shadows","stealthPreview","The edges of your screen darken while you are stealthed.","Spell_Shadow_Twilight"},
+            {"Death glow","deathGlow","How the screen looks while you are dead or a ghost.","Spell_Holy_Resurrection"}},items={
+        {"poisedPreview","Preview","Spell_Lightning_LightningBolt01","Shows the glow now, without Poised, until you turn it off.",only={ROGUE=true,DRUID=true}},
+        {only={ROGUE=true,DRUID=true},"poisedGlow","Poised glow on energy bar","Spell_Nature_LightningShield","While Poised is up (your next Energy ability costs less), sparks and twinkling stars run over your energy bar. No need to look at your buffs. Only while you target an enemy, unless you turn on the option below."},
+        {"poisedAlways","Also without an enemy target","Ability_Stealth","Shows the glow whenever Poised is up, not only while you target an enemy.",only={ROGUE=true,DRUID=true}},
+        {"stealthPreview","Preview","Ability_Stealth","Shows the shadows now, without stealth, until you turn it off.",only={ROGUE=true,DRUID=true}},
+        {only={ROGUE=true,DRUID=true},"stealthShade","Shadows while stealthed","Ability_Stealth","While you are in Stealth, Prowl or Shadowmeld, the edges of your screen sink into a dark shadow, so you always know you are hidden. Behind your whole interface; works in combat."},
+        {"stealthStrength","Strength","Spell_Shadow_Twilight","How dark the shadow gets.",only={ROGUE=true,DRUID=true}},
+        {"stealthDrift","Drifting shadows","Spell_Shadow_ShadowWard","The shadow slowly creeps in and out at the edges. Off: it stays still.",only={ROGUE=true,DRUID=true}},
         {"deathGlow","Death glow","Spell_Holy_Resurrection","The washed-out screen while dead. The game's own setting, for all characters."},
     }},
     {key="SystemQuests",sections={{"Quest tracker","objectives"},{"Loot rolls","lootMove"}},title="Quests and loot rolls",hint="Quest tracker at login, loot-roll position.",items={
@@ -186,6 +354,14 @@ local pages={
         {"mailAlts","Mailbox: only suggest my alts","INV_Letter_15","When you type a name to send mail to, only your own characters on this realm are suggested, not guildies first. A switch next to the To: box suggests everyone again when you need to, and an arrow beside it lists your alts to pick from."},
         {"mailGold","Mailbox: gold amount as subject","INV_Misc_Coin_01","Sending only money to one of your alts fills in the subject with the amount (12g 50s). Only an empty subject is filled; type your own any time."},
     }},
+    {key="SystemCombatLog",title="Combat logging",hint="Log your fights for Warcraft Logs.",items={
+        {"combatLog","Log raids automatically","INV_Misc_Book_11","Starts the game's combat log when you enter a raid and stops it when you leave. Advanced combat logging (needed by Warcraft Logs) is turned on with it. The log is saved in your game folder: _forever_\\Logs\\WoWCombatLog. Upload it with the Warcraft Logs uploader."},
+        {"combatLogDungeons","Also in dungeons","INV_Misc_Key_10","Also log in dungeons, not only raids."},
+        {"combatLogNow","Log now","INV_Misc_Note_02","Start or stop the combat log right now, anywhere. The same as typing /combatlog."},
+    }},
+    {key="SystemAddons",title="Other addons",hint="Small fixes for other addons you use.",items={
+        {"layerSwapOff","Stop LayerSwap hosting when I log in","INV_Misc_GroupLooking","LayerSwap turns its hosting on every time you log in. With this on, ForeverTools turns it off right after you log in (the same as typing /ls off). Turn hosting on again in LayerSwap whenever you like: it stays on until you log out. A /reload changes nothing."},
+    }},
     {key="SystemErrors",title="Error messages",hint="Red text when an action fails.",items={
         {"hideErrors","Hide error messages","Ability_Rogue_Disguise","Hide the red error text (Out of range, Not enough rage...). Bag full and similar still show."},
         {"errorsInCombat","Only hide them in a fight","Ability_DualWield","Hide them only in combat."},
@@ -200,7 +376,7 @@ local pages={
     }},
 }
 System.pages=pages
-local toggles={poisedGlow=true,poisedAlways=true,poisedPreview=true,gameMenuButton=true,versionCheck=true,minimapTarget=true,hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,shortKeys=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,mailAlts=true,mailGold=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietNoControl=true,mapTransport=true,mapDungeons=true,mapFlights=true,stealthShade=true,stealthDrift=true,stealthPreview=true}
+local toggles={poisedGlow=true,poisedAlways=true,poisedPreview=true,gameMenuButton=true,versionCheck=true,minimapTarget=true,hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,shortKeys=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,mailAlts=true,mailGold=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietNoControl=true,mapTransport=true,mapDungeons=true,mapFlights=true,stealthShade=true,stealthDrift=true,stealthPreview=true,combatLog=true,combatLogDungeons=true,combatLogNow=true,layerSwapOff=true,quietLogin=true}
 -- Switches that are the game's own settings: read and written directly,
 -- never stored by ForeverTools. "Unavailable" when the game has no such setting.
 local gameOptions={scriptErrors="scriptErrors",deathGlow="ffxDeath"}
@@ -254,7 +430,9 @@ function System:Values()
     return {welcome=FT.db.welcome==true,whatsNew=s.hideWhatsNew~=true,minimap=FT.db.minimapEnabled~=false,coordinates=coords,
         minimapTarget=select(2,self:TargetTracking())==true,minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=gameOption("scriptErrors")=="1",deathGlow=gameOption("ffxDeath")~="0",
         hiddenUIHint=s.hiddenUIHint==true,poisedGlow=s.poisedGlow==true,poisedAlways=s.poisedAlways==true,poisedPreview=FT.PowerGlow and FT.PowerGlow.preview==true,autoRole=s.autoRole==true,shortKeys=s.shortKeys==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true,mailAlts=s.mailAlts==true,mailGold=s.mailGold==true,
-        hideErrors=s.hideErrors==true,errorsInCombat=s.errorsInCombat==true,quietNoControl=s.quietNoControl~=false,versionCheck=s.versionCheck~=false,gameMenuButton=s.gameMenuButton~=false,mapTransport=s.mapTransport==true,mapDungeons=s.mapDungeons==true,mapFlights=s.mapFlights==true,stealthShade=s.stealthShade==true,stealthDrift=s.stealthDrift~=false,stealthPreview=FT.StealthShade and FT.StealthShade.preview==true}
+        hideErrors=s.hideErrors==true,errorsInCombat=s.errorsInCombat==true,quietNoControl=s.quietNoControl~=false,versionCheck=s.versionCheck~=false,gameMenuButton=s.gameMenuButton~=false,mapTransport=s.mapTransport==true,mapDungeons=s.mapDungeons==true,mapFlights=s.mapFlights==true,stealthShade=s.stealthShade==true,stealthDrift=s.stealthDrift~=false,stealthPreview=FT.StealthShade and FT.StealthShade.preview==true,
+        combatLog=s.combatLog==true,combatLogDungeons=s.combatLogDungeons==true,combatLogNow=self:Logging(),
+        layerSwapOff=s.layerSwapOff==true,quietLogin=s.quietLogin~=false}
 end
 function System:Refresh()
     if not self.buttons then return end
@@ -272,6 +450,11 @@ function System:Refresh()
             button.label:SetText((key=="minimapRings" and "Rings on the minimap: " or "Rings in the group: ")..(v=="dark" and "Dark" or "Gold"))
             if key=="groupRings" then button:SetAlpha(values.minimapIcons and 1 or .45) end
         end
+        if key=="quietShow" then
+            local n=0; for _ in pairs(self:Settings().quietShow or {}) do n=n+1 end
+            button.label:SetText("Still show: "..(n==0 and "None" or (n==1 and "1 addon" or (n.." addons"))))
+            button:SetAlpha(values.quietLogin and 1 or .45)
+        end
         if key=="minimapKeep" then
             local n=0; for _ in pairs(FT.modules.MinimapIcons:Kept()) do n=n+1 end
             button.label:SetText("Keep on the minimap: "..(n==0 and "None" or (n==1 and "1 button" or (n.." buttons"))))
@@ -286,6 +469,9 @@ function System:Refresh()
         if key=="guildRepair" then button:SetAlpha(values.autoRepair and 1 or .45) end
         if key=="sellWhite" then button:SetAlpha(values.autoSell and 1 or .45) end
         if key=="errorsInCombat" then button:SetAlpha(values.hideErrors and 1 or .45) end
+        if key=="combatLogDungeons" then button:SetAlpha(values.combatLog and 1 or .45) end
+        if key=="layerSwapOff" and not self:HasLayerSwap() then button:SetAlpha(.45); button.label:SetText(button.title..": LayerSwap not installed") end
+        if key=="combatLogNow" then local ok=self:CanLog(); button:SetEnabled(ok); button:SetAlpha(ok and 1 or .45); if not ok then button.label:SetText(button.title..": Unavailable") end end
         if key=="backups" then
             button.label:SetText("Backups and restore ("..FT.modules.Backups:Count()..")")
         end
@@ -370,11 +556,21 @@ function System:Refresh()
     end
 end
 -- Settings that only work with another one on.
-local SYSTEM_NEEDS={sellWhite="autoSell",guildRepair="autoRepair",errorsInCombat="hideErrors"}
+local SYSTEM_NEEDS={sellWhite="autoSell",guildRepair="autoRepair",errorsInCombat="hideErrors",combatLogDungeons="combatLog"}
 function System:Click(key)
     if key=="minimapIcons" then FT.modules.MinimapIcons:Toggle();return end
     if key=="minimapIconsVertical" then FT.modules.MinimapIcons:ToggleVertical();return end
     if (key=="mapDungeons" or key=="mapTransport" or key=="mapFlights") and FT.MapPins then FT.MapPins:Toggle(key); self:Apply(); return end
+    if key=="quietShow" then
+        local button=self.buttons.quietShow; local s=self:Settings()
+        button.options=function() return self:QuietChoices() end
+        button.value=nil; button.menuWidth=math.max(button:GetWidth(),280)
+        button.onSelect=function(value)
+            if value=="" then return end
+            s.quietShow=s.quietShow or {}; s.quietShow[value]=not s.quietShow[value] or nil; self:Refresh()
+        end
+        FT:ShowChoices(button); return
+    end
     if key=="minimapKeep" then
         local button=self.buttons.minimapKeep; local I=FT.modules.MinimapIcons
         if I.active then I:Scan() end
@@ -449,6 +645,17 @@ function System:Click(key)
         self:Refresh();return
     end
     local s=self:Settings()
+    if key=="combatLogNow" then self:SetLogging(not self:Logging(),"manual"); self:Refresh(); return end
+    if key=="layerSwapOff" then
+        s.layerSwapOff=not (s.layerSwapOff==true); self:Refresh()
+        -- Turned on while LayerSwap is hosting: offer to switch it off now,
+        -- no login needed.
+        local db=rawget(_G,"LayerSwapDB")
+        if s.layerSwapOff and self:HasLayerSwap() and type(db)=="table" and db.hosting==true then
+            FT:Confirm("LayerSwap is hosting right now.\nTurn its hosting off now?\n(No reload needed.)",function() System:LayerSwapLogin() end)
+        end
+        return
+    end
     if key=="stealthPreview" then
         if FT.StealthShade then FT.StealthShade:TogglePreview() end
         self:Refresh(); return
@@ -471,18 +678,26 @@ function System:Click(key)
     end
     self:Apply()
 end
+-- Settings for some classes only (only={ROGUE=true}) are left out for others.
+local function forMe(entry)
+    if not entry.only then return true end
+    local _,class=UnitClass("player")
+    return class==nil or entry.only[class]==true
+end
 local function buildPage(page)
     local module={}
     function module:Open()
         if not self.frame then
-            local height=62+34+#page.items*40+22
+            local items={}
+            for _,entry in ipairs(page.items) do if forMe(entry) then items[#items+1]=entry end end
+            local height=62+34+#items*40+22
             -- As wide as the other pages of its group.
             local hub=FT.HubOf and FT:HubOf(page.key)
             local width=hub and hub.width or 520
             self.frame=FT:Window("ForeverTools"..page.key,page.title,width,height)
             local hint=FT:Label(self.frame,page.hint or "",12); hint:SetPoint("TOPLEFT",24,-66); hint:SetWidth(width-48); hint:SetTextColor(.66,.59,.48)
             if hint.SetWordWrap then hint:SetWordWrap(true) end
-            for i,entry in ipairs(page.items) do
+            for i,entry in ipairs(items) do
                 local key=entry[1]
                 local b=FT:QuietButton(self.frame,entry[2],width-48,32,entry[3]); b.title=entry[2]
                 b:SetPoint("TOPLEFT",24,-62-34-(i-1)*40); System.buttons[key]=b
@@ -536,6 +751,13 @@ local function buildPage(page)
                         function() return System:Settings().minimapIconsVertical==true end,
                         function(value) if (System:Settings().minimapIconsVertical==true)~=value then FT.modules.MinimapIcons:ToggleVertical() end end)
                 end
+            end
+            -- One header per feature on pages that hold several, when more
+            -- than one of them is for your class (else the page is just that one).
+            if page.bigSections then
+                local list={}
+                for _,sec in ipairs(page.bigSections) do if System.buttons[sec[2]] and System.buttons[sec[2]]:GetParent()==self.frame then list[#list+1]={sec[1],System.buttons[sec[2]],sec[3],sec[4]} end end
+                if #list>1 then FT:BigSections(self.frame,list,width-48) end
             end
             -- Headings between groups of settings.
             if page.sections then
@@ -848,6 +1070,13 @@ function System:TooltipLayout(tip)
     local guild,guildRank=safeCall(GetGuildInfo,unit)
     local race=safeCall(UnitRace,unit)
     local class=safeCall(UnitClass,unit)
+    -- Which line is Blizzard's level line? The one with the level number
+    -- (any language, any word order); else the one naming the race. A class
+    -- or race on a line of its own (some players' tooltips) is dropped too:
+    -- both are parts of their own.
+    local level=safeCall(UnitLevel,unit)
+    local levelNumber=(type(level)=="number" and level>0) and tostring(level) or nil
+    local function hasNumber(clean) return levelNumber and clean:find("%f[%d]"..levelNumber.."%f[%D]")~=nil end
     local rows={}; local details
     for i=1,tip:NumLines() do
         local left=_G[prefix.."TextLeft"..i]; local right=_G[prefix.."TextRight"..i]
@@ -856,13 +1085,14 @@ function System:TooltipLayout(tip)
         if text and not usable(text) then return end
         if rightText and not usable(rightText) then return end
         local clean=plain(text)
+        local isGuild=guild and (clean==guild or clean=="<"..guild..">")
         if i==1 then rows[1]={text=text,color=left.GetTextColor and {left:GetTextColor()} or {1,1,1}}
-        elseif race and clean:find(race,1,true) and not details then details=text
-        elseif clean~="" and clean~=class and not (guild and (clean==guild or clean=="<"..guild..">")) and not clean:match("^Target:") then
+        elseif not details and not isGuild and (hasNumber(clean) or clean:find("??",1,true) or (race and clean:find(race,1,true))) then details=text
+        elseif clean~="" and clean~=class and clean~=race and not isGuild and not clean:match("^Target:") then
             rows[#rows+1]={text=text,color=left.GetTextColor and {left:GetTextColor()} or {1,1,1},right=rightText,rightColor=right and right.GetTextColor and {right:GetTextColor()} or {1,1,1}}
         end
     end
-    if not rows[1] or not details then return end
+    if not rows[1] then return end
     local tipModule=FT.modules.Tooltip
     local tipSettings=tipModule:Settings()
     local heading=rows[1].text
@@ -889,30 +1119,26 @@ function System:TooltipLayout(tip)
             factionText=rows[i].text; table.remove(rows,i)
         end
     end
-    -- Split Blizzard's "Level 3 <race> <class> (Player)" line into parts.
+    -- Level, race and class are built from the unit itself, not cut out of
+    -- Blizzard's line, so they show in every language and layout. Only extra
+    -- words in brackets, such as "(Player)", are kept from the line.
     local parts={name=tipModule.hex(nameColor[1],nameColor[2],nameColor[3])..heading.."|r",faction=tipModule:FactionText(factionText and plain(factionText) or factionName,faction)}
-    local detailText=plain(details)
-    local level=safeCall(UnitLevel,unit)
-    local levelToken=(type(level)=="number" and level>0) and tostring(level) or "??"
-    local _,levelEnd=detailText:find(levelToken,1,true)
-    local label,classToken=safeCall(UnitClass,unit)
-    local rest=levelEnd and detailText:sub(levelEnd+1) or nil
-    local classStart,classEnd
-    if rest and label then classStart,classEnd=rest:find(label,1,true) end
-    if levelEnd and classStart then
-        parts.level="|cffffffff"..detailText:sub(1,levelEnd).."|r"
-        local raceText=rest:sub(1,classStart-1):match("^%s*(.-)%s*$")
-        if raceText=="" then raceText=race or "" end
-        parts.race=raceText~="" and ("|cffffffff"..raceText.."|r") or nil
-        local c=(CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS or {})[classToken]
-        local suffix=rest:sub(classEnd+1):match("^%s*(.-)%s*$")
-        parts.class=(c and tipModule.hex(c.r,c.g,c.b) or "|cffffffff")..label.."|r"
-        -- Extra words such as "(Player)" stay at the end of the level line.
-        parts.suffix=suffix~="" and ("|cffffffff"..suffix.."|r") or nil
-    else
-        -- Unknown wording: keep Blizzard's whole line as the Level part.
-        parts.level="|cffffffff"..detailText.."|r"
+    local detailText=details and plain(details) or ""
+    local token=levelNumber
+    if not token then
+        -- Level hidden (??) or unreadable: take the number from the line, if any.
+        token=detailText:find("??",1,true) and "??" or detailText:match("%f[%d]%d+%f[%D]") or "??"
     end
+    local template=type(TOOLTIP_UNIT_LEVEL)=="string" and TOOLTIP_UNIT_LEVEL:find("%%[sd]") and TOOLTIP_UNIT_LEVEL or "Level %s"
+    parts.level="|cffffffff"..template:gsub("%%d","%%s"):format(token).."|r"
+    if race and race~="" then parts.race="|cffffffff"..race.."|r" end
+    local label,classToken=safeCall(UnitClass,unit)
+    if label then
+        local c=(CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS or {})[classToken]
+        parts.class=(c and tipModule.hex(c.r,c.g,c.b) or "|cffffffff")..label.."|r"
+    end
+    local suffix=detailText:match("%b()")
+    parts.suffix=suffix and ("|cffffffff"..suffix.."|r") or nil
     if guild and guild~="" then
         local color=faction=="Horde" and PLAYER_FACTION_COLOR_HORDE or faction=="Alliance" and PLAYER_FACTION_COLOR_ALLIANCE
         local index=(PLAYER_FACTION_GROUP and PLAYER_FACTION_GROUP[faction]) or (faction=="Horde" and 0 or faction=="Alliance" and 1)
@@ -1101,11 +1327,71 @@ function System:TargetedBy(tip)
     tip.ftTargetedLine=tip.ftTargetLine; tip.ftTargetLine=saved
     if tip.Show then tip:Show() end
 end
+-- /ft tipdebug: the next player tooltip you see, as the game made it and as
+-- ForeverTools changed it, in a window to copy into a bug report.
+function System:TipDebugStart()
+    self.tipCapture={stop=(GetTime and GetTime() or 0)+60}
+    print("|cffffd100ForeverTools:|r Now hover the player whose tooltip looks wrong. A window opens with text to copy (60 seconds).")
+end
+local function tipLines(tip)
+    local prefix=tip:GetName() or "GameTooltip"; local out={}
+    for i=1,(tip.NumLines and tip:NumLines() or 0) do
+        local function read(side)
+            local line=_G[prefix..side..i]; if not line or (line.IsShown and not line:IsShown()) then return end
+            local text=line:GetText(); if text==nil or text=="" then return end
+            if not usable(text) then return "(hidden by the game)" end
+            local r,g,b=line:GetTextColor()
+            local color=(type(r)=="number" and usable(r)) and string.format(" [%02x%02x%02x]",r*255,g*255,b*255) or ""
+            return (text:gsub("|c%x%x%x%x%x%x%x%x",""):gsub("|r",""):gsub("|T.-|t","[icon]"):gsub("|A.-|a","[icon]"))..color
+        end
+        local l,r=read("TextLeft"),read("TextRight")
+        if l or r then out[#out+1]=string.format("%d: %s%s",i,l or "",r and ("   >> "..r) or "") end
+    end
+    return out
+end
+function System:TipDebugCapture(tip,stage)
+    local cap=self.tipCapture; if not cap then return end
+    if (GetTime and GetTime() or 0)>cap.stop then self.tipCapture=nil; print("|cffffd100ForeverTools:|r Tooltip check timed out. Type /ft tipdebug to try again."); return end
+    if stage=="before" then
+        local unit=tooltipUnit(tip)
+        if not unit or tip.ftPlayerLayout or not safeCall(UnitIsPlayer,unit) then cap.raw=nil; return end
+        cap.unit=unit; cap.raw=tipLines(tip); return
+    end
+    if not cap.raw then return end
+    self.tipCapture=nil
+    local unit=cap.unit
+    local function v(fn,...) if not fn then return "n/a" end local ok,a,b=pcall(fn,...); if not ok then return "error" end
+        local function one(x) if x==nil then return "nil" end if not usable(x) then return "hidden" end return tostring(x) end
+        return b~=nil and (one(a)..", "..one(b)) or one(a) end
+    local version,build,_,interface=GetBuildInfo()
+    local lines={"ForeverTools tooltip check","Addon: "..tostring(FT.version).."   Game: "..tostring(version).." ("..tostring(build)..", "..tostring(interface)..")   Locale: "..tostring(GetLocale and GetLocale()),
+        "","Unit: "..tostring(unit).."   Level: "..v(UnitLevel,unit).."   Effective: "..v(UnitEffectiveLevel,unit),
+        "Race: "..v(UnitRace,unit).."   Class: "..v(UnitClass,unit).."   Faction: "..v(UnitFactionGroup,unit),
+        "Friend: "..v(UnitIsFriend,"player",unit).."   Enemy: "..v(UnitIsEnemy,"player",unit).."   Same faction: "..tostring(v(UnitFactionGroup,unit)==v(UnitFactionGroup,"player")).."   In group: "..v(UnitInParty,unit),
+        "Guild: "..v(GetGuildInfo,unit).."   Level text: "..tostring(TOOLTIP_UNIT_LEVEL),
+        "FT layout used: "..tostring(tip.ftPlayerLayout==true),"","Game's tooltip:"}
+    for _,l in ipairs(cap.raw) do lines[#lines+1]="  "..l end
+    lines[#lines+1]=""; lines[#lines+1]="After ForeverTools:"
+    for _,l in ipairs(tipLines(tip)) do lines[#lines+1]="  "..l end
+    local set={}
+    for k,val in pairs(FT.modules.Tooltip:Settings()) do if type(val)~="table" and type(val)~="function" then set[#set+1]=k.."="..tostring(val) end end
+    table.sort(set); lines[#lines+1]=""; lines[#lines+1]="Tooltip settings: "..table.concat(set,", ")
+    local addons={}
+    if C_AddOns and C_AddOns.GetNumAddOns then
+        for i=1,C_AddOns.GetNumAddOns() do local name=C_AddOns.GetAddOnInfo(i); if name and C_AddOns.IsAddOnLoaded(i) and name~="ForeverTools" then addons[#addons+1]=name end end
+    end
+    lines[#lines+1]="Other addons: "..(#addons>0 and table.concat(addons,", ") or "none")
+    C_Timer.After(0,function()
+        FT:CopyBox("Tooltip check",table.concat(lines,"\n"),"Press Ctrl+C to copy, then paste it in your comment on CurseForge. Nothing is sent automatically.",true)
+    end)
+end
 function System:TooltipTargetLine(tip)
     self:ClearTargetPlayerDisplay(tip)
+    if self.tipCapture then self:TipDebugCapture(tip,"before") end
     self:TooltipClass(tip)
     self:TooltipLayout(tip)
     FT.modules.Tooltip:ApplyTooltip(tip)
+    if self.tipCapture and self.tipCapture.raw then self:TipDebugCapture(tip,"after") end
     if not FT.modules.Tooltip:Settings().target or not tip.GetUnit or not UnitExists or tip.ftAddonHelp then return end
     local unit=displayedUnit(tip); if not unit then return end
     local target=unit=="player" and "target" or unit.."target"

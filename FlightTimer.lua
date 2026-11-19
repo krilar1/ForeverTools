@@ -140,56 +140,125 @@ local function nodeName(name)
     if type(name)~="string" then return end
     return name:match("^[^,]+"):lower():gsub("^the%s+",""):match("^%s*(.-)%s*$")
 end
-function Flight:EstimateRoute(route,faction)
+-- Seconds for a route: known hop times (your own recorded hops, then the
+-- defaults). A hop nobody has a time for (new WoW: Forever flight points such
+-- as Rog'mar) is estimated from its length on the flight map, at the speed
+-- the known hops on this map fly. Returns seconds and whether any part of it
+-- is such an estimate.
+function Flight:HopTime(fromName,toName,faction)
+    local hops=self:History().hops
+    local own=hops and hops[faction..":"..tostring(fromName)..">"..tostring(toName)]
+    if type(own)=="number" and own>0 then return own end
     local data=FT.flightDefaults and FT.flightDefaults[faction]
-    if not data or #route<2 then return end
-    local byName={}
-    for id,node in pairs(data) do if type(node)=="table" and node.name then byName[nodeName(node.name)]=id end end
-    local total=0
-    for i=1,#route-1 do
-        local source,destination=byName[nodeName(route[i])],byName[nodeName(route[i+1])]
-        local seconds=source and destination and data[source][destination]
-        if type(seconds)~="number" or seconds<=0 then return end
-        total=total+seconds
+    if not data then return end
+    local byName=self.byName and self.byName[faction]
+    if not byName then
+        byName={}
+        for id,node in pairs(data) do if type(node)=="table" and node.name then byName[nodeName(node.name)]=id end end
+        self.byName=self.byName or {}; self.byName[faction]=byName
     end
-    return total>0 and total<7200 and total or nil
+    local source,destination=byName[nodeName(fromName)],byName[nodeName(toName)]
+    local seconds=source and destination and data[source][destination]
+    if type(seconds)~="number" or seconds<=0 then
+        -- Same hop the other way round: close enough.
+        seconds=source and destination and data[destination][source]
+    end
+    if type(seconds)=="number" and seconds>0 then return seconds end
+end
+function Flight:EstimateRoute(route,faction,points)
+    if #route<2 then return end
+    -- A time for the whole trip, start to end, beats adding up the hops.
+    local whole=self:HopTime(route[1],route[#route],faction)
+    if whole and whole<7200 then return math.floor(whole+.5),false end
+    local total,guessed=0,false
+    local unknown={}
+    for i=1,#route-1 do
+        local seconds=self:HopTime(route[i],route[i+1],faction)
+        if seconds then total=total+seconds else unknown[#unknown+1]=i end
+    end
+    if unknown[1] then
+        local rate=self.mapRate
+        if not rate or not points then return end
+        for _,i in ipairs(unknown) do
+            local a,b=points[i],points[i+1]
+            if not a or not b then return end
+            total=total+math.sqrt((a[1]-b[1])^2+(a[2]-b[2])^2)*rate
+        end
+        guessed=true
+    end
+    if total>0 and total<7200 then return math.floor(total+.5),guessed end
 end
 function Flight:CacheRoutes()
-    self.cachedRoutes={};self.cachedDestinations={};self.cachedEstimates={};self.pending=nil
+    self.cachedRoutes={};self.cachedDestinations={};self.cachedEstimates={};self.cachedGuess={};self.cachedHops={};self.pending=nil
     local count=read(NumTaxiNodes)
     if type(count)~="number" then return end
-    local names,origin={},nil
+    local names,spots,origin={},{},nil
     for i=1,math.min(count,500) do
         local name=read(TaxiNodeName,i)
         if type(name)=="string" then names[i]=name end
+        if TaxiNodePosition then
+            local ok,x,y=pcall(TaxiNodePosition,i)
+            if ok and type(x)=="number" and type(y)=="number" and not (issecretvalue and (issecretvalue(x) or issecretvalue(y))) then spots[i]={x,y} end
+        end
         if read(TaxiNodeGetType,i)=="CURRENT" then origin=i end
     end
     if not origin or not names[origin] then return end
-    local prefix=tostring(read(GetBuildInfo) or "Forever")..":"..tostring(read(UnitFactionGroup,"player") or "")..":"
+    local faction=read(UnitFactionGroup,"player") or ""
+    local prefix=tostring(read(GetBuildInfo) or "Forever")..":"..tostring(faction)..":"
+    local routes={}
     for index,name in pairs(names) do
         if index~=origin and read(TaxiNodeGetType,index)=="REACHABLE" then
-            local route={names[origin]}
+            local route,points={names[origin]},{spots[origin]}
             local hops=read(GetNumRoutes,index)
             if type(hops)=="number" and hops>0 and hops<=100 and TaxiGetNodeSlot then
                 for step=1,hops do
                     local slot=read(TaxiGetNodeSlot,index,step,false)
-                    if not names[slot] then route=nil;break end
-                    route[#route+1]=names[slot]
+                    -- A flight point you haven't found can still be flown
+                    -- through: its name comes from the game all the same.
+                    local hop=names[slot] or (type(slot)=="number" and read(TaxiNodeName,slot))
+                    if type(hop)~="string" then route=nil;break end
+                    route[#route+1]=hop;points[#points+1]=spots[slot]
                 end
-            elseif read(TaxiIsDirectFlight,index) then route[#route+1]=name
+            elseif read(TaxiIsDirectFlight,index) then route[#route+1]=name;points[#points+1]=spots[index]
             else route=nil end
-            if route and route[#route]==name then self.cachedRoutes[index]=prefix..table.concat(route," > ");self.cachedDestinations[index]=name;self.cachedEstimates[index]=self:EstimateRoute(route,read(UnitFactionGroup,"player")) end
+            if route and route[#route]==name then routes[index]={route,points} end
         end
+    end
+    -- The speed on this flight map: seconds per map length over every hop
+    -- with a known time.
+    local seconds,length,seen=0,0,{}
+    for _,r in pairs(routes) do
+        local route,points=r[1],r[2]
+        for i=1,#route-1 do
+            local key=route[i]..">"..route[i+1]
+            local a,b=points[i],points[i+1]
+            if not seen[key] and a and b then
+                seen[key]=true
+                local t=self:HopTime(route[i],route[i+1],faction)
+                local d=math.sqrt((a[1]-b[1])^2+(a[2]-b[2])^2)
+                if t and d>0.002 then seconds=seconds+t;length=length+d end
+            end
+        end
+    end
+    self.mapRate=(length>0.05 and seconds>0) and seconds/length or nil
+    for index,r in pairs(routes) do
+        self.cachedRoutes[index]=prefix..table.concat(r[1]," > ")
+        self.cachedDestinations[index]=names[index]
+        self.cachedHops[index]=r[1]
+        self.cachedEstimates[index],self.cachedGuess[index]=self:EstimateRoute(r[1],faction,r[2])
     end
 end
 function Flight:SelectRoute(index)
     local key=self.cachedRoutes and self.cachedRoutes[index]
-    self.pending=key and {key=key,at=GetTime(),destination=self.cachedDestinations and self.cachedDestinations[index],estimate=self.cachedEstimates and self.cachedEstimates[index]} or nil
+    self.pending=key and {key=key,at=GetTime(),destination=self.cachedDestinations and self.cachedDestinations[index],estimate=self.cachedEstimates and self.cachedEstimates[index],
+        guess=self.cachedGuess and self.cachedGuess[index],hops=self.cachedHops and self.cachedHops[index]} or nil
 end
-function Flight:CancelLearning()
+-- why: "stop" (you asked to land early) shows "Stop requested" on the timer.
+function Flight:CancelLearning(why)
     self.cancelled=true;self.duration=nil
+    if why then self.stopWhy=why end
     local saved=self:History().active[self:Character()]
-    if saved then saved.cancelled=true;saved.duration=nil end
+    if saved then saved.cancelled=true;saved.duration=nil;saved.why=why or saved.why end
 end
 function Flight:Tick()
     if not FT.dbReady or not self.display or self.suspended then return end
@@ -207,23 +276,35 @@ function Flight:Tick()
     local history=self:History();local character=self:Character()
     if flying and not self.flying then
         local saved=history.active[character]
-        self.started=now;self.route=nil;self.destination=nil;self.duration=nil;self.cancelled=false
+        self.started=now;self.route=nil;self.destination=nil;self.duration=nil;self.cancelled=false;self.stopWhy=nil
         if self.pending and now-self.pending.at<20 then
             self.route=self.pending.key;self.destination=self.pending.destination
-            local duration=history.routes[self.route] or self.pending.estimate
+            local learned=history.routes[self.route]
+            local duration=learned or self.pending.estimate
             if type(duration)=="number" and duration>0 and duration<7200 then self.duration=duration end
+            self.guess=not learned and self.pending.guess or nil
+            self.hops=self.pending.hops
             history.active[character]={key=self.route,at=time(),duration=self.duration,destination=self.destination}
         elseif type(saved)=="table" and type(saved.at)=="number" and time()-saved.at>=0 and time()-saved.at<7200 then
             self.started=now-(time()-saved.at);self.route=saved.key;self.destination=saved.destination
             self.duration=type(saved.duration)=="number" and saved.duration or nil
             self.cancelled=true -- resume display, but don't record time spent offline
+            self.stopWhy=saved.why
         end
         self.pending=nil
     elseif not flying and self.flying then
         local duration=now-(self.started or now)
         if self.route and not self.cancelled and not read(UnitIsDeadOrGhost,"player") and duration>=5 and duration<7200 then
             history.routes[self.route]=duration
+            -- A direct flight is also a hop time: longer routes through it
+            -- use it (and new flight points get real times this way).
+            local hops=self.hops
+            if type(hops)=="table" and #hops==2 then
+                if type(history.hops)~="table" then history.hops={} end
+                history.hops[(read(UnitFactionGroup,"player") or "")..":"..hops[1]..">"..hops[2]]=math.floor(duration+.5)
+            end
         end
+        self.guess=nil;self.hops=nil
         history.active[character]=nil
         self.started=nil;self.route=nil;self.duration=nil
     elseif not flying and not self.flying then
@@ -236,10 +317,18 @@ function Flight:Tick()
     local timer,place
     if remaining then
         timer=remaining>=3600 and string.format("%d:%02d:%02d",math.floor(remaining/3600),math.floor(remaining%3600/60),remaining%60) or string.format("%d:%02d",math.floor(remaining/60),remaining%60)
+        if self.guess and not self.preview then timer="~"..timer end
         place=type(destination)=="string" and destination or "Landing soon"
     else
-        timer="--:--"
-        place=type(destination)=="string" and destination or ((self.route and not self.cancelled) and "Learning this route" or "Arrival time unknown")
+        -- No time for this route yet: count up instead, and say the flight
+        -- is being recorded (next time this route has its own time).
+        local recording=self.route and not self.cancelled and not self.preview
+        local elapsed=math.max(0,math.floor(now-(self.started or now)))
+        timer=elapsed>=3600 and string.format("%d:%02d:%02d",math.floor(elapsed/3600),math.floor(elapsed%3600/60),elapsed%60) or string.format("%d:%02d",math.floor(elapsed/60),elapsed%60)
+        local where=type(destination)=="string" and destination:match("^[^,]+") or nil
+        if self.stopWhy=="stop" and not self.preview then place="Stop requested, landing soon"
+        elseif recording then place=where and ("Recording time to "..where) or "Recording this flight's time"
+        else place=where and (where.." (arrival time unknown)") or "Arrival time unknown" end
     end
     self:Layout(timer,place,remaining~=nil)
     self:Position()
@@ -251,7 +340,7 @@ function Flight:InstallHooks()
         self.takeHook=true;hooksecurefunc("TakeTaxiNode",function(index) if FT.dbReady then self:SelectRoute(index) end end)
     end
     if TaxiRequestEarlyLanding and not self.stopHook then
-        self.stopHook=true;hooksecurefunc("TaxiRequestEarlyLanding",function() if FT.dbReady then self:CancelLearning() end end)
+        self.stopHook=true;hooksecurefunc("TaxiRequestEarlyLanding",function() if FT.dbReady then self:CancelLearning("stop"); self:Tick() end end)
     end
 end
 function Flight:Apply()

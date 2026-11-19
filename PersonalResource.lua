@@ -277,7 +277,7 @@ function P:Open()
         local frame=FT:Window("ForeverToolsPersonal","Game resource bars",620,560); self.frame=frame
         FT:PageInfo(frame,"Personal resources","The game's health and power display above your character. Pick the order of its parts and the text on each bar.\n\nWhich parts show is set in Edit Mode.")
         local hint=FT:Label(frame,"Changes the game's Personal Resource Display (turn it on in Edit Mode).",12); hint:SetPoint("TOPLEFT",24,-64); hint:SetWidth(572); hint:SetTextColor(.66,.59,.48)
-        local head=FT:Label(frame,"Order (top to bottom)",14,true); head:SetPoint("TOPLEFT",24,-96); FT:SectionHeading(head,nil,170)
+        local head=FT:Label(frame,"Order (top to bottom)",14,true); head:SetPoint("TOPLEFT",24,-96); FT:SectionHeading(head,nil,170); self.orderHead=head
         self.rows={}
         for _,part in ipairs(PARTS) do
             local row=CreateFrame("Frame",nil,frame); row:SetSize(300,32)
@@ -337,8 +337,18 @@ function P:Open()
             FT:Tooltip(d,"Text","Which text this bar shows.")
             self.textChoices[part]=d
         end
+        -- Druids: the druid mana bar lives on this page too (1.9.0), each
+        -- under its own header.
+        local _,class=UnitClass("player")
+        local M=FT.modules.DruidMana
+        if class=="DRUID" and M and M.Build then
+            M:Build(frame,-(FT:ContentHeight(frame)+8))
+            FT:BigSections(frame,{{"Resource bars",self.orderHead,"The game's health and power display above your character.","Ability_Rogue_SliceDice"},
+                {"Druid mana bar",M.toggle,"Your mana as a third bar while in a form.","Ability_Racial_BearForm"}},572)
+        end
     end
     self:Refresh(); self.frame:Show()
+    local M=FT.modules.DruidMana; if M and M.toggle and M.Refresh then M:Refresh() end
 end
 FT:RegisterModule("PersonalResource",P)
 local events=CreateFrame("Frame")

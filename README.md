@@ -1,6 +1,6 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 1.8.0.**
+**Quality-of-life tools for WoW: Forever — version 1.9.0.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
 one place. Everything starts **off**, so the game looks like Blizzard's until you
@@ -181,7 +181,8 @@ the home window. Use **`/rl`** to reload the UI.
   per hand (Buff reminders → Your buffs, off by default).
 - **More:** FPS counter, movable loot rolls, group-role helper, custom
   mouse-wheel casting on mouseover, hiding error messages, a /thank for buffs,
-  an entry in the minimap's
+  quiet login (other addons' login lines hidden), combat logging for Warcraft
+  Logs, an entry in the minimap's
   addon list, a Lua-error toggle and a copyable bug report.
 - **Where things are** (the main menu):
   - **Appearance:** Fonts, Unit frames, Dispel glow, Druid mana bar, Game

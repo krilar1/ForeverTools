@@ -91,35 +91,48 @@ local function paintColumn(column)
     end
 end
 
+-- Free General slots (shared by all your characters).
+local function generalFree()
+    local account = GetNumMacros and GetNumMacros() or 0
+    return math.max(0, (MAX_ACCOUNT_MACROS or 120) - (account or 0))
+end
 function Macros:RoomCounts()
     local room = self.room
     local used, deleting, adding = #room.current, 0, 0
     for _, item in ipairs(room.current) do if item.ticked then deleting = deleting + 1 end end
     for _, item in ipairs(room.new) do if item.ticked then adding = adding + 1 end end
-    return used, deleting, adding, MAX_CHARACTER_MACROS or 30
+    local max = MAX_CHARACTER_MACROS or 30
+    -- With "the rest in General", what doesn't fit in Character goes there.
+    local toGeneral = 0
+    if room.toGeneral then toGeneral = math.max(0, used - deleting + adding - max) end
+    return used, deleting, adding, max, toGeneral, generalFree()
 end
 function Macros:RefreshRoom()
     local frame = self.roomFrame
     paintColumn(frame.left); paintColumn(frame.right)
-    local used, deleting, adding, max = self:RoomCounts()
-    local total = used - deleting + adding
-    local fits = total <= max
-    -- With nothing to delete, only what is added counts.
-    if used == 0 then
-        frame.counter:SetText(string.format("Slots: %d added  =  %s%d / %d|r", adding, fits and "|cff7dff8a" or "|cffff6b6b", total, max))
-    else
-        frame.counter:SetText(string.format("Slots: %d used  -  %d deleted  +  %d added  =  %s%d / %d|r",
-            used, deleting, adding, fits and "|cff7dff8a" or "|cffff6b6b", total, max))
-    end
+    local used, deleting, adding, max, toGeneral, gFree = self:RoomCounts()
+    local total = used - deleting + adding - toGeneral
+    local fits = total <= max and toGeneral <= gFree
+    local good = fits and "|cff7dff8a" or "|cffff6b6b"
+    -- Where every macro ends up, in plain numbers.
+    local line = used == 0 and string.format("Character: %s%d / %d|r", good, total, max)
+        or string.format("Character: %d used  -  %d deleted  +  %d added  =  %s%d / %d|r", used, deleting, adding - toGeneral, good, total, max)
+    if self.room.toGeneral then line = line .. string.format("   General: %s+%d|r (%d free)", toGeneral <= gFree and "|cff7dff8a" or "|cffff6b6b", toGeneral, gFree) end
+    frame.counter:SetText(line)
     local ready = fits and (deleting + adding) > 0
     frame.go.label:SetText(deleting > 0 and string.format("Delete %d & add %d", deleting, adding) or string.format("Add %d macros", adding))
     frame.go:SetEnabled(ready); frame.go:SetAlpha(ready and 1 or .45)
-    frame.status:SetText(fits and (adding > 0 and "" or "Tick the macros you want to add.")
-        or string.format("Tick %d more to delete, or untick %d to add.", total - max, total - max))
+    local over = used - deleting + adding - max
+    frame.status:SetText(fits and (adding > 0 and (toGeneral > 0 and string.format("%d go to Character, %d to General.", adding - toGeneral, toGeneral) or "It all fits in Character.") or "Tick the macros you want to add.")
+        or (toGeneral > gFree and string.format("General has room for %d. Untick %d.", gFree, toGeneral - gFree)
+        or string.format("%d too many: untick some, delete some, or put the rest in General.", over)))
     frame.status:SetTextColor(fits and 0.49 or 1, fits and 1 or 0.42, fits and 0.54 or 0.42)
+    -- The General switch.
+    local on = self.room.toGeneral == true
+    frame.general.label:SetText("Put the rest in General: " .. (on and "On" or "Off")); FT:SetSelected(frame.general, on)
 end
 function Macros:CreateRoomUI()
-    local frame = FT:Window("ForeverToolsMakeRoom", "ForeverTools | Make room", 700, 596)
+    local frame = FT:Window("ForeverToolsMakeRoom", "ForeverTools | Make room", 700, 632)
     frame.noSavePrompt = true
     frame.homeButton:Hide()
     -- It opens over the macro window: one layer up, so the two never mix.
@@ -143,6 +156,10 @@ function Macros:CreateRoomUI()
     frame.allRight:SetScript("OnClick", function() for _, item in ipairs(self.room.new) do item.ticked = true end; toggle() end)
     frame.clearRight = FT:QuietButton(frame, "Clear", 154, 28, "reset"); frame.clearRight:SetPoint("LEFT", frame.allRight, "RIGHT", 10, 0)
     frame.clearRight:SetScript("OnClick", function() for _, item in ipairs(self.room.new) do item.ticked = false end; toggle() end)
+    -- Where macros go: Character (this character only) or General (shared).
+    frame.general = FT:QuietButton(frame, "", 318, 28, "INV_Misc_Book_09"); frame.general:SetPoint("TOPLEFT", frame.allRight, "BOTTOMLEFT", 0, -8)
+    frame.general:SetScript("OnClick", function() if self.room then self.room.toGeneral = not self.room.toGeneral; toggle() end end)
+    FT:Tooltip(frame.general, "Put the rest in General", "Character macros: only this character, " .. (MAX_CHARACTER_MACROS or 18) .. " slots.\n\nGeneral macros: shared by all your characters, " .. (MAX_ACCOUNT_MACROS or 120) .. " slots. Your other characters see these in their General tab too (other classes can't use them).\n\nOn: what doesn't fit in Character goes to General. Move a macro between the two later from its ... menu.")
     frame.counter = FT:Label(frame, "", 15, true); frame.counter:SetPoint("BOTTOMLEFT", 24, 58)
     frame.status = FT:Label(frame, "", 13); frame.status:SetPoint("BOTTOMLEFT", 24, 32)
     frame.go = FT:AccentButton(frame, "", 210, 34, "confirm"); frame.go:SetPoint("BOTTOMRIGHT", -24, 24)
@@ -168,9 +185,14 @@ function Macros:OpenMakeRoom(className)
         new[#new + 1] = {label = entry.name, meta = levelText(entry), icon = self:IconForEntry(entry), entry = entry, ticked = index <= free}
     end
     self.room = {className = className, current = current, new = new}
+    -- Everything starts ticked when General can take the rest; you choose
+    -- with the General switch (off: only what fits in Character is ticked).
+    if #new > free then for _, item in ipairs(new) do item.ticked = true end; self.room.toGeneral = true end
     local foreign = className ~= self:PlayerClass()
     frame.intro:SetText((foreign and ("|cffff6b6bYou are a " .. self:PlayerClass() .. ", not a " .. className .. ".|r ") or "")
-        .. string.format(#current > 0 and "%d new %s macros, %d free slots. Delete some, or add fewer." or "%d new %s macros, %d free slots. Untick some to fit.", #new, className, free))
+        .. string.format("%d new %s macros; your Character macros have %d free slots (of %d). ", #new, className, free, max)
+        .. "Character macros are only for this character. General macros are shared by all your characters. "
+        .. "Untick the ones you don't want, delete old ones, or put the rest in General.")
     -- An empty Character tab has nothing to delete: only the Add side matters.
     local hasCurrent = #current > 0
     for _, widget in ipairs({frame.left.title, frame.left.hint, frame.left.box, frame.tickUnchanged, frame.clearLeft}) do widget:SetShown(hasCurrent) end
@@ -192,11 +214,12 @@ end
 function Macros:ConfirmRoom()
     local room = self.room
     if not room then return end
-    local used, deleting, adding, max = self:RoomCounts()
-    if used - deleting + adding > max then return end
-    local message = deleting > 0
+    local used, deleting, adding, max, toGeneral, gFree = self:RoomCounts()
+    if used - deleting + adding - toGeneral > max or toGeneral > gFree then return end
+    local where = toGeneral > 0 and string.format("\n\n%d go to Character, %d to General (shared by all your characters).", adding - toGeneral, toGeneral) or ""
+    local message = (deleting > 0
         and string.format("Delete %d Character macros and add %d new %s macros?\n\nDeleted macros can't be restored.", deleting, adding, room.className)
-        or string.format("Add %d new %s macros?", adding, room.className)
+        or string.format("Add %d new %s macros?", adding, room.className)) .. where
     FT:Confirm(message, function() self:ApplyRoom(room) end)
 end
 function Macros:ApplyRoom(room)
@@ -205,7 +228,18 @@ function Macros:ApplyRoom(room)
     for _, item in ipairs(room.current) do if item.ticked then doomed[#doomed + 1] = {name = item.name, body = item.body} end end
     for _, item in ipairs(room.new) do if item.ticked then chosen[#chosen + 1] = item.entry end end
     local deleted = #doomed > 0 and self:DeleteMatching(doomed) or 0
+    -- The first ones fill Character; the rest (with the General switch on) go to General.
+    local _, _, _, _, toGeneral = self:RoomCounts()
+    local general = {}
+    for i = #chosen - toGeneral + 1, #chosen do
+        if i >= 1 and chosen[i] then
+            local copy = {}; for k, v in pairs(chosen[i]) do copy[k] = v end
+            copy.toGeneral = true; general[#general + 1] = copy
+        end
+    end
+    for _ = 1, #general do chosen[#chosen] = nil end
     self.roomFrame:Hide()
-    if #chosen > 0 then self:CreateBulk(room.className, chosen)
-    else self:UpdateBulkInfo(); self:Status(string.format("Deleted %d Character macros.", deleted)) end
+    if #chosen > 0 then self:CreateBulk(room.className, chosen) end
+    if #general > 0 then self.pendingGeneral = general; self:AddPendingGeneral() end
+    if #chosen == 0 and #general == 0 then self:UpdateBulkInfo(); self:Status(string.format("Deleted %d Character macros.", deleted)) end
 end

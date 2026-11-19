@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "1.8.0"
+FT.version = "1.9.0"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -1562,6 +1562,10 @@ function FT:InEncounter()
     end
     return false
 end
+-- On a mount: reminders and notices wait until you are off it.
+function FT:Mounted()
+    return yes(IsMounted)
+end
 function FT:NoControl()
     if self.db and type(self.db.system) == "table" and self.db.system.quietNoControl == false then return false end
     if yes(UnitOnTaxi, "player") or yes(UnitInVehicle, "player") or yes(UnitHasVehicleUI, "player") then return true end
@@ -1616,6 +1620,7 @@ SlashCmdList.FOREVERTOOLS = function(message)
     elseif command == "weaponswap" or command == "weaponswaps" then if FT.MacroWatch then FT.MacroWatch:Open() end
     elseif command == "iconaudit" then if FT.modules.MacroForge then FT:DebugBox("Icon audit", function() FT.modules.MacroForge:IconAudit() end) end
     elseif command == "ahdebug" then if FT.Bags then FT.Bags:AHDebug() end
+    elseif command == "tipdebug" or command == "tooltipdebug" then if FT.modules.System then FT.modules.System:TipDebugStart() end
     elseif command == "campdebug" then if FT.modules.BuffReminder then FT.modules.BuffReminder:CampDebug() end
     elseif command == "blocked clear" then
         if FT.db then FT.db.blockedActions = {} end
@@ -1777,6 +1782,58 @@ function FT:Sections(frame, sections, width)
         end
     end
 end
+-- Big headers for pages that hold several features (Screen effects,
+-- Battlegrounds): each feature's settings sit under its own header, with
+-- its icon, name, one line on what it does and a gold line. Same moving
+-- trick as FT:Sections: everything from the control down moves down.
+FT.BIG_HEAD = 52
+function FT:BigHeader(parent, title, sub, icon, width)
+    local h = CreateFrame("Frame", nil, parent); h:SetSize(width or 472, 44)
+    h.icon = h:CreateTexture(nil, "ARTWORK"); h.icon:SetSize(28, 28); h.icon:SetPoint("LEFT", 0, 0)
+    h.icon:SetTexture(self:IconPath(icon or "generic")); h.icon:SetTexCoord(.07, .93, .07, .93); self:RoundIcon(h.icon)
+    h.title = self:Label(h, title, 17, true); h.title:SetPoint("TOPLEFT", 38, -4); h.title:SetTextColor(1, .83, .35)
+    h.sub = self:Label(h, sub or "", 11); h.sub:SetPoint("TOPLEFT", h.title, "BOTTOMLEFT", 0, -2); h.sub:SetTextColor(.66, .59, .48)
+    h.line = h:CreateTexture(nil, "ARTWORK"); h.line:SetHeight(2)
+    h.line:SetPoint("LEFT", h.title, "RIGHT", 12, 0); h.line:SetPoint("RIGHT", h, "RIGHT", 0, 0)
+    h.line:SetTexture("Interface\\Buttons\\WHITE8x8")
+    FT.GradientTexture(h.line, "HORIZONTAL", 1, .83, .35, .85, 1, .83, .35, 0)
+    return h
+end
+function FT:BigSections(frame, sections, width)
+    local function topOf(region)
+        if not region or not region.GetNumPoints or region:GetNumPoints() == 0 then return end
+        local point, rel, _, x, y = region:GetPoint(1)
+        if point == "TOPLEFT" and (rel == frame or rel == nil) then return x, y end
+    end
+    local all = {}
+    for _, c in ipairs({frame:GetChildren()}) do all[#all + 1] = c end
+    for _, r in ipairs({frame:GetRegions()}) do all[#all + 1] = r end
+    local shift = self.BIG_HEAD
+    for _, entry in ipairs(sections) do
+        local control = entry[2]
+        local x0, y0 = topOf(control)
+        if y0 then
+            for _, r in ipairs(all) do
+                local x, y = topOf(r)
+                if y and y <= y0 + 8 then
+                    local n = r:GetNumPoints()
+                    local pts = {}
+                    for i = 1, n do pts[i] = {r:GetPoint(i)} end
+                    r:ClearAllPoints()
+                    -- A section heading adds its own 12 to x when placed: take it off first.
+                    local pad = r.ftHeading and 12 or 0
+                    for _, p in ipairs(pts) do
+                        if p[2] == frame or p[2] == nil then r:SetPoint(p[1], frame, p[3], (p[4] or 0) - pad, (p[1]:find("TOP") and p[5] - shift) or p[5])
+                        else r:SetPoint(p[1], p[2], p[3], p[4], p[5]) end
+                    end
+                end
+            end
+            local head = self:BigHeader(frame, entry[1], entry[3], entry[4], width or (frame:GetWidth() - 48))
+            head:SetPoint("TOPLEFT", frame, "TOPLEFT", x0, y0 - 2)
+            all[#all + 1] = head
+        end
+    end
+end
 -- Text that must fit a width: a size or two smaller first, then cut with "…"
 -- (word wrap off), so it never runs past its box.
 function FT:FitText(fs, width, minSize)
@@ -1912,7 +1969,11 @@ function FT:ShowChoices(owner)
         -- A list item shows an icon only when it has one of its own, and
         -- only when the icons tell items apart (spells, classes): a list
         -- where every item has the same icon shows none.
-        if item.icon and menu.iconsDiffer then row.icon:SetTexture(item.icon); row.icon:SetAlpha(1); row.icon:SetSize(20, 20)
+        if item.icon and menu.iconsDiffer then
+            -- An atlas (a character's race portrait) when the item has one.
+            if item.atlas and row.icon.SetAtlas then row.icon:SetAtlas(item.atlas); row.icon:SetTexCoord(0, 1, 0, 1); row.icon.ftAtlas = true
+            else row.icon:SetTexture(item.icon); if row.icon.ftAtlas then row.icon:SetTexCoord(.07, .93, .07, .93); row.icon.ftAtlas = nil end end
+            row.icon:SetAlpha(1); row.icon:SetSize(20, 20)
         else row.icon:SetAlpha(0); row.icon:SetWidth(1) end
         self:SetSelected(row, owner.value == item.value)
         -- Unavailable choices stay visible (greyed) and explain themselves on hover.

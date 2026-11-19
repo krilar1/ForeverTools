@@ -38,7 +38,6 @@ local hubs = {
             return n == 0 and "Class colors off" or ("Class colors on " .. n .. " of 3")
         end},
         {"DispelGlow", "Dispel glow", "Spell_Holy_DispelMagic", function() return onOff(settings("DispelGlow").enabled) end},
-        {"DruidMana", "Druid mana bar", "Ability_Racial_BearForm", function() return onOff(settings("UnitColors").druidMana) end},
         {"PersonalResource", "Game resource bars", "Ability_Rogue_SliceDice", function()
             local m = mod("PersonalResource"); if not m or not FT.dbReady then return "" end
             local s = m:Settings(); local text = 0
@@ -64,13 +63,13 @@ local hubs = {
         {"Totems", "Totems", "Spell_Nature_StoneSkinTotem", function() local t = settings("Totems"); return onOff(t.range or t.leftBehind) end},
         {"Interrupts", "Interrupt bar", "Ability_Kick", function() return onOff(settings("Interrupts").enabled) end},
         {"SystemGameplay", "Group role", "Ability_Warrior_DefensiveStance", function() local s = settings("System"); return "Role " .. onOff(s.autoRole):lower() end},
-        {"SystemPoised", "Poised", "Spell_Nature_LightningShield", function() return onOff(settings("System").poisedGlow) end},
-        {"SystemStealth", "Stealth shadows", "Spell_Shadow_Twilight", function() return onOff(settings("System").stealthShade) end},
-        {"SystemDeath", "Death glow", "Spell_Holy_Resurrection", function()
+        {"SystemEffects", "Screen effects", "Spell_Shadow_Twilight", function()
+            local _, class = UnitClass("player")
+            if class == "ROGUE" or class == "DRUID" then local s = settings("System"); return "Poised " .. onOff(s.poisedGlow):lower() .. " · shadows " .. onOff(s.stealthShade):lower() end
             local get = (C_CVar and C_CVar.GetCVar) or GetCVar
             local ok, value = pcall(function() return get and get("ffxDeath") end)
-            if not ok or value == nil then return "The game's setting" end
-            return onOff(value ~= "0")
+            if not ok or value == nil then return "Death glow: the game's setting" end
+            return "Death glow " .. onOff(value ~= "0"):lower()
         end},
     }},
     {key = "PvP", width = 540, height = 640, title = "PvP", pages = {
@@ -89,11 +88,10 @@ local hubs = {
             return (n > 0 and (n .. " marked") or "") .. (n > 0 and g > 0 and " · " or "") .. (g > 0 and (g .. (g == 1 and " guild" or " guilds")) or "")
         end},
         {"EnemyNearby", "Nearby enemies", "INV_Misc_Spyglass_02", function() return onOff(settings("Enemies").nearby) end},
-        {"QueueTimer", "Battleground timer", "INV_Misc_PocketWatch_01", function() return onOff(settings("QueueTimer").enabled) end},
+        {"QueueTimer", "Battlegrounds", "INV_Misc_PocketWatch_01", function() return "Timer " .. onOff(settings("QueueTimer").enabled):lower() .. " · release " .. onOff(settings("AutoRelease").enabled):lower() end},
         {"Trinkets", "Trinket menu", function() return FT:FactionIcon() end, function() local on = settings("Trinkets").enabled; local T = FT.modules.Trinkets; if on and T and T.Worn and not T:Worn() then return "On · no trinket yet" end; return onOff(on) end},
         {"EnemyCooldowns", "Enemy cooldowns", "Spell_Holy_BorrowedTime", function() return onOff(settings("EnemyCooldowns").enabled) end},
         {"Diminish", "Diminishing returns", "Spell_Frost_FrostNova", function() return onOff(settings("Diminish").enabled) end},
-        {"AutoRelease", "Auto release", "Spell_Holy_GuardianSpirit", function() return onOff(settings("AutoRelease").enabled) end},
     }},
     {key = "Keybinds", width = 520, height = 608, title = "Keybinds", pages = {
         {"SystemKeybinds", "Keys and action bars", "INV_Misc_Key_03", function() local f = mod("ActionFade"); local n = f and f.Count and f:Count() or 0; return "Short keys " .. onOff(settings("System").shortKeys):lower() .. (n > 0 and (" · mouseover " .. n) or "") end},
@@ -178,6 +176,15 @@ local hubs = {
         {"SellMarks", "Always-sell marks", "INV_Misc_Coin_01", function() local m = mod("SellMarks"); return m and m.On and m:On() and ("On (" .. m:Count() .. ")") or "Off" end},
         {"ItemLock", "Item locks", "INV_Misc_Key_03", function() local m = mod("ItemLock"); return m and m.On and m:On() and ("On (" .. m:Count() .. ")") or "Off" end},
         {"GameTweaks", "Extra game options", "INV_Misc_Spyglass_03", function() return "Sharpness, grass, weather" end},
+        {"SystemAddons", "Other addons", "INV_Misc_GroupLooking", function()
+            local s = settings("System")
+            return s.layerSwapOff and "LayerSwap hosting stops at login" or "Nothing changed"
+        end},
+        {"SystemCombatLog", "Combat logging", "INV_Misc_Book_11", function()
+            local S = mod("System"); local s = settings("System")
+            local now = S and S.Logging and S:Logging()
+            return (s.combatLog and (s.combatLogDungeons and "Raids and dungeons" or "Raids") or "Auto off") .. (now and " · logging now" or "")
+        end},
     }},
 }
 -- What each section is, for its tooltip in the sidebar.
@@ -185,7 +192,7 @@ local tips = {
     FontManager = "Fonts, sizes and outlines.",
     UnitColors = "Class colors on player, target and focus.",
     DispelGlow = "A glow on frames with a debuff you can remove.",
-    PersonalResource = "The order and text of the game's resource bars.",
+    PersonalResource = "The order and text of the game's resource bars (and the druid mana bar).",
     DruidMana = "Druids: mana as a third bar in forms.",
     IconStyles = "Dark mode and other looks.",
     Chat = "Chat buttons, font, links and copy.",
@@ -197,13 +204,11 @@ local tips = {
     RareAlert = "A notice when a rare is nearby.",
     Totems = "Shamans: totem range and left-behind warning.",
     SystemGameplay = "Your group role, set from your talents.",
-    SystemDeath = "The washed-out screen while dead.",
-    SystemPoised = "Poised ready: a glow on your energy bar.",
-    SystemStealth = "Stealthed: the screen's edges darken.",
+    SystemEffects = "Glows and shadows on your screen: Poised, stealth, death.",
     EnemyAlerts = "Alerts for stealth and marked players.",
     EnemyMarks = "Players you marked.",
     EnemyNearby = "Enemy players you saw recently.",
-    QueueTimer = "Time left to enter a battleground.",
+    QueueTimer = "Battleground timer and auto release.",
     Diminish = "When crowd control will be shorter, or won't land.",
     SystemKeybinds = "Bind keys by hovering (/kb), short key text on buttons, and backups.",
     SpellBinds = "Bind spells, items and macros to keys.",
@@ -217,6 +222,8 @@ local tips = {
     Interrupts = "Your group's interrupts and cooldowns (with other ForeverTools users).",
     EnemyCooldowns = "Big cooldowns enemy players have used.",
     SystemErrors = "Hide the red error text.",
+    SystemCombatLog = "Log raids and dungeons for Warcraft Logs.",
+    SystemAddons = "Small fixes for other addons you use.",
     Movers = "Drag ForeverTools' things on screen.",
     MoveWindows = "Drag the game's own windows.",
     SystemGeneral = "Messages, setup, reset and bug report.",
@@ -278,6 +285,14 @@ for _, hub in ipairs(hubs) do
 end
 -- Older names of pages that moved.
 FT:RegisterModule("SystemTroubleshooting", {redirect = true, Open = function() FT:OpenModule("SystemGeneral") end})
+-- Pages that now live on another page (1.9.0): search, the tour and links
+-- still use these names. Their frame is the page they live on.
+function FT:MovedPage(old, new)
+    local m = {redirect = true}
+    function m:Open() FT:OpenModule(new); self.frame = FT.modules[new] and FT.modules[new].frame end
+    self:RegisterModule(old, m)
+end
+FT:MovedPage("SystemPoised", "SystemEffects"); FT:MovedPage("SystemStealth", "SystemEffects"); FT:MovedPage("SystemDeath", "SystemEffects")
 -- Pages for one class only: other classes never see them (menu or search).
 FT.classOnly = {Totems = "SHAMAN", DruidMana = "DRUID", SystemPoised = {ROGUE = true, DRUID = true}, SystemStealth = {ROGUE = true, DRUID = true}}
 function FT:ForMyClass(name)

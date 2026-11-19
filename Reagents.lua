@@ -209,7 +209,8 @@ end
 function R:Notices(learned)
     local s=FT.modules.BuffReminder:Settings()
     if not s.reagents then return {} end
-    local resting=call(IsResting); if not (safe(resting) and resting) then return {} end
+    -- In a town only: a sleeping bag also makes you rest, with no vendor near.
+    if not FT.modules.BuffReminder:TownResting() then return {} end
     if not self.counts or self.countsFrom~=learned then
         local out={}
         for _,e in ipairs((self:List(learned))) do
@@ -287,7 +288,8 @@ end
 function R:Debug()
     local Reminder=FT.modules.BuffReminder
     local learned=Reminder:Learned()
-    print("|cffffd100ForeverTools reagents:|r Reagent Economy "..(self:Economy() and "yes" or "no").." (spell "..REAGENT_ECONOMY.."), resting "..tostring(call(IsResting)).." , switch "..tostring(Reminder:Settings().reagents))
+    local town,why=Reminder:TownResting()
+    print("|cffffd100ForeverTools reagents:|r Reagent Economy "..(self:Economy() and "yes" or "no").." (spell "..REAGENT_ECONOMY.."), resting "..tostring(call(IsResting)).." , town resting "..tostring(town).." ("..tostring(why).."), switch "..tostring(Reminder:Settings().reagents))
     local n=0
     for name,info in pairs(learned) do
         local names=self:TooltipReagents(info.value)

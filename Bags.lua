@@ -104,6 +104,9 @@ function Bags:Record(create)
     local full=self:FullName(c.name)
     if full then c.fullName=full end
     local _,class=UnitClass("player"); c.class=text(class) or c.class
+    -- Race and sex pick the character's portrait in the character lists.
+    if UnitRace then local _,race=UnitRace("player"); c.race=text(race) or c.race end
+    if UnitSex then c.sex=number(UnitSex("player")) or c.sex end
     local faction=UnitFactionGroup and UnitFactionGroup("player"); c.faction=text(faction) or c.faction
     local realm,shown=self:Ruleset()
     c.realm=realm; if shown~="?" then c.realmName=shown end
@@ -630,6 +633,43 @@ function Bags:ClassName(c,guid,full)
     end
     return name
 end
+-- A character's picture in the character lists: the game's race portrait
+-- (race and sex, saved at login), else the class icon. Portraits of other
+-- characters can't be drawn while they are offline, so this is the closest.
+local RACE_ATLAS={scourge="undead",undead="undead"}
+local portraitCache={}
+function Bags:Portrait(c)
+    local race,sex=c and c.race,c and c.sex
+    if type(race)~="string" or (sex~=2 and sex~=3) then return end
+    local key=race..sex
+    local hit=portraitCache[key]
+    if hit==nil then
+        hit=false
+        local r=race:lower(); local g=sex==3 and "female" or "male"
+        if C_Texture and C_Texture.GetAtlasInfo then
+            for _,name in ipairs({"raceicon128-"..(RACE_ATLAS[r] or r).."-"..g,"raceicon128-"..r.."-"..g,"raceicon-"..(RACE_ATLAS[r] or r).."-"..g,"raceicon-"..r.."-"..g}) do
+                local ok,info=pcall(C_Texture.GetAtlasInfo,name)
+                if ok and info then hit=name;break end
+            end
+        end
+        portraitCache[key]=hit
+    end
+    return hit or nil
+end
+-- Put the picture on a texture.
+function Bags:SetCharacterIcon(texture,c)
+    if not texture then return end
+    local atlas=self:Portrait(c)
+    if atlas and texture.SetAtlas then texture:SetAtlas(atlas); texture:SetTexCoord(0,1,0,1)
+    else texture:SetTexture(self:ClassIcon(c)); texture:SetTexCoord(.07,.93,.07,.93) end
+end
+-- The picture inside text (menus, tooltips).
+function Bags:CharacterMarkup(c,size)
+    size=size or 14
+    local atlas=self:Portrait(c)
+    if atlas then return "|A:"..atlas..":"..size..":"..size.."|a " end
+    return "|T"..self:ClassIcon(c)..":"..size..":"..size..":0:0:64:64:5:59:5:59|t "
+end
 function Bags:ClassIcon(c)
     local class=c and c.class
     if not class then return "Interface\\Icons\\INV_Misc_QuestionMark" end
@@ -660,7 +700,7 @@ function Bags:GoldLines()
         local money=entry.c.money or 0
         if entry.guid==me then local live=GetMoney and GetMoney(); money=number(live) or money end
         total=total+money
-        lines[#lines+1]={self:ClassName(entry.c,entry.guid),self:Money(money)}
+        lines[#lines+1]={self:CharacterMarkup(entry.c)..self:ClassName(entry.c,entry.guid),self:Money(money)}
     end
     return lines,total
 end
@@ -744,7 +784,7 @@ function Bags:PlaceBagButtons(frame,fromGame)
     if on and sortHere and want and want-SEARCH_CUT>60 then want=want-SEARCH_CUT; frame.ftSearchCut=true else frame.ftSearchCut=nil end
     if ours and want then box:SetWidth(want) end
     if not on then return end
-    buttons.chars.icon:SetTexture(self:ClassIcon(self:ViewedRecord()))
+    self:SetCharacterIcon(buttons.chars.icon,self:ViewedRecord())
     buttons.bank:ClearAllPoints(); buttons.chars:ClearAllPoints()
     if sortHere then
         buttons.chars:SetPoint("RIGHT",sort,"LEFT",-3,0)
@@ -832,6 +872,17 @@ function Bags:HookPortrait(frame)
         if v and v:IsShown() and v.replaced then v.replaced=nil; self.viewing=nil; v:Hide() end
     end)
 end
+-- The character list, the same in the bag's own menu and on the bank's and
+-- view windows' portrait: full names in class colors with their portraits.
+function Bags:FillCharacterMenu(sub)
+    for _,entry in ipairs(self:Characters()) do
+        local guid=entry.guid
+        sub:CreateButton(self:CharacterMarkup(entry.c,16)..self:ClassName(entry.c,guid,true)..(entry.me and " (you)" or ""),function() self:Select(guid,true) end)
+    end
+    -- Old or deleted characters are removed on the Characters page.
+    sub:CreateDivider()
+    sub:CreateButton("Manage characters...",function() if not InCombatLockdown() then FT:OpenModule("BagsCharacters") end end)
+end
 -- "Characters" in the bag's own settings menu (left-click on the portrait).
 function Bags:HookBagMenus()
     if self.menusHooked or not Menu or not Menu.ModifyMenu then return end
@@ -842,14 +893,7 @@ function Bags:HookBagMenus()
         if frame and frame~=ContainerFrameCombinedBags and frame~=ContainerFrame1 then return end
         if not self:Settings().view then return end
         root:CreateDivider()
-        local sub=root:CreateButton("Characters")
-        for _,entry in ipairs(self:Characters()) do
-            local guid=entry.guid
-            sub:CreateButton(self:ClassName(entry.c,guid,true)..(entry.me and " (you)" or ""),function() self:Select(guid,true) end)
-        end
-        -- Old or deleted characters are removed on the Characters page.
-        sub:CreateDivider()
-        sub:CreateButton("Manage characters...",function() if not InCombatLockdown() then FT:OpenModule("BagsCharacters") end end)
+        self:FillCharacterMenu(root:CreateButton("Characters"))
     end
     for _,tag in ipairs({"MENU_CONTAINER_FRAME_COMBINED","MENU_CONTAINER_FRAME"}) do pcall(Menu.ModifyMenu,tag,add) end
 end
@@ -893,7 +937,7 @@ function Bags:CharacterOptions()
     local options={}
     for _,entry in ipairs(self:Characters()) do
         local c=entry.c
-        options[#options+1]={value=entry.guid,label=(c.name or "?")..(entry.me and " (you)" or ""),icon=self:ClassIcon(c),
+        options[#options+1]={value=entry.guid,label=self:ClassName(c,entry.guid,true)..(entry.me and " |cffb8ab8a(you)|r" or ""),icon=self:ClassIcon(c),atlas=self:Portrait(c),
             tooltipTitle=c.name,tooltip=function()
                 return "Level "..(c.level or "?").." · "..self:Money(entry.me and (number(GetMoney and GetMoney()) or c.money) or c.money)..
                     "\nBags seen "..self:Ago(entry.me and now() or c.seen)..". Bank seen "..self:Ago(c.bankSeen).."."
@@ -902,6 +946,14 @@ function Bags:CharacterOptions()
     return options
 end
 function Bags:ChooseCharacter(owner)
+    -- The game's own menu, like the bag's: one look everywhere.
+    if MenuUtil and MenuUtil.CreateContextMenu then
+        local ok=pcall(MenuUtil.CreateContextMenu,owner,function(_,root)
+            if root.CreateTitle then root:CreateTitle("Characters") end
+            self:FillCharacterMenu(root)
+        end)
+        if ok then return end
+    end
     owner.options=function() return self:CharacterOptions() end
     owner.value=owner.ftBankMenu and self:BankWho() or self:Viewed()
     owner.menuWidth=210
@@ -1266,7 +1318,7 @@ function Bags:FillView(kind)
         local who=isBank and self:BankWho() or self:Viewed()
         pcall(view.SetPortraitToAsset,view,self:ClassIcon(c))
     end
-    view.chars.icon:SetTexture(self:ClassIcon(c or self:Record()))
+    self:SetCharacterIcon(view.chars.icon,c or self:Record())
     if isBank then return self:FillBank(view,containers,seen,c) end
     -- Like the game's combined bag: one line of slots (backpack first, then
     -- bag 1 to 4), drawn from the corner the game uses, or the one picked
@@ -1635,14 +1687,14 @@ function list:Refresh()
             r.toggle:SetTexture(list.open[row.heading] and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up")
         elseif row.guid then
             local c=row.c
-            r.icon:SetTexture(Bags:ClassIcon(c))
+            Bags:SetCharacterIcon(r.icon,c)
             r.name:SetText(Bags:ClassName(c,row.guid,true)..(row.me and "  |cffb8ab8a(you)|r" or ""))
             r.meta:SetText("Level "..(c.level or "?").." · "..Bags:Money(c.money).." · bags "..Bags:Ago(row.me and now() or c.seen).." · bank "..Bags:Ago(c.bankSeen))
             r.fullName=c.fullName or c.name; r.fullMeta=r.meta:GetText()
             r.forgetTip="Remove "..(c.name or "this character").." from gold, item counts and character buttons."..(row.me and " You are on it now: it comes back when your bags change." or " It is added again the next time it logs in.")
             r.forget:SetScript("OnClick",function() FT:Confirm("Forget "..(c.fullName or c.name or "this character").."?",function() Bags:Forget(row.guid); list:Refresh(); Bags:Refresh() end) end)
         elseif row.guild then
-            r.icon:SetTexture("Interface\\Icons\\INV_Shirt_GuildTabard_01")
+            r.icon:SetTexture("Interface\\Icons\\INV_Shirt_GuildTabard_01"); r.icon:SetTexCoord(.07,.93,.07,.93)
             r.name:SetText("<"..(row.g.name or "?")..">  guild bank")
             local tabs=0; for _ in pairs(row.g.tabs or {}) do tabs=tabs+1 end
             r.meta:SetText(tabs.." tab"..(tabs==1 and "" or "s").." read · seen "..Bags:Ago(row.g.seen))

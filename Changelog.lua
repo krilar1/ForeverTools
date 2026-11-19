@@ -6,6 +6,16 @@ FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
     -- try={get,set}: a "Try it" button that switches the new setting on and off
     -- again; open="Module": a "Show me" button. classes: only those classes see it.
+    {version="1.9.0",notes={
+        {icon="INV_Misc_Book_11",title="Combat logging",text="Raids logged for Warcraft Logs.",where="System > Combat logging",
+            try={get=function() return FT.modules.System:Settings().combatLog==true end,set=function(on) FT.modules.System:Settings().combatLog=on; FT.modules.System:Apply() end}},
+        {icon="INV_Misc_Spyglass_02",title="Nearby enemies keep up",text="Players stay listed after they leave view.",open="EnemyNearby"},
+        {icon="INV_Misc_Wrench_01",title="Fewer, clearer pages",text="Related settings on one page, under headers.",open="QueueTimer"},
+        {icon="INV_Misc_GroupLooking",title="LayerSwap hosting",text="Stop its hosting when you log in.",where="System > Other addons",
+            try={get=function() return FT.modules.System:Settings().layerSwapOff==true end,set=function(on) FT.modules.System:Settings().layerSwapOff=on; FT.modules.System:Refresh() end}},
+        {icon="INV_Misc_Wrench_02",title="Adjustments",text="Quiet login, farther camera zoom, macros to General, flight times, BG icons, portraits."},
+        {icon="Trade_BlackSmithing",title="Fixes",text="Tooltip levels, mail subject, alerts, colors."},
+    }},
     {version="1.8.0",notes={
         {icon="Spell_Shadow_Twilight",title="Stealth shadows",text="Dark edges while stealthed.",classes={ROGUE=true,DRUID=true},where="Combat > Stealth shadows",
             try={get=function() return FT.modules.System:Settings().stealthShade==true end,set=function(on) FT.modules.System:Settings().stealthShade=on; FT.modules.System:Apply() end}},

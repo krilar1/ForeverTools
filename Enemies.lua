@@ -34,7 +34,7 @@ end
 -- Settings() runs on every aura change and sighting: its lists are made once.
 local OFF_KEYS={"stealth","fade","marks","nearby","instances","kd"}
 local ON_KEYS={"sound","flash","markTooltip"}
-local NEAR_TIMES={[15]=15,[30]=30,[60]=60,[120]=120}
+local NEAR_TIMES={[15]=15,[30]=30,[60]=60,[120]=120,[300]=300,[600]=600,[900]=900}
 local PLACE_PAIRS={{"x","y"},{"nearX","nearY"}}
 function E:Settings()
     if type(FT.db.enemies)~="table" then FT.db.enemies={} end
@@ -43,7 +43,7 @@ function E:Settings()
     for _,key in ipairs(ON_KEYS) do if type(s[key])~="boolean" then s[key]=true end end
     s.size=math.max(.7,math.min(1.5,tonumber(s.size) or 1))
     s.nearSize=math.max(.7,math.min(1.5,tonumber(s.nearSize) or 1))
-    s.nearTime=NEAR_TIMES[tonumber(s.nearTime) or 30] or 30
+    s.nearTime=NEAR_TIMES[tonumber(s.nearTime) or 60] or 60
     if s.nearDock~="top" and s.nearDock~="bottom" and s.nearDock~="left" and s.nearDock~="right" then s.nearDock="free" end
     if type(s.nearCollapsed)~="boolean" then s.nearCollapsed=false end
     if type(s.nearShowEmpty)~="boolean" then s.nearShowEmpty=false end
@@ -120,6 +120,8 @@ end
 local SEP=Constants and Constants.CharacterNameSeparatorConsts and type(Constants.CharacterNameSeparatorConsts.CHARACTERNAME_SURNAME_SEPARATOR)=="string" and Constants.CharacterNameSeparatorConsts.CHARACTERNAME_SURNAME_SEPARATOR or " "
 function E:FullName(info)
     local realm=info and type(info.realm)=="string" and info.realm or ""
+    -- A display setting can drop the surname from UnitName: then the real one.
+    if realm=="" and info and type(info.tsur)=="string" then realm=info.tsur end
     return (info and info.name or "?")..(realm~="" and (SEP..realm) or "")
 end
 -- A name you wrote without a surname matches every player with that name.
@@ -328,6 +330,9 @@ function E:PlateRemoved(unit)
     self.waiting[unit]=nil
     if not guid or not self:Active() then return end
     local entry=self.seen[guid]; if not entry then return end
+    -- Seen until now: "Keep for" counts from when they left your view (it
+    -- counted from when they showed up, so long sightings dropped at once).
+    entry.last=now()
     entry.unit=nil; entry.markedHere=nil
     local s=self:Settings()
     if not s.stealth or not s.fade then return end
@@ -389,8 +394,8 @@ function E:Notice()
     f.pulse=pulse
     f:RegisterForClicks("LeftButtonUp","RightButtonUp"); f:RegisterForDrag("LeftButton"); f:SetMovable(true)
     f:SetScript("OnClick",function(_,button)
-        if button=="RightButton" then if not InCombatLockdown() then FT:OpenModule("EnemyAlerts") end
-        elseif not self.moving then f:Hide() end
+        -- Any click dismisses it; settings live in /ft, not on the alert.
+        if not self.moving then f:Hide() end
     end)
     f:SetScript("OnDragStart",function() if self.moving then f:StartMoving() end end)
     f:SetScript("OnDragStop",function()
@@ -399,7 +404,7 @@ function E:Notice()
         if x and y then local scale=f:GetScale(); s.x,s.y=x*scale,y*scale end
         self:Position()
     end)
-    FT:Tooltip(f,"Enemy alert","Left-click to dismiss, right-click for settings.")
+    FT:Tooltip(f,"Enemy alert","Click to dismiss.")
     f:Hide()
     self.notice=f
     return f
@@ -476,7 +481,7 @@ function E:Alert(info,kind,preview)
     f.title:SetText(((danger and kind~="marked") and ("Marked player · "..titles[kind]:lower()) or titles[kind] or "Enemy nearby")..(preview and not self.moving and " — preview" or ""))
     f.title:SetTextColor(color[1],color[2],color[3])
     local r,g,b=self:ClassColor(info.class)
-    f.name:SetText(string.format("|cff%02x%02x%02x%s|r  |cffb8ab8a%s%s|r",r*255,g*255,b*255,info.name or "?",self:Describe(info),info.spell and (" · "..info.spell) or ""))
+    f.name:SetText(string.format("|cff%02x%02x%02x%s|r  |cffb8ab8a%s%s|r",r*255,g*255,b*255,self:FullName(info),self:Describe(info),info.spell and (" · "..info.spell) or ""))
     local mark=self:IsMarked(info)
     local reason=mark and self:Reason(mark) or (preview and kind=="marked" and "Camped me in Duskwood")
     f.reason:SetText(reason and ("Reason: "..reason) or ""); f.reason:SetShown(reason~=nil)
@@ -565,11 +570,16 @@ local function fillRow(row,e)
     row.icon:SetTexture(stealthy and e.stealthIcon or E:ClassIcon(e.class))
     local r,g,b=E:ClassColor(e.class)
     local marked=E:IsMarked(e)
-    row.name:SetText((marked and "|cffff4433!|r " or "")..(e.name or "?")); row.name:SetTextColor(r,g,b)
-    row.level:SetText(e.level and e.level>0 and e.level or "??")
+    row.name:SetText((marked and "|cffff4433!|r " or "")..E:FullName(e)); row.name:SetTextColor(r,g,b)
+    -- Too high to see (a skull): at least ten levels above you.
+    local mine=UnitLevel and tonumber(UnitLevel("player"))
+    row.level:SetText(e.level and e.level>0 and e.level or (mine and mine>0 and ("|cffff5a3c"..math.min(mine+10,GetMaxPlayerLevel and GetMaxPlayerLevel() or 60).."+|r") or "??"))
     row.ago:SetText(ago(e))
     row.mark:SetShown(marked~=nil)
-    row:SetAlpha((e.unit or e.logged) and 1 or .6)
+    -- Out of view: faded, and greyer once half the "Keep for" time is gone.
+    local alpha=1
+    if not (e.unit or e.logged) then alpha=(now()-(e.last or now()))>E:Settings().nearTime/2 and .4 or .7 end
+    row:SetAlpha(alpha)
 end
 local function rowTooltip(owner)
     local e=owner.entry; if not e then return end
@@ -683,13 +693,19 @@ function E:Strip()
     f.titleButton:RegisterForDrag("LeftButton")
     f.titleButton:SetScript("OnDragStart",function() if self.movingStrip and not busy() then f:StartMoving() end end)
     f.titleButton:SetScript("OnDragStop",function() f:GetScript("OnDragStop")(f) end)
-    f.titleButton:SetScript("OnClick",function() if not self.movingStrip then self:ToggleView() end end)
+    -- Right-click: the list's options as a menu (works in a fight, when the
+    -- settings window can't open).
+    f.titleButton:RegisterForClicks("LeftButtonUp","RightButtonUp")
+    f.titleButton:SetScript("OnClick",function(owner,button)
+        if button=="RightButton" then self:TitleMenu(owner) elseif not self.movingStrip then self:ToggleView() end
+    end)
     f.titleButton:SetScript("OnEnter",function(owner)
         GameTooltip:SetOwner(owner,"ANCHOR_TOP")
         local v=self.view or "near"
         GameTooltip:SetText(VIEW_TITLE[v])
         GameTooltip:AddLine("Click to show: "..VIEW_TITLE[VIEW_NEXT[v]]:lower()..".",1,1,1,true)
         GameTooltip:AddLine("Order: nearby, seen before, marked.",.72,.66,.55)
+        GameTooltip:AddLine("Right-click for options.",.72,.66,.55)
         if v~="near" then GameTooltip:AddLine("Scroll with the mouse wheel.",.72,.66,.55) end
         GameTooltip:Show()
     end)
@@ -861,11 +877,12 @@ function E:ToggleCollapsed(wasOpen)
     end
     self:UpdateStrip(); self:Refresh()
 end
+function E:KeepLabel(v) return v<60 and (v.." seconds") or v==60 and "1 minute" or ((v/60).." minutes") end
 function E:StripEntries()
     local s=self:Settings(); local list={}; local t=now()
     for guid,e in pairs(self.seen) do
         if e.unit or t-(e.last or 0)<=s.nearTime then list[#list+1]=e
-        elseif t-(e.last or 0)>600 then self.seen[guid]=nil end
+        elseif t-(e.last or 0)>math.max(600,s.nearTime*2) then self.seen[guid]=nil end
     end
     table.sort(list,function(a,b)
         local ma,mb=self:IsMarked(a) and 1 or 0,self:IsMarked(b) and 1 or 0
@@ -1068,6 +1085,36 @@ end
 function E:ToggleView()
     self.view=VIEW_NEXT[self.view or "near"]; self.logOffset=0
     self:UpdateStrip()
+end
+-- The title's right-click menu: the everyday list options. Changes made in
+-- a fight are kept and the list redraws when the fight ends (as always).
+function E:TitleMenu(owner)
+    if not MenuUtil or not MenuUtil.CreateContextMenu then return end
+    local function changed() self:UpdateStrip(); self:Refresh() end
+    MenuUtil.CreateContextMenu(owner,function(_,root)
+        local s=self:Settings()
+        root:CreateTitle("Nearby enemies")
+        for _,v in ipairs({"near","log","marked"}) do
+            root:CreateRadio(VIEW_TITLE[v],function() return (self.view or "near")==v end,function() self.view=v; self.logOffset=0; self:UpdateStrip() end)
+        end
+        root:CreateDivider()
+        local keep=root:CreateButton("Keep for: "..self:KeepLabel(s.nearTime))
+        for _,v in ipairs({15,30,60,120,300,600,900}) do
+            keep:CreateRadio(self:KeepLabel(v),function() return s.nearTime==v end,function() s.nearTime=v; changed() end)
+        end
+        local rows=root:CreateButton("Players shown: "..tostring(s.nearRows))
+        for v=1,8 do rows:CreateRadio(tostring(v),function() return s.nearRows==v end,function() s.nearRows=v; self:PlaceStrip(); changed() end) end
+        local bar=root:CreateButton("Title bar: "..(s.nearFade and "On mouseover" or "Always"))
+        bar:CreateRadio("Always",function() return not s.nearFade end,function() s.nearFade=false; changed() end)
+        bar:CreateRadio("On mouseover",function() return s.nearFade==true end,function() s.nearFade=true; changed() end)
+        root:CreateCheckbox("Show when no one is near",function() return s.nearShowEmpty==true end,function() s.nearShowEmpty=not s.nearShowEmpty; changed() end)
+        root:CreateDivider()
+        local move=root:CreateButton(self.movingStrip and "Lock the list" or "Move the list",function() self:SetMovingStrip(not self.movingStrip) end)
+        if busy() and move.SetEnabled then move:SetEnabled(false) end
+        root:CreateButton("Clear the log...",function() FT:Confirm("Forget every player in the log? Marks stay.",function() self:ClearLog() end) end)
+        root:CreateButton(busy() and "All settings (opens after the fight)" or "All settings...",function() FT:OpenModule("EnemyNearby") end)
+        if busy() then root:CreateTitle("In a fight: changes show when it ends.") end
+    end)
 end
 function E:ScrollLog(delta)
     if (self.view or "near")=="near" then return end
@@ -1560,7 +1607,7 @@ function E:Refresh()
     if near and near.frame then
         local s=self:Settings()
         near.toggle.label:SetText("Nearby enemies: "..(s.nearby and "On" or "Off")); FT:SetSelected(near.toggle,s.nearby)
-        near.keep.label:SetText("Keep for: "..s.nearTime.." seconds")
+        near.keep.label:SetText("Keep for: "..E:KeepLabel(s.nearTime))
         near.dock.label:SetText("Anchor to: "..(E.dockLabels[s.nearDock] or "None"))
         near.fade.label:SetText("Title bar: "..(s.nearFade and "On mouseover" or "Always")); FT:SetSelected(near.fade,s.nearFade)
         near.rowsLabel:SetText("Players shown: "..s.nearRows)
@@ -1735,14 +1782,14 @@ function nearPage:Open()
     if not self.frame then
         local w=width("EnemyNearby")
         local frame=FT:Window("ForeverToolsEnemyNearby","Nearby enemies",w,520); self.frame=frame
-        FT:PageInfo(frame,"Nearby enemies","Enemy players you saw lately. Click a name to target them; right-click it to mark them. Marked players come first, in red.\n\nClick the title for everyone you met today (Seen before), then your marked players.")
+        FT:PageInfo(frame,"Nearby enemies","Enemy players you saw lately. Click a name to target them; right-click it to mark them. Marked players come first, in red.\n\nClick the title for everyone you met today (Seen before), then your marked players. Right-click the title for options, also in a fight.")
         self.toggle=FT:AccentButton(frame,"",w-48,32,"Ability_Hunter_SniperShot"); self.toggle:SetPoint("TOPLEFT",24,-66)
         self.toggle:SetScript("OnClick",function() local s=E:Settings(); s.nearby=not s.nearby; E:Apply() end)
         FT:Tooltip(self.toggle,"Nearby enemies","Show enemy players you saw recently. Click a name to target.")
         self.keep=FT:QuietButton(frame,"",w-48,32,"INV_Misc_PocketWatch_01"); self.keep:SetPoint("TOPLEFT",24,-104)
         self.keep.options=function()
             local out={}
-            for _,v in ipairs({15,30,60,120}) do out[#out+1]={value=v,label=v.." seconds",icon="Interface\\Icons\\INV_Misc_PocketWatch_01",tooltip="Keep a player in the list for "..v.." seconds after you last saw them."} end
+            for _,v in ipairs({15,30,60,120,300,600,900}) do out[#out+1]={value=v,label=E:KeepLabel(v),icon="Interface\\Icons\\INV_Misc_PocketWatch_01",tooltip="Keep a player in the list for "..E:KeepLabel(v):lower().." after they leave your view. Rows go grey after half that time."} end
             return out
         end
         self.keep.onSelect=function(v) E:Settings().nearTime=v; E:UpdateStrip(); E:Refresh() end

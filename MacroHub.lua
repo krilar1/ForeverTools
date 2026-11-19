@@ -719,7 +719,7 @@ function M:CreateUI()
     self.bulkButton = KT:AccentButton(frame, "", 220, 30, "add"); self.bulkButton:SetPoint("TOPRIGHT", -24, -62)
     if self.bulkButton.SetMotionScriptsWhileDisabled then self.bulkButton:SetMotionScriptsWhileDisabled(true) end
     self.bulkButton:SetScript("OnClick", function() self:ConfirmBulk(); C_Timer.After(0, function() self:Changed() end) end)
-    KT:Tooltip(self.bulkButton, "Add the missing ones", function() return "Add every " .. self:BulkClass() .. " macro not in your Character macros yet. Ones you have are left alone." end)
+    KT:Tooltip(self.bulkButton, "Add the missing ones", function() return "Add every " .. self:BulkClass() .. " macro not in your Character macros yet. Ones you have are left alone.\n\nMore than fits in your Character macros (" .. (MAX_CHARACTER_MACROS or 18) .. ")? You pick which to add, can delete old ones, and can put the rest in General macros (shared by all your characters)." end)
     self.newButton = KT:AccentButton(frame, "+ New macro", 220, 30, "add"); self.newButton:SetPoint("TOPRIGHT", -24, -62)
     self.newButton:SetScript("OnClick", function() self.newName:SetText(""); self.newClass = false; self.newScope = self.scope == "account" and "account" or "character"; self:RefreshNewPanel(); self.newPanel:Show(); if self.newName.SetFocus then self.newName:SetFocus() end end)
     KT:Tooltip(self.newButton, "New macro", "Make your own macro.")

@@ -134,6 +134,8 @@ local function stops()
             find="Mailbox: gold amount as subject",get=sys("mailGold").get,set=sys("mailGold").set},
         {key="autoRepair",chapter="System",page="SystemMerchant",title="Auto-repair",text="Your gear is repaired at merchants.",
             find="Auto-repair",quick=true,get=sys("autoRepair").get,set=sys("autoRepair").set},
+        {key="combatLog",chapter="System",page="SystemCombatLog",title="Combat logging",text="Raids are logged for Warcraft Logs by themselves.",
+            find="Log raids automatically",get=sys("combatLog").get,set=sys("combatLog").set},
         {key="versionCheck",chapter="System",page="SystemGeneral",title="New version notice",text="One chat line when someone in your guild or group has a newer ForeverTools.",
             find="New version notice",get=sys("versionCheck").get,set=sys("versionCheck").set},
         {key="hiddenUI",chapter="System",page="SystemGeneral",title="Key to show the interface",text="A line says which key brings the interface back.",

@@ -1084,12 +1084,19 @@ FT.flightDefaults = {
 }
 
 -- WoW Forever times on top of the Classic ones: InFlight's global_forever
--- (revision 4b2b3ba, 2026-11-15, MIT). Rog'mar is a Forever flight point.
+-- (revision 4b2b3ba, 2026-11-15, MIT), plus the author's own recorded flights.
+-- Rog'mar is a Forever flight point.
 do
   local forever = {
     ["Horde"] = {
       [22] = { [80] = 217 },
-      [3203] = { ["name"] = "Rog'mar", [11] = 582 },
+      [3203] = { ["name"] = "Rog'mar", [11] = 582, [13] = 444, [17] = 329 },
+      -- Recorded in game by the author (2026-11-17): Tarren Mill now flies
+      -- straight to The Sepulcher.
+      [13] = { [10] = 75 },
+      [20] = { [10] = 778, [3203] = 375 },
+      -- (2026-11-19) Undercity flies straight to Kargath.
+      [11] = { [21] = 336 },
     },
     ["Alliance"] = {
       [4] = { [2] = 82 },

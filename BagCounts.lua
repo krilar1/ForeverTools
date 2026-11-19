@@ -43,7 +43,7 @@ function Counts:Lines(id,s)
     for _,entry in ipairs(B:Characters()) do
         if not entry.me or s.countSelf then
             local e=(entry.me and B.LiveIndex and B:LiveIndex() or B:Index(entry.guid))[id]
-            if e and e.total>0 then rows[#rows+1]={B:ClassName(entry.c,entry.guid,s.countFullNames),right(e)}; total=total+e.total end
+            if e and e.total>0 then rows[#rows+1]={B:CharacterMarkup(entry.c,12)..B:ClassName(entry.c,entry.guid,s.countFullNames),right(e)}; total=total+e.total end
         end
     end
     local st=B:Store()

@@ -114,6 +114,8 @@ G.options={
         tip="With Camera ignores small objects on: how big an object may be before it still pushes the camera in. Higher ignores bigger things."},
     {cvar="cameraReduceUnexpectedMovement",kind="switch",section="camera",title="Steady camera",icon="Ability_Hunter_Pathfinding",
         tip="Less camera bounce and sway (for example when landing or on uneven ground)."},
+    {cvar="cameraDistanceMaxZoomFactor",kind="slider",section="camera",min=1,max=2.6,step=.1,title="Camera max zoom out",
+        tip="How far you can scroll the camera out. Higher lets you zoom out further; 2.6 is as far as the game allows. Scroll out again after changing it."},
     {cvar="screenshotQuality",kind="slider",section="camera",min=1,max=10,step=1,title="Screenshot quality",
         tip="Quality of screenshots saved as JPG (10 is best, larger files). Has no effect on PNG or TGA."},
     {cvar="screenshotFormat",kind="choice",section="camera",title="Screenshot format",icon="INV_Misc_Note_05",

@@ -27,6 +27,22 @@ local function cooldownTexts(cd)
     regionCache[cd]=cached
     return cached
 end
+-- The game puts an icon's color back on its own (hovering a button, usable
+-- checks), which made a greyed icon flash in color for up to a second. While
+-- we hold an icon grey, any such change is undone at once.
+local hooked=setmetatable({},{__mode="k"})
+local busy=false
+local function keepGrey(icon,value)
+    if busy or icons[icon]==nil then return end
+    if value==true or value==1 then return end
+    busy=true; icon:SetDesaturated(true); busy=false
+end
+local function hold(icon)
+    if hooked[icon] or not hooksecurefunc then return end
+    hooked[icon]=true
+    hooksecurefunc(icon,"SetDesaturated",keepGrey)
+    if icon.SetDesaturation then hooksecurefunc(icon,"SetDesaturation",keepGrey) end
+end
 local function update()
     if not FT.dbReady then return end
     local s=Fonts:Settings("cooldowns")
@@ -40,9 +56,9 @@ local function update()
         if icon and icon.SetDesaturated and icon.IsDesaturated then
             local grey=s.greyCooldowns==true and cooling(cd)
             if grey then
-                if icons[icon]==nil then icons[icon]=icon:IsDesaturated() end
-                icon:SetDesaturated(true)
-            elseif icons[icon]~=nil then icon:SetDesaturated(icons[icon]); icons[icon]=nil end
+                if icons[icon]==nil then icons[icon]=icon:IsDesaturated(); hold(icon) end
+                busy=true; icon:SetDesaturated(true); busy=false
+            elseif icons[icon]~=nil then local was=icons[icon]; icons[icon]=nil; icon:SetDesaturated(was) end
         end
         if cd then for _,text in ipairs(cooldownTexts(cd)) do
             if colorOn then

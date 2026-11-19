@@ -1,3 +1,35 @@
+# ForeverTools 1.9.0 (2026-11-19)
+
+## New
+- **Combat logging** (System → Combat logging, off at first): logs your fights to the game's combat log file for Warcraft Logs, with the detailed (advanced) logging the uploader needs. Start it now, or let it start by itself in raids, and in dungeons too if you like. It stops when you leave, but only if ForeverTools started it.
+- **Quiet login** (System → General, on): other addons' "loaded" and version lines are left out of chat when you log in or reload. Player and game chat always show. **Still show** picks addons whose lines you still want, and says how many lines each one had hidden. Chat itself is never touched (only the game's print, for 10 seconds), so whispers are safe.
+- **LayerSwap hosting off at login** (System → Other addons, off at first): LayerSwap turns hosting on at every login; this turns it off again, quietly, through LayerSwap's own Host switch. Turning the setting on asks whether to turn hosting off right away. Turn it back on in LayerSwap any time.
+- **Camera max zoom out** (Extra game options → Camera): scroll the camera further out, up to the game's limit.
+- **Nearby enemies: right-click the title for options**, also in a fight: which list, keep for, players shown, title bar, show when empty, move, clear the log, all settings (opens after the fight).
+- **All class macros fit:** "Add the missing" with more macros than your Character slots (a druid has 45+) lets you untick ones you don't want, delete old ones, and put the rest in General macros (shared by all your characters). Every step says where each macro goes.
+- **Portraits in bag lists:** every character list in bags, the bank, the gold tooltip and Characters shows the character's portrait and full class-colored name. The bank's character menu now looks like the bag's.
+- **Battleground icons:** the battleground timer shows the queued battleground's icon (Warsong Gulch, Arathi Basin, Alterac Valley, Eye of the Storm), else your faction's banner.
+- **`/ft tipdebug`:** hover a player and a window opens with what the tooltip looked like before and after ForeverTools, ready to paste into a bug report.
+
+## Changes
+- **Fewer, clearer pages:** Poised, Stealth shadows and Death glow are one page (Screen effects), Auto release is on the Battlegrounds page, and the druid mana bar is on Game resource bars, each with big headed sections. Old links and search still find them.
+- **Quiet while mounted:** buff and cooldown reminders wait while you are mounted or on a flight path.
+- **Flight timer on new routes:** a route with no known time is estimated from the hops (marked ~), or counts up with "Recording time to …" instead of "--:--". "Request stop" shows "Stop requested, landing soon". More Forever flight times added (Rog'mar, Undercity–Kargath and more).
+- **Cooldown reminder:** several abilities show one per row with their icon, and the notice grows to fit its text.
+- **Nearby enemies keep up:** full names, last-seen time when a player leaves view, keep times from 15 seconds to 15 minutes (rows go grey after half), and skull-level players show as "level+".
+- **Mail subject:** an attached item names the mail first; the gold amount is only used without items.
+- **What's new** groups the small changes into one Adjustments card.
+
+## Fixes
+- **Friendly players' level missing in the tooltip** (reported on CurseForge): level, race and class are now built from the player, not from the game's line.
+- **Sleeping bag counted as a town:** since Blizzard's hotfix of 2026-11-17 the Cozy Sleeping Bag makes you rest in its area. At a field camp ForeverTools no longer shows "Low on" reagent notices (no vendor there), and buff reminders set to "Open world" keep showing.
+- **Greyed cooldown icons flashed in color** on hover (Hearthstone, Sprint); they stay grey now.
+- **Cooldown notice text was cut off.**
+- **Target of target color** could be wrong in a fight (green, or the last target's color).
+- **Trinket menu** no longer has an outline or backing box.
+- **Rare and enemy alerts:** right-click no longer opens ForeverTools settings; any click just dismisses the alert.
+- **Search showed some settings twice** (LayerSwap); class-only settings only show for that class.
+
 # ForeverTools 1.8.0 (2026-11-17)
 
 ## New

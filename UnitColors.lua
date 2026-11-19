@@ -40,6 +40,23 @@ function Colors.SameAs(unit)
     elseif IsInGroup and IsInGroup() then
         for i=1,4 do if same("party"..i) then return "party"..i end end
     end
+    -- Your focus or mouseover, or a player whose nameplate is up: their
+    -- class was read when it was still shown (Colors.knownClass).
+    for ref,class in pairs(Colors.knownClass) do
+        if ref~=unit and same(ref) then return ref,class end
+    end
+end
+-- Classes of players on units the game may hide later in a fight: saved
+-- when readable (nameplate shown, focus or mouseover set).
+Colors.knownClass={}
+function Colors:Learn(unit)
+    if type(unit)~="string" then return end
+    local secret=issecretvalue
+    local ok,isPlayer=pcall(UnitIsPlayer,unit)
+    if not ok or (secret and secret(isPlayer)) then return end
+    if not isPlayer then self.knownClass[unit]=nil; return end
+    local _,class=UnitClass(unit)
+    if type(class)=="string" and not (secret and secret(class)) then self.knownClass[unit]=class end
 end
 local nativeAtlas = {player = "UI-HUD-UnitFrame-Player-PortraitOn-Bar-Health"}
 local TOT_WHITE = "UI-HUD-UnitFrame-Party-PortraitOn-Bar-Health-Status"
@@ -76,9 +93,10 @@ function Colors:Paint(bar, force)
         if unknown then
             -- Hidden in a fight, but it may be you or someone in your group
             -- (a mob targeting you): their class is never hidden.
-            local same=Colors.SameAs(unit)
+            local same,known=Colors.SameAs(unit)
             if same then
                 local _, class = UnitClass(same)
+                if known and (type(class)~="string" or (secret and secret(class))) then class=known end
                 if type(class)=="string" and not (secret and secret(class)) then
                     color = (CUSTOM_CLASS_COLORS and CUSTOM_CLASS_COLORS[class]) or (RAID_CLASS_COLORS or {})[class]
                     if color then unknown = nil end
@@ -502,12 +520,18 @@ function Colors:Open()
 end
 FT:RegisterModule("UnitColors", Colors)
 local events=CreateFrame("Frame")
-for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","GROUP_ROSTER_UPDATE","PLAYER_TARGET_CHANGED","PLAYER_FOCUS_CHANGED","UNIT_TARGET","UNIT_CONNECTION","UNIT_NAME_UPDATE","UNIT_HEALTH","UNIT_MAXHEALTH","PLAYER_REGEN_ENABLED"}) do events:RegisterEvent(event) end
+for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","GROUP_ROSTER_UPDATE","PLAYER_TARGET_CHANGED","PLAYER_FOCUS_CHANGED","UNIT_TARGET","UNIT_CONNECTION","UNIT_NAME_UPDATE","UNIT_HEALTH","UNIT_MAXHEALTH","PLAYER_REGEN_ENABLED","NAME_PLATE_UNIT_ADDED","NAME_PLATE_UNIT_REMOVED","UPDATE_MOUSEOVER_UNIT"}) do events:RegisterEvent(event) end
 -- Only the frames this module colors matter; other units' events are ignored.
 local ours={player=true,target=true,focus=true,targettarget=true,focustarget=true}
 local unitEvents={UNIT_CONNECTION=true,UNIT_NAME_UPDATE=true,UNIT_HEALTH=true,UNIT_MAXHEALTH=true}
 events:SetScript("OnEvent",function(_,event,unit)
     if not FT.dbReady then return end
+    if event=="NAME_PLATE_UNIT_ADDED" then Colors:Learn(unit); return
+    elseif event=="NAME_PLATE_UNIT_REMOVED" then if type(unit)=="string" then Colors.knownClass[unit]=nil end; return
+    elseif event=="UPDATE_MOUSEOVER_UNIT" then
+        -- Only a known class; the old one is dropped (mouseover is someone new).
+        Colors.knownClass.mouseover=nil; Colors:Learn("mouseover"); return
+    end
     if event=="UNIT_TARGET" then
         -- Target of target changed: repaint it now (allowed in combat, where
         -- a full pass waits) and once more after the game has drawn it.
@@ -525,6 +549,13 @@ events:SetScript("OnEvent",function(_,event,unit)
         Colors:Queue()
         -- The game can finish drawing a new target or focus a moment later
         -- (and reset its fill then): look once more shortly after.
+        if event=="PLAYER_FOCUS_CHANGED" then Colors.knownClass.focus=nil; Colors:Learn("focus") end
+        -- A new target (or focus) has a new target of its own: never keep
+        -- the old one's color for it.
+        if event=="PLAYER_TARGET_CHANGED" or event=="PLAYER_FOCUS_CHANGED" then
+            local tot=(event=="PLAYER_TARGET_CHANGED" and "target" or "focus").."target"
+            for _,info in pairs(Colors.tracked) do if info.unit==tot then info.lastColor=nil end end
+        end
         if (event=="PLAYER_TARGET_CHANGED" or event=="PLAYER_FOCUS_CHANGED") and Colors:Busy() then
             local which=event=="PLAYER_TARGET_CHANGED" and "target" or "focus"
             Colors:QueuePaint(which); Colors:QueuePaint(which.."target")

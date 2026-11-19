@@ -60,6 +60,7 @@ local index={
     {"Interrupt bar","interrupt kick pummel shield bash earth shock counterspell hammer of justice silence spell lock bash cooldown party raid group tracker announce say chat message kicked","Interrupts","Ability_Kick"},
     {"Keep chat after reload","chat history keep reload relog log in scroll back earlier messages","Chat","chat"},
     {"Thank for buffs","thank thanks buff emote auto automatic stranger","Chat","Spell_Holy_PowerWordShield"},
+    {"Combat logging","combat log logging warcraft logs wcl warcraftlogs raid dungeon advanced combatlog","SystemCombatLog","INV_Misc_Book_11"},
     {"Hide error messages","error errors red text spam out of range not enough rage energy mana moving interrupted ui errors frame","SystemErrors","Ability_Rogue_Disguise"},
     {"Move loot rolls","loot roll need greed position move","SystemQuests","move"},
     {"Flight timer","flight taxi flying countdown timer","FlightTimer","Ability_Mount_Wyvern_01"},
@@ -126,9 +127,12 @@ local index={
 }
 -- Every setting on the System pages too, by its own name: opens its page
 -- and points at it. Added once, the first time you search.
+-- Two names that only differ in case or punctuation are the same entry
+-- ("LayerSwap hosting" and "LayerSwap: hosting").
+local function norm(label) return (label:lower():gsub("[^%w]","")) end
 local function known(label)
-    label=label:lower()
-    for _,e in ipairs(index) do if e[1]:lower()==label then return true end end
+    label=norm(label)
+    for _,e in ipairs(index) do if norm(e[1])==label then return true end end
 end
 function Search:AddPageSettings()
     if self.pagesAdded then return end
@@ -161,10 +165,10 @@ function Search:AddPageSettings()
     for _,page in ipairs(sys and sys.pages or {}) do
         for _,item in ipairs(page.items or {}) do
             local label=type(item[2])=="string" and item[2]~="Preview" and item[2]
+            -- Another class's setting (Poised on a warrior) is not offered.
+            if label and item.only then local _,class=UnitClass("player"); if class and not item.only[class] then label=nil end end
             if label then
-                local known=false
-                for _,e in ipairs(index) do if e[1]:lower()==label:lower() then known=true end end
-                if not known then index[#index+1]={label,(type(item[4])=="string" and item[4]:lower() or "").." "..(page.title or ""):lower(),page.key,item[3] or "generic",find=label,sub=page.title} end
+                if not known(label) then index[#index+1]={label,(type(item[4])=="string" and item[4]:lower() or "").." "..(page.title or ""):lower(),page.key,item[3] or "generic",find=label,sub=page.title} end
             end
         end
     end

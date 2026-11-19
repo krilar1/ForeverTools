@@ -302,16 +302,14 @@ end
 -- The menu -----------------------------------------------------------------
 function T:Menu()
     if self.menu then return self.menu end
-    local ok,m=pcall(CreateFrame,"Frame","ForeverToolsTrinketMenu",UIParent,"TooltipBackdropTemplate")
-    if not ok or not m then m=CreateFrame("Frame","ForeverToolsTrinketMenu",UIParent) end
+    -- No box at all: just the icons, like the bar they open from.
+    local m=CreateFrame("Frame","ForeverToolsTrinketMenu",UIParent)
     m:SetFrameStrata("DIALOG"); m:SetClampedToScreen(true); m:EnableMouse(true); m:Hide()
     m.items={}
     m:SetScript("OnEnter",function() self.menuOver=true end)
     m:SetScript("OnLeave",function() self.menuOver=false; self:MenuLeft() end)
     m.empty=m:CreateFontString(nil,"OVERLAY","GameFontDisableSmall"); m.empty:SetPoint("CENTER"); m.empty:SetText("No other trinkets in your bags")
     self.menu=m
-    local skins=FT.modules.IconStyles
-    if skins and skins.SkinPanel then skins:SkinPanel(m,"trinkets") end
     return m
 end
 local function menuItem(self,m,i)

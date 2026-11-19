@@ -73,7 +73,10 @@ function Timer:Bar()
     if skins and skins.SkinPanel then skins:SkinPanel(f,"bgTimer",{.06,.045,.02,.92},{.85,.66,.25,1}) end
     f.fill=f:CreateTexture(nil,"ARTWORK"); f.fill:SetTexture("Interface\\Buttons\\WHITE8x8")
     f.fill:SetPoint("TOPLEFT",4,-4); f.fill:SetPoint("BOTTOMLEFT",4,4); f.fill:SetWidth(WIDTH-8)
-    f.name=FT:Label(f,"",13,true); f.name:SetPoint("LEFT",10,0); f.name:SetWidth(WIDTH-78); f.name:SetJustifyH("LEFT")
+    -- The battleground's own icon (its mark of honor) on the left.
+    f.icon=f:CreateTexture(nil,"OVERLAY"); f.icon:SetPoint("LEFT",6,0)
+    f.icon:SetTexCoord(.07,.93,.07,.93); FT:RoundIcon(f.icon)
+    f.name=FT:Label(f,"",13,true); f.name:SetPoint("LEFT",f.icon,"RIGHT",6,0); f.name:SetWidth(WIDTH-104); f.name:SetJustifyH("LEFT")
     if f.name.SetWordWrap then f.name:SetWordWrap(false) end
     f.name:SetTextColor(1,1,1); f.name:SetShadowColor(0,0,0,1); f.name:SetShadowOffset(1,-1)
     f.time=FT:Label(f,"",15,true); f.time:SetPoint("RIGHT",-10,0); f.time:SetJustifyH("RIGHT")
@@ -137,8 +140,23 @@ local function barColor(share)
     if share>.5 then return 2*(1-share)*.9+.1,.75,.15 end
     return 1,.75*share*2,.12
 end
+-- Each battleground's icon: its mark of honor. Others: your faction's banner.
+local BG_ICONS={
+    ["warsong gulch"]="INV_Misc_Rune_07",["arathi basin"]="INV_Jewelry_Amulet_07",["alterac valley"]="INV_Jewelry_Necklace_21",
+    ["eye of the storm"]="Spell_Nature_EyeOfTheStorm",
+}
+function Timer:Icon(name)
+    local icon=type(name)=="string" and BG_ICONS[name:lower()]
+    if not icon then
+        local faction=UnitFactionGroup and UnitFactionGroup("player")
+        icon=faction=="Alliance" and "INV_BannerPVP_02" or "INV_BannerPVP_01"
+    end
+    return "Interface\\Icons\\"..icon
+end
 function Timer:Paint(name,left,total)
     local f=self:Bar()
+    local h=f:GetHeight() or 30; local side=math.max(12,(type(h)=="number" and h or 30)-10)
+    f.icon:SetSize(side,side); f.icon:SetTexture(self:Icon(self.moving and "Warsong Gulch" or name))
     local share=math.max(0,math.min(1,(total and total>0) and left/total or 1))
     f.fill:SetWidth(math.max(1,(WIDTH-8)*share))
     local r,g,b=barColor(share)
@@ -245,7 +263,7 @@ function Timer:Refresh()
 end
 function Timer:Open()
     if not self.frame then
-        local frame=FT:Window("ForeverToolsQueueTimer","Battleground timer",540,300); self.frame=frame
+        local frame=FT:Window("ForeverToolsQueueTimer","Battlegrounds",540,420); self.frame=frame
         FT:PageInfo(frame,"Battleground timer","When a battleground queue pops, this bar counts down the time you have to enter. It goes from green to red and blinks for the last ten seconds.")
         local hint=FT:Label(frame,"Counts down the time you have to enter when a battleground queue pops.",12); hint:SetPoint("TOPLEFT",24,-64); hint:SetWidth(492); hint:SetTextColor(.66,.59,.48)
         self.toggle=FT:AccentButton(frame,"",492,34,"INV_Misc_PocketWatch_01"); self.toggle:SetPoint("TOPLEFT",24,-90)
@@ -264,6 +282,12 @@ function Timer:Open()
         self.place=FT:Label(frame,"",12); self.place:SetPoint("TOPLEFT",24,-222); self.place:SetWidth(492); self.place:SetTextColor(.66,.59,.48)
         if self.place.SetWordWrap then self.place:SetWordWrap(true) end
         FT:Sections(frame,{{"Look",self.sizeLabel},{"Position",reset}})
+        -- Auto release lives on this page too (1.9.0), under its own header.
+        local A=FT.modules.AutoRelease
+        local last=FT:ContentHeight(frame)
+        if A and A.Build then A:Build(frame,-(last+8)) end
+        FT:BigSections(frame,{{"Battleground timer",self.toggle,"The time left to enter when a queue pops.","INV_Misc_PocketWatch_01"},
+            A and A.toggle and {"Auto release",A.toggle,"Releases your spirit when you die in a battleground.","Spell_Holy_GuardianSpirit"} or nil})
         -- Closing the page ends moving and the preview.
         frame:HookScript("OnHide",function()
             if self.moving then self:SetMoving(false) end
@@ -275,6 +299,7 @@ function Timer:Open()
         end)
     end
     self:Refresh(); self.frame:Show()
+    local A=FT.modules.AutoRelease; if A and A.Refresh then A:Refresh() end
 end
 FT:RegisterModule("QueueTimer",Timer)
 local events=CreateFrame("Frame")

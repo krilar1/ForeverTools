@@ -90,8 +90,8 @@ function Rare:Notice()
     f.pulse=pulse
     f:RegisterForClicks("LeftButtonUp","RightButtonUp"); f:RegisterForDrag("LeftButton"); f:SetMovable(true)
     f:SetScript("OnClick",function(_,button)
-        if button=="RightButton" then if not InCombatLockdown() then FT:OpenModule("RareAlert") end
-        elseif not self.moving then f:Hide() end
+        -- Any click dismisses it; settings live in /ft, not on the alert.
+        if not self.moving then f:Hide() end
     end)
     f:SetScript("OnDragStart",function() if self.moving then f:StartMoving() end end)
     f:SetScript("OnDragStop",function()
@@ -100,7 +100,7 @@ function Rare:Notice()
         if x and y then local scale=f:GetScale(); s.x,s.y=x*scale,y*scale end
         self:Position()
     end)
-    FT:Tooltip(f,"Rare alert","Left-click to dismiss, right-click for settings.")
+    FT:Tooltip(f,"Rare alert","Click to dismiss.")
     f:HookScript("OnHide",function() self:UpdateTarget() end)
     f:Hide()
     self.notice=f
@@ -120,12 +120,11 @@ function Rare:TargetButton()
             t:RegisterForClicks("LeftButtonUp","RightButtonUp")
             t:SetAttribute("useOnKeyDown",false); t:SetAttribute("type1","macro")
             t:SetScript("PostClick",function(_,button)
-                if button=="RightButton" then if not InCombatLockdown() then FT:OpenModule("RareAlert") end end
                 f:Hide()
             end)
             t:SetScript("OnEnter",function(btn)
                 GameTooltip:SetOwner(btn,"ANCHOR_BOTTOM"); GameTooltip:SetText("Rare alert",1,.82,.4)
-                GameTooltip:AddLine("Left-click to target "..(self.targetName or "it").." and dismiss. Right-click for settings.",1,1,1,true)
+                GameTooltip:AddLine("Left-click to target "..(self.targetName or "it").." and dismiss. Right-click to just dismiss.",1,1,1,true)
                 GameTooltip:Show()
             end)
             t:SetScript("OnLeave",function() GameTooltip:Hide() end)

@@ -177,26 +177,27 @@ end)
 -- Settings page (Appearance > Druid mana bar). The switch is saved with the
 -- unit-frame settings (unitColors.druidMana), as before.
 function Mana:Refresh()
-    if not self.frame then return end
+    if not self.frame or not self.toggle then return end
     local on=self:On()
     self.toggle.label:SetText("Mana bar while shapeshifted: "..(on and "On" or "Off")); FT:SetSelected(self.toggle,on)
     local _,class=UnitClass("player")
     self.note:SetText(class=="DRUID" and "" or "Only druids see this bar. The setting is kept for your druids.")
 end
-function Mana:Open()
-    if not self.frame then
-        local frame=FT:Window("ForeverToolsDruidMana","Druid mana bar",540,560); self.frame=frame
-        FT:PageInfo(frame,"Druid mana bar","Your mana as a third bar under rage or energy while in bear, cat and other forms. Hover it for numbers. Druids only.")
-        local hint=FT:Label(frame,"Your mana as a third bar on the player frame while you are in bear, cat or another form.",12); hint:SetPoint("TOPLEFT",24,-66); hint:SetWidth(492); hint:SetTextColor(.66,.59,.48)
-        self.toggle=FT:AccentButton(frame,"",492,34,"Ability_Racial_BearForm"); self.toggle:SetPoint("TOPLEFT",24,-94)
+-- Its setting sits on the Game resource bars page, under its own header.
+Mana.redirect=true
+function Mana:Open() FT:OpenModule("PersonalResource"); self.frame=FT.modules.PersonalResource and FT.modules.PersonalResource.frame end
+function Mana:Build(frame,y)
+    if self.toggle then return end
+    self.frame=frame
+    do
+        self.toggle=FT:AccentButton(frame,"",572,34,"Ability_Racial_BearForm"); self.toggle:SetPoint("TOPLEFT",24,y)
         self.toggle:SetScript("OnClick",function()
             local colors=FT.modules.UnitColors; if not colors then return end
             local s=colors:Settings(); s.druidMana=not (s.druidMana==true)
             self:Apply(); self:Refresh()
         end)
         FT:Tooltip(self.toggle,"Druid mana bar","Show your mana as a third bar while in a form that hides it.")
-        self.note=FT:Label(frame,"",12); self.note:SetPoint("TOPLEFT",24,-140); self.note:SetWidth(492); self.note:SetTextColor(.66,.59,.48)
+        self.note=FT:Label(frame,"",12); self.note:SetPoint("TOPLEFT",24,y-42); self.note:SetWidth(572); self.note:SetTextColor(.66,.59,.48)
     end
-    self:Refresh(); self.frame:Show()
 end
 FT:RegisterModule("DruidMana",Mana)

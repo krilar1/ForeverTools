@@ -276,6 +276,7 @@ function CD:Check(reason)
 end
 
 -- The notice: the same look as the buff reminders, just below them.
+local MAX_TEXT=560 -- widest the notice text gets; longer lists end in "..."
 function CD:Notice()
     if self.notice then return self.notice end
     local f=CreateFrame("Frame","ForeverToolsCooldownReminder",UIParent)
@@ -285,6 +286,9 @@ function CD:Notice()
     for i=1,3 do local t=f:CreateTexture(nil,"ARTWORK"); t:SetSize(22,22); t:SetPoint("LEFT",8+(i-1)*26,0); t:SetTexCoord(.07,.93,.07,.93); FT:RoundIcon(t); f.icons[i]=t end
     f.text=FT:Label(f,"",13); f.text:SetJustifyH("LEFT")
     if f.text.SetWordWrap then f.text:SetWordWrap(false) end
+    -- Several cooldowns: one per row (icon and name) under a short heading.
+    f.names={}
+    for i=1,3 do local t=FT:Label(f,"",13); t:SetJustifyH("LEFT"); if t.SetWordWrap then t:SetWordWrap(false) end; t:Hide(); f.names[i]=t end
     -- Click (left or right) closes it, in a fight too.
     f:EnableMouse(true); f:Hide()
     f:SetScript("OnMouseUp",function(owner) self.token=(self.token or 0)+1; owner:Hide() end)
@@ -317,20 +321,48 @@ function CD:Place()
     else f:SetPoint("TOP",UIParent,"TOP",0,-155) end
 end
 function CD:Show(list,reason,preview)
-    if not preview and FT:NoControl() then return end
-    local f=self:Notice(); self:Place()
-    local names={}
-    for i=1,3 do
-        local entry=list[i]
-        if entry then f.icons[i]:SetTexture(entry.icon or "Interface\\Icons\\INV_Misc_QuestionMark"); f.icons[i]:Show(); names[#names+1]=entry.name
-        else f.icons[i]:Hide() end
-    end
-    local shown=math.min(3,#list)
-    f.text:ClearAllPoints(); f.text:SetPoint("LEFT",8+shown*26+4,0); f.text:SetWidth(285-(8+shown*26+4)-8)
+    if not preview and (FT:NoControl() or FT:Mounted()) then return end
+    local f=self:Notice(); self:Place(); f.preview=preview and true or nil
     local quiet=reason=="leveling"
-    f.text:SetText((quiet and "Ready: " or "Use ")..table.concat(names,", "))
+    local shown=math.min(3,#list)
+    -- Text widths can be secret in a fight: then estimate from the length.
+    local function width(fs,text)
+        fs:SetWidth(0); fs:SetText(text)
+        local w=fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth() or fs:GetStringWidth()
+        if (issecretvalue and issecretvalue(w)) or type(w)~="number" or w<=0 then w=#text*7.5 end
+        local fit=math.min(MAX_TEXT,math.ceil(w)+2); fs:SetWidth(fit)
+        return fit
+    end
     local c=FT.modules.BuffReminder:Settings().textColor
-    if type(c)=="table" then f.text:SetTextColor(c[1] or 1,c[2] or 1,c[3] or 1) end
+    local r,g,b=1,1,1
+    if type(c)=="table" then r,g,b=c[1] or 1,c[2] or 1,c[3] or 1 end
+    for i=1,3 do f.names[i]:Hide(); f.icons[i]:Hide(); f.icons[i]:ClearAllPoints() end
+    if shown<=1 then
+        f.text:Show()
+        -- One cooldown: one line, icon and "Use <name>".
+        local entry=list[1]
+        f.icons[1]:SetTexture(entry and entry.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+        f.icons[1]:SetPoint("LEFT",8,0); f.icons[1]:Show()
+        f.text:ClearAllPoints(); f.text:SetPoint("LEFT",38,0)
+        local textWidth=width(f.text,(quiet and "Ready: " or "Use ")..(entry and entry.name or ""))
+        f:SetSize(math.max(285,38+textWidth+10),34)
+    else
+        -- Several: one row per cooldown, "Use <name>" (no heading).
+        f.text:SetText(""); f.text:Hide()
+        local widest=0
+        for i=1,shown do
+            local entry=list[i]
+            local y=-6-(i-1)*26
+            f.icons[i]:SetTexture(entry.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+            f.icons[i]:SetPoint("TOPLEFT",10,y); f.icons[i]:Show()
+            local fs=f.names[i]
+            fs:ClearAllPoints(); fs:SetPoint("LEFT",f.icons[i],"RIGHT",8,0)
+            widest=math.max(widest,10+22+8+width(fs,(quiet and "Ready: " or "Use ")..(entry.name or "")))
+            fs:SetTextColor(r,g,b); fs:Show()
+        end
+        f:SetSize(math.max(200,widest+12),shown*26+8)
+    end
+    f.text:SetTextColor(r,g,b)
     -- The leveling nudge is quieter: a little see-through, shorter, no sound.
     f:SetAlpha(quiet and .8 or 1)
     f:Show()
@@ -452,6 +484,8 @@ events:SetScript("OnEvent",function(_,event,unit,a,b,c)
         CD.foughtAt=GetTime()
         for _,e in ipairs({"UNIT_COMBAT","UNIT_AURA","LOSS_OF_CONTROL_ADDED"}) do events:UnregisterEvent(e) end
         if CD.notice then CD.notice:Hide() end
+    elseif event=="PLAYER_MOUNT_DISPLAY_CHANGED" then
+        if CD.notice and CD.notice:IsShown() and not CD.notice.preview and FT:Mounted() then CD.notice:Hide() end
     elseif event=="UNIT_COMBAT" then
         -- a=action, c=amount (readable in the open world; skipped if hidden).
         if secret(a) or a~="WOUND" or secret(c) or type(c)~="number" or c<=0 or not CD.damage then return end
@@ -498,7 +532,7 @@ end)
 function CD:Apply()
     if not FT.dbReady then return end
     if self:Settings().enabled then
-        for _,event in ipairs({"PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","LEARNED_SPELL_IN_SKILL_LINE","PLAYER_LEVEL_UP","PLAYER_TALENT_UPDATE","PLAYER_TARGET_CHANGED","SPELL_UPDATE_COOLDOWN","PLAYER_ENTERING_WORLD","SPELLS_CHANGED"}) do pcall(events.RegisterEvent,events,event) end
+        for _,event in ipairs({"PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","LEARNED_SPELL_IN_SKILL_LINE","PLAYER_LEVEL_UP","PLAYER_TALENT_UPDATE","PLAYER_TARGET_CHANGED","SPELL_UPDATE_COOLDOWN","PLAYER_ENTERING_WORLD","SPELLS_CHANGED","PLAYER_MOUNT_DISPLAY_CHANGED"}) do pcall(events.RegisterEvent,events,event) end
         events:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED","player")
         -- Kills are counted from your experience (the kill line in chat can
         -- be hidden or worded differently).

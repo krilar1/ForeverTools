@@ -321,6 +321,27 @@ function Reminder:CampBlocked()
     if not why and IsIndoors then local ok,indoors=pcall(IsIndoors); if ok and safe(indoors) and indoors then why="indoors" end end
     return why~=nil,why
 end
+-- Resting in a town (inn or city), not on a sleeping bag. Since the
+-- 2026-11-17 hotfix the Cozy Sleeping Bag gives Resting in its area too, so
+-- Resting alone no longer means "near vendors". Resting with Well-Rested on
+-- you, outdoors and out of instances, is the bag. Only looked at while
+-- resting, with no events of its own.
+function Reminder:TownResting()
+    -- Asked once per reminder pass at most (many reminders ask in one pass).
+    local now=GetTime and GetTime()
+    if now and self.townAt==now then return self.townIs,self.townWhy end
+    local is,why=self:TownRestingNow()
+    self.townAt,self.townIs,self.townWhy=now,is,why
+    return is,why
+end
+function Reminder:TownRestingNow()
+    if not IsResting then return false,"no IsResting" end
+    local ok,resting=pcall(IsResting)
+    if not (ok and safe(resting) and resting) then return false,"not resting" end
+    local has=myAuraByName(WELL_RESTED,"Well-Rested")
+    if has==true and not self:CampBlocked() then return false,"sleeping bag" end
+    return true,"inn or city"
+end
 -- /ft campdebug: why the tent and sleeping bag reminders show or not.
 function Reminder:CampDebug()
     local s=self:Settings()
@@ -330,6 +351,8 @@ function Reminder:CampDebug()
     print("|cffffd100FT camp|r on: "..tostring(s.camp).." leveling: "..tostring(self:Leveling()).." resting: "..tostring(IsResting and IsResting()))
     print("|cffffd100FT camp|r IsInInstance: "..tostring(okI and inside).." / "..tostring(okI and kind).."  instance: "..tostring(okG and name).." / "..tostring(okG and ikind).." / difficulty "..tostring(okG and difficulty).." / map "..tostring(okG and mapID))
     print("|cffffd100FT camp|r indoors: "..tostring(IsIndoors and IsIndoors()).."  blocked: "..tostring(blocked).." ("..tostring(why)..")")
+    local town,townWhy=self:TownResting()
+    print("|cffffd100FT camp|r town resting: "..tostring(town).." ("..tostring(townWhy)..")  place: "..tostring(self:Place()))
     self.campItems=nil
     local items=self:CampItems()
     print("|cffffd100FT camp|r tent: "..tostring(items.tent and items.tent.name).."  bag: "..tostring(items.bag~=nil).."  rested: "..tostring(GetXPExhaustion and GetXPExhaustion()))
@@ -679,7 +702,8 @@ function Reminder:Place()
     if kind=="party" or kind=="scenario" then return "dungeon" end
     if kind=="raid" then return "raid" end
     if kind=="pvp" or kind=="arena" then return "pvp" end
-    if IsResting then local ok,resting=pcall(IsResting); if ok and safe(resting) and resting then return "city" end end
+    -- Resting on a sleeping bag in the open is still the open world.
+    if self:TownResting() then return "city" end
     return "world"
 end
 function Reminder:ShowsHere(field)
@@ -1217,6 +1241,8 @@ end
 function Reminder:Suppressed(fightOK)
     -- A flight path, a vehicle or a cutscene (System > General).
     if FT:NoControl() then return true end
+    -- Mounted: nothing to cast now; they show again when you get off.
+    if FT:Mounted() then return true end
     if not fightOK and (self.fighting==true or InCombatLockdown()) then return true end
     -- Dead or a ghost: no buffs to cast. (Flights and vehicles: FT:NoControl above.)
     for _,fn in ipairs({UnitIsDeadOrGhost or false}) do
@@ -2579,7 +2605,7 @@ function Reminder:QueueApply(delay)
     C_Timer.After(delay or 0,function() self.applyQueued=false; if FT.dbReady then self:Apply() end end)
 end
 local events=CreateFrame("Frame")
-for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","PLAYER_DEAD","PLAYER_ALIVE","PLAYER_UNGHOST","PLAYER_CONTROL_LOST","PLAYER_CONTROL_GAINED","UNIT_ENTERED_VEHICLE","UNIT_EXITED_VEHICLE","ZONE_CHANGED_NEW_AREA","GROUP_ROSTER_UPDATE","UNIT_AURA","SPELLS_CHANGED","PLAYER_TALENT_UPDATE","UPDATE_SHAPESHIFT_FORM","UPDATE_SHAPESHIFT_FORMS","PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","WEAPON_ENCHANT_CHANGED","WEAPON_SLOT_CHANGED","UNIT_SPELLCAST_START","UNIT_SPELLCAST_SUCCEEDED","PLAYER_LEVEL_UP","TRAINER_SHOW","TRAINER_UPDATE","PLAYER_UPDATE_RESTING","ADDON_RESTRICTION_STATE_CHANGED","ENCOUNTER_START","ENCOUNTER_END","ZONE_CHANGED_INDOORS","ZONE_CHANGED","CHARACTER_POINTS_CHANGED"}) do pcall(events.RegisterEvent,events,event) end
+for _,event in ipairs({"PLAYER_LOGIN","PLAYER_ENTERING_WORLD","PLAYER_DEAD","PLAYER_ALIVE","PLAYER_UNGHOST","PLAYER_CONTROL_LOST","PLAYER_CONTROL_GAINED","PLAYER_MOUNT_DISPLAY_CHANGED","UNIT_ENTERED_VEHICLE","UNIT_EXITED_VEHICLE","ZONE_CHANGED_NEW_AREA","GROUP_ROSTER_UPDATE","UNIT_AURA","SPELLS_CHANGED","PLAYER_TALENT_UPDATE","UPDATE_SHAPESHIFT_FORM","UPDATE_SHAPESHIFT_FORMS","PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","PLAYER_EQUIPMENT_CHANGED","UNIT_INVENTORY_CHANGED","WEAPON_ENCHANT_CHANGED","WEAPON_SLOT_CHANGED","UNIT_SPELLCAST_START","UNIT_SPELLCAST_SUCCEEDED","PLAYER_LEVEL_UP","TRAINER_SHOW","TRAINER_UPDATE","PLAYER_UPDATE_RESTING","ADDON_RESTRICTION_STATE_CHANGED","ENCOUNTER_START","ENCOUNTER_END","ZONE_CHANGED_INDOORS","ZONE_CHANGED","CHARACTER_POINTS_CHANGED"}) do pcall(events.RegisterEvent,events,event) end
 -- Group buffs off: only your own auras matter, so the game stops sending
 -- every nameplate's aura changes here.
 Reminder.events=events

@@ -64,26 +64,28 @@ function A:Apply()
 end
 -- Settings page (PvP > Auto release).
 function A:Refresh()
-    if not self.frame then return end
+    if not self.frame or not self.toggle then return end
     local s=self:Settings()
     self.toggle.label:SetText("Auto release: "..(s.enabled and "On" or "Off")); FT:SetSelected(self.toggle,s.enabled)
     self.selfRes.label:SetText("Wait if I can resurrect myself: "..(s.keepSelfRes and "On" or "Off")); FT:SetSelected(self.selfRes,s.keepSelfRes)
     self.selfRes:SetAlpha(s.enabled and 1 or .5)
     if FT.RefreshDock then FT:RefreshDock(self.frame) end
 end
-function A:Open()
-    if not self.frame then
-        local frame=FT:Window("ForeverToolsAutoRelease","Auto release",540,300); self.frame=frame
-        FT:PageInfo(frame,"Auto release","Releases your spirit when you die in a battleground, so you make the next spirit wave. Not in arenas, dungeons or the open world.\n\nWaits if you can come back yourself (soulstone, Reincarnation), when that option is on.")
-        local hint=FT:Label(frame,"Releases your spirit for you when you die in a battleground.",12); hint:SetPoint("TOPLEFT",24,-64); hint:SetWidth(492); hint:SetTextColor(.66,.59,.48)
-        self.toggle=FT:AccentButton(frame,"",492,34,"Spell_Holy_Resurrection"); self.toggle:SetPoint("TOPLEFT",24,-90)
+-- Its settings sit on the Battlegrounds page (QueueTimer), under their own
+-- header: Build puts them there, starting at y.
+A.redirect=true
+function A:Open() FT:OpenModule("QueueTimer"); self.frame=FT.modules.QueueTimer and FT.modules.QueueTimer.frame end
+function A:Build(frame,y)
+    if self.toggle then return end
+    self.frame=frame
+    do
+        self.toggle=FT:AccentButton(frame,"",492,34,"Spell_Holy_Resurrection"); self.toggle:SetPoint("TOPLEFT",24,y)
         self.toggle:SetScript("OnClick",function() local s=self:Settings(); s.enabled=not s.enabled; self:Apply() end)
         FT:Tooltip(self.toggle,"Auto release","Release your spirit when you die in a battleground.")
-        self.selfRes=FT:QuietButton(frame,"",492,32,"Spell_Holy_Resurrection"); self.selfRes:SetPoint("TOPLEFT",24,-136)
+        self.selfRes=FT:QuietButton(frame,"",492,32,"Spell_Holy_Resurrection"); self.selfRes:SetPoint("TOPLEFT",24,y-46)
         self.selfRes:SetScript("OnClick",function() local s=self:Settings(); s.keepSelfRes=not s.keepSelfRes; self:Refresh() end)
         FT:Tooltip(self.selfRes,"Wait if I can resurrect myself","Don't release when you can come back yourself (soulstone, Reincarnation).")
     end
-    self:Refresh(); self.frame:Show()
 end
 FT:RegisterModule("AutoRelease",A)
 A.events=CreateFrame("Frame")

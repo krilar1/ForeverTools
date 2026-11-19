@@ -106,7 +106,7 @@ function Mail:AltChoices()
     for _,alt in ipairs(self:KnownAlts(true)) do
         local full=type(alt.c.fullName)=="string" and alt.c.fullName~="" and alt.c.fullName or alt.name
         out[#out+1]={value=full,label=bags and bags.ClassName and bags:ClassName(alt.c,nil,true) or alt.name,
-            icon=bags and bags.ClassIcon and bags:ClassIcon(alt.c) or nil}
+            icon=bags and bags.ClassIcon and bags:ClassIcon(alt.c) or nil,atlas=bags and bags.Portrait and bags:Portrait(alt.c) or nil}
     end
     if #out==0 then
         out[1]={value="",label="No alts seen yet",disabled=true,
@@ -194,12 +194,15 @@ local function amountText(copper)
     if c>0 then parts[#parts+1]=c.."c" end
     return table.concat(parts," ")
 end
-local function hasItems()
+-- The first attached item as the game words it ("Linen Cloth (20)"), or nil.
+local function firstItem()
     for i=1,(ATTACHMENTS_MAX_SEND or 12) do
-        local ok,name=pcall(GetSendMailItem or function() end,i)
-        if ok and name then return true end
+        local ok,name,_,_,count=pcall(GetSendMailItem or function() end,i)
+        if ok and type(name)=="string" and name~="" then
+            count=tonumber(count)
+            return (count and count>1) and (name.." ("..count..")") or name
+        end
     end
-    return false
 end
 function Mail:GoldSubject()
     if not self:GoldOn() then return end
@@ -210,8 +213,13 @@ function Mail:GoldSubject()
     local ok,copper=pcall(MoneyInputFrame_GetCopper,money)
     copper=ok and tonumber(copper) or 0
     local cod=_G.SendMailCODButton and _G.SendMailCODButton.GetChecked and _G.SendMailCODButton:GetChecked()
+    -- An attached item always names the mail, the way the game does it; the
+    -- gold amount is only used for a mail with no items. (Filling in the
+    -- gold first used to keep the game from putting the item's name in.)
+    local item=firstItem()
     local want=""
-    if copper>0 and not cod and not hasItems() and self:IsAlt(box:GetText()) then want=amountText(copper) end
+    if item then want=item
+    elseif copper>0 and not cod and self:IsAlt(box:GetText()) then want=amountText(copper) end
     if want==current then return end
     if want=="" and current~=self.autoSubject then return end
     self.filling=true; subject:SetText(want); self.filling=nil
