@@ -186,7 +186,9 @@ end
 -- Its setting sits on the Game resource bars page, under its own header.
 Mana.redirect=true
 function Mana:Open() FT:OpenModule("PersonalResource"); self.frame=FT.modules.PersonalResource and FT.modules.PersonalResource.frame end
-function Mana:Build(frame,y)
+-- (Named apart from Mana:Build, which makes the bar itself: one name for
+-- both left the bar never built and the page toggle unplaced.)
+function Mana:BuildPage(frame,y)
     if self.toggle then return end
     self.frame=frame
     do

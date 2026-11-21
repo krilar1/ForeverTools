@@ -5,7 +5,7 @@ local _,FT=...
 -- you carry, worn or in your bags, with its cooldown. Click one to put it in
 -- that slot: left-click for the slot you pointed at, right-click for the
 -- other one. In a fight the game does not allow equipping, so the swap waits
--- (a clock shows on the button) and happens the moment the fight ends.
+-- (the incoming trinket shows on the button) and happens the moment the fight ends.
 --   * The two buttons are the game's own secure buttons running "/use 13"
 --     and "/use 14", so they work in combat. They are made, shown, hidden and moved
 --     out of combat only, as the game requires.
@@ -157,10 +157,8 @@ function T:Bar()
         -- bare slot number in Forever.)
         b:SetAttribute("type","macro"); b:SetAttribute("macrotext","/use "..slot)
         b.slot=slot
-        -- Waiting swap: the incoming trinket small in the corner, a clock and
-        -- a slow gold pulse (plain textures: fine in combat).
-        b.queued=b:CreateTexture(nil,"OVERLAY",nil,3); b.queued:SetSize(14,14); b.queued:SetPoint("TOPRIGHT",2,2)
-        b.queued:SetTexture("Interface\\Icons\\INV_Misc_PocketWatch_01"); b.queued:Hide()
+        -- Waiting swap: the incoming trinket small in the corner and a slow
+        -- gold pulse (plain textures: fine in combat).
         b.next=b:CreateTexture(nil,"OVERLAY",nil,3); b.next:SetSize(SIZE*.45,SIZE*.45); b.next:SetPoint("BOTTOMLEFT",-3,-3); b.next:Hide()
         b.nextRim=b:CreateTexture(nil,"OVERLAY",nil,2); b.nextRim:SetPoint("TOPLEFT",b.next,"TOPLEFT",-1,1); b.nextRim:SetPoint("BOTTOMRIGHT",b.next,"BOTTOMRIGHT",1,-1)
         b.nextRim:SetColorTexture(1,.82,.2,1); b.nextRim:Hide()
@@ -173,7 +171,10 @@ function T:Bar()
             if GameTooltip then
                 GameTooltip:SetOwner(owner,"ANCHOR_TOP"); if GameTooltip.SetInventoryItem then GameTooltip:SetInventoryItem("player",slot) end
                 local q=self.queue[slot]
-                if q then GameTooltip:AddLine(" "); GameTooltip:AddLine("Swaps after the fight: "..(plain(q.link) and q.link or "the trinket you picked"),1,.82,.2) end
+                if q then
+                    GameTooltip:AddLine(" "); GameTooltip:AddLine("Swaps after the fight: "..(plain(q.link) and q.link or "the trinket you picked"),1,.82,.2)
+                    GameTooltip:AddLine("To cancel: click it again in the menu, or pick the trinket you wear now.",.72,.66,.55,true)
+                end
                 GameTooltip:Show()
             end
             self:OpenMenu(owner)
@@ -270,7 +271,7 @@ function T:Update()
         paintCooldown(b,start,duration,s.numbers)
         if start then running=true end
         local q=self.queue[b.slot]
-        b.queued:SetShown(q~=nil); b.next:SetShown(q~=nil); b.nextRim:SetShown(q~=nil); b.glow:SetShown(q~=nil)
+        b.next:SetShown(q~=nil); b.nextRim:SetShown(q~=nil); b.glow:SetShown(q~=nil)
         if q then
             b.next:SetTexture(plain(q.icon) and q.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
             if not b.pulse:IsPlaying() then b.pulse:Play() end
@@ -312,6 +313,13 @@ function T:Menu()
     self.menu=m
     return m
 end
+-- Same trinket (bag spot, link or item id).
+local function same(a,b)
+    if not a or not b then return false end
+    if a.bag and b.bag then return a.bag==b.bag and a.index==b.index end
+    if a.link and b.link then return a.link==b.link end
+    return a.id~=nil and a.id==b.id
+end
 local function menuItem(self,m,i)
     local b=m.items[i]
     if b then return b end
@@ -320,8 +328,6 @@ local function menuItem(self,m,i)
     b.worn=b:CreateFontString(nil,"OVERLAY","GameFontNormalSmall"); b.worn:SetPoint("BOTTOMRIGHT",-1,1)
     b.waitRim=b:CreateTexture(nil,"OVERLAY",nil,2); b.waitRim:SetPoint("TOPLEFT",-2,2); b.waitRim:SetPoint("BOTTOMRIGHT",2,-2)
     b.waitRim:SetTexture("Interface\\Buttons\\CheckButtonHilight"); b.waitRim:SetBlendMode("ADD"); b.waitRim:SetVertexColor(1,.82,.2); b.waitRim:Hide()
-    b.waitClock=b:CreateTexture(nil,"OVERLAY",nil,3); b.waitClock:SetSize(14,14); b.waitClock:SetPoint("TOPRIGHT",2,2)
-    b.waitClock:SetTexture("Interface\\Icons\\INV_Misc_PocketWatch_01"); b.waitClock:Hide()
     b:SetScript("OnEnter",function(owner)
         self.menuOver=true
         if not GameTooltip then return end
@@ -331,13 +337,20 @@ local function menuItem(self,m,i)
         elseif e and e.bag and GameTooltip.SetBagItem then GameTooltip:SetBagItem(e.bag,e.index)
         elseif e and e.link and GameTooltip.SetHyperlink then GameTooltip:SetHyperlink(e.link) end
         GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("Left-click: this slot. Right-click: the other slot."..(busy() and " In a fight it waits until the fight ends." or ""),.72,.66,.55,true)
+        local slot=self.menuFor and self.menuFor.slot
+        local waiting
+        for _,q in pairs(self.queue) do if same(q,e) then waiting=true end end
+        if waiting then GameTooltip:AddLine("Waiting to swap in after the fight. Click again to cancel.",1,.82,.2,true)
+        elseif e and slot and e.slot==slot and self.queue[slot] then GameTooltip:AddLine("Click to keep it and cancel the waiting swap.",1,.82,.2,true)
+        else GameTooltip:AddLine("Left-click: this slot. Right-click: the other slot."..(busy() and " In a fight it waits until the fight ends." or ""),.72,.66,.55,true) end
         GameTooltip:Show()
     end)
     b:SetScript("OnLeave",function() if GameTooltip then GameTooltip:Hide() end; self.menuOver=false; self:MenuLeft() end)
     b:SetScript("OnClick",function(owner,mouse)
         local target=self.menuFor and self.menuFor.slot or 13
         if mouse=="RightButton" then target=target==13 and 14 or 13 end
+        -- Already waiting to swap in (for either slot): cancel that instead.
+        for slot,q in pairs(self.queue) do if same(q,owner.entry) then self:Unqueue(slot); return end end
         self:Equip(owner.entry,target)
     end)
     m.items[i]=b
@@ -362,10 +375,10 @@ function T:FillMenu()
         local row,col=math.floor((i-1)/per),(i-1)%per
         b:ClearAllPoints(); b:SetPoint("TOPLEFT",m,"TOPLEFT",PAD+col*(SIZE+GAP),-PAD-row*(SIZE+GAP))
         b:Show()
-        -- Waiting to go on after the fight: gold frame and a clock.
+        -- Waiting to go on after the fight: gold frame.
         local waiting=false
         for _,q in pairs(self.queue) do if q==e or (q.id==e.id and q.bag==e.bag and q.index==e.index) then waiting=true end end
-        b.waitRim:SetShown(waiting); b.waitClock:SetShown(waiting)
+        b.waitRim:SetShown(waiting)
     end
     for i=#list+1,#m.items do m.items[i]:Hide(); m.items[i].entry=nil end
     self:PaintSkin()
@@ -399,9 +412,18 @@ function T:MenuLeft()
     end)
 end
 -- Equip now, or after the fight.
+-- Cancel the swap waiting for a slot (nothing happens after the fight).
+function T:Unqueue(slot)
+    if not self.queue[slot] then return end
+    self.queue[slot]=nil
+    FT:Toast("Swap cancelled.",2)
+    self:Update()
+end
 function T:Equip(entry,slot)
     if not entry or not slot then return end
-    if entry.slot==slot then return end
+    -- Picking the trinket already in that slot, or the one already waiting
+    -- for it, cancels the waiting swap.
+    if entry.slot==slot or (self.queue[slot] and same(self.queue[slot],entry)) then self:Unqueue(slot); return end
     if busy() then
         self.queue[slot]=entry
         FT:Toast("Swaps when the fight ends.",2)

@@ -132,6 +132,8 @@ local function stops()
             find="Mailbox: only suggest my alts",get=sys("mailAlts").get,set=sys("mailAlts").set},
         {key="mailGold",chapter="System",page="SystemMerchant",title="Gold to your alts",text="Sending only money to an alt fills in the amount as the subject.",
             find="Mailbox: gold amount as subject",get=sys("mailGold").get,set=sys("mailGold").set},
+        {key="tradeLog",chapter="System",page="TradeLog",title="Trade log",text="Your finished trades are kept: items, gold and when. Open it from the button under the trade window.",
+            find="Trade log",get=field("TradeLog","enabled").get,set=field("TradeLog","enabled").set},
         {key="autoRepair",chapter="System",page="SystemMerchant",title="Auto-repair",text="Your gear is repaired at merchants.",
             find="Auto-repair",quick=true,get=sys("autoRepair").get,set=sys("autoRepair").set},
         {key="combatLog",chapter="System",page="SystemCombatLog",title="Combat logging",text="Raids are logged for Warcraft Logs by themselves.",

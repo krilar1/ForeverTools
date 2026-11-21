@@ -102,9 +102,16 @@ function Flight:Layout(timer,place,known)
     d.timer:ClearAllPoints();d.timer:SetPoint("LEFT",d,"LEFT",10,withBar and 3 or 0)
     -- Under the text itself: from the first digit (the timer is right-aligned
     -- in its fixed box) to the end of the place name, whatever the font,
-    -- size and timer length.
+    -- size and timer length. Measured once per flight with every digit as a
+    -- 0 (the widest), so the bar never moves while the time counts down.
     if withBar then
-        local digits=math.ceil(d.timer:GetStringWidth() or 0)
+        local key=tostring(self.preview and "preview" or self.started)..s.size..tostring(d.timer:GetFont())..place
+        if d.barFor~=key then
+            d.timer:SetText((timer:gsub("%d","0")))
+            d.barDigits=math.ceil(d.timer:GetStringWidth() or 0); d.barFor=key
+            d.timer:SetText(timer)
+        end
+        local digits=d.barDigits
         local width=digits+10+(d.dash:GetStringWidth() or 0)+10+math.max(0,nameWidth-2)
         d.bar:ClearAllPoints()
         d.bar:SetPoint("TOPLEFT",d.timer,"BOTTOMRIGHT",-digits,-2)

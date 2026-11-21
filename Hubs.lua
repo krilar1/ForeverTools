@@ -175,6 +175,7 @@ local hubs = {
         end},
         {"SellMarks", "Always-sell marks", "INV_Misc_Coin_01", function() local m = mod("SellMarks"); return m and m.On and m:On() and ("On (" .. m:Count() .. ")") or "Off" end},
         {"ItemLock", "Item locks", "INV_Misc_Key_03", function() local m = mod("ItemLock"); return m and m.On and m:On() and ("On (" .. m:Count() .. ")") or "Off" end},
+        {"TradeLog", "Trade log", "INV_Misc_Note_02", function() local m = mod("TradeLog"); if not m then return "" end; local n = #m:Store(); return m:Settings().enabled and (n .. (n == 1 and " trade" or " trades")) or "Off" end},
         {"GameTweaks", "Extra game options", "INV_Misc_Spyglass_03", function() return "Sharpness, grass, weather" end},
         {"SystemAddons", "Other addons", "INV_Misc_GroupLooking", function()
             local s = settings("System")
@@ -230,6 +231,7 @@ local tips = {
     SystemMerchant = "Faster looting, selling and repairing.",
     SellMarks = "Mark bag items to sell at merchants.",
     ItemLock = "Lock bag items so they can't be sold, mailed, traded or deleted.",
+    TradeLog = "Your completed trades: items, gold and when.",
     GameTweaks = "Game settings the menu doesn't show: sharpness, grass, weather, scenery.",
     MacroForge = "Ready-made macros for your class.",
     MacroRace = "Macros for your race's own abilities.",

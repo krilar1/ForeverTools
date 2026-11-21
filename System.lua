@@ -191,8 +191,12 @@ function System:SetLogging(on,why)
     if not self:CanLog() then return end
     if on then
         -- Warcraft Logs needs advanced combat logging.
+        -- (Read here: the gameOption helper is defined further down the file.)
+        local get=(C_CVar and C_CVar.GetCVar) or GetCVar
         local set=(C_CVar and C_CVar.SetCVar) or SetCVar
-        if set and gameOption("advancedCombatLogging")~=nil and gameOption("advancedCombatLogging")~="1" then pcall(set,"advancedCombatLogging","1") end
+        local ok,value=false,nil
+        if get then ok,value=pcall(get,"advancedCombatLogging") end
+        if set and ok and type(value)=="string" and value~="1" then pcall(set,"advancedCombatLogging","1") end
     end
     if self:Logging()==on then
         if not on then FT.db.combatLogAuto=nil end

@@ -46,6 +46,36 @@ function Colors.SameAs(unit)
         if ref~=unit and same(ref) then return ref,class end
     end
 end
+-- The class color of a unit whose class the game hides, worked out by the
+-- game itself (C_ClassColor and C_CurveUtil take hidden values): the class
+-- color for a player, the game's own bar color otherwise. Nil when this game
+-- version can't.
+local fallback
+function Colors:HiddenClassColor(unit,info)
+    if not (C_ClassColor and C_ClassColor.GetClassColor and C_CurveUtil and C_CurveUtil.EvaluateColorFromBoolean and CreateColor) then return end
+    local ok,isPlayer=pcall(UnitIsPlayer,unit); if not ok or type(isPlayer)~="boolean" then return end
+    local okC,_,class=pcall(UnitClass,unit); if not okC or type(class)~="string" then return end
+    local okG,classColor=pcall(C_ClassColor.GetClassColor,class); if not okG or not classColor then return end
+    local o=info and info.original
+    if type(o)=="table" and type(o[1])=="number" and not (issecretvalue and (issecretvalue(o[1]) or issecretvalue(o[2]) or issecretvalue(o[3]))) then
+        fallback=CreateColor(o[1],o[2],o[3])
+    elseif not fallback then fallback=CreateColor(0,1,0) end
+    local color
+    if not (issecretvalue and issecretvalue(isPlayer)) then
+        -- The game says plainly whether it is a player (only the class is hidden).
+        if not isPlayer then return end
+        color=classColor
+    else
+        local okE,c=pcall(C_CurveUtil.EvaluateColorFromBoolean,isPlayer,classColor,fallback)
+        if not okE or type(c)~="table" then return end
+        color=c
+    end
+    -- Each call gives a new table: one per bar, so "same as last time" holds.
+    local keep=info and info.hiddenColor
+    if not keep then keep={hidden=true}; if info then info.hiddenColor=keep end end
+    keep.r,keep.g,keep.b=color.r,color.g,color.b
+    return keep
+end
 -- Classes of players on units the game may hide later in a fight: saved
 -- when readable (nameplate shown, focus or mouseover set).
 Colors.knownClass={}
@@ -104,17 +134,29 @@ function Colors:Paint(bar, force)
             end
         end
         if unknown then
-            -- The game hides who it is (target of target in a fight). The
-            -- game just set its own color: put back the color this bar had for
-            -- the same unit, so it doesn't flash green. A new unit (UNIT_TARGET
-            -- clears it) is left as the game draws it until it can tell.
-            if not force or not info.lastColor then return end
-            color = info.lastColor
+            -- Still hidden (a dungeon fight hides the class, who it is and the
+            -- threat): the game can turn the hidden class into its color and
+            -- pick it only for players, without the addon ever reading them.
+            -- The bar takes such hidden colors as they are.
+            local c = Colors:HiddenClassColor(unit, info)
+            if c then color = c; unknown = nil end
+        end
+        if unknown then
+            -- The game hides who it is (target of target in a fight). Same
+            -- unit as before: keep the color it had (put it back when the game
+            -- just set its own, so it doesn't flash green). A new unit
+            -- (UNIT_TARGET clears lastColor): drop the old one's color and show
+            -- the game's own until it can tell, never the last unit's color.
+            if info.lastColor then
+                if not force then return end
+                color = info.lastColor
+            end
         end
     end
     -- Same color as last time and Blizzard hasn't changed the bar since
     -- (it calls back when it does): nothing to redo.
-    if not force and not info.art and info.lastColor==color and info.colored==(color~=nil) and not self:Stale(bar,info,color) then return end
+    -- (A hidden color can't be compared: it is set again each time.)
+    if not force and not info.art and not (color and color.hidden) and info.lastColor==color and info.colored==(color~=nil) and not self:Stale(bar,info,color) then return end
     info.lastColor=color
     self.painting = true
     -- Keep Blizzard's own health artwork (its shading, edges and masks) and
@@ -172,7 +214,7 @@ end
 -- without telling us (seen on a target of the same class as the last one:
 -- the bar stayed green). Then the early "nothing changed" exit is wrong.
 function Colors:Stale(bar,info,color)
-    if not color or not info.colored then return false end
+    if not color or not info.colored or color.hidden then return false end
     local secret=issecretvalue
     local texture=bar.GetStatusBarTexture and bar:GetStatusBarTexture()
     if info.native and texture and texture.GetAtlas then
@@ -215,7 +257,17 @@ function Colors:ReportToT()
     if bar then r,g,b=bar:GetStatusBarColor() end
     local _,class=UnitClass("targettarget")
     local status=type(atlas)=="string" and not (issecretvalue and issecretvalue(atlas)) and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas:gsub("%-Status$","").."-Status")~=nil
-    return "; ToT: same as="..tostring(self.SameAs("targettarget"))
+    local same=self.SameAs("targettarget")
+    return "; ToT: same as="..tostring(same)
+        .." threat="..try(UnitThreatSituation,"player","target")
+        .." hiddenColor="..(function()
+            if not (C_ClassColor and C_ClassColor.GetClassColor) then return "noClassColor" end
+            if not (C_CurveUtil and C_CurveUtil.EvaluateColorFromBoolean) then return "noCurve" end
+            local ok,c=pcall(self.HiddenClassColor,self,"targettarget",nil)
+            if not ok then return "error:"..tostring(c) end
+            return tostring(c~=nil)
+        end)()
+        .." paintErr="..tostring(self.lastPaintError)
         .." isUnit(player)="..try(UnitIsUnit,"targettarget","player")
         .." player="..show(UnitIsPlayer("targettarget")).." guid="..(function() local v=UnitGUID("targettarget"); if issecretvalue and issecretvalue(v) then return "hidden" end return tostring(v and v:match("^(%a+)")) end)()
         .." class="..show(class).." name="..try(UnitName,"targettarget")
@@ -455,7 +507,7 @@ runPaint=function()
     -- the bar itself change), so a target never shows the wrong color.
     if FT.dbReady then
         for bar,info in pairs(self.tracked) do
-            if all or set[info.unit] then self:Paint(bar) end
+            if all or set[info.unit] then local ok,err=pcall(self.Paint,self,bar); if not ok then self.painting=false; self.lastPaintError=tostring(err):sub(1,120) end end
         end
     end
     for unit in pairs(set) do set[unit]=nil end

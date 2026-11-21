@@ -6,6 +6,14 @@ FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
     -- try={get,set}: a "Try it" button that switches the new setting on and off
     -- again; open="Module": a "Show me" button. classes: only those classes see it.
+    {version="1.10.0",notes={
+        {icon="INV_Misc_Note_02",title="Trade log",text="Your finished trades: items, gold and when.",open="TradeLog"},
+        {icon="Spell_Nature_Reincarnation",title="Threat: Where",text="Show it only in dungeons and raids.",open="Threat"},
+        {icon="INV_Letter_15",title="Mail: last name kept",text="Send several mails without retyping. Icon in the To: box.",where="Mailbox, right of the To: box",
+            try={get=function() return FT.modules.System:Settings().mailRemember==true end,set=function(on) FT.modules.System:Settings().mailRemember=on; local M=FT.modules.MailAlts; if M and M.Refresh then M:Refresh() end end}},
+        {icon="INV_Misc_Wrench_02",title="Adjustments",text="Target of target colors in fights, cancel trinket swaps, steady flight bar."},
+        {icon="Trade_BlackSmithing",title="Fixes",text="Druid mana bar, combat logging, trade window, errors."},
+    }},
     {version="1.9.0",notes={
         {icon="INV_Misc_Book_11",title="Combat logging",text="Raids logged for Warcraft Logs.",where="System > Combat logging",
             try={get=function() return FT.modules.System:Settings().combatLog==true end,set=function(on) FT.modules.System:Settings().combatLog=on; FT.modules.System:Apply() end}},

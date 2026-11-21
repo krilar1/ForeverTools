@@ -165,6 +165,13 @@ function Mail:Layout(on)
     end
 end
 function Mail:Refresh()
+    local r=self.remember
+    if r then
+        r:ClearAllPoints()
+        if self.button and self:On() then r:SetPoint("LEFT",self.button,"RIGHT",2,0) else r:SetPoint("LEFT",self.box or _G.SendMailNameEditBox,"RIGHT",4,0) end
+        local on=self:RememberOn()
+        r.icon:SetDesaturated(not on); r.icon:SetAlpha(on and 1 or .55)
+    end
     if not self.button then return end
     self.button:SetShown(self:On())
     if self.pick then self.pick:SetShown(self:On()) end
@@ -251,13 +258,66 @@ function Mail:Apply()
     if self:GoldOn() then self:HookGold() end
     self:Refresh()
 end
+-- Remember the last name: a switch in the mailbox, right of the To: box
+-- (after the alt buttons). While on, the name you last sent mail to stays
+-- in the To: box after sending, and is filled in when you open the mailbox
+-- again, so several mails to one person need it typed once. Only an empty
+-- box is filled. Kept per character on this account.
+function Mail:RememberOn() return FT.dbReady and self:Settings().mailRemember==true end
+function Mail:LastName()
+    local guid=plain(UnitGUID and UnitGUID("player"))
+    local list=FT.db and FT.db.mailLastTo
+    return guid and type(list)=="table" and plain(list[guid]) or nil
+end
+function Mail:SaveName(name)
+    name=plain(name); if not name then return end
+    name=name:match("^%s*(.-)%s*$"); if name=="" then return end
+    local guid=plain(UnitGUID and UnitGUID("player")); if not guid then return end
+    if type(FT.db.mailLastTo)~="table" then FT.db.mailLastTo={} end
+    FT.db.mailLastTo[guid]=name
+end
+function Mail:FillName()
+    if not self:RememberOn() then return end
+    local box=_G.SendMailNameEditBox; local name=self:LastName()
+    if not box or not name or (box.GetText and box:GetText()~="") then return end
+    box:SetText(name); if box.SetCursorPosition then box:SetCursorPosition(#name) end
+end
+function Mail:HookRemember()
+    local box=_G.SendMailNameEditBox
+    if not box or self.remember then return end
+    -- The name as the mail goes out (the game empties the box after sending).
+    if type(SendMail)=="function" then hooksecurefunc("SendMail",function(name) Mail.sending=name end) end
+    local b=CreateFrame("Button",nil,box); b:SetSize(18,18); self.remember=b
+    b:SetFrameLevel((box:GetFrameLevel() or 1)+3)
+    b.icon=b:CreateTexture(nil,"ARTWORK"); b.icon:SetAllPoints(); b.icon:SetTexture("Interface\\Icons\\INV_Letter_15")
+    if FT.RoundIcon then FT:RoundIcon(b.icon) end
+    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square","ADD")
+    b:SetScript("OnClick",function()
+        local s=self:Settings(); s.mailRemember=not self:RememberOn()
+        if s.mailRemember then
+            -- A name already typed is the one to keep.
+            local typed=plain(box:GetText()); if typed and typed~="" then self:SaveName(typed) else self:FillName() end
+        end
+        self:Refresh()
+        if GameTooltip:IsOwned(b) and b:GetScript("OnEnter") then b:GetScript("OnEnter")(b) end
+    end)
+    FT:Tooltip(b,function() return self:RememberOn() and "Remember last name: On" or "Remember last name: Off" end,
+        function() return self:RememberOn() and "The name you last sent mail to stays in the To: box, ready for the next mail. Click to turn off."
+            or "Click to keep the name you last sent mail to in the To: box, for sending several mails." end)
+    self:Refresh()
+end
 FT:RegisterModule("MailAlts",Mail)
 local events=CreateFrame("Frame")
-events:RegisterEvent("PLAYER_LOGIN"); events:RegisterEvent("MAIL_SHOW")
+events:RegisterEvent("PLAYER_LOGIN"); events:RegisterEvent("MAIL_SHOW"); events:RegisterEvent("MAIL_SEND_SUCCESS")
 events:SetScript("OnEvent",function(_,event)
     if event=="PLAYER_LOGIN" then C_Timer.After(2,function() if FT.dbReady then Mail:Apply() end end)
+    elseif event=="MAIL_SEND_SUCCESS" then
+        if Mail.sending then Mail:SaveName(Mail.sending); Mail.sending=nil end
+        -- After the game has emptied the send page.
+        if Mail:RememberOn() then C_Timer.After(.1,function() Mail:FillName() end) end
     else
         if Mail:On() then Mail:Hook(); Mail:Refresh() end
         if Mail:GoldOn() then Mail:HookGold() end
+        if FT.dbReady then Mail:HookRemember(); Mail:FillName() end
     end
 end)

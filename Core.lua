@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "1.9.0"
+FT.version = "1.10.0"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -1644,6 +1644,7 @@ SlashCmdList.FOREVERTOOLS = function(message)
     elseif command == "sr" or command == "softres" then FT:OpenModule("SoftRes")
     elseif command:match("^srtest") or command:match("^srdemo") then if FT.SoftResDemo then FT.SoftResDemo:Ask(command:match("^%a+%s+(%a+)")) end
     elseif command == "lock" or command == "locks" then FT:OpenModule("ItemLock")
+    elseif command == "trades" or command == "trade" or command == "tradelog" then FT:OpenModule("TradeLog")
     elseif command == "srdebug" then if FT.SoftRes then FT:DebugBox("Soft reserves debug", function() FT.SoftRes:Debug() end) end
     elseif command == "dr" then if FT.modules.Diminish then FT:DebugBox("Diminishing returns", function() FT.modules.Diminish:Diagnose() end) end
     elseif command == "countdebug" then if FT.Bags and FT.Bags.Debug then FT:DebugBox("Item counts debug", function() FT.Bags:Debug() end) end

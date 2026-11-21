@@ -1,3 +1,24 @@
+# ForeverTools 1.10.0 (2026-11-21)
+
+## New
+- **Trade log** (System → Trade log, on): every trade you finish with another player is kept, with the time, who it was with, where, your character, and the items and gold each of you gave (enchants on the "Will not be traded" slot too). It never opens by itself: use the small Trade log button under the trade window, System → Trade log or `/ft trades`. Search names, items and places; hover a trade for every item, Shift-click to link the items in chat. Cancelled trades are not kept; the newest 500 trades on your account are.
+- **Threat: Where** (Combat → Threat meter): show the meter and the threat % everywhere, or only in dungeons and raids, only dungeons or only raids.
+- **Mailbox: remember the last name** (an icon in the To: box, off at first): the name you last sent mail to stays in the To: box after sending, and is filled in when you open the mailbox again, so several mails need the name typed once.
+- **Cancel a trinket swap:** click the waiting trinket again in the trinket menu, or pick the one you wear in that slot. Works in a fight.
+
+## Changes
+- **Target of target in your group's class colors in dungeon fights:** the game hides who the target of target is in a fight; the bar now gets the class color from the game itself, so a mob on your tank shows the tank's color and a mob on you shows yours.
+- **Flight timer:** the bar under the timer no longer shifts as the time counts down.
+- **Trinket menu:** no hourglass on a waiting swap; the incoming trinket in the corner and the gold pulse show it.
+
+## Fixes
+- **Druid mana bar never showed** in 1.9.0, its switch sat alone at the top left of the screen, and the Game resource bars page overlapped for druids.
+- **Combat logging didn't start by itself** in raids and dungeons.
+- **"Script ran too long"** when the talents or another game window loaded with the Game windows skin on.
+- **Trade window:** the other player's portrait ring and the title bar next to it stayed bronze with the Dialogs skin on.
+- **Target of target color** kept the last unit's color when a mob switched targets in a fight.
+- **`/ft colordebug`** gave a Lua error in a fight.
+
 # ForeverTools 1.9.0 (2026-11-19)
 
 ## New

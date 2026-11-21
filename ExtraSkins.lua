@@ -865,6 +865,11 @@ function S:TradeRecipient(frame)
         for _,child in ipairs(kids(f)) do visit(child,depth-1) end
     end
     visit(frame,3)
+    -- The ring around the other player's portrait has no name of its own
+    -- (RecipientOverlay.portraitFrame). Its picture also holds a piece of
+    -- the title bar and the line down its left side.
+    local overlay=frame.RecipientOverlay
+    if overlay and not forbidden(overlay) and isTexture(overlay.portraitFrame) then self:TintArtwork(overlay.portraitFrame,"dialogs") end
 end
 -- Your own game windows (Skins > Windows > Game windows): character,
 -- spellbook, talents, quest log, social and the like. Only their frame and
@@ -872,15 +877,17 @@ end
 -- are kept, like the map windows.
 local GAME_FRAMES={"CharacterFrame","PaperDollFrame","PlayerTalentFrame","TalentFrame","ClassTalentFrame","PlayerSpellsFrame","SpellBookFrame","ProfessionsBookFrame","QuestLogFrame","QuestLogPopupDetailFrame","FriendsFrame","GuildFrame","CommunitiesFrame","PVEFrame","LFGParentFrame","PVPFrame","PVPUIFrame","AchievementFrame","CollectionsJournal","EncounterJournal","InspectFrame","DressUpFrame","MacroFrame","TradeSkillFrame","ProfessionsFrame","CraftFrame","AuctionFrame","AuctionHouseFrame","BankFrame","GuildBankFrame","TabardFrame","ItemTextFrame","WorldMapFrame"}
 S.GAME_FRAMES=GAME_FRAMES
-function S:GameWindow(frame,name)
+function S:GameWindow(frame,name,hookOnly)
     if not frame or forbidden(frame) then return end
-    self:WindowArt(frame,"gameWindows",{plainOnly=true,noBackground=true})
-    local border=frame.Border
-    if border and border.GetObjectType and border:GetObjectType()~="Texture" then
-        for _,field in ipairs(BORDER_PIECES) do self:TintArtwork(border[field],"gameWindows") end
+    if not hookOnly then
+        self:WindowArt(frame,"gameWindows",{plainOnly=true,noBackground=true})
+        local border=frame.Border
+        if border and border.GetObjectType and border:GetObjectType()~="Texture" then
+            for _,field in ipairs(BORDER_PIECES) do self:TintArtwork(border[field],"gameWindows") end
+        end
+        self:DialogBorders(frame,3,"gameWindows")
+        self:SideTabs(frame,"gameWindows")
     end
-    self:DialogBorders(frame,3,"gameWindows")
-    self:SideTabs(frame,"gameWindows")
     self.gameHooked=self.gameHooked or {}
     if frame.HookScript and not self.gameHooked[frame] then
         self.gameHooked[frame]=true
@@ -971,8 +978,26 @@ end
 function S:ApplyGameWindows()
     if not self:Settings().gameWindows and not self.gameTouched then return end
     self.gameTouched=true
-    for _,name in ipairs(GAME_FRAMES) do local frame=_G[name]; if frame then self:GameWindow(frame,name) end end
-    for name in pairs(self:PanelNames()) do local frame=_G[name]; if type(frame)=="table" and frame.GetObjectType then self:GameWindow(frame,name) end end
+    -- Skinning every game window at once took too long for the game (on a
+    -- loading screen, or when the talents or another window loaded). Open
+    -- windows are done one per frame; closed ones only get the hook that
+    -- skins them as they open (their old art is repainted with the rest).
+    local queue,seen={}, {}
+    local function add(frame,name)
+        if type(frame)~="table" or not frame.GetObjectType or seen[frame] or forbidden(frame) then return end
+        seen[frame]=true
+        if frame.IsShown and frame:IsShown() then queue[#queue+1]={frame,name} else self:GameWindow(frame,name,true) end
+    end
+    for _,name in ipairs(GAME_FRAMES) do add(_G[name],name) end
+    for name in pairs(self:PanelNames()) do add(_G[name],name) end
+    self.gameQueue=queue
+    local function step()
+        local q=self.gameQueue; local e=q and table.remove(q,1)
+        if not e then return end
+        self:GameWindow(e[1],e[2])
+        if #q>0 then C_Timer.After(0,step) end
+    end
+    step()
     -- Windows made later (opened for the first time) are skinned as they open.
     if not self.panelHooked and hooksecurefunc and ShowUIPanel then
         self.panelHooked=true

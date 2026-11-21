@@ -256,7 +256,10 @@ function P:Refresh()
     local s=self:Settings()
     for i,part in ipairs(self:Order()) do
         local row=self.rows[part]
-        row:ClearAllPoints(); row:SetPoint("TOPLEFT",24,-124-(i-1)*40)
+        -- Under the Order heading, wherever it ended up (druids get section
+        -- headers that push the page down).
+        local _,_,_,_,headY=self.orderHead:GetPoint(1)
+        row:ClearAllPoints(); row:SetPoint("TOPLEFT",24,(type(headY)=="number" and headY or -96)-28-(i-1)*40)
         local game=self:GameShows(part)
         row.name.label:SetText(self:Label(part)..(game and "" or " · off"))
         local eye=self:Previewed(part)
@@ -276,7 +279,7 @@ function P:Open()
     if not self.frame then
         local frame=FT:Window("ForeverToolsPersonal","Game resource bars",620,560); self.frame=frame
         FT:PageInfo(frame,"Personal resources","The game's health and power display above your character. Pick the order of its parts and the text on each bar.\n\nWhich parts show is set in Edit Mode.")
-        local hint=FT:Label(frame,"Changes the game's Personal Resource Display (turn it on in Edit Mode).",12); hint:SetPoint("TOPLEFT",24,-64); hint:SetWidth(572); hint:SetTextColor(.66,.59,.48)
+        local hint=FT:Label(frame,"Changes the game's Personal Resource Display (turn it on in Edit Mode).",12); hint:SetPoint("TOPLEFT",24,-64); self.hint=hint; hint:SetWidth(572); hint:SetTextColor(.66,.59,.48)
         local head=FT:Label(frame,"Order (top to bottom)",14,true); head:SetPoint("TOPLEFT",24,-96); FT:SectionHeading(head,nil,170); self.orderHead=head
         self.rows={}
         for _,part in ipairs(PARTS) do
@@ -341,9 +344,9 @@ function P:Open()
         -- under its own header.
         local _,class=UnitClass("player")
         local M=FT.modules.DruidMana
-        if class=="DRUID" and M and M.Build then
-            M:Build(frame,-(FT:ContentHeight(frame)+8))
-            FT:BigSections(frame,{{"Resource bars",self.orderHead,"The game's health and power display above your character.","Ability_Rogue_SliceDice"},
+        if class=="DRUID" and M and M.BuildPage then
+            M:BuildPage(frame,-(FT:ContentHeight(frame)+8))
+            FT:BigSections(frame,{{"Resource bars",self.hint,"The game's health and power display above your character.","Ability_Rogue_SliceDice"},
                 {"Druid mana bar",M.toggle,"Your mana as a third bar while in a form.","Ability_Racial_BearForm"}},572)
         end
     end

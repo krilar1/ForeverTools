@@ -58,9 +58,9 @@ function Profiles:ShowSwitcher(owner)
 end
 -- Only preferences are copied. Macro history and installed WoW macros belong to
 -- the character and are never rewritten by loading an appearance profile.
-local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","macroPoisonConfirm","macroUpdates","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish","enemyCooldowns","actionFade"}
+local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","macroPoisonConfirm","macroUpdates","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish","enemyCooldowns","actionFade","tradeLog"}
 -- Every module that must redraw after settings change (load, login, reset).
-local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey","Totems","DruidMana","SellMarks","QueueTimer","Trinkets","AutoRelease","PersonalResource","Interrupts","Bags","Enemies","Diminish","EnemyCooldowns","MapPins"}
+local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey","Totems","DruidMana","SellMarks","QueueTimer","Trinkets","AutoRelease","PersonalResource","Interrupts","Bags","Enemies","Diminish","EnemyCooldowns","MapPins","TradeLog"}
 local function copy(value)
     if type(value) ~= "table" then return value end
     local result={}; for k,v in pairs(value) do result[k]=copy(v) end; return result
@@ -1004,7 +1004,7 @@ end)
 
 -- Settings only: saved profiles, custom macros/fonts, learned flight routes,
 -- rank knowledge and macro history are kept. A reload re-applies native UI.
-local resettable={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","chat","system","customKeybinds","lootRoll","tooltip","buffReminder","flightTimer","leveling","vendor","dispelGlow","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish","enemyCooldowns","actionFade"}
+local resettable={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","chat","system","customKeybinds","lootRoll","tooltip","buffReminder","flightTimer","leveling","vendor","dispelGlow","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish","enemyCooldowns","actionFade","tradeLog"}
 function Profiles:DefaultsForCharacter()
     for _,key in ipairs(resettable) do FT.db[key]=nil end
     self.active,self.selected=nil,nil
@@ -1083,7 +1083,7 @@ end
 function Profiles:Normalize()
     -- Every module fills in its defaults first, so opening a page for the
     -- first time never counts as a change.
-    for _,name in ipairs({"LootRoll","System","Tooltip","QualityOfLife","FlightTimer","BuffReminder","CooldownReminder","Leveling","UnitColors","Chat","CustomKeybinds","IconStyles","DispelGlow","RareAlert","Threat","SmartKey","Totems","Movers","QueueTimer","Trinkets","AutoRelease","PersonalResource","Interrupts","Bags","Enemies","Diminish","EnemyCooldowns"}) do
+    for _,name in ipairs({"LootRoll","System","Tooltip","QualityOfLife","FlightTimer","BuffReminder","CooldownReminder","Leveling","UnitColors","Chat","CustomKeybinds","IconStyles","DispelGlow","RareAlert","Threat","SmartKey","Totems","Movers","QueueTimer","Trinkets","AutoRelease","PersonalResource","Interrupts","Bags","Enemies","Diminish","EnemyCooldowns","TradeLog"}) do
         local module=FT.modules[name]
         if module and module.Settings then pcall(module.Settings,module) end
     end
@@ -1375,7 +1375,7 @@ end
 -- by an earlier (or later) version must still bring everything it can. Each
 -- setting area that fails the checks is left out (it keeps its defaults) and
 -- named in skipped; the rest is imported.
-local areaNames={fps="FPS counter",fonts="Fonts",unitColors="Unit frames",iconStyles="Skins",chat="Chat",system="System settings",customKeybinds="Mouse-wheel casting",customFonts="Your font files",lootRoll="Loot rolls",tooltip="Tooltip",buffReminder="Buff reminders",customMacros="Your macros",flightTimer="Flight timer",leveling="Leveling stats",dispelGlow="Dispel glow",actionMacros="Macro places",rareAlert="Rare alerts",threat="Threat meter",fireAlert="Fire alert",smartKey="Smart key",totems="Totems",movers="Element positions",queueTimer="Battleground timer",trinkets="Trinket menu",autoRelease="Auto release",personal="Game resource bars",interrupts="Interrupt bar",thanks="Thanks",moveWindows="Game window places",bags="Bags",enemies="Enemy alerts",diminish="Diminishing returns",enemyCooldowns="Enemy cooldowns",actionFade="Action bars on mouseover"}
+local areaNames={fps="FPS counter",fonts="Fonts",unitColors="Unit frames",iconStyles="Skins",chat="Chat",system="System settings",customKeybinds="Mouse-wheel casting",customFonts="Your font files",lootRoll="Loot rolls",tooltip="Tooltip",buffReminder="Buff reminders",customMacros="Your macros",flightTimer="Flight timer",leveling="Leveling stats",dispelGlow="Dispel glow",actionMacros="Macro places",rareAlert="Rare alerts",threat="Threat meter",fireAlert="Fire alert",smartKey="Smart key",totems="Totems",movers="Element positions",queueTimer="Battleground timer",trinkets="Trinket menu",autoRelease="Auto release",personal="Game resource bars",interrupts="Interrupt bar",thanks="Thanks",moveWindows="Game window places",bags="Bags",enemies="Enemy alerts",diminish="Diminishing returns",enemyCooldowns="Enemy cooldowns",actionFade="Action bars on mouseover",tradeLog="Trade log"}
 function Profiles:ValidateImport(data)
     if type(data)~="table" then return nil,"Invalid or unsupported profile." end
     local result=self:StrictImport(data)
@@ -1427,6 +1427,7 @@ function Profiles:StrictImport(data)
         end
     end
     if not check(result.trinkets,{enabled="boolean",vertical="boolean",numbers="boolean",mouseover="boolean",hideEmpty="boolean",size="number",x="number",y="number",locked="boolean"}) then return nil,"Invalid trinket menu settings." end
+    if not check(result.tradeLog,{enabled="boolean",button="boolean"}) then return nil,"Invalid trade log settings." end
     if not check(result.bags,{skipBank="boolean",rows="boolean",gold="boolean",view="boolean",counts="boolean",locked="boolean",buttons="boolean",countSplit="boolean",countSelf="boolean",countGuild="boolean",countShift="boolean",countSpacer="boolean",countFullNames="boolean",fullNamesOn="boolean",countStyle="string",countPlace="string",bagX="number",bagY="number",bankX="number",bankY="number",order="string",insert="string",cleanup="string"}) then return nil,"Invalid bag settings." end
     if not check(result.enemies,{kd="boolean",stealth="boolean",fade="boolean",marks="boolean",nearby="boolean",instances="boolean",sound="boolean",flash="boolean",markTooltip="boolean",size="number",nearSize="number",nearTime="number",x="number",y="number",nearX="number",nearY="number",nearDock="string",nearCollapsed="boolean",nearShowEmpty="boolean",nearAlong="number",nearCorner="string",nearRows="number",nearFade="boolean"}) then return nil,"Invalid enemy alert settings." end
     if not check(result.flightTimer,{enabled="boolean",font="string",size="number",outline="string",color="table",x="number",y="number",bar="boolean",classColor="boolean"}) then return nil,"Invalid flight timer settings." end
@@ -1499,7 +1500,7 @@ function Profiles:StrictImport(data)
         if type(entry)~="table" or type(entry.key)~="string" or not FT.modules.Tooltip.partLabels[entry.key] or (entry.show~=nil and type(entry.show)~="boolean") or (entry.join~=nil and type(entry.join)~="boolean") then return nil,"Invalid tooltip layout." end
     end
     if type(result.system)=="table" and result.system.objectives~=nil and result.system.objectives~="collapsed" and result.system.objectives~="open" and result.system.objectives~="hidden" then result.system.objectives=nil end
-    if not check(result.threat,{enabled="boolean",show="string",rows="number",collapsed="boolean",x="number",y="number",text="boolean",font="string",size="number",outline="string",background="boolean",backgroundColor="table",backgroundAlpha="number",textX="number",textY="number",width="number",height="number",locked="boolean",grip="string"}) then return nil,"Invalid threat settings." end
+    if not check(result.threat,{enabled="boolean",show="string",rows="number",collapsed="boolean",x="number",y="number",text="boolean",font="string",size="number",outline="string",background="boolean",backgroundColor="table",backgroundAlpha="number",textX="number",textY="number",width="number",height="number",locked="boolean",grip="string",where="string"}) then return nil,"Invalid threat settings." end
     local cooldowns=nil; if type(result.buffReminder)=="table" then cooldowns=result.buffReminder.cooldowns end
     if cooldowns~=nil then
         if type(cooldowns)~="table" or not check(cooldowns,{enabled="boolean",sound="boolean",tough="boolean",pulls="boolean",defensive="boolean",leveling="boolean",chosen="table",roles="table"}) then return nil,"Invalid cooldown reminders." end

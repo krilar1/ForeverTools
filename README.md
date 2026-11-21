@@ -1,6 +1,6 @@
 # ForeverTools
 
-**Quality-of-life tools for WoW: Forever — version 1.9.0.**
+**Quality-of-life tools for WoW: Forever — version 1.10.0.**
 
 ForeverTools brings everyday interface adjustments and useful tools together in
 one place. Everything starts **off**, so the game looks like Blizzard's until you
@@ -92,8 +92,9 @@ the home window. Use **`/rl`** to reload the UI.
   first; members with ForeverTools share theirs exactly. A row limit keeps
   battlegrounds tidy, and a preview helps you set it up (Combat).
 - **Threat:** a threat meter styled like and placed next to the game's damage
-  meter, and your threat % above your target (Combat). Fonts
-  can change the threat meter's and the damage meter's text.
+  meter, and your threat % above your target (Combat), everywhere or only in
+  dungeons and raids. Fonts can change the threat meter's and the damage
+  meter's text.
 - **Cooldown reminders:** a short nudge to use a ready racial, trinket or long
   cooldown on elites, rares and big pulls, and now and then while leveling
   (Buff reminders).
@@ -112,7 +113,11 @@ the home window. Use **`/rl`** to reload the UI.
   yours, item counts per character in tooltips (bags, bank, guild bank), and
   Bag order: put the backpack's first slot in the corner you want (Bags).
 - **Mailbox:** only suggest your own alts when you type a name (System → Loot,
-  merchant and mail), with an Only my alts / Everyone icon in the To: box.
+  merchant and mail), with an Only my alts / Everyone icon in the To: box, and
+  an icon that keeps the last name you sent to, for sending several mails.
+- **Trade log** (on): every finished trade with the time, who, where, and the
+  items and gold each side gave. Opens only when you ask: the button under the
+  trade window, System → Trade log, or /ft trades.
 - **Action bars on mouseover:** chosen bars stay hidden until the mouse is
   over them (System → Keybind tools and action bars).
 - **Item locks:** hover a bag item and press your lock key (or Alt +
@@ -128,7 +133,8 @@ the home window. Use **`/rl`** to reload the UI.
   targets on click and works in combat (PvP).
 - **Trinket menu** (PvP, off by default): two buttons for your trinket slots
   that work in combat, with cooldowns; hover for every trinket you carry and
-  click one to put it on (in a fight the swap waits until it ends).
+  click one to put it on (in a fight the swap waits until it ends; click it
+  again to cancel).
 - **Enemy cooldowns** (PvP, off by default): big cooldowns enemy players have
   used (PvP trinket, racials, Blind, Ice Block, Divine Shield, fears and more)
   with the time left, on a movable bar and by your target's frame.
@@ -195,7 +201,8 @@ the home window. Use **`/rl`** to reload the UI.
     Mouse-wheel casting, Smart interact key.
   - **On-screen info:** FPS counter, Leveling stats, Flight timer, Minimap,
     Quests and loot rolls, Move elements, Move game windows.
-  - **System:** General, Loot and merchant, Always-sell marks, Extra game options.
+  - **System:** General, Loot and merchant, Always-sell marks, Item locks,
+    Trade log, Extra game options.
   - **Macros, Buff reminders, Bags and Profiles** are groups of their own.
 - **Menus:** every page of a group shows the group's sections on the left,
   each with its current state; click one to see its options on the right. The

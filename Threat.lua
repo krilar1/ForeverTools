@@ -22,6 +22,7 @@ local function hasAtlas(name)
     return known
 end
 local shows={{"combat","In combat"},{"group","In a group"},{"always","Always"}}
+local wheres={{"everywhere","Everywhere","Shows wherever you are."},{"instances","Dungeons and raids","Only inside dungeons and raids."},{"dungeons","Dungeons","Only inside dungeons."},{"raids","Raids","Only inside raids."}}
 local MIN_W,MIN_H,MAX_W,MAX_H=180,80,600,500
 
 -- Checked once per settings table (a profile switch, import or reset puts a
@@ -34,6 +35,8 @@ function Threat:Settings()
     if type(s.enabled)~="boolean" then s.enabled=false end
     local known=false; for _,e in ipairs(shows) do if e[1]==s.show then known=true end end
     if not known then s.show="combat" end
+    known=false; for _,e in ipairs(wheres) do if e[1]==s.where then known=true end end
+    if not known then s.where="everywhere" end
     s.rows=number(s.rows,5,3,20) -- older setting, kept for profiles; the size now comes from resizing
     if s.width~=nil then s.width=number(s.width,260,MIN_W,MAX_W) end
     if s.height~=nil then s.height=number(s.height,150,MIN_H,MAX_H) end
@@ -491,11 +494,23 @@ function Threat:PvP()
     end
     return false
 end
+-- Where the meter and threat % show (Everywhere, or only in dungeons
+-- and/or raids). One cheap game call; answers "no" when it can't tell.
+function Threat:Here()
+    local where=self:Settings().where
+    if where=="everywhere" then return true end
+    if not IsInInstance then return false end
+    local ok,inside,kind=pcall(IsInInstance)
+    if not ok or secret(inside) or secret(kind) or not inside then return false end
+    if where=="dungeons" then return kind=="party" end
+    if where=="raids" then return kind=="raid" end
+    return kind=="party" or kind=="raid"
+end
 function Threat:ShouldShowMeter()
     local s=self:Settings()
     if self.previewing then return true end
     if not s.enabled then return false end
-    if self:PvP() then return false end
+    if self:PvP() or not self:Here() then return false end
     if s.show=="always" then return true end
     if s.show=="group" then return IsInGroup() end
     return InCombatLockdown() or yes(UnitAffectingCombat("player"))
@@ -644,7 +659,7 @@ end
 function Threat:UpdateText()
     local s=self:Settings()
     local f=self.text
-    if not s.text and not self.movingText then if f then f:Hide() end return end
+    if not self.movingText and (not s.text or not self:Here()) then if f then f:Hide() end return end
     f=self:TextFrame(); if not f then return end
     local value,status
     if self.movingText then value,status=72,1
@@ -672,7 +687,7 @@ end
 local function updateNow() Threat:Update() end
 function Threat:Changed() FT:Coalesce("threat",updateNow,.2) end
 local events=CreateFrame("Frame")
-local watched={"PLAYER_TARGET_CHANGED","UNIT_THREAT_LIST_UPDATE","UNIT_THREAT_SITUATION_UPDATE","GROUP_ROSTER_UPDATE","UNIT_PET","PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","EDIT_MODE_LAYOUTS_UPDATED","UI_SCALE_CHANGED"}
+local watched={"PLAYER_TARGET_CHANGED","UNIT_THREAT_LIST_UPDATE","UNIT_THREAT_SITUATION_UPDATE","GROUP_ROSTER_UPDATE","UNIT_PET","PLAYER_REGEN_DISABLED","PLAYER_REGEN_ENABLED","EDIT_MODE_LAYOUTS_UPDATED","UI_SCALE_CHANGED","PLAYER_ENTERING_WORLD","ZONE_CHANGED_NEW_AREA"}
 function Threat:Apply()
     if not FT.dbReady then return end
     local s=self:Settings()
@@ -696,6 +711,7 @@ end)
 
 -- Settings page
 local function showText(v) for _,e in ipairs(shows) do if e[1]==v then return e[2] end end return "In combat" end
+local function whereText(v) for _,e in ipairs(wheres) do if e[1]==v then return e[2] end end return "Everywhere" end
 function Threat:SetMovingText(on)
     if on and InCombatLockdown() then return end
     if on and not yes(UnitExists("target")) then FT:Toast("Target something first.",3); on=false end
@@ -707,6 +723,7 @@ function Threat:Refresh()
     local s=self:Settings()
     self.toggle.label:SetText("Threat meter: "..(s.enabled and "On" or "Off")); FT:SetSelected(self.toggle,s.enabled)
     self.showChoice.value=s.show; self.showChoice.label:SetText("Show: "..showText(s.show))
+    self.whereChoice.value=s.where; self.whereChoice.label:SetText("Where: "..whereText(s.where))
     self.lock.label:SetText("Lock meter: "..(s.locked and "On" or "Off")); FT:SetSelected(self.lock,s.locked)
     self.gripChoice.value=s.grip; self.gripChoice.label:SetText(s.grip=="always" and "Resize: always" or "Resize: on mouseover")
     self.gripChoice:SetAlpha(s.locked and .5 or 1)
@@ -737,7 +754,7 @@ function Threat:Refresh()
 end
 function Threat:Open()
     if not self.frame then
-        local frame=FT:Window("ForeverToolsThreat","Threat",540,578); self.frame=frame
+        local frame=FT:Window("ForeverToolsThreat","Threat",540,618); self.frame=frame
         FT:BackTo(frame,"SystemCombat")
         FT:PageInfo(frame,"Threat","A threat meter like the game's damage meter, and your threat % above your target. 100% means you have aggro.\n\nIn some dungeons the numbers can't be sorted or colored.")
         self.toggle=FT:AccentButton(frame,"",492,34,ICON); self.toggle:SetPoint("TOPLEFT",24,-62)
@@ -756,7 +773,12 @@ function Threat:Open()
         end,function(value) self:Settings().show=value; self:Apply() end,ICON)
         self.showChoice:SetPoint("TOPLEFT",24,-108)
         FT:Tooltip(self.showChoice,"Show","When the meter shows. Always shown on this page.")
-        local reset=FT:QuietButton(frame,"Reset position and size",240,32,"reset"); reset:SetPoint("TOPLEFT",276,-108)
+        self.whereChoice=FT:Dropdown(frame,240,function()
+            local list={}; for _,e in ipairs(wheres) do list[#list+1]={value=e[1],label=e[2],icon="Interface\\Icons\\"..ICON,tooltip=e[3]} end; return list
+        end,function(value) self:Settings().where=value; self:Apply() end,ICON)
+        self.whereChoice:SetPoint("TOPLEFT",276,-108)
+        FT:Tooltip(self.whereChoice,"Where","Where the meter and the threat % above your target show. Always shown on this page.")
+        local reset=FT:QuietButton(frame,"Reset position and size",240,32,"reset"); reset:SetPoint("TOPLEFT",24,-188)
         reset:SetScript("OnClick",function() local s=self:Settings(); s.x,s.y,s.width,s.height=nil,nil,nil,nil; self:Apply() end)
         FT:Tooltip(reset,"Reset position and size","Back next to the damage meter, at its starting size.")
         self.lock=FT:QuietButton(frame,"",240,32,"move"); self.lock:SetPoint("TOPLEFT",24,-148)
@@ -770,19 +792,19 @@ function Threat:Open()
         self.gripChoice:SetPoint("TOPLEFT",276,-148)
         FT:Tooltip(self.gripChoice,"Resize corner","When the resize corner shows.")
         local function fontButton(label,area,x,tip)
-            local b=FT:QuietButton(frame,label,240,32,"fonts"); b:SetPoint("TOPLEFT",x,-188)
+            local b=FT:QuietButton(frame,label,240,32,"fonts"); b:SetPoint("TOPLEFT",x,-228)
             b:SetScript("OnClick",function() local fonts=FT.modules.FontManager; fonts.selected=area; FT:OpenModule("FontManager") end)
             FT:Tooltip(b,label,tip)
         end
         fontButton("Threat meter font","threatMeter",24,"Font of the threat meter (opens Fonts).")
         fontButton("Damage meter font","damageMeter",276,"Font of the game's damage meter (opens Fonts).")
-        self.placeNote=FT:Label(frame,"",12); self.placeNote:SetPoint("TOPLEFT",24,-228); self.placeNote:SetWidth(492); self.placeNote:SetTextColor(.66,.59,.48)
+        self.placeNote=FT:Label(frame,"",12); self.placeNote:SetPoint("TOPLEFT",24,-268); self.placeNote:SetWidth(492); self.placeNote:SetTextColor(.66,.59,.48)
 
-        local heading=FT:Label(frame,"Threat % above target",15,true); heading:SetPoint("TOPLEFT",24,-278)
+        local heading=FT:Label(frame,"Threat % above target",15,true); heading:SetPoint("TOPLEFT",24,-318)
         FT:SectionHeading(heading,ICON,300)
-        self.textToggle=FT:AccentButton(frame,"",380,34,ICON); self.textToggle:SetPoint("TOPLEFT",24,-308)
+        self.textToggle=FT:AccentButton(frame,"",380,34,ICON); self.textToggle:SetPoint("TOPLEFT",24,-348)
         -- A live example with your font, size, outline and background.
-        self.textPreview=CreateFrame("Frame",nil,frame); self.textPreview:SetSize(100,34); self.textPreview:SetPoint("TOPLEFT",416,-308)
+        self.textPreview=CreateFrame("Frame",nil,frame); self.textPreview:SetSize(100,34); self.textPreview:SetPoint("TOPLEFT",416,-348)
         FT:Panel(self.textPreview); FT:Paint(self.textPreview,{.03,.03,.04,1},{.61,.51,.31,1})
         self.textPreview.box=CreateFrame("Frame",nil,self.textPreview); self.textPreview.box:SetPoint("CENTER")
         self.textPreview.box.background=FT:RoundedFill(self.textPreview.box,0,0,0,.6)
@@ -793,10 +815,10 @@ function Threat:Open()
         self.textToggle:SetScript("OnClick",function() local s=self:Settings(); s.text=not s.text; self:Apply() end)
         FT:Tooltip(self.textToggle,"Threat % above target","Your threat % above your target. Turns yellow, orange and red near aggro.")
         self.fontChoice=FT:Dropdown(frame,240,function() return FT.modules.FontManager:Catalogue() end,function(value) self:Settings().font=value; self:Apply() end,"fonts")
-        self.fontChoice:SetPoint("TOPLEFT",24,-354)
+        self.fontChoice:SetPoint("TOPLEFT",24,-394)
         FT:Tooltip(self.fontChoice,"Font","The font of the threat %.")
         self.outlineChoice=FT:Dropdown(frame,240,function() return {{value="",label="No outline"},{value="OUTLINE",label="Outline"},{value="THICKOUTLINE",label="Thick outline"}} end,function(value) self:Settings().outline=value; self:Apply() end,"fonts")
-        self.outlineChoice:SetPoint("TOPLEFT",276,-354)
+        self.outlineChoice:SetPoint("TOPLEFT",276,-394)
         FT:Tooltip(self.outlineChoice,"Outline","A dark edge so the text stays readable.")
         local function slider(top,min,max,step,title,tip,onChange)
             local text=FT:Label(frame,"",14); text:SetPoint("TOPLEFT",24,top-2); text:SetWidth(160)
@@ -807,11 +829,11 @@ function Threat:Open()
             FT:Tooltip(bar,title,tip)
             return text,bar
         end
-        self.sizeLabel,self.sizeSlider=slider(-398,8,32,1,"Font size","Text size of the threat % (8 to 32).",function(v) self:Settings().size=math.floor(v+.5); FT:Coalesce("threatSlider",function() self:Apply() end,.05) end)
-        self.bgToggle=FT:QuietButton(frame,"",240,32,"skins"); self.bgToggle:SetPoint("TOPLEFT",24,-432)
+        self.sizeLabel,self.sizeSlider=slider(-438,8,32,1,"Font size","Text size of the threat % (8 to 32).",function(v) self:Settings().size=math.floor(v+.5); FT:Coalesce("threatSlider",function() self:Apply() end,.05) end)
+        self.bgToggle=FT:QuietButton(frame,"",240,32,"skins"); self.bgToggle:SetPoint("TOPLEFT",24,-472)
         self.bgToggle:SetScript("OnClick",function() local s=self:Settings(); s.background=not s.background; self:Apply() end)
         FT:Tooltip(self.bgToggle,"Background","A rounded background behind the threat %.")
-        self.bgColor=FT:QuietButton(frame,"Background color",240,32); self.bgColor:SetPoint("TOPLEFT",276,-432)
+        self.bgColor=FT:QuietButton(frame,"Background color",240,32); self.bgColor:SetPoint("TOPLEFT",276,-472)
         self.bgColor.swatch=self.bgColor:CreateTexture(nil,"ARTWORK"); self.bgColor.swatch:SetSize(18,18); self.bgColor.swatch:SetPoint("LEFT",10,0)
         self.bgColor.label:ClearAllPoints(); self.bgColor.label:SetPoint("LEFT",self.bgColor.swatch,"RIGHT",8,0)
         self.bgColor:SetScript("OnClick",function()
@@ -825,11 +847,11 @@ function Threat:Open()
             self:Apply()
         end)
         FT:Tooltip(self.bgColor,"Background color","Background color.")
-        self.alphaLabel,self.alphaSlider=slider(-478,0,100,5,"Transparency","0% solid, 100% invisible.",function(v) self:Settings().backgroundAlpha=1-math.floor(v+.5)/100; FT:Coalesce("threatSlider",function() self:Apply() end,.05) end)
-        local resetText=FT:QuietButton(frame,"Reset position",240,32,"reset"); resetText:SetPoint("TOPLEFT",24,-512)
+        self.alphaLabel,self.alphaSlider=slider(-518,0,100,5,"Transparency","0% solid, 100% invisible.",function(v) self:Settings().backgroundAlpha=1-math.floor(v+.5)/100; FT:Coalesce("threatSlider",function() self:Apply() end,.05) end)
+        local resetText=FT:QuietButton(frame,"Reset position",240,32,"reset"); resetText:SetPoint("TOPLEFT",24,-552)
         resetText:SetScript("OnClick",function() local s=self:Settings(); s.textX,s.textY=0,2; self:Apply() end)
         FT:Tooltip(resetText,"Reset position","Back just above the target portrait.")
-        frame:SetHeight(578)
+        frame:SetHeight(618)
     end
     self.frame:Show(); self:Apply()
 end
