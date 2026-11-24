@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: ForeverTools
 ## Notes: A toolkit of customizable quality-of-life tools.
-## Version: 1.10.0
+## Version: 1.11.0
 ## SavedVariables: ForeverToolsDB, KrilarToolsDB
 ## IconTexture: Interface\AddOns\ForeverTools\Media\MinimapIcon.tga
 ## AddonCompartmentFunc: ForeverTools_OnAddonCompartmentClick
@@ -23,6 +23,7 @@ MacroWatch.lua
 MacroGuide.lua
 Bandage.lua
 Cures.lua
+Grenades.lua
 FoodWater.lua
 HiddenUI.lua
 Minimap.lua
@@ -43,6 +44,8 @@ IconStyles.lua
 LootRoll.lua
 Tooltip.lua
 System.lua
+TrackSwitch.lua
+BuffTimes.lua
 KeyText.lua
 ActionFade.lua
 MinimapIcons.lua
@@ -85,6 +88,7 @@ EnemyCooldowns.lua
 Interrupts.lua
 AutoRelease.lua
 Enemies.lua
+TargetAlert.lua
 Threat.lua
 Totems.lua
 ChatLinks.lua

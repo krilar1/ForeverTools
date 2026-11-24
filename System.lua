@@ -145,6 +145,8 @@ function System:Settings()
     if type(FT.db.system)~="table" then FT.db.system={} end
     local s=FT.db.system
     if s.spellID==nil then s.spellID=false end
+    -- 1.11.0: seconds on target and focus auras, on unless turned off.
+    if s.auraCountdown==nil then s.auraCountdown=true end
     if s.minimapIcons==nil then s.minimapIcons=false end
     -- Forever shows coordinates under the minimap by default; match that.
     if s.coordinates==nil then s.coordinates=true end
@@ -160,6 +162,8 @@ function System:Apply()
     if FT.modules.ChatLinks and FT.modules.ChatLinks.Apply then FT.modules.ChatLinks:Apply() end
     if FT.PowerGlow then FT.PowerGlow:Apply() end
     if FT.StealthShade then FT.StealthShade:Apply() end
+    if FT.BuffTimes then FT.BuffTimes:Apply() end
+    if FT.modules.TrackSwitch then FT.modules.TrackSwitch:Apply() end
     -- Forever's own option, rather than hiding an unrelated minimap region.
     if s.coordinates~=nil and C_CVar and C_CVar.GetCVar and C_CVar.SetCVar then
         if C_CVar.GetCVar("minimapShowPlayerCoords")~=nil then C_CVar.SetCVar("minimapShowPlayerCoords",s.coordinates and "1" or "0") end
@@ -204,8 +208,8 @@ function System:SetLogging(on,why)
     end
     pcall(LoggingCombat,on)
     FT.db.combatLogAuto=(on and why=="auto") or nil
-    if on then say("combat logging on"..(why=="auto" and " (entered an instance)" or "")..". Saved in your game folder: _forever_\\Logs\\WoWCombatLog.")
-    else say("combat logging off"..(why=="auto" and " (left the instance)" or "")..".") end
+    if on then say("Logging on. Saves to _forever_\\Logs\\WoWCombatLog.")
+    else say("Logging off.") end
 end
 function System:ApplyCombatLog()
     local s=self:Settings()
@@ -314,10 +318,13 @@ local pages={
         {"scriptErrors","Show Lua errors","errors","Show the game's Lua error pop-ups."},
         {"bugReport","Copy bug report","INV_Misc_Note_04","Version, game build, features and recent errors, ready to copy. Nothing is sent."},
     }},
-    {key="SystemMinimap",sections={{"Buttons","minimap"},{"Grouping","minimapIcons"},{"World map","mapTransport"}},title="Minimap",hint="ForeverTools button, coordinates, button grouping, world map points.",items={
+    {key="SystemMinimap",sections={{"Buttons","minimap"},{"Herbs and minerals","trackSwitch"},{"Grouping","minimapIcons"},{"World map","mapTransport"}},title="Minimap",hint="ForeverTools button, coordinates, herbs and minerals, button grouping, world map points.",items={
         {"minimap","ForeverTools minimap button","map","Show the ForeverTools button. /ft always works."},
         {"coordinates","Minimap coordinates","INV_Misc_Spyglass_02","Show coordinates below the minimap."},
         {"minimapTarget","Show your target on the minimap","Ability_Hunter_SniperShot","Turns on the game's own \"Target\" minimap tracking: what you target shows on the minimap. The game saves it."},
+        {"trackSwitch","Herbs and minerals","INV_Misc_Flower_02","Switch between both: the minimap swaps between Find Herbs and Find Minerals while you travel, so you see both. Keep one on: Find Herbs or Find Minerals is turned back on whenever it's off, for example after you die. Only the minimap tracking changes. Waits in fights, while casting or fishing, and on flights; switching also waits while looting, in dungeons and towns, and with your mouse over the minimap."},
+        {"trackSwitchEvery","Switch every","INV_Misc_PocketWatch_01","How often it switches between them."},
+        {"trackSwitchStill","Also while standing still","INV_Ore_Copper_01","Off: it waits while you stand still, so the minimap keeps showing what you stopped for."},
         {"minimapIcons","Group minimap buttons","INV_Misc_Bag_08","Put other addons' minimap buttons into one menu."},
         {"minimapIconsVertical","Grouped buttons","INV_Misc_Bag_08","Layout of the grouped buttons."},
         {"minimapRings","Rings on the minimap","map","Addon buttons that sit on the minimap (also the ones you keep there): gold like the game, or dark in your Skins border color. Needs Skins > Minimap on. The same choice as Skins > Minimap > Addon rings."},
@@ -326,6 +333,7 @@ local pages={
         {"mapTransport","Boats, zeppelins and tram","INV_Misc_Map_01","Show docks, zeppelin and airship towers and the tram on the world map, and where each goes. Also in the map's filter menu (the funnel, top right)."},
         {"mapDungeons","Dungeon and raid entrances","INV_Misc_Key_10","Show dungeon and raid entrances on the world map, with their levels. Also in the map's filter menu (the funnel, top right)."},
         {"mapFlights","Flight masters","Ability_Mount_Wyvern_01","Show flight masters on maps where the game doesn't. Also in the map's filter menu (the funnel, top right)."},
+        {"mapGatherMate","GatherMate in the map menu","INV_Misc_Herb_10","On when GatherMate is loaded on this character. Adds herbs, minerals, fishing and treasure to the world map's filter menu (the funnel, top right): turn each kind on or off, or hover one to pick single nodes (Copper Vein, Peacebloom...). Changes GatherMate's own settings, so the minimap follows too."},
     }},
     {key="SystemGameplay",title="Group role",hint="Your group role, set from your talents.",items={
         {"autoRole","Set role when joining a group","Ability_Warrior_DefensiveStance","Set your role from your talents when you join a group."},
@@ -366,6 +374,11 @@ local pages={
     {key="SystemAddons",title="Other addons",hint="Small fixes for other addons you use.",items={
         {"layerSwapOff","Stop LayerSwap hosting when I log in","INV_Misc_GroupLooking","LayerSwap turns its hosting on every time you log in. With this on, ForeverTools turns it off right after you log in (the same as typing /ls off). Turn hosting on again in LayerSwap whenever you like: it stays on until you log out. A /reload changes nothing."},
     }},
+    {key="SystemBuffTimes",title="Buff times",hint="How the time left on your buffs is shown.",items={
+        {"buffMinutes","Show minutes on my buffs","INV_Misc_PocketWatch_01","Past an hour the game rounds your buffs to hours (2 h). With this on they show hours and minutes (2h 23m), like the Well Rested buff from a sleeping bag. Under an hour the game's own time stays."},
+        {"auraCountdown","Time left on target and focus auras","Ability_Gouge","Your target's and focus's buffs and debuffs show the seconds left on their icons (your stuns, for example), the way nameplates do. The game counts them itself, also in fights."},
+        {"buffTipTime","Exact time left in the buff's tooltip","INV_Misc_Note_02","Hover one of your buffs or debuffs to see exactly how long it has left (2 h 23 min, or 14 min 30 s in the last hour). Keeps counting while you hover. Works with or without minutes on the buffs."},
+    }},
     {key="SystemErrors",title="Error messages",hint="Red text when an action fails.",items={
         {"hideErrors","Hide error messages","Ability_Rogue_Disguise","Hide the red error text (Out of range, Not enough rage...). Bag full and similar still show."},
         {"errorsInCombat","Only hide them in a fight","Ability_DualWield","Hide them only in combat."},
@@ -380,7 +393,7 @@ local pages={
     }},
 }
 System.pages=pages
-local toggles={poisedGlow=true,poisedAlways=true,poisedPreview=true,gameMenuButton=true,versionCheck=true,minimapTarget=true,hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,shortKeys=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,mailAlts=true,mailGold=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietNoControl=true,mapTransport=true,mapDungeons=true,mapFlights=true,stealthShade=true,stealthDrift=true,stealthPreview=true,combatLog=true,combatLogDungeons=true,combatLogNow=true,layerSwapOff=true,quietLogin=true}
+local toggles={trackSwitchStill=true,auraCountdown=true,buffMinutes=true,buffTipTime=true,poisedGlow=true,poisedAlways=true,poisedPreview=true,gameMenuButton=true,versionCheck=true,minimapTarget=true,hiddenUIHint=true,fastLoot=true,welcome=true,whatsNew=true,minimap=true,coordinates=true,minimapIcons=true,autoRole=true,shortKeys=true,lootMove=true,autoSell=true,autoRepair=true,guildRepair=true,mailAlts=true,mailGold=true,sellWhite=true,scriptErrors=true,deathGlow=true,hideErrors=true,errorsInCombat=true,quietNoControl=true,mapTransport=true,mapDungeons=true,mapFlights=true,mapGatherMate=true,stealthShade=true,stealthDrift=true,stealthPreview=true,combatLog=true,combatLogDungeons=true,combatLogNow=true,layerSwapOff=true,quietLogin=true}
 -- Switches that are the game's own settings: read and written directly,
 -- never stored by ForeverTools. "Unavailable" when the game has no such setting.
 local gameOptions={scriptErrors="scriptErrors",deathGlow="ffxDeath"}
@@ -434,9 +447,11 @@ function System:Values()
     return {welcome=FT.db.welcome==true,whatsNew=s.hideWhatsNew~=true,minimap=FT.db.minimapEnabled~=false,coordinates=coords,
         minimapTarget=select(2,self:TargetTracking())==true,minimapIcons=s.minimapIcons==true,lootMove=FT.modules.LootRoll.moving==true,scriptErrors=gameOption("scriptErrors")=="1",deathGlow=gameOption("ffxDeath")~="0",
         hiddenUIHint=s.hiddenUIHint==true,poisedGlow=s.poisedGlow==true,poisedAlways=s.poisedAlways==true,poisedPreview=FT.PowerGlow and FT.PowerGlow.preview==true,autoRole=s.autoRole==true,shortKeys=s.shortKeys==true,fastLoot=s.fastLoot==true,autoSell=s.autoSell==true,sellWhite=s.sellWhite==true,autoRepair=s.autoRepair==true,guildRepair=s.guildRepair==true,mailAlts=s.mailAlts==true,mailGold=s.mailGold==true,
-        hideErrors=s.hideErrors==true,errorsInCombat=s.errorsInCombat==true,quietNoControl=s.quietNoControl~=false,versionCheck=s.versionCheck~=false,gameMenuButton=s.gameMenuButton~=false,mapTransport=s.mapTransport==true,mapDungeons=s.mapDungeons==true,mapFlights=s.mapFlights==true,stealthShade=s.stealthShade==true,stealthDrift=s.stealthDrift~=false,stealthPreview=FT.StealthShade and FT.StealthShade.preview==true,
+        hideErrors=s.hideErrors==true,errorsInCombat=s.errorsInCombat==true,quietNoControl=s.quietNoControl~=false,versionCheck=s.versionCheck~=false,gameMenuButton=s.gameMenuButton~=false,mapTransport=s.mapTransport==true,mapDungeons=s.mapDungeons==true,mapFlights=s.mapFlights==true,mapGatherMate=s.mapGatherMate~=false,stealthShade=s.stealthShade==true,stealthDrift=s.stealthDrift~=false,stealthPreview=FT.StealthShade and FT.StealthShade.preview==true,
         combatLog=s.combatLog==true,combatLogDungeons=s.combatLogDungeons==true,combatLogNow=self:Logging(),
-        layerSwapOff=s.layerSwapOff==true,quietLogin=s.quietLogin~=false}
+        layerSwapOff=s.layerSwapOff==true,quietLogin=s.quietLogin~=false,
+        buffMinutes=s.buffMinutes==true,buffTipTime=s.buffTipTime==true,auraCountdown=s.auraCountdown==true,
+        trackSwitch=FT.modules.TrackSwitch and FT.modules.TrackSwitch:Mode() or "off",trackSwitchStill=s.trackSwitchStill==true}
 end
 function System:Refresh()
     if not self.buttons then return end
@@ -472,6 +487,21 @@ function System:Refresh()
         -- Greyed while the setting it needs is off; clicking turns both on.
         if key=="guildRepair" then button:SetAlpha(values.autoRepair and 1 or .45) end
         if key=="sellWhite" then button:SetAlpha(values.autoSell and 1 or .45) end
+        if key=="mapGatherMate" and not rawget(_G,"GatherMate2") then button:SetAlpha(.45); button.label:SetText(button.title..": GatherMate not loaded") end
+        if key=="mapGatherMate" then s.mapGatherMate=s.mapGatherMate==false; self:Apply(); return end
+    if key=="trackSwitchStill" then button:SetAlpha(values.trackSwitch=="swap" and 1 or .45) end
+        if key=="trackSwitchEvery" then
+            local T=FT.modules.TrackSwitch
+            button.label:SetText("Switch every: "..(T and T:EveryText() or "3 seconds"))
+            button:SetAlpha(values.trackSwitch=="swap" and 1 or .45)
+        end
+        if key=="trackSwitch" then
+            local T=FT.modules.TrackSwitch
+            local mode=values.trackSwitch
+            local text=({off="Off",swap="Switch between both",herbs="Keep Find Herbs on",minerals="Keep Find Minerals on"})[mode] or "Off"
+            if mode~="off" and T and not T:Known(mode) then text=text.." (spell not known)" end
+            button.label:SetText(button.title..": "..text)
+        end
         if key=="errorsInCombat" then button:SetAlpha(values.hideErrors and 1 or .45) end
         if key=="combatLogDungeons" then button:SetAlpha(values.combatLog and 1 or .45) end
         if key=="layerSwapOff" and not self:HasLayerSwap() then button:SetAlpha(.45); button.label:SetText(button.title..": LayerSwap not installed") end
@@ -668,6 +698,11 @@ function System:Click(key)
         local G=FT.PowerGlow; if G then G.preview=not G.preview; G:Check() end
         self:Refresh(); return
     end
+    if key=="trackSwitchStill" then
+        s.trackSwitchStill=not (s.trackSwitchStill==true)
+        if s.trackSwitchStill and FT.modules.TrackSwitch and FT.modules.TrackSwitch:Mode()~="swap" then s.trackMode="swap"; s.trackSwitch=nil end
+        self:Apply(); return
+    end
     if key=="welcome" then FT.db.welcome=FT.db.welcome~=true
     elseif key=="minimap" then FT.db.minimapEnabled=FT.db.minimapEnabled==false
     elseif key=="whatsNew" then s.hideWhatsNew=not (s.hideWhatsNew==true)
@@ -712,6 +747,14 @@ local function buildPage(page)
                     FT:MakeChoice(b,FT.StealthShade.strengths,
                         function() return FT.StealthShade:Settings().stealthStrength end,
                         function(value) local st=System:Settings(); st.stealthStrength=value; st.stealthShade=true; System:Apply(); System:Refresh() end)
+                elseif key=="trackSwitch" then
+                    FT:MakeChoice(b,{{"off","Off","Leave the minimap tracking alone."},{"swap","Switch between both","Find Herbs and Find Minerals take turns while you travel."},{"herbs","Keep Find Herbs on","Turned back on whenever it's off, for example after you die."},{"minerals","Keep Find Minerals on","Turned back on whenever it's off, for example after you die."}},
+                        function() return FT.modules.TrackSwitch and FT.modules.TrackSwitch:Mode() or "off" end,
+                        function(value) local st=System:Settings(); st.trackMode=value; st.trackSwitch=nil; System:Apply() end)
+                elseif key=="trackSwitchEvery" then
+                    FT:MakeChoice(b,FT.modules.TrackSwitch and FT.modules.TrackSwitch.EVERY or {{3,"3 seconds"}},
+                        function() return FT.modules.TrackSwitch and FT.modules.TrackSwitch:Every() or 3 end,
+                        function(value) local st=System:Settings(); st.trackSwitchEvery=value~=3 and value or nil; st.trackMode="swap"; st.trackSwitch=nil; System:Apply() end)
                 elseif key=="objectives" then
                     FT:MakeChoice(b,{{"default","Game's default","The game decides, as without ForeverTools."},{"collapsed","Collapsed","Collapsed after every login."},{"open","Open","Open after every login."},{"hidden","Always hidden","Keep the tracker off the screen."}},
                         function() return FT.modules.QuestTracker:Mode() end,
@@ -1389,6 +1432,33 @@ function System:TipDebugCapture(tip,stage)
         FT:CopyBox("Tooltip check",table.concat(lines,"\n"),"Press Ctrl+C to copy, then paste it in your comment on CurseForge. Nothing is sent automatically.",true)
     end)
 end
+-- A player's full name ("Rick Hasselhoof": in WoW: Forever the second
+-- part of UnitFullName is the last name) in class color, or nil.
+local function fullColored(u)
+    local ok,first,last=pcall(UnitFullName,u)
+    if not ok or not usable(first) or type(first)~="string" or first=="" then return nil end
+    local name=first
+    if usable(last) and type(last)=="string" and last~="" then name=first.." "..last end
+    local okC,_,class=pcall(UnitClass,u)
+    local c=okC and usable(class) and class and (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS or {})[class]
+    if c and c.r then return string.format("|cff%02x%02x%02x%s|r",c.r*255,c.g*255,c.b*255,name) end
+    return "|cffffffff"..name.."|r"
+end
+-- In a fight the game hides who a monster targets. The group member it is
+-- attacking (tanking) is almost always its target, and that the game does
+-- tell: found among you and your group.
+local function tankedBy(unit)
+    if not UnitDetailedThreatSituation then return nil end
+    local list={"player"}
+    if IsInRaid and IsInRaid() then for i=1,40 do list[#list+1]="raid"..i end
+    else for i=1,4 do list[#list+1]="party"..i end end
+    for _,member in ipairs(list) do
+        if UnitExists(member) then
+            local ok,tanking=pcall(UnitDetailedThreatSituation,member,unit)
+            if ok and usable(tanking) and tanking==true then return member end
+        end
+    end
+end
 function System:TooltipTargetLine(tip)
     self:ClearTargetPlayerDisplay(tip)
     if self.tipCapture then self:TipDebugCapture(tip,"before") end
@@ -1409,7 +1479,16 @@ function System:TooltipTargetLine(tip)
     end
     local ok,name=pcall(UnitName,target)
     local secretName=ok and issecretvalue and issecretvalue(name)
+    local shown
     if secretName and not targetsPlayer then
+        local member=tankedBy(unit)
+        if member=="player" then targetsPlayer=true
+        elseif member then shown=fullColored(member) end
+    elseif not targetsPlayer and exists then
+        local okP,isPlayer=pcall(UnitIsPlayer,target)
+        if okP and usable(isPlayer) and isPlayer then shown=fullColored(target) end
+    end
+    if secretName and not targetsPlayer and not shown then
         local index=tip.ftTargetLine
         local prefix=tip:GetName() or "GameTooltip"
         local left=index and _G[prefix.."TextLeft"..index]
@@ -1429,8 +1508,12 @@ function System:TooltipTargetLine(tip)
         self:TargetPlayerDisplay(tip,comparison)
         return
     end
-    local text=targetsPlayer and "You" or (ok and name and name~="" and name or (exists and "Unavailable" or "None"))
-    local colored=(targetsPlayer and "|cffff0000" or "|cffffffff")..text.."|r"
+    local text="None"
+    if targetsPlayer then text="You"
+    elseif shown then text=""
+    elseif ok and type(name)=="string" and not secretName and name~="" then text=name
+    elseif exists then text="Unavailable" end
+    local colored=(not targetsPlayer and shown) or ((targetsPlayer and "|cffff0000" or "|cffffffff")..text.."|r")
     local line=tip.ftTargetLine and _G[(tip:GetName() or "GameTooltip").."TextLeft"..tip.ftTargetLine]
     if line then
         local right=_G[(tip:GetName() or "GameTooltip").."TextRight"..tip.ftTargetLine]

@@ -88,6 +88,7 @@ local hubs = {
             return (n > 0 and (n .. " marked") or "") .. (n > 0 and g > 0 and " · " or "") .. (g > 0 and (g .. (g == 1 and " guild" or " guilds")) or "")
         end},
         {"EnemyNearby", "Nearby enemies", "INV_Misc_Spyglass_02", function() return onOff(settings("Enemies").nearby) end},
+        {"TargetAlert", "Targeted alert", "Ability_Hunter_SniperShot", function() return onOff(settings("TargetAlert").enabled) end},
         {"QueueTimer", "Battlegrounds", "INV_Misc_PocketWatch_01", function() return "Timer " .. onOff(settings("QueueTimer").enabled):lower() .. " · release " .. onOff(settings("AutoRelease").enabled):lower() end},
         {"Trinkets", "Trinket menu", function() return FT:FactionIcon() end, function() local on = settings("Trinkets").enabled; local T = FT.modules.Trinkets; if on and T and T.Worn and not T:Worn() then return "On · no trinket yet" end; return onOff(on) end},
         {"EnemyCooldowns", "Enemy cooldowns", "Spell_Holy_BorrowedTime", function() return onOff(settings("EnemyCooldowns").enabled) end},
@@ -103,7 +104,7 @@ local hubs = {
         {"QualityOfLife", "FPS counter", "INV_Gizmo_01", function() return onOff(settings("QualityOfLife").enabled) end},
         {"Leveling", "Leveling stats", "Spell_ChargePositive", function() return onOff(settings("Leveling").enabled) end},
         {"FlightTimer", "Flight timer", function() return FT:FlightIcon() end, function() return onOff(settings("FlightTimer").enabled) end},
-        {"SystemMinimap", "Minimap", "map", function() return "Button, coordinates, grouping" end},
+        {"SystemMinimap", "Minimap", "map", function() return "Button, coordinates, grouping" .. ((function() local t = mod("TrackSwitch"); local m = t and t:Mode() or "off"; return m == "swap" and " · herbs/minerals" or (m == "herbs" and " · herbs on" or (m == "minerals" and " · minerals on" or "")) end)()) end},
         {"SystemQuests", "Quests and loot rolls", "INV_Misc_Book_08", function() return "Tracker and roll position" end},
         {"SystemErrors", "Error messages", "Ability_Rogue_Disguise", function() local s = settings("System"); return s.hideErrors and (s.errorsInCombat and "Hidden in a fight" or "Hidden") or "Shown" end},
         {"Movers", "Move elements", "move", function() local m = mod("Movers"); return m and m.active and "Moving now" or "Drag things on screen" end},
@@ -142,6 +143,7 @@ local hubs = {
         {"BuffRanks", "Low ranks", "INV_Misc_Book_07", function() return buffStatus("rank") end},
         {"BuffLook", "Look and position", "Spell_Holy_MagicalSentry", function() return buffStatus("look") end},
         {"CooldownReminder", "Cooldown reminders", "Spell_Nature_TimeStop", function() return onOff(settings("CooldownReminder").enabled) end},
+        {"SystemBuffTimes", "Buff times", "INV_Misc_PocketWatch_01", function() local s = settings("System"); return "Minutes " .. onOff(s.buffMinutes):lower() .. " · tooltip " .. onOff(s.buffTipTime):lower() end},
     }},
     {key = "ProfilesHub", width = 520, height = 560, title = "Profiles", pages = {
         {"Profiles", "Profiles", "INV_Misc_Book_04", function() local m = mod("Profiles"); return m and m.SidebarStatus and m:SidebarStatus("list") or "" end},
@@ -209,6 +211,8 @@ local tips = {
     EnemyAlerts = "Alerts for stealth and marked players.",
     EnemyMarks = "Players you marked.",
     EnemyNearby = "Enemy players you saw recently.",
+    TargetAlert = "A small box when an enemy player near you targets you.",
+    SystemBuffTimes = "Minutes on your buffs and the exact time left in their tooltip.",
     QueueTimer = "Battleground timer and auto release.",
     Diminish = "When crowd control will be shorter, or won't land.",
     SystemKeybinds = "Bind keys by hovering (/kb), short key text on buttons, and backups.",

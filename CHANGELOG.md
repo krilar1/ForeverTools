@@ -1,3 +1,34 @@
+# ForeverTools 1.11.0 (2026-11-25)
+
+## New
+- **Targeted alert** (PvP → Targeted alert, off at first): a small box when an enemy player near you has you as their target, with how many and who (class colors). Sound and a border flash once per player; "Warn again about the same player" sets how soon the same player warns again (30 seconds at first). Choose open world only or everywhere, color, size, background, and move it. Enemy nameplates must be on (V) to see players you haven't targeted yourself.
+- **Grenade macro** (Macros → PvP): throws your grenade. One kind in your bags: that one. Several: you pick, with item stats on hover. None: pick one of the usual PvP grenades, and the macro works as soon as you carry it. Targeting circle, or straight at your mouse. `/ft grenade` changes it, and the macro follows your bags.
+- **Herbs and minerals** (System → Minimap): switch the minimap between Find Herbs and Find Minerals every 2 seconds to 5 minutes while you travel, or keep one of them on, turned back on after you die or log in. Waits in fights, while casting or fishing and on flights.
+- **GatherMate in the map menu** (System → Minimap, on when GatherMate is loaded): herbs, minerals, fishing and treasure in the world map's filter menu, each kind on or off, or single nodes (Copper Vein, Peacebloom…). Uses GatherMate's own settings.
+- **Buff times** (Buffs → Buff times): minutes on long buffs ("2h 23m"), the exact time left in the buff tooltip, and seconds on your target's and focus's auras (on).
+- **Cure disease and Cure poison+dis macros**, and when you get a cure item you're asked once: separate or combined macros, General or Character.
+- **`/ft flighttimes`:** your recorded flight times in a copy box.
+
+## Changes
+- **Flight timer:** a flight's time is the sum of the hops the game flies, so routes WoW: Forever changed are right; past the expected time it shows "+m:ss"; Frequent Fliers get their faster times; recorded times are kept after game updates. More recorded times added.
+- **Break free** moved to Macros → PvP.
+- **Weapon swaps:** the question also comes when the new weapon is another kind (sword to dagger), and the choices show the item's stats on hover. Only weapons the macros put in the same hand are offered (a new thrown weapon never replaces the fishing pole).
+- **Item counts** in every item tooltip: auction house, chat links, loot history, quest rewards and action bar macros.
+- **Tooltip target line:** a group member being tanked shows with full name in class color, also in fights.
+- **Grey on cooldown** also works in dungeons and fights.
+- **Shorter combat logging message.**
+- **Smoother with many players around** (Nearby enemies), lighter trinket menu and tooltips.
+
+## Fixes
+- **Characters missing from item counts and the gold list** after the Nov 20 game update, and a character's last name saved as its realm.
+- **Nearby enemies:** clicking a player out of range targeted an old target or a random mob; now it says the player is out of range.
+- **Cure macros** made the First Aid item instead of using it.
+- **Blocked action** when changing maps with travel points on, and right-click on map points now zooms out.
+- **The search highlight** stayed after closing the page.
+- **Windows grew a little taller** each time a page opened.
+- **"No SR"** showed in party chat outside raids.
+- **A Lua error** hovering a mob fighting a group member in a dungeon.
+
 # ForeverTools 1.10.0 (2026-11-21)
 
 ## New

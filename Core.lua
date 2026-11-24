@@ -1,6 +1,6 @@
 local addonName, FT = ...
 FT.name = addonName
-FT.version = "1.10.0"
+FT.version = "1.11.0"
 FT.modules = {}
 FT.headingFont = "Fonts\\FRIZQT__.TTF"
 FT.bodyFont = "Fonts\\ARIALN.TTF"
@@ -649,6 +649,16 @@ function FT:FlashFocus(target)
         p = p.GetParent and p:GetParent()
     end
     ring:ClearAllPoints(); ring:SetPoint("TOPLEFT", target, "TOPLEFT", -4, 4); ring:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", 4, -4)
+    -- Gone with what it points at: closing the window takes the ring along
+    -- (1.11.0: it stayed on screen around nothing).
+    ring.target = target
+    if not ring.watching then
+        ring.watching = true
+        ring:SetScript("OnUpdate", function(owner)
+            local t = owner.target
+            if not t or not t.IsVisible or not t:IsVisible() then owner.token = nil; owner.pulse:Stop(); owner:Hide() end
+        end)
+    end
     ring:Show(); ring.pulse:Play()
     local token = {}; ring.token = token
     C_Timer.After(3.5, function() if ring.token == token then ring.pulse:Stop(); ring:Hide() end end)
@@ -1620,6 +1630,8 @@ SlashCmdList.FOREVERTOOLS = function(message)
     elseif command == "weaponswap" or command == "weaponswaps" then if FT.MacroWatch then FT.MacroWatch:Open() end
     elseif command == "iconaudit" then if FT.modules.MacroForge then FT:DebugBox("Icon audit", function() FT.modules.MacroForge:IconAudit() end) end
     elseif command == "ahdebug" then if FT.Bags then FT.Bags:AHDebug() end
+    elseif command == "grenade" or command == "grenades" then if FT.modules.Grenades then FT.modules.Grenades:Open() end
+    elseif command == "flighttimes" or command == "flights" then if FT.modules.FlightTimer then FT.modules.FlightTimer:Export() end
     elseif command == "tipdebug" or command == "tooltipdebug" then if FT.modules.System then FT.modules.System:TipDebugStart() end
     elseif command == "campdebug" then if FT.modules.BuffReminder then FT.modules.BuffReminder:CampDebug() end
     elseif command == "blocked clear" then
@@ -1863,6 +1875,13 @@ function FT:ContentHeight(frame, margin)
         if r.IsShown and not r:IsShown() then return end
         local point, rel, _, _, y = r:GetPoint(1)
         if point ~= "TOPLEFT" or (rel ~= frame and rel ~= nil) or type(y) ~= "number" then return end
+        -- Stretched down to the window's bottom (a list, a scroll area): it
+        -- follows the window's height, so it can't make it taller (it did:
+        -- the window grew a little each time /ft was typed).
+        for i = 2, r:GetNumPoints() do
+            local p2, rel2 = r:GetPoint(i)
+            if type(p2) == "string" and p2:find("BOTTOM") and (rel2 == frame or rel2 == nil) then return end
+        end
         local h = r.GetHeight and r:GetHeight() or 0
         if type(h) ~= "number" then h = 0 end
         if r.GetObjectType and r:GetObjectType() == "FontString" and r.GetStringHeight then
@@ -1951,7 +1970,17 @@ function FT:ShowChoices(owner)
             -- Items may carry their own tooltip (for example a list of changes).
             row:HookScript("OnEnter", function(owner)
                 local item = owner.item
-                if not item or not item.tooltip then return end
+                if not item then return end
+                -- An item (weapon choices...): the game's own item tooltip,
+                -- stats and all, with our note under it.
+                if type(item.hyperlink) == "string" and item.hyperlink ~= "" then
+                    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+                    if pcall(GameTooltip.SetHyperlink, GameTooltip, item.hyperlink) then
+                        if item.tooltip then GameTooltip:AddLine(type(item.tooltip) == "function" and item.tooltip() or item.tooltip, .66,.59,.48, true) end
+                        GameTooltip:Show(); return
+                    end
+                end
+                if not item.tooltip then return end
                 GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
                 GameTooltip:SetText(item.tooltipTitle or item.label, 1,.82,0)
                 GameTooltip:AddLine(type(item.tooltip) == "function" and item.tooltip() or item.tooltip, .96,.93,.86, true)

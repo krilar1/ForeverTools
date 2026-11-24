@@ -73,11 +73,81 @@ end
 -- "ClassicBetaPvE" later), so names are compared without spaces or dashes.
 local function sameRealm(name) return type(name)=="string" and (name:gsub("[%s%-]","")) or "?" end
 Bags.SameRealm=sameRealm
+-- Asked many times a second in a crowd (Nearby enemies): one game call and
+-- no new table; the spaceless name is worked out again only when it changes.
+local realmShown,realmKey
 function Bags:Ruleset()
-    for _,fn in ipairs({GetRealmName or false,GetNormalizedRealmName or false}) do
-        if fn then local ok,v=pcall(fn); if ok and text(v) then return sameRealm(v),v end end
+    local ok,v=false,nil
+    if GetRealmName then ok,v=pcall(GetRealmName) end
+    if not (ok and text(v)) and GetNormalizedRealmName then ok,v=pcall(GetNormalizedRealmName) end
+    if ok and text(v) then
+        if v~=realmShown then realmShown,realmKey=v,sameRealm(v) end
+        self.lastRealm,self.lastShown=realmKey,v; return realmKey,v
+    end
+    -- (Not UnitFullName: in WoW: Forever its second part is the character's
+    -- last name, not the realm. 1.11.0 used it for a day and saved Krilar
+    -- under "Kriminell"; RepairRealms undoes that.)
+    -- Since a game update (Nov 20) the realm can come back empty, at least
+    -- when logging out: the last answer of this session, else the one this
+    -- character was saved with. Never "?" when anything is known.
+    if self.lastRealm then return self.lastRealm,self.lastShown end
+    local guid=self:Me(); local c=guid and FT.db and type(FT.db.bagStore)=="table" and type(FT.db.bagStore.chars)=="table" and FT.db.bagStore.chars[guid]
+    if type(c)=="table" then
+        if type(c.realm)=="string" and c.realm~="?" then return c.realm,c.realmName or c.realm end
+        if text(c.realmName) then return sameRealm(c.realmName),c.realmName end
     end
     return "?","?"
+end
+-- Repairs what the empty realm broke (1.11.0): characters saved with "?"
+-- get their ruleset back from the realm name saved before, and a guild bank
+-- saved under "?" joins the right one. Runs at login, costs nothing after.
+function Bags:RepairRealms()
+    local st=self:Store()
+    -- A "realm" that is the character's own last name (from UnitFullName,
+    -- 1.11.0 test builds) is no realm: forget it.
+    local bad={}
+    for _,c in pairs(st.chars) do
+        if type(c)=="table" and type(c.fullName)=="string" then
+            local last=c.fullName:match("%s(%S+)$")
+            if last and (sameRealm(c.realm)==sameRealm(last) or sameRealm(c.realmName)==sameRealm(last)) then
+                bad[sameRealm(last)]=true
+                c.realm="?"; c.realmName=nil
+            end
+        end
+    end
+    for _,c in pairs(st.chars) do
+        if type(c)=="table" and (c.realm==nil or c.realm=="?") and text(c.realmName) then c.realm=sameRealm(c.realmName) end
+    end
+    -- Still unknown: the ruleset most of your characters are on.
+    local votes,best,most={},nil,0
+    for _,c in pairs(st.chars) do
+        if type(c)=="table" and type(c.realm)=="string" and c.realm~="?" then
+            votes[c.realm]=(votes[c.realm] or 0)+1
+            if votes[c.realm]>most then best,most=c.realm,votes[c.realm] end
+        end
+    end
+    if best then
+        for _,c in pairs(st.chars) do
+            if type(c)=="table" and (c.realm==nil or c.realm=="?") then
+                c.realm=best
+                for _,o in pairs(st.chars) do if type(o)=="table" and o.realm==best and text(o.realmName) then c.realmName=o.realmName; break end end
+            end
+        end
+    end
+    if self.lastRealm and bad[self.lastRealm] then self.lastRealm,self.lastShown=nil,nil end
+    local ruleset=self:Ruleset()
+    if ruleset=="?" or bad[ruleset] then return end
+    for key,guild in pairs(st.guilds) do
+        local prefix=type(key)=="string" and key:match("^(.-)|") 
+        local name=type(key)=="string" and (key:match("^%?|(.+)$") or (prefix and bad[prefix] and key:match("^.-|(.+)$")))
+        if name and type(guild)=="table" then
+            local good=ruleset.."|"..name
+            local other=st.guilds[good]
+            if type(other)~="table" or (guild.seen or 0)>(other.seen or 0) then guild.realm=ruleset; st.guilds[good]=guild end
+            st.guilds[key]=nil
+            if self.indexes then self.indexes["guild:"..key]=nil; self.indexes["guild:"..good]=nil end
+        end
+    end
 end
 -- The player's full name (first and last), or nil when the game shows no
 -- more than the first name. Only accepted when it starts with that name.
@@ -109,7 +179,8 @@ function Bags:Record(create)
     if UnitSex then c.sex=number(UnitSex("player")) or c.sex end
     local faction=UnitFactionGroup and UnitFactionGroup("player"); c.faction=text(faction) or c.faction
     local realm,shown=self:Ruleset()
-    c.realm=realm; if shown~="?" then c.realmName=shown end
+    if realm~="?" or not c.realm then c.realm=realm end
+    if shown~="?" then c.realmName=shown end
     local level=UnitLevel and UnitLevel("player"); c.level=number(level) or c.level
     if GetGuildInfo then local guild=GetGuildInfo("player"); c.guild=text(guild) end
     return c,guid
@@ -263,7 +334,7 @@ end
 function Bags:ScanGuild()
     if not FT.dbReady or not self.guildOpen or not self:Recording() then return end
     if self:Busy() then self.pending=true; return end
-    local key,name=self:GuildKey(); if not key or not GetNumGuildBankTabs or not GetGuildBankItemLink then return end
+    local key,name=self:GuildKey(); if not key or key:sub(1,2)=="?|" or not GetNumGuildBankTabs or not GetGuildBankItemLink then return end
     local ok,count=pcall(GetNumGuildBankTabs); if not ok or not number(count) then return end
     local st=self:Store()
     local entry=st.guilds[key] or {}; st.guilds[key]=entry
@@ -1486,6 +1557,7 @@ events:SetScript("OnEvent",function(_,event,kind,extra)
     if not FT.dbReady then return end
     if event=="PLAYER_LOGIN" then
         Bags:KeyringIcon(); C_Timer.After(2,function() Bags:KeyringIcon() end)
+        pcall(Bags.RepairRealms,Bags); C_Timer.After(3,function() pcall(Bags.RepairRealms,Bags) end)
         Bags:Apply()
         if Bags:Recording() then C_Timer.After(3,function() Bags:Record(true); Bags:ScanBags(); Bags:TidyMail() end) end
         if hooksecurefunc and SendMail and not Bags.mailHooked then

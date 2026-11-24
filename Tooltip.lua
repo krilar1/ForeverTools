@@ -30,6 +30,9 @@ end
 function Tip:Settings()
     if type(FT.db.tooltip)~="table" then FT.db.tooltip={} end
     local s=FT.db.tooltip
+    -- Checked already (this runs on every tooltip refresh). A new table
+    -- (profile switch, import, defaults) or the settings page is checked again.
+    if s==self.checked then return s end
     if s.target==nil then
         -- Legacy builds stored this switch under System.
         s.target=FT.db.system~=nil and FT.db.system.tooltipTarget==true
@@ -93,6 +96,7 @@ function Tip:Settings()
         if type(s[part])~="number" then s[part]=0 end
         s[part]=math.max(0,math.min(32,math.floor(s[part])))
     end
+    self.checked=s
     return s
 end
 -- Whether a part is switched on (guild and target use their own switches).
@@ -401,6 +405,7 @@ function Tip:RenderPreview()
     box:SetHeight(math.max(40,-y+8))
 end
 function Tip:Refresh()
+    self.checked=nil
     if not self.frame then return end
     local s=self:Settings()
     -- Layout rows follow the saved order, top to bottom.

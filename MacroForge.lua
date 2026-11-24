@@ -292,6 +292,12 @@ local pvpMacros = {
 local pvpShared = {
     pvp("Trinket 1", "inv_jewelry_trinketpvp_01", "#showtooltip 13\n/use 13", "Uses your top trinket (slot 13)."),
     pvp("Trinket 2", "inv_jewelry_trinketpvp_02", "#showtooltip 14\n/use 14", "Uses your bottom trinket (slot 14)."),
+    -- From your bags, kept up to date (Grenades.lua, Cures.lua).
+    {"Grenade", 1, "generic", "inv_misc_bomb_08", function() return KT.modules.Grenades and KT.modules.Grenades:Body() or "#showtooltip" end, nil,
+        "Throws your grenade (targeting circle, or straight at your mouse). One kind in your bags: that one. Several: you pick. None: pick one of the PvP grenades. /ft grenade changes it.",
+        prepare = function(entry, go) local g = KT.modules.Grenades; if not g then return true end; return g:Prepare(go) end},
+    {"Break free", 1, "generic", "inv_potion_04", function() return KT.modules.Cures and KT.modules.Cures:Body("free") or "#showtooltip" end, nil,
+        "Uses your best item that frees you from stuns and slows (Living Action Potion, Free Action Potion). Kept up to date as your bags change."},
 }
 local genericMacros = {
     {"1-shot combo", 1, "generic", "spell_nature_bloodlust", "#showtooltip"},
@@ -313,12 +319,14 @@ local genericMacros = {
     -- Cures.lua: one key per kind of cure (poison, curse/disease/magic, stuns and slows).
     {"Cure poison", 1, "generic", "inv_drink_14", function() return KT.modules.Cures and KT.modules.Cures:Body("poison") or "#showtooltip" end, nil,
         "Uses your best item that cures poison (Anti-Venom, Strong and Powerful Anti-Venom...) on the friend under your mouse, your friendly target, or you. Kept up to date as your bags change."},
+    {"Cure disease", 1, "generic", "spell_nature_nullifydisease", function() return KT.modules.Cures and KT.modules.Cures:Body("disease") or "#showtooltip" end, nil,
+        "Uses your best poultice. Kept up to date as your bags change."},
+    {"Cure poison+dis", 1, "generic", "inv_drink_14", function() return KT.modules.Cures and KT.modules.Cures:Body("pd") or "#showtooltip" end, nil,
+        "One macro for poison and disease: uses the cure you need, anti-venom or poultice. Kept up to date as your bags change."},
     {"Cure all", 1, "generic", "inv_potion_26", function() return KT.modules.Cures and KT.modules.Cures:Body("all") or "#showtooltip" end, nil,
         "Uses your best item that removes curses, diseases or magic (Purification Potion, Restorative Potion...). Kept up to date as your bags change."},
     {"Cure bleed", 1, "generic", "inv_misc_bandage_15", function() return KT.modules.Cures and KT.modules.Cures:Body("bleed") or "#showtooltip" end, nil,
         "Uses your best item that stops bleeding (Woolen Tourniquet...) on the friend under your mouse, your friendly target, or you. Kept up to date as your bags change."},
-    {"Break free", 1, "generic", "inv_potion_04", function() return KT.modules.Cures and KT.modules.Cures:Body("free") or "#showtooltip" end, nil,
-        "Uses your best item that frees you from stuns and slows (Living Action Potion, Free Action Potion). Kept up to date as your bags change."},
 }
 
 local function raceKey()
@@ -344,7 +352,8 @@ local function addEntries(destination, entries, className, raceName, category)
         local code = data[5]
         -- A text that follows the game (the Bandage macro) is built when listed.
         if type(code) == "function" then code = code() end
-        local entry = { name = data[1], ranks = data[2], kind = data[3], icon = data[4], code = code, old = data[6], note = data[7], class = className, race = raceName, category = category, named = data.named, fixedIcon = data.fixedIcon }
+        local entry = { name = data[1], ranks = data[2], kind = data[3], icon = data[4], code = code, old = data[6], note = data[7], class = className, race = raceName, category = category, named = data.named, fixedIcon = data.fixedIcon,
+            prepare = data.prepare, rebuild = type(data[5]) == "function" and data[5] or nil }
         if not entry.note and isPoison(entry) then entry.note = POISON_NOTE end
         -- One macro per rank family: the later versions are picked inside it.
         local fam = familyOf[tostring(entry.name):lower()]
@@ -828,6 +837,10 @@ end
 function MacroForge:RaceEntries()
     local entries = {}; addEntries(entries, racials[raceKey()], nil, raceKey(), "racial"); return entries
 end
+-- Grenade, Break free and the trinkets (every class's PvP list).
+function MacroForge:PvPSharedEntries()
+    local entries = {}; addEntries(entries, pvpShared, classKey(), nil, "pvp"); return entries
+end
 function MacroForge:GenericEntries()
     local entries = {}; addEntries(entries, genericMacros, nil, nil, "generic"); return entries
 end
@@ -835,6 +848,19 @@ function MacroForge:PlayerClass() return classKey() end
 function MacroForge:BulkClass() return self.filter == "class" and self.browsedClass or classKey() end
 function MacroForge:CreateEntry(entry, confirmed)
     if InCombatLockdown() then self:Status("Leave combat before adding or changing macros.", true); return false end
+    -- Macros that ask first (Grenade: which one). "Add all" doesn't ask.
+    if entry.prepare and not entry.prepared and not self.bulkAdding then
+        local go = function()
+            local copy = {}
+            for key, value in pairs(entry) do copy[key] = value end
+            copy.prepared = true
+            if copy.rebuild then local ok, code = pcall(copy.rebuild); if ok then copy.code = code end end
+            self:CreateEntry(copy, confirmed)
+            if self.Refresh then pcall(self.Refresh, self) end
+        end
+        if entry.prepare(entry, go) == false then return false end
+        if entry.rebuild then local ok, code = pcall(entry.rebuild); if ok then entry.code = code end end
+    end
     if entry.class and entry.class ~= classKey() and not confirmed then
         local snapshot = {}
         for key, value in pairs(entry) do snapshot[key] = value end
@@ -1484,7 +1510,7 @@ function MacroForge:WeaponChoices(slot)
         local ok,_,_,_,equipLoc=pcall(instant,item)
         if ok and plain(equipLoc) then return equipLoc end
     end
-    local function add(name,id,icon,where,quality,unbound)
+    local function add(name,id,icon,where,quality,unbound,link)
         if type(name)~="string" or name=="" or seen[name] then return end
         local equipLoc=loc(id or name); local kind=equipLoc and WEAPON_LOCS[equipLoc]
         if not kind then return end
@@ -1500,7 +1526,7 @@ function MacroForge:WeaponChoices(slot)
         if quality==nil then quality=self:EquipQuality(slot,name) end
         local tip=kind..(where and (", "..where) or "")..(unbound and ". Not bound yet: equipping it binds it to you (the game asks first)." or ".")..(why and ("\n"..why) or "")
         list[#list+1]={value=name,label=self:ColoredItem(name,quality).."  |cff9a8f7a"..kind..(where and (", "..where) or "").."|r",icon=plain(icon) and icon or nil,
-            tooltipTitle=name,tooltip=tip,disabled=not ok}
+            tooltipTitle=name,tooltip=tip,disabled=not ok,hyperlink=plain(link) and type(link)=="string" and link or nil}
     end
     if GetInventoryItemLink then
         for _,worn in ipairs({16,17,18}) do
@@ -1508,7 +1534,7 @@ function MacroForge:WeaponChoices(slot)
             local id=okL and plain(link) and type(link)=="string" and tonumber(link:match("item:(%d+)"))
             if id then
                 local icon; if GetInventoryItemTexture then local okIcon,texture=pcall(GetInventoryItemTexture,"player",worn); if okIcon then icon=texture end end
-                add(linkName(link),id,icon,"worn in your "..SLOT_NAMES[worn])
+                add(linkName(link),id,icon,"worn in your "..SLOT_NAMES[worn],nil,nil,link)
             end
         end
     end
@@ -1519,7 +1545,7 @@ function MacroForge:WeaponChoices(slot)
                 local ok,info=pcall(C_Container.GetContainerItemInfo,bag,index)
                 if ok and type(info)=="table" and plain(info.itemID) and info.itemID then
                     local name=(plain(info.itemName) and type(info.itemName)=="string" and info.itemName) or linkName(info.hyperlink)
-                    add(name,info.itemID,info.iconFileID,"in your bags",plain(info.quality) and type(info.quality)=="number" and info.quality or nil,plain(info.isBound) and info.isBound==false)
+                    add(name,info.itemID,info.iconFileID,"in your bags",plain(info.quality) and type(info.quality)=="number" and info.quality or nil,plain(info.isBound) and info.isBound==false,info.hyperlink)
                 end
             end
         end

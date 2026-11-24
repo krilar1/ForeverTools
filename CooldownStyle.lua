@@ -10,7 +10,7 @@ local function cooling(cd)
     -- Ignore the global cooldown. Hidden values cannot be compared: look
     -- again in a moment (inside instances and right after a loading screen
     -- the game can hide them for a while).
-    if issecretvalue and (issecretvalue(start) or issecretvalue(duration)) then hiddenSeen=true; return false end
+    if issecretvalue and (issecretvalue(start) or issecretvalue(duration)) then hiddenSeen=true; return false,true end
     return type(start)=="number" and type(duration)=="number" and duration>1500 and start>0 and start+duration>GetTime()*1000
 end
 -- Cooldown frames keep the same text regions, so collect them once per frame
@@ -32,8 +32,33 @@ end
 -- we hold an icon grey, any such change is undone at once.
 local hooked=setmetatable({},{__mode="k"})
 local busy=false
+-- Hidden cooldowns (dungeons, fights): the game gives a duration object we
+-- can't read, but it can turn the time left into a grey level (0 or 1) that
+-- goes straight to the icon. secret[icon] = {was=, value=}.
+local secret={}
+local curve
+local function secretGrey(button)
+    local slot=button and button.action
+    if type(slot)~="number" or (issecretvalue and issecretvalue(slot)) or slot<=0 then return false end
+    if not (C_ActionBar and C_ActionBar.GetActionCooldownDuration and C_CurveUtil and C_CurveUtil.CreateCurve) then return false end
+    if not curve then
+        curve=C_CurveUtil.CreateCurve()
+        if Enum and Enum.LuaCurveType then curve:SetType(Enum.LuaCurveType.Step) end
+        curve:AddPoint(0,0); curve:AddPoint(1.5,1)
+    end
+    local ok,duration=pcall(C_ActionBar.GetActionCooldownDuration,slot,true)
+    if not ok or type(duration)~="table" and type(duration)~="userdata" then return false end
+    local okV,value=pcall(duration.EvaluateRemainingDuration,duration,curve)
+    -- value may be hidden: never test it, only hand it to the icon.
+    if not okV then return false end
+    return true,value
+end
 local function keepGrey(icon,value)
-    if busy or icons[icon]==nil then return end
+    if busy then return end
+    local hidden=secret[icon]
+    if hidden then busy=true; pcall(icon.SetDesaturation,icon,hidden.value); busy=false; return end
+    if icons[icon]==nil then return end
+    if issecretvalue and issecretvalue(value) then return end
     if value==true or value==1 then return end
     busy=true; icon:SetDesaturated(true); busy=false
 end
@@ -43,20 +68,39 @@ local function hold(icon)
     hooksecurefunc(icon,"SetDesaturated",keepGrey)
     if icon.SetDesaturation then hooksecurefunc(icon,"SetDesaturation",keepGrey) end
 end
+-- Was the icon grey before? (Never hidden: hidden counts as not grey.)
+local function plainGrey(icon)
+    local ok,v=pcall(icon.IsDesaturated,icon)
+    if not ok or (issecretvalue and issecretvalue(v)) then return false end
+    return v and true or false
+end
 local function update()
     if not FT.dbReady then return end
     local s=Fonts:Settings("cooldowns")
     local colorOn=s.enabled and type(s.numberColor)=="table"
     -- Nothing turned on and nothing to put back: skip the 96 buttons.
-    if not colorOn and s.greyCooldowns~=true and next(icons)==nil and next(texts)==nil then return end
+    if not colorOn and s.greyCooldowns~=true and next(icons)==nil and next(texts)==nil and next(secret)==nil then return end
     for _,prefix in ipairs(bars) do for i=1,12 do
         local name=prefix..i; local button=_G[name]
         local cd=button and (button.cooldown or button.Cooldown) or _G[name.."Cooldown"]
         local icon=button and (button.icon or button.Icon) or _G[name.."Icon"]
         if icon and icon.SetDesaturated and icon.IsDesaturated then
-            local grey=s.greyCooldowns==true and cooling(cd)
-            if grey then
-                if icons[icon]==nil then icons[icon]=icon:IsDesaturated(); hold(icon) end
+            local grey,hidden=false,false
+            if s.greyCooldowns==true then grey,hidden=cooling(cd) end
+            local got,value=false,nil
+            if hidden then got,value=secretGrey(button) end
+            if got then
+                if icons[icon]~=nil then local was=icons[icon]; icons[icon]=nil; secret[icon]={was=was} end
+                if not secret[icon] then secret[icon]={was=plainGrey(icon)}; hold(icon) end
+                secret[icon].value=value
+                busy=true; pcall(icon.SetDesaturation,icon,value); busy=false
+            elseif secret[icon] and not hidden then
+                local was=secret[icon].was; secret[icon]=nil
+                if grey then icons[icon]=was else busy=true; pcall(icon.SetDesaturated,icon,was); busy=false end
+            end
+            if got then
+            elseif grey then
+                if icons[icon]==nil then icons[icon]=plainGrey(icon); hold(icon) end
                 busy=true; icon:SetDesaturated(true); busy=false
             elseif icons[icon]~=nil then local was=icons[icon]; icons[icon]=nil; icon:SetDesaturated(was) end
         end
@@ -149,7 +193,7 @@ events:SetScript("OnEvent",function(_,event)
 end)
 local elapsed=0
 events:SetScript("OnUpdate",function(_,dt)
-    if next(icons)==nil and not hiddenSeen and recheck<=0 then elapsed=0; return end
+    if next(icons)==nil and next(secret)==nil and not hiddenSeen and recheck<=0 then elapsed=0; return end
     elapsed=elapsed+dt; if elapsed<1 then return end; elapsed=0
     if recheck>0 then recheck=recheck-1; fixSwipes() end
     hiddenSeen=false; update()

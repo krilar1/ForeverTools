@@ -73,14 +73,21 @@ function T:List()
     end
     local slots=(C_Container and C_Container.GetContainerNumSlots) or GetContainerNumSlots
     local info=C_Container and C_Container.GetContainerItemInfo
+    -- Only the item id per slot (no table from the game); the full info is
+    -- read for trinkets only.
+    local idOf=C_Container and C_Container.GetContainerItemID
     if slots and info then
         for bag=0,4 do
             local ok,n=pcall(slots,bag); n=ok and num(n) or 0
             for i=1,n do
-                local found,item=pcall(info,bag,i)
-                if found and type(item)=="table" and plain(item) then
-                    local id=num(item.itemID)
-                    if id and isTrinket(id) then out[#out+1]={id=id,bag=bag,index=i,link=plain(item.hyperlink) and item.hyperlink or nil,icon=item.iconFileID} end
+                local quick
+                if idOf then local okI,v=pcall(idOf,bag,i); quick=okI and num(v) or nil end
+                if not idOf or (quick and isTrinket(quick)) then
+                    local found,item=pcall(info,bag,i)
+                    if found and type(item)=="table" and plain(item) then
+                        local id=num(item.itemID)
+                        if id and isTrinket(id) then out[#out+1]={id=id,bag=bag,index=i,link=plain(item.hyperlink) and item.hyperlink or nil,icon=item.iconFileID} end
+                    end
                 end
             end
         end

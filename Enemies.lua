@@ -631,7 +631,22 @@ local function makeRow(parent,secure)
         row:SetAttribute("type","macro")
         -- Right-click opens our menu instead of targeting.
         row:SetAttribute("type2","ftmenu")
-        row:HookScript("OnClick",function(owner,button,down) if button=="RightButton" and not down then rowMenu(owner) end end)
+        row:HookScript("OnClick",function(owner,button,down)
+            if button=="RightButton" and not down then rowMenu(owner) end
+            -- Not targeted (out of range or gone): say so, your target stays.
+            if button=="LeftButton" and not down and owner.entry then
+                local e=owner.entry
+                C_Timer.After(.1,function()
+                    local want=e.tname or e.name
+                    if type(want)~="string" then return end
+                    local ok,got=pcall(UnitName,"target")
+                    if not ok or not plain(got) then return end
+                    if got~=want and (type(got)~="string" or got:match("^(%S+)")~=want:match("^(%S+)")) and UIErrorsFrame then
+                        UIErrorsFrame:AddMessage(want.." is out of range.",1,.1,.1)
+                    end
+                end)
+            end
+        end)
         row.secure=true
     else
         row=CreateFrame("Frame",nil,parent)
@@ -878,37 +893,43 @@ function E:ToggleCollapsed(wasOpen)
     self:UpdateStrip(); self:Refresh()
 end
 function E:KeepLabel(v) return v<60 and (v.." seconds") or v==60 and "1 minute" or ((v/60).." minutes") end
+-- Marked players first, then the newest.
+local function byMarkThenLast(a,b)
+    if a.sortMark~=b.sortMark then return a.sortMark>b.sortMark end
+    return (a.last or 0)>(b.last or 0)
+end
 function E:StripEntries()
     local s=self:Settings(); local list={}; local t=now()
     for guid,e in pairs(self.seen) do
         if e.unit or t-(e.last or 0)<=s.nearTime then list[#list+1]=e
         elseif t-(e.last or 0)>math.max(600,s.nearTime*2) then self.seen[guid]=nil end
     end
-    table.sort(list,function(a,b)
-        local ma,mb=self:IsMarked(a) and 1 or 0,self:IsMarked(b) and 1 or 0
-        if ma~=mb then return ma>mb end
-        return (a.last or 0)>(b.last or 0)
-    end)
+    -- Each player's mark is looked up once, not on every comparison (a
+    -- crowd made this the addon's busiest code).
+    for _,e in ipairs(list) do e.sortMark=self:IsMarked(e) and 1 or 0 end
+    table.sort(list,byMarkThenLast)
     return list
 end
--- Targeting by name, tried a few ways: "Name Surname" the way the game's own
--- Target menu does it, name-realm written without spaces, just the name, and
--- the first word of a name with a space in it. Nobody found: your old target
--- comes back.
+-- Targeting by name, tried a few ways, loosest first: the first word of a
+-- name with a space in it, just the name, name-realm written without
+-- spaces, and "Name Surname" the way the game's own Target menu does it.
+-- A /targetexact that finds nobody leaves your target alone, so the most
+-- exact one that finds the player wins, and when the player is out of
+-- range nothing changes (1.11.0: no more /cleartarget + /targetlasttarget,
+-- which brought back an old target, often a mob).
 local function targetText(e)
     local name=e.tname or e.name or ""
-    local lines={"/cleartarget"}
+    local lines={}
+    local first=name:match("^(%S+)%s")
+    if first then lines[#lines+1]="/targetexact "..first end
+    lines[#lines+1]="/targetexact "..name
     local surname=e.tname and (e.tsur or "") or (type(e.realm)=="string" and e.realm or "")
     local realm=surname:gsub("[%s%-']","")
     local myRealm=GetNormalizedRealmName and GetNormalizedRealmName() or ""
     if surname~="" and realm~=myRealm then
+        lines[#lines+1]="/targetexact "..name.."-"..realm
         lines[#lines+1]="/targetexact "..name..SEP..surname
-        lines[#lines+1]="/targetexact [noexists] "..name.."-"..realm
     end
-    lines[#lines+1]=(#lines>1 and "/targetexact [noexists] " or "/targetexact ")..name
-    local first=name:match("^(%S+)%s")
-    if first then lines[#lines+1]="/targetexact [noexists] "..first end
-    lines[#lines+1]="/targetlasttarget [noexists]"
     return table.concat(lines,"\n")
 end
 -- The header: full (title and count) or, collapsed or empty, a small tab.

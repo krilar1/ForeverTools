@@ -6,6 +6,15 @@ FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
     -- try={get,set}: a "Try it" button that switches the new setting on and off
     -- again; open="Module": a "Show me" button. classes: only those classes see it.
+    {version="1.11.0",notes={
+        {icon="Ability_Hunter_SniperShot",title="Targeted alert",text="A small box when an enemy player targets you.",open="TargetAlert"},
+        {icon="INV_Misc_Bomb_08",title="Grenade macro",text="Throws the grenade you carry. Macros > PvP.",open="MacroPvP"},
+        {icon="INV_Misc_Flower_02",title="Herbs and minerals",text="Switch between both, or keep one on after you die.",open="SystemMinimap"},
+        {icon="Spell_Holy_WordFortitude",title="Buff times",text="Minutes on buffs, seconds on target auras.",where="Buffs > Buff times",
+            try={get=function() return FT.modules.System:Settings().buffMinutes==true end,set=function(on) FT.modules.System:Settings().buffMinutes=on; FT.modules.System:Apply() end}},
+        {icon="INV_Misc_Wrench_02",title="Adjustments",text="GatherMate in the map menu, cure macros, flight times, smoother crowds."},
+        {icon="Trade_BlackSmithing",title="Fixes",text="Item counts, map error, weapon swaps, Nearby clicks."},
+    }},
     {version="1.10.0",notes={
         {icon="INV_Misc_Note_02",title="Trade log",text="Your finished trades: items, gold and when.",open="TradeLog"},
         {icon="Spell_Nature_Reincarnation",title="Threat: Where",text="Show it only in dungeons and raids.",open="Threat"},

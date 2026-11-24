@@ -172,8 +172,16 @@ function P:Pin(i)
     local canvas=WorldMapFrame:GetCanvas()
     pin=CreateFrame("Frame",nil,canvas)
     pin:SetSize(20,20); pin:EnableMouse(true)
-    -- Right-click still zooms the map out under a pin.
-    if pin.SetPassThroughButtons then pcall(pin.SetPassThroughButtons,pin,"RightButton") end
+    -- Right-click still zooms the map out under a pin, the way the map does
+    -- it (zoomed in: zoom out; else the map above). Done here, because
+    -- letting the click through (SetPassThroughButtons) is protected on the
+    -- world map and the game blocked it (1.11.0).
+    pin:SetScript("OnMouseUp",function(_,button)
+        if button~="RightButton" or not WorldMapFrame then return end
+        local scroll=WorldMapFrame.ScrollContainer
+        if scroll and scroll.IsAtMinZoom and not scroll:IsAtMinZoom() and scroll.ZoomOut then scroll:ZoomOut()
+        elseif WorldMapFrame.NavigateToParentMap then WorldMapFrame:NavigateToParentMap() end
+    end)
     pin:SetFrameLevel(canvas:GetFrameLevel()+2100)
     pin.icon=pin:CreateTexture(nil,"OVERLAY"); pin.icon:SetAllPoints()
     pin:SetScript("OnEnter",function(owner)
@@ -262,7 +270,77 @@ function P:Hook()
             for _,e in ipairs({{"mapTransport","Boats, zeppelins and tram"},{"mapDungeons","Dungeon and raid entrances"},{"mapFlights","Flight masters"}}) do
                 root:CreateCheckbox(e[2],function() return P:Settings()[e[1]] end,function() P:Toggle(e[1]) end)
             end
+            P:GatherMateMenu(root)
         end)
+    end
+end
+-- GatherMate in the map's filter menu (System > Minimap > GatherMate in the
+-- map menu, off): each kind (herbs, minerals, fishing, treasure) on or off,
+-- and hover one for each node of it (Copper Vein, Peacebloom...). Uses
+-- GatherMate's own settings ("Show" per kind and its node filter), so its
+-- options window shows the same and the minimap follows too.
+local GM_TYPES={{"Herb Gathering","Herbs"},{"Mining","Minerals"},{"Fishing","Fishing"},{"Treasure","Treasure"}}
+local gmNodes,gmNodesAt={},{}
+local function gatherMate()
+    local gm=rawget(_G,"GatherMate2")
+    if type(gm)~="table" or type(gm.db)~="table" or type(gm.db.profile)~="table" then return nil end
+    return gm
+end
+-- The nodes of a kind: every one in GatherMate's data, plus the Classic
+-- ones it knows. Sorted by name. Built at most once a minute.
+local function nodesOf(gm,kind)
+    local t=GetTime and GetTime() or 0
+    if gmNodes[kind] and t-(gmNodesAt[kind] or 0)<60 then return gmNodes[kind] end
+    local names=gm.reverseNodeIDs and gm.reverseNodeIDs[kind] or {}
+    local ids={}
+    local data=gm.gmdbs and gm.gmdbs[kind]
+    if type(data)=="table" then
+        for _,zone in pairs(data) do
+            if type(zone)=="table" then for _,id in pairs(zone) do if type(id)=="number" then ids[id]=true end end end
+        end
+    end
+    local exp=gm.nodeExpansion and gm.nodeExpansion[kind]
+    if type(exp)=="table" then for id,e in pairs(exp) do if e==1 then ids[id]=true end end end
+    local list={}
+    for id in pairs(ids) do if type(names[id])=="string" then list[#list+1]={id=id,name=names[id]} end end
+    table.sort(list,function(a,b) return a.name<b.name end)
+    gmNodes[kind],gmNodesAt[kind]=list,t
+    return list
+end
+local function gmChanged(gm)
+    if gm.SendMessage then pcall(gm.SendMessage,gm,"GatherMate2ConfigChanged") end
+end
+function P:GatherMateMenu(root)
+    -- On unless turned off; only when GatherMate is loaded on this character.
+    if P:Settings().mapGatherMate==false then return end
+    local gm=gatherMate(); if not gm then return end
+    local db=gm.db.profile
+    if type(db.show)~="table" or type(db.filter)~="table" then return end
+    root:CreateDivider()
+    root:CreateTitle("GatherMate")
+    for _,k in ipairs(GM_TYPES) do
+        local kind,label=k[1],k[2]
+        -- Ticked = shown on your map now (GatherMate's "Only with profession"
+        -- hides herbs on a miner: that counts as off). On = "Always".
+        local function shown()
+            if type(gm.Visible)=="table" and gm.Visible[kind]~=nil then return gm.Visible[kind]==true end
+            return db.show[kind]=="always"
+        end
+        local item=root:CreateCheckbox(label,shown,function()
+            db.show[kind]=shown() and "never" or "always"
+            gmChanged(gm)
+        end)
+        local nodes=nodesOf(gm,kind)
+        if #nodes>0 and item.CreateButton then
+            local filter=db.filter[kind]
+            item:CreateButton("Show all",function() for _,n in ipairs(nodes) do filter[n.id]=true end; gmChanged(gm); return MenuResponse and MenuResponse.Refresh end)
+            item:CreateButton("Hide all",function() for _,n in ipairs(nodes) do filter[n.id]=false end; gmChanged(gm); return MenuResponse and MenuResponse.Refresh end)
+            item:CreateDivider()
+            for _,n in ipairs(nodes) do
+                item:CreateCheckbox(n.name,function() return filter[n.id]~=false end,function() filter[n.id]=not (filter[n.id]~=false); gmChanged(gm) end)
+            end
+            if item.SetScrollMode then pcall(item.SetScrollMode,item,400) end
+        end
     end
 end
 -- /ft mappoint <kind> <name> | list | undo

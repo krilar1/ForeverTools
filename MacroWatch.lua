@@ -213,6 +213,10 @@ function W:CheckWeapons()
     if self.asking or (self.swapFrame and self.swapFrame:IsShown()) then return end
     local sets=self:Sets(); if #sets==0 then return end
     local used=self:Referenced(sets)
+    -- Which weapons the macros put in each hand: a new ranged weapon only
+    -- replaces a ranged one, never the fishing pole in your main hand.
+    local inSlot={}
+    for _,set in ipairs(sets) do for n,name in pairs(set.slots) do inSlot[n]=inSlot[n] or {}; inSlot[n][name]=true end end
     local asked=charStore("macroWeaponAsked")
     for _,slot in ipairs(HANDS) do
         local new,old=self.worn[slot],before[slot]
@@ -220,12 +224,17 @@ function W:CheckWeapons()
             -- Which weapon it takes the place of: the one it replaced, if the
             -- macros use it and it's the same kind; else the only one of its kind.
             local kind=self:Kind(new)
-            local function same(name) local k=self:Kind(name); return not kind or not k or k==kind end
+            -- Same kind, both known (an item not in your bags can't be looked up).
+            local function same(name) local k=self:Kind(name); return kind and k and k==kind and k~="fishing" end
+            local here=inSlot[slot] or {}
             local replaces
-            if old and used[old] and same(old) then replaces=old
+            -- What this hand wore before, if your macros swap to it: always
+            -- (1.11.0: daggers in place of swords never asked; the window
+            -- lets you pick per macro anyway). Fishing poles stay out.
+            if old and here[old] and self:Kind(old)~="fishing" then replaces=old
             else
                 local found={}
-                for name in pairs(used) do if same(name) and name~=new then found[#found+1]=name end end
+                for name in pairs(here) do if same(name) and name~=new then found[#found+1]=name end end
                 if #found==1 then replaces=found[1] end
             end
             if replaces and kind~="fishing" then
@@ -349,7 +358,21 @@ function W:OpenSwap(sets,old,new)
                 row.label:SetText(HAND_NAMES[slot]); row.label:ClearAllPoints(); row.label:SetPoint("TOPLEFT",0,-ry-7); row.label:Show()
                 row.drop:ClearAllPoints(); row.drop:SetPoint("TOPLEFT",96,-ry); row.drop:Show()
                 row.drop.label:SetText(itemLabel(pick)); self:SetIcon(row.drop,slot,pick)
-                FT:Tooltip(row.drop,HAND_NAMES[slot],"What these macros put in your "..HAND_NAMES[slot]:lower()..". None removes the swap line.")
+                -- Hover: the weapon's own tooltip (stats), with what the choice does.
+                if not row.drop.ftItemTip then
+                    row.drop.ftItemTip=true
+                    row.drop:HookScript("OnEnter",function(owner)
+                        local mf=MF(); local key=b.set and b.set.key; local s=b.slotOf[r]
+                        local pick=key and W.swapChoice[key] and W.swapChoice[key][s]
+                        local link
+                        if mf and pick and pick~="" then for _,c in ipairs(mf:WeaponChoices(s)) do if c.value==pick then link=c.hyperlink end end end
+                        GameTooltip:SetOwner(owner,"ANCHOR_RIGHT")
+                        if not (link and pcall(GameTooltip.SetHyperlink,GameTooltip,link)) then GameTooltip:SetText(HAND_NAMES[s] or "",1,.82,0) end
+                        GameTooltip:AddLine("What these macros put in your "..(HAND_NAMES[s] or "hand"):lower()..". None removes the swap line.",.66,.59,.48,true)
+                        GameTooltip:Show()
+                    end)
+                    row.drop:HookScript("OnLeave",function() GameTooltip:Hide() end)
+                end
                 ry=ry+34
             else row.label:Hide(); row.drop:Hide() end
         end

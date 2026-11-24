@@ -73,6 +73,31 @@ function Counts:Build(rows,total,s)
     end
     return out
 end
+local function idOf(v)
+    if not plain(v) then return end
+    if type(v)=="number" then return v end
+    if type(v)~="string" or v=="" then return end
+    local id=v:match("item:(%d+)")
+    if id then return tonumber(id) end
+    local instant=(C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    if instant then local ok,found=pcall(instant,v); if ok and plain(found) and type(found)=="number" then return found end end
+end
+-- The item a macro tooltip shows: its link, else the item named on its
+-- first line (an item in your bags is known by name).
+function Counts:MacroItem(tip,data)
+    if type(data)=="table" and plain(data) then
+        local id=idOf(data.hyperlink) or (data.id and type(data.id)=="number" and nil)
+        if id then return id end
+    end
+    if tip and tip.GetItem then
+        local ok,_,link=pcall(tip.GetItem,tip)
+        local id=ok and idOf(link)
+        if id then return id end
+    end
+    local line=type(data)=="table" and type(data.lines)=="table" and data.lines[1]
+    local text=type(line)=="table" and line.leftText
+    return idOf(text)
+end
 function Counts:ItemFrom(data)
     if type(data)~="table" or not plain(data) then return end
     local id=data.id
@@ -116,19 +141,38 @@ function Counts:FillBox(tip,lines,place)
     if place=="above" then box:SetPoint("BOTTOMLEFT",tip,"TOPLEFT",0,2) else box:SetPoint("TOPLEFT",tip,"BOTTOMLEFT",0,-2) end
     box:Show()
 end
+-- Every tooltip the game shows items in (checked against the game's own
+-- code, 1.11.0): the main tooltip (bags, bank, auction house, merchant,
+-- mail, loot, trade, quest rewards, professions...), linked items in chat
+-- (one window or more), the standalone item tooltip of map and widget
+-- rewards, the loot history's extra tooltip, and the small item tooltips
+-- inside another tooltip (world map quest rewards). Not the comparison
+-- tooltips beside it (they show what you wear) or hidden scanning tooltips.
+local function inner(tip)
+    return (GameTooltip and GameTooltip.ItemTooltip and tip==GameTooltip.ItemTooltip.Tooltip)
+        or (EmbeddedItemTooltip and tip==EmbeddedItemTooltip.Tooltip)
+end
+function Counts:Wanted(tip)
+    if not tip then return false end
+    if tip==GameTooltip or tip==ItemRefTooltip or tip==EmbeddedItemTooltip or tip==LootHistoryExtraTooltip then return true end
+    if inner(tip) then return true end
+    local ok,name=pcall(tip.GetName,tip)
+    return ok and type(name)=="string" and name:match("^ItemRefTooltip%d+$")~=nil
+end
 function Counts:OnTooltip(tip,data)
     local B=bags()
     if boxes[tip] then boxes[tip]:Hide() end
     if not B or not FT.dbReady then return end
     local s=settings()
     if not s.counts then return end
-    if tip~=GameTooltip and tip~=ItemRefTooltip then return end
+    if not self:Wanted(tip) then return end
     if s.countShift and not (IsShiftKeyDown and IsShiftKeyDown()) then return end
     local id=self:ItemFrom(data); if not id then return end
     local rows,total=self:Lines(id,s)
     local lines=self:Build(rows,total,s)
     if #lines==0 then return end
-    if s.countPlace=="inside" then
+    -- A tooltip inside another one has no room around it: the lines go in.
+    if s.countPlace=="inside" or inner(tip) then
         if s.countSpacer then tip:AddLine(" ") end
         for _,line in ipairs(lines) do tip:AddDoubleLine(line[1],line[2],1,1,1,1,1,1) end
         tip:Show()
@@ -141,10 +185,19 @@ function Counts:Hook()
     self.hooked=true
     if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType and Enum.TooltipDataType.Item~=nil then
         TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item,function(tip,data) pcall(self.OnTooltip,self,tip,data) end)
+        -- Macros on your action bars that show an item (#showtooltip or
+        -- /use: poisons, potions...): the tooltip is a macro tooltip, so the
+        -- item is found from it (1.11.0).
+        if Enum.TooltipDataType.Macro~=nil then
+            TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Macro,function(tip,data)
+                local id=self:MacroItem(tip,data)
+                if id then pcall(self.OnTooltip,self,tip,{id=id}) elseif boxes[tip] then boxes[tip]:Hide() end
+            end)
+        end
     else
         -- Game versions without the tooltip data system: the item tooltip's
         -- own "item set" moment, with the id read from the item's link.
-        for _,tip in ipairs({GameTooltip,ItemRefTooltip}) do
+        for _,tip in ipairs({GameTooltip,ItemRefTooltip,EmbeddedItemTooltip}) do
             if tip and tip.HookScript and (not tip.HasScript or tip:HasScript("OnTooltipSetItem")) then
                 tip:HookScript("OnTooltipSetItem",function(owner)
                     local ok,_,link=pcall(owner.GetItem,owner)

@@ -110,6 +110,10 @@ local index={
     {"Enemy alerts","stealth rogue druid prowl vanish shadowmeld invisible enemy alert warning pvp spy gank kill death tracker kd wins losses score","EnemyAlerts","Ability_Stealth"},
     {"Marked players","mark marked kos kill on sight kill-list killlist guild enemy player grudge rival pvp alert by name","EnemyMarks","Ability_Hunter_SniperShot"},
     {"Nearby enemies","nearby enemies enemy players list icons pvp radar","EnemyNearby","INV_Misc_Spyglass_02"},
+    {"GatherMate in the map menu","gathermate gather mate map filter herbs minerals mining ore fishing treasure nodes world map funnel","SystemMinimap","INV_Misc_Herb_10",find="GatherMate in the map menu"},
+    {"Herbs and minerals","herbs minerals herb mining ore find herbs find minerals tracking switch switcher gathering herbalism minimap auto","SystemMinimap","INV_Misc_Flower_02",find="Herbs and minerals"},
+    {"Buff times","buff buffs debuff debuffs minutes hours seconds time left duration timer countdown numbers target focus stun well rested sleeping bag tooltip exact","SystemBuffTimes","INV_Misc_PocketWatch_01"},
+    {"Targeted alert","targeted target targeting me aggro enemy alliance horde player warning alert gank pvp","TargetAlert","Ability_Hunter_SniperShot"},
     {"Auto release","auto release spirit repop death dead battleground bg graveyard pvp","AutoRelease","Spell_Holy_Resurrection"},
     {"Trinket menu","trinket trinkets swap equip menu cooldown pvp medallion insignia use","Trinkets","INV_Misc_PocketWatch_01"},
     {"Enemy cooldowns","enemy cooldowns omnicd trinket racial blind vanish ice block divine shield psychic scream fear stun used tracker pvp arena battleground","EnemyCooldowns","Spell_Holy_BorrowedTime"},
@@ -160,6 +164,12 @@ function Search:AddPageSettings()
     for _,e in ipairs(okG and type(generic)=="table" and generic or {}) do
         if type(e.name)=="string" and not known(e.name.." macro") then
             index[#index+1]={e.name.." macro",("macro generic "..(e.note or "")):lower(),"MacroGeneric","macros",find=e.name,sub="Macros"}
+        end
+    end
+    local okP,pvpList=pcall(function() return M and M.PvPSharedEntries and M:PvPSharedEntries() end)
+    for _,e in ipairs(okP and type(pvpList)=="table" and pvpList or {}) do
+        if type(e.name)=="string" and not known(e.name.." macro") then
+            index[#index+1]={e.name.." macro",("macro pvp "..(e.note or "")):lower(),"MacroPvP","macros",find=e.name,sub="Macros"}
         end
     end
     local sys=FT.modules.System

@@ -58,9 +58,9 @@ function Profiles:ShowSwitcher(owner)
 end
 -- Only preferences are copied. Macro history and installed WoW macros belong to
 -- the character and are never rewritten by loading an appearance profile.
-local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","macroPoisonConfirm","macroUpdates","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish","enemyCooldowns","actionFade","tradeLog"}
+local keys={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","macroScope","macroUnlearnedIcons","macroBulkMouseover","macroPoisonConfirm","macroUpdates","chat","system","customKeybinds","customFonts","lootRoll","tooltip","buffReminder","customMacros","flightTimer","leveling","dispelGlow","actionMacros","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish","enemyCooldowns","actionFade","tradeLog","targetAlert"}
 -- Every module that must redraw after settings change (load, login, reset).
-local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey","Totems","DruidMana","SellMarks","QueueTimer","Trinkets","AutoRelease","PersonalResource","Interrupts","Bags","Enemies","Diminish","EnemyCooldowns","MapPins","TradeLog"}
+local applyModules={"QualityOfLife","FontManager","UnitColors","IconStyles","Chat","System","CustomKeybinds","LootRoll","BuffReminder","FlightTimer","Leveling","DispelGlow","QuestTracker","MinimapIcons","RareAlert","Threat","CooldownReminder","SmartKey","Totems","DruidMana","SellMarks","QueueTimer","Trinkets","AutoRelease","PersonalResource","Interrupts","Bags","Enemies","Diminish","EnemyCooldowns","MapPins","TradeLog","TargetAlert"}
 local function copy(value)
     if type(value) ~= "table" then return value end
     local result={}; for k,v in pairs(value) do result[k]=copy(v) end; return result
@@ -1004,7 +1004,7 @@ end)
 
 -- Settings only: saved profiles, custom macros/fonts, learned flight routes,
 -- rank knowledge and macro history are kept. A reload re-applies native UI.
-local resettable={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","chat","system","customKeybinds","lootRoll","tooltip","buffReminder","flightTimer","leveling","vendor","dispelGlow","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish","enemyCooldowns","actionFade","tradeLog"}
+local resettable={"fps","fonts","unitColors","iconStyles","welcome","minimapEnabled","minimapAngle","minimapCollectorAngle","chat","system","customKeybinds","lootRoll","tooltip","buffReminder","flightTimer","leveling","vendor","dispelGlow","rareAlert","threat","fireAlert","smartKey","totems","movers","queueTimer","trinkets","autoRelease","personal","interrupts","thanks","moveWindows","bags","enemies","diminish","enemyCooldowns","actionFade","tradeLog","targetAlert"}
 function Profiles:DefaultsForCharacter()
     for _,key in ipairs(resettable) do FT.db[key]=nil end
     self.active,self.selected=nil,nil
@@ -1139,7 +1139,10 @@ end
 function Profiles:CharacterName()
     local name,realm
     if UnitFullName then name,realm=UnitFullName("player") elseif UnitName then name=UnitName("player") end
-    realm=realm and realm~="" and realm or (GetRealmName and GetRealmName()) or "Realm"
+    if not (realm and realm~="") and GetRealmName then realm=GetRealmName() end
+    -- The game can leave the realm empty (since Nov 20): the one the bags remember.
+    if not (type(realm)=="string" and realm~="") and FT.Bags and FT.Bags.Ruleset then local _,shown=FT.Bags:Ruleset(); if shown~="?" then realm=shown end end
+    realm=type(realm)=="string" and realm~="" and realm or "Realm"
     return (name or "Character").."-"..realm
 end
 -- Key bindings travel only inside an export string, never inside saved
@@ -1375,7 +1378,7 @@ end
 -- by an earlier (or later) version must still bring everything it can. Each
 -- setting area that fails the checks is left out (it keeps its defaults) and
 -- named in skipped; the rest is imported.
-local areaNames={fps="FPS counter",fonts="Fonts",unitColors="Unit frames",iconStyles="Skins",chat="Chat",system="System settings",customKeybinds="Mouse-wheel casting",customFonts="Your font files",lootRoll="Loot rolls",tooltip="Tooltip",buffReminder="Buff reminders",customMacros="Your macros",flightTimer="Flight timer",leveling="Leveling stats",dispelGlow="Dispel glow",actionMacros="Macro places",rareAlert="Rare alerts",threat="Threat meter",fireAlert="Fire alert",smartKey="Smart key",totems="Totems",movers="Element positions",queueTimer="Battleground timer",trinkets="Trinket menu",autoRelease="Auto release",personal="Game resource bars",interrupts="Interrupt bar",thanks="Thanks",moveWindows="Game window places",bags="Bags",enemies="Enemy alerts",diminish="Diminishing returns",enemyCooldowns="Enemy cooldowns",actionFade="Action bars on mouseover",tradeLog="Trade log"}
+local areaNames={fps="FPS counter",fonts="Fonts",unitColors="Unit frames",iconStyles="Skins",chat="Chat",system="System settings",customKeybinds="Mouse-wheel casting",customFonts="Your font files",lootRoll="Loot rolls",tooltip="Tooltip",buffReminder="Buff reminders",customMacros="Your macros",flightTimer="Flight timer",leveling="Leveling stats",dispelGlow="Dispel glow",actionMacros="Macro places",rareAlert="Rare alerts",threat="Threat meter",fireAlert="Fire alert",smartKey="Smart key",totems="Totems",movers="Element positions",queueTimer="Battleground timer",trinkets="Trinket menu",autoRelease="Auto release",personal="Game resource bars",interrupts="Interrupt bar",thanks="Thanks",moveWindows="Game window places",bags="Bags",enemies="Enemy alerts",diminish="Diminishing returns",enemyCooldowns="Enemy cooldowns",actionFade="Action bars on mouseover",tradeLog="Trade log",targetAlert="Targeted alert"}
 function Profiles:ValidateImport(data)
     if type(data)~="table" then return nil,"Invalid or unsupported profile." end
     local result=self:StrictImport(data)
@@ -1428,6 +1431,7 @@ function Profiles:StrictImport(data)
     end
     if not check(result.trinkets,{enabled="boolean",vertical="boolean",numbers="boolean",mouseover="boolean",hideEmpty="boolean",size="number",x="number",y="number",locked="boolean"}) then return nil,"Invalid trinket menu settings." end
     if not check(result.tradeLog,{enabled="boolean",button="boolean"}) then return nil,"Invalid trade log settings." end
+    if not check(result.targetAlert,{enabled="boolean",sound="boolean",names="boolean",background="boolean",flash="boolean",color="string",where="string",again="number",size="number",x="number",y="number"}) then return nil,"Invalid targeted alert settings." end
     if not check(result.bags,{skipBank="boolean",rows="boolean",gold="boolean",view="boolean",counts="boolean",locked="boolean",buttons="boolean",countSplit="boolean",countSelf="boolean",countGuild="boolean",countShift="boolean",countSpacer="boolean",countFullNames="boolean",fullNamesOn="boolean",countStyle="string",countPlace="string",bagX="number",bagY="number",bankX="number",bankY="number",order="string",insert="string",cleanup="string"}) then return nil,"Invalid bag settings." end
     if not check(result.enemies,{kd="boolean",stealth="boolean",fade="boolean",marks="boolean",nearby="boolean",instances="boolean",sound="boolean",flash="boolean",markTooltip="boolean",size="number",nearSize="number",nearTime="number",x="number",y="number",nearX="number",nearY="number",nearDock="string",nearCollapsed="boolean",nearShowEmpty="boolean",nearAlong="number",nearCorner="string",nearRows="number",nearFade="boolean"}) then return nil,"Invalid enemy alert settings." end
     if not check(result.flightTimer,{enabled="boolean",font="string",size="number",outline="string",color="table",x="number",y="number",bar="boolean",classColor="boolean"}) then return nil,"Invalid flight timer settings." end

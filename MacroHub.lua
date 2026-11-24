@@ -65,7 +65,7 @@ function M:DefaultBody(entry)
     return ok and body or "#showtooltip"
 end
 -- Already in your WoW macros (its normal text, or the text you edited here)?
-local followers = {["Eat & Drink"] = "FoodWater", Bandage = "Bandage", ["Cure poison"] = "Cures", ["Cure all"] = "Cures", ["Break free"] = "Cures", ["Cure bleed"] = "Cures"}
+local followers = {["Eat & Drink"] = "FoodWater", Bandage = "Bandage", ["Cure poison"] = "Cures", ["Cure disease"] = "Cures", ["Cure poison+dis"] = "Cures", ["Cure all"] = "Cures", ["Break free"] = "Cures", ["Cure bleed"] = "Cures", Grenade = "Grenades"}
 -- The text shown in the editor. Macros that follow your bags (Bandage, Eat &
 -- Drink) show what is in your bags now, unless you wrote your own text.
 function M:PreviewBody(entry)

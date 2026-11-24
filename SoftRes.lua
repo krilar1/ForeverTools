@@ -198,8 +198,11 @@ function SR:Line(list)
 end
 local NO_SR="|cff8fd18fNo SR|r"
 -- What the loot window and chat say for an item (nil: nothing to say).
+-- Only in a raid group (1.11.0: "No SR" showed on items linked in party
+-- chat, from an old import).
 function SR:Describe(id,quality)
     if not self:Enabled() or not self:Active() then return nil end
+    if not (IsInRaid and IsInRaid()) then return nil end
     local list=self:Holders(id)
     if list then return self:Line(list) end
     if type(quality)=="number" and quality>=NO_SR_QUALITY then return NO_SR end
