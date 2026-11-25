@@ -68,7 +68,7 @@ local index={
     {"Faster looting","fast loot looting auto loot speed quick corpse","SystemMerchant","INV_Misc_Bag_10"},
     {"Soft reserves (custom)","soft reserve sr softres reserves raid loot import guild website /ft sr","SoftRes","INV_Misc_Note_06",find="Soft reserves"},
     {"Auto-sell grey items","vendor merchant sell junk grey gray","SystemMerchant","INV_Misc_Coin_05"},
-    {"Poison reminder","rogue poison weapon main hand off hand missing reminder","BuffReminder","Ability_Poisons",find="Main hand"},
+    {"Poison reminder","rogue poison weapon main hand off hand missing reminder","BuffReminder","Ability_Poisons",find="Main hand",only={ROGUE=true,SHAMAN=true}},
     {"Show key when interface is hidden","hide show interface ui alt-z key hint message screenshot","SystemGeneral","INV_Misc_Eye_01"},
     {"Auto-repair","vendor merchant repair durability guild funds","SystemMerchant","Trade_BlackSmithing"},
     {"Show Lua errors","lua errors script errors troubleshooting","SystemGeneral","errors"},
@@ -122,7 +122,7 @@ local index={
     {"Smart interact key","interact target key restedxp rxp quest item keybind one key","SmartKey","INV_Misc_Key_10"},
     {"Cooldown reminders","cooldown racial trinket reminder use elite rare pull blood fury berserking","CooldownReminder","buffs"},
     {"Leveling stats line up","leveling xp align left right center edge move","Leveling","Spell_ChargePositive",find="Line up"},
-    {"Eat & Drink macro","food water eat drink mage conjured macro","MacroForge","macros",find="Eat & Drink"},
+    {"Eat & Drink macro","food water eat drink mage conjured macro","MacroForge","macros",find="Eat & Drink",only={MAGE=true}},
     {"Hidden macros","hide macro hidden filter blacklist show again restore","MacroHidden","macros"},
     {"PvP macros","pvp macros focus mouseover sap blind polymorph fear kick interrupt counterspell pummel opener cheap shot stance charge intercept ice block powershift arena battleground","MacroPvP","Ability_Warrior_Challange"},
     {"Make room for macros","make room full macro slots delete add all space","MacroSettings","macros",find="Delete Character macros"},
@@ -190,8 +190,9 @@ function Search:Results(query)
     if query=="" then return {} end
     local starts,contains={},{}
     for i,entry in ipairs(index) do
-      -- Another class's page never shows (Totems on a warrior).
-      if FT:ForMyClass(entry[3]) then
+      -- Another class's page never shows (Totems on a warrior), nor another
+      -- class's single setting (Eat & Drink is a mage macro).
+      if FT:ForMyClass(entry[3]) and (not entry.only or entry.only[select(2,UnitClass("player")) or ""]) then
         local label=entry[1]:lower()
         -- The same icon as the page has in its group's list.
         local hub,at=FT:HubOf(entry[3])

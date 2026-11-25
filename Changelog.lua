@@ -1,11 +1,16 @@
 local _,FT=...
 -- Short player-facing notes for the "What's new" window. Newest first.
 -- Versions whose What's new doesn't open by itself after updating.
-FT.quietReleases={["1.0.0"]=true,["1.0.1"]=true}
+FT.quietReleases={["1.0.0"]=true,["1.0.1"]=true,["1.12.0"]=true}
 FT.changelog={
     -- Each note: an icon (Interface\\Icons name), a short title and one short line.
     -- try={get,set}: a "Try it" button that switches the new setting on and off
     -- again; open="Module": a "Show me" button. classes: only those classes see it.
+    {version="1.12.0",notes={
+        {icon="INV_Misc_Spyglass_03",title="Search fixed",text="Clicking a search result no longer closes the window."},
+        {icon="INV_Misc_Key_10",title="Smart interact key",text="Uses RestedXP's quest item as soon as it shows up.",open="SmartKey"},
+        {icon="Ability_Mount_Wyvern_01",title="Flight timer",text="More flight times added.",open="FlightTimer"},
+    }},
     {version="1.11.0",notes={
         {icon="Ability_Hunter_SniperShot",title="Targeted alert",text="A small box when an enemy player targets you.",open="TargetAlert"},
         {icon="INV_Misc_Bomb_08",title="Grenade macro",text="Throws the grenade you carry. Macros > PvP.",open="MacroPvP"},

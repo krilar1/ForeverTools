@@ -1,3 +1,13 @@
+# ForeverTools 1.12.0 (2026-11-25)
+
+## Fixes
+- **Search:** clicking Herbs and minerals, GatherMate in the map menu and other System settings closed the window with a Lua error (since 1.11.0). Every search result now opens its page.
+- **Search** no longer lists Eat & Drink and the poison reminder for classes that don't have them.
+- **Smart interact key** sometimes ignored RestedXP's quest item until the key was set again.
+
+## Changes
+- **Flight timer:** more flight times added.
+
 # ForeverTools 1.11.0 (2026-11-25)
 
 ## New

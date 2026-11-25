@@ -125,6 +125,11 @@ function Key:WatchButtons()
         frame:HookScript("OnShow",function() self:Queue() end)
         frame:HookScript("OnHide",function() self:Queue() end)
     end
+    -- The windows themselves first: RestedXP makes its first button only when
+    -- the first item or target shows up, and shows the window with it, so
+    -- watching only the buttons missed it until something else (a dialog,
+    -- a key change) made the key look again (1.12.0).
+    watch(_G.RXPItemFrame); watch(_G.RXPTargetFrame)
     for _,list in ipairs({ITEMS,TARGETS}) do
         for _,name in ipairs(list) do
             local f=_G[name]; watch(f)

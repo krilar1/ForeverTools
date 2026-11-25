@@ -1097,6 +1097,9 @@ do
       [20] = { [10] = 778, [3203] = 375 },
       -- (2026-11-19) Undercity flies straight to Kargath.
       [11] = { [21] = 336 },
+      -- (2026-11-25) Stonard to Rog'mar (from a Grom'gol > Stonard > Rog'mar
+      -- flight).
+      [56] = { [3203] = 170 },
     },
     ["Alliance"] = {
       [4] = { [2] = 82 },

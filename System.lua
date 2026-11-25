@@ -488,8 +488,7 @@ function System:Refresh()
         if key=="guildRepair" then button:SetAlpha(values.autoRepair and 1 or .45) end
         if key=="sellWhite" then button:SetAlpha(values.autoSell and 1 or .45) end
         if key=="mapGatherMate" and not rawget(_G,"GatherMate2") then button:SetAlpha(.45); button.label:SetText(button.title..": GatherMate not loaded") end
-        if key=="mapGatherMate" then s.mapGatherMate=s.mapGatherMate==false; self:Apply(); return end
-    if key=="trackSwitchStill" then button:SetAlpha(values.trackSwitch=="swap" and 1 or .45) end
+        if key=="trackSwitchStill" then button:SetAlpha(values.trackSwitch=="swap" and 1 or .45) end
         if key=="trackSwitchEvery" then
             local T=FT.modules.TrackSwitch
             button.label:SetText("Switch every: "..(T and T:EveryText() or "3 seconds"))
@@ -679,6 +678,7 @@ function System:Click(key)
         self:Refresh();return
     end
     local s=self:Settings()
+    if key=="mapGatherMate" then s.mapGatherMate=s.mapGatherMate==false; self:Apply(); return end
     if key=="combatLogNow" then self:SetLogging(not self:Logging(),"manual"); self:Refresh(); return end
     if key=="layerSwapOff" then
         s.layerSwapOff=not (s.layerSwapOff==true); self:Refresh()
